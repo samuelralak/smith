@@ -15,20 +15,20 @@ Rule for future spec changes:
 Current contract coverage exists for:
 
 - top-level namespaces and error hierarchy
+- top-level configuration surface
 - agent inheritance, DSL, and registry binding
 - workflow DSL and serialization entry points
 - workflow pattern namespaces
-- artifact namespace, top-level accessor, and built-in backend entry points
-- guardrail base DSL and attachment points
+- artifact namespace, top-level accessor, built-in backend entry points, and named operational methods
+- guardrail base DSL, attachment points, and built-in URL verifier namespace
 - event bus surface, filtering, scoped subscriptions, and typed event schema declaration
 - budget ledger surface
 - context manager DSL
-- tool base class, policy DSL, and capability metadata declaration
+- tool base class, policy DSL, capability metadata declaration, and built-in tool namespaces
 - trace adapter namespaces
 
 Important contracts from the architecture document that are not yet directly specified:
 
-- top-level configuration surface (`Smith.configure` and documented config attributes)
 - guardrail pipeline ordering and failure behavior
 - workflow run result shape
 - failure-transition auto-generation
@@ -37,9 +37,8 @@ Important contracts from the architecture document that are not yet directly spe
 - `to_state` hash shape
 - context injection replacement-on-retry semantics
 - advisory approval behavior and host-hook boundary
-- artifact store operational interface and lifecycle
+- artifact store lifecycle semantics
 - observability content opt-in and field-level controls
-- built-in `Smith::Tools` namespace and tool entry points
 
 ## File-to-Document Mapping
 
@@ -66,8 +65,10 @@ Documented contracts covered:
 - `Smith::Events`
 - `Smith::Event`
 - `Smith::Tool`
+- `Smith::Guardrails`
 - `Smith::Context`
 - `Smith::Budget`
+- `Smith::Artifacts`
 - `Smith::Trace`
 - `Smith::Errors`
 - `Smith::Types`
@@ -89,6 +90,39 @@ Notes:
 
 - This spec intentionally checks namespace existence and inheritance hierarchy only.
 - It does not prescribe implementation layout beyond the names explicitly promised in the architecture.
+
+### `spec/smith/configuration_spec.rb`
+
+Purpose:
+
+- asserts the top-level configuration API used explicitly in artifacts and observability sections
+
+Architecture basis:
+
+- Section 4.7, Artifact Store
+- Section 4.8, Observability
+
+Documented contracts covered:
+
+- `Smith.configure`
+- yielded configuration writers:
+  - `artifact_store=`
+  - `artifact_retention=`
+  - `artifact_encryption=`
+  - `artifact_tenant_isolation=`
+  - `trace_adapter=`
+  - `trace_transitions=`
+  - `trace_tool_calls=`
+  - `trace_token_usage=`
+  - `trace_cost=`
+  - `trace_content=`
+  - `trace_retention=`
+  - `trace_tenant_isolation=`
+
+Notes:
+
+- This spec checks the documented configuration surface only.
+- It does not yet assert persistence of config values or runtime adapter behavior.
 
 ### `spec/smith/agent/contract_spec.rb`
 
@@ -409,6 +443,28 @@ Notes:
 - This spec only checks that the metadata can be declared in the documented shape.
 - It does not yet assert policy effects derived from those annotations.
 
+### `spec/smith/tools/builtins_spec.rb`
+
+Purpose:
+
+- asserts the built-in tool namespaces named in the gem structure
+
+Architecture basis:
+
+- Section 7, Gem Structure
+
+Documented contracts covered:
+
+- `Smith::Tools`
+- `Smith::Tools::WebSearch`
+- `Smith::Tools::UrlFetcher`
+- `Smith::Tools::Think`
+
+Notes:
+
+- This spec checks namespace presence only.
+- It does not yet assert built-in tool behavior.
+
 ### `spec/smith/guardrails/contract_spec.rb`
 
 Purpose:
@@ -434,6 +490,25 @@ Notes:
 
 - This spec covers declaration surface only.
 - It does not yet assert ordering, blocking semantics, or workflow-before-agent precedence at runtime.
+
+### `spec/smith/guardrails/builtins_spec.rb`
+
+Purpose:
+
+- asserts the built-in URL verifier namespace named in the architecture
+
+Architecture basis:
+
+- Section 7, Gem Structure
+- Section 11, Phase 2 Guardrails and Context
+
+Documented contracts covered:
+
+- `Smith::Guardrails::UrlVerifier`
+
+Notes:
+
+- This spec checks namespace presence only.
 
 ### `spec/smith/trace/contract_spec.rb`
 
@@ -481,6 +556,27 @@ Notes:
 - This spec covers entry points only.
 - It does not yet specify `store`/`fetch` semantics, retention behavior, or namespace isolation.
 
+### `spec/smith/artifacts/operations_spec.rb`
+
+Purpose:
+
+- asserts the named artifact-store operational methods shown in the architecture examples
+
+Architecture basis:
+
+- Section 4.7, Artifact Store
+
+Documented contracts covered:
+
+- `Smith.artifacts.store`
+- `Smith.artifacts.fetch`
+- `Smith.artifacts.expired`
+
+Notes:
+
+- This spec checks named operational surface only.
+- It does not yet assert namespace isolation, opaque ref semantics, or garbage-collection behavior.
+
 ## Uncovered Contracts by Architecture Section
 
 These are not gaps in the architecture review. They are uncovered or only partially covered contracts in the current RSpec suite.
@@ -516,7 +612,7 @@ Recommended future specs:
 
 Currently uncovered:
 
-- workflow-level vs agent-level guardrail attachment
+- workflow-level vs agent-level guardrail attachment precedence
 - input guardrails run before model/tool execution
 - output guardrails run after model completion
 - tool guardrail ordering
@@ -559,7 +655,7 @@ Partially covered:
 
 - namespace and built-in backends are covered
 - top-level accessor is covered
-- artifact store operational interface is not yet covered:
+- artifact store operational interface is covered at the method-surface level:
   - `store`
   - `fetch`
   - `expired`
@@ -576,7 +672,7 @@ Recommended future specs:
 Partially covered:
 
 - trace namespaces are covered
-- top-level configuration surface for trace setup is not yet covered
+- top-level configuration surface for trace setup is covered
 - structural traces by default are not yet covered
 - content opt-in is not yet covered
 - redaction/disabling controls are not yet covered
@@ -587,10 +683,8 @@ Partially covered:
 
 - `Smith::Agent` layering is covered
 - `Smith::Tool` base contract is covered
-- built-in tool namespace and tool entry points are not yet covered:
-  - `Smith::Tools`
-  - built-in tools named in the gem structure (`web_search`, `url_fetcher`, `think`)
-- top-level configuration surface used by artifacts/tracing is not yet covered
+- built-in tool namespace and tool entry points are covered
+- top-level configuration surface used by artifacts/tracing is covered
 
 Recommended future specs:
 
