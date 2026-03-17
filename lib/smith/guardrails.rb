@@ -3,6 +3,13 @@
 module Smith
   class Guardrails
     class << self
+      def inherited(subclass)
+        super
+        subclass.instance_variable_set(:@inputs, (@inputs || []).dup)
+        subclass.instance_variable_set(:@tools, (@tools || []).dup)
+        subclass.instance_variable_set(:@outputs, (@outputs || []).dup)
+      end
+
       def input(name = nil, **)
         return @inputs || [] if name.nil?
 

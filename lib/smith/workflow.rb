@@ -2,6 +2,10 @@
 
 module Smith
   class Workflow
+    DEFAULT_MAX_TRANSITIONS = 100
+
+    RunResult = Struct.new(:state, :output, :steps, :total_cost, :total_tokens)
+
     class << self
       def inherited(subclass)
         super
@@ -72,12 +76,23 @@ module Smith
     end
 
     def advance!
+      max = self.class.max_transitions || DEFAULT_MAX_TRANSITIONS
+      raise MaxTransitionsExceeded if @step_count >= max
+
       @step_count += 1
       @updated_at = Time.now.utc.iso8601
     end
 
     def run!
+      steps = []
       advance! until terminal?
+      RunResult.new(
+        state: @state,
+        output: steps.last,
+        steps: steps,
+        total_cost: 0.0,
+        total_tokens: 0
+      )
     end
 
     attr_reader :state

@@ -3,6 +3,13 @@
 module Smith
   class Context
     class << self
+      def inherited(subclass)
+        super
+        subclass.instance_variable_set(:@session_strategy, @session_strategy)
+        subclass.instance_variable_set(:@persist_keys, (@persist_keys || []).dup)
+        subclass.instance_variable_set(:@inject_state, @inject_state)
+      end
+
       def session_strategy(strategy = nil, **opts)
         return @session_strategy if strategy.nil?
 

@@ -39,8 +39,19 @@ module Smith
       end
     end
 
-    def execute(**)
-      perform(**)
+    def execute(**kwargs)
+      check_authorization!(kwargs)
+      perform(**kwargs)
+    end
+
+    private
+
+    def check_authorization!(kwargs)
+      authorizer = self.class.authorize
+      return unless authorizer
+
+      context = kwargs[:context]
+      raise ToolPolicyDenied unless authorizer.call(context)
     end
 
     def perform(**kwargs)
