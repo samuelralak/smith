@@ -15,16 +15,16 @@ Rule for future spec changes:
 Current contract coverage exists for:
 
 - top-level namespaces and error hierarchy
-- top-level configuration surface
+- top-level configuration surface, including content-tracing opt-in default
 - agent inheritance, DSL, and registry binding
-- workflow DSL and serialization entry points
+- workflow DSL, serialization entry points, exact state shape, run-result surface, and persisted-context filtering
 - workflow pattern namespaces
-- artifact namespace, top-level accessor, built-in backend entry points, and named operational methods
+- artifact namespace, top-level accessor, configured-store resolution, built-in backend entry points, and named operational methods
 - guardrail base DSL, attachment points, and built-in URL verifier namespace
-- event bus surface, filtering, scoped subscriptions, and typed event schema declaration
+- event bus surface, filtering, scoped subscriptions, typed event schema declaration, and scoped-subscription runtime lifecycle
 - budget ledger surface
-- context manager DSL
-- tool base class, policy DSL, capability metadata declaration, and built-in tool namespaces
+- context manager DSL, stored runtime configuration, and persisted-key serialization contract
+- tool base class, policy DSL, capability metadata declaration, built-in tool namespaces, and current approval/authorization failure policy boundary
 - trace adapter namespaces
 
 Important contracts from the architecture document that are not yet directly specified:
@@ -35,7 +35,7 @@ Important contracts from the architecture document that are not yet directly spe
 - parallel branch cancellation and merge behavior
 - `MaxTransitionsExceeded` terminal state behavior beyond exception raising
 - context injection replacement-on-retry semantics
-- advisory approval behavior and host-hook boundary
+- approval-required behavior when a host pre-dispatch hook is installed
 - artifact namespace isolation semantics
 - observability content opt-in and field-level controls
 
@@ -117,11 +117,12 @@ Documented contracts covered:
   - `trace_content=`
   - `trace_retention=`
   - `trace_tenant_isolation=`
+- `trace_content` defaults to `false` (content tracing is opt-in)
 
 Notes:
 
-- This spec checks the documented configuration surface only.
-- It does not yet assert persistence of config values or runtime adapter behavior.
+- This spec checks the documented configuration surface and opt-in content-tracing default.
+- It does not yet assert runtime adapter behavior beyond configuration values.
 
 ### `spec/smith/agent/contract_spec.rb`
 
@@ -326,6 +327,27 @@ Notes:
 
 - This spec checks the documented result interface and exception behavior.
 - It does not yet assert the full content of `steps` entries.
+
+### `spec/smith/workflow/context_persistence_spec.rb`
+
+Purpose:
+
+- asserts that workflow serialization respects `Smith::Context.persist`
+
+Architecture basis:
+
+- Section 4.6, Context Manager
+- Section 5.3, State Serialization
+
+Documented contracts covered:
+
+- `persist` keys control which workflow context keys are serialized in `to_state`
+- `.from_state` restores only the persisted context keys
+
+Notes:
+
+- This spec covers persisted-key filtering only.
+- It does not yet assert inject-state retry replacement or observation masking at chat runtime.
 
 ### `spec/smith/events/contract_spec.rb`
 
@@ -708,10 +730,11 @@ Documented contracts covered:
 - `Smith.artifacts.store`
 - `Smith.artifacts.fetch`
 - `Smith.artifacts.expired`
+- `Smith.artifacts` resolves to the configured artifact store instance
 
 Notes:
 
-- This spec checks named operational surface only.
+- This spec checks named operational surface and configured-store resolution only.
 - It does not yet assert namespace isolation, opaque ref semantics, or garbage-collection behavior.
 
 ### `spec/smith/artifacts/lifecycle_spec.rb`
@@ -802,7 +825,7 @@ Partially covered:
 - stored session strategy / persist / inject_state formatter behavior is covered
 - observation masking behavior at chat runtime is not yet covered
 - injected-state replacement-on-retry is not yet covered
-- persisted key filtering in `to_state` is not yet covered
+- persisted key filtering in `to_state`/`from_state` is covered
 
 Recommended future specs:
 
@@ -833,8 +856,8 @@ Partially covered:
 
 - trace namespaces are covered
 - top-level configuration surface for trace setup is covered
+- content tracing is covered as opt-in by default
 - structural traces by default are not yet covered
-- content opt-in is not yet covered
 - redaction/disabling controls are not yet covered
 
 ### Section 5.1 Agent Invocation and Section 6 Tool Governance

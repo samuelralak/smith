@@ -31,4 +31,8 @@ RSpec.describe "Smith configuration contract" do
       expect(yielded_config).to respond_to(method_name), "expected config to implement ##{method_name}"
     end
   end
+
+  it "keeps trace content opt-in by default" do
+    expect(Smith.config.trace_content).to be(false)
+  end
 end
