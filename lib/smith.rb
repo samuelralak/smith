@@ -29,7 +29,7 @@ module Smith
   setting :logger, default: nil
 
   def self.artifacts
-    config.artifact_store
+    config.artifact_store || (@_default_artifacts ||= Artifacts::Memory.new)
   end
 
   def self.artifacts=(store)
@@ -63,9 +63,13 @@ require_relative "smith/artifacts/file"
 # Tool (depends on RubyLLM::Tool)
 require_relative "smith/tool"
 require_relative "smith/tools"
+require_relative "smith/tools/web_search"
+require_relative "smith/tools/url_fetcher"
+require_relative "smith/tools/think"
 
 # Guardrails and Context (no internal deps)
 require_relative "smith/guardrails"
+require_relative "smith/guardrails/url_verifier"
 require_relative "smith/context"
 
 # Agent (depends on RubyLLM::Agent)
