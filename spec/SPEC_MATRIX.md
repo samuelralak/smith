@@ -335,8 +335,7 @@ Behavior currently asserted:
 
 Notes:
 
-- The spec uses `allocate` and minimal ivar seeding because the architecture defines ledger behavior but does not yet define a public initializer contract.
-- This is the only current spec that still relies on internal state setup for object construction; that is deliberate and currently justified.
+- The spec uses `Ledger.new(limits:)` to construct the ledger through the public initializer.
 
 ### `spec/smith/context/contract_spec.rb`
 

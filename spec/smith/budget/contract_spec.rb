@@ -4,12 +4,7 @@ RSpec.describe "Smith budget ledger contract" do
   let(:ledger_class) { require_const("Smith::Budget::Ledger") }
 
   def build_ledger(limit:)
-    ledger = ledger_class.allocate
-    ledger.instance_variable_set(:@mutex, Mutex.new)
-    ledger.instance_variable_set(:@limits, { tokens: limit })
-    ledger.instance_variable_set(:@consumed, Hash.new(0))
-    ledger.instance_variable_set(:@reserved, Hash.new(0))
-    ledger
+    ledger_class.new(limits: { tokens: limit })
   end
 
   it "reserves capacity against committed plus reserved usage" do

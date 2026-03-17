@@ -16,8 +16,8 @@ module ContractHelpers
     )
   end
 
-  def with_stubbed_class(name, superclass = Object, &block)
-    klass = Class.new(superclass, &block)
+  def with_stubbed_class(name, superclass = Object, &)
+    klass = Class.new(superclass, &)
     stub_const(name, klass)
     klass
   end

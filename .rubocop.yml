@@ -22,3 +22,6 @@ Metrics/MethodLength:
 
 Layout/LineLength:
   Max: 120
+
+Lint/EmptyClass:
+  Enabled: false

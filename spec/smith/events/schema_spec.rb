@@ -8,9 +8,12 @@ RSpec.describe "Smith event schema contract" do
   end
 
   it "allows a typed event schema to be declared with inherited correlation fields" do
+    string_type = require_const("Smith::Types::String")
+    integer_type = require_const("Smith::Types::Integer")
+
     typed_event = with_stubbed_class("SpecTypedEvent", event_class) do
-      attribute :workflow_id, require_const("Smith::Types::String")
-      attribute :branch_count, require_const("Smith::Types::Integer")
+      attribute :workflow_id, string_type
+      attribute :branch_count, integer_type
     end
 
     expect(typed_event).to be < event_class

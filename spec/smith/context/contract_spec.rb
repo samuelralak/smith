@@ -14,7 +14,7 @@ RSpec.describe "Smith::Context contract" do
     manager = with_stubbed_class("SpecResearchContext", context_class) do
       session_strategy :observation_masking, window: 10
       persist :current_findings, :source_urls
-      inject_state { |persisted| persisted.inspect }
+      inject_state(&:inspect)
     end
 
     workflow = with_stubbed_class("SpecContextWorkflow", workflow_class) do

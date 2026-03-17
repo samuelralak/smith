@@ -3,7 +3,7 @@
 require "smith"
 require "ruby_llm"
 
-Dir[File.expand_path("support/**/*.rb", __dir__)].sort.each { |file| require file }
+Dir[File.expand_path("support/**/*.rb", __dir__)].each { |file| require file }
 
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure
@@ -20,5 +20,9 @@ RSpec.configure do |config|
 
   config.define_derived_metadata(file_path: %r{/spec/}) do |metadata|
     metadata[:aggregate_failures] = true
+  end
+
+  config.after(:each) do
+    Smith::Events.reset!
   end
 end
