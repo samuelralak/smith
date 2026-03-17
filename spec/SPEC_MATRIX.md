@@ -31,12 +31,12 @@ Important contracts from the architecture document that are not yet directly spe
 
 - guardrail failure behavior
 - failure-transition auto-generation
-- event best-effort semantics beyond surface API
+- event best-effort rescue behavior during dispatch
 - parallel branch cancellation and merge behavior
 - `MaxTransitionsExceeded` terminal state behavior beyond exception raising
 - context injection replacement-on-retry semantics
 - advisory approval behavior and host-hook boundary
-- artifact store lifecycle semantics
+- artifact namespace isolation semantics
 - observability content opt-in and field-level controls
 
 ## File-to-Document Mapping
@@ -395,6 +395,25 @@ Notes:
 
 - This spec checks schema declaration surface, not event dispatch/runtime serialization.
 
+### `spec/smith/events/runtime_spec.rb`
+
+Purpose:
+
+- asserts runtime lifecycle behavior that is already exposed by the event bus surface
+
+Architecture basis:
+
+- Section 4.3, Events
+
+Documented contracts covered:
+
+- scoped subscriptions auto-cancel on block exit
+- filtered subscriptions retain the declared predicate
+
+Notes:
+
+- This spec does not yet assert rescued dispatch behavior because the architecture does not name a public emit API.
+
 ### `spec/smith/budget/contract_spec.rb`
 
 Purpose:
@@ -449,6 +468,27 @@ Notes:
 
 - This spec deliberately checks only the declaration surface.
 - It does not yet assert masking semantics, injected-state replacement, or persistence filtering behavior.
+
+### `spec/smith/context/runtime_spec.rb`
+
+Purpose:
+
+- asserts the documented stored context configuration and formatter behavior exposed by `Smith::Context`
+
+Architecture basis:
+
+- Section 4.6, Context Manager
+
+Documented contracts covered:
+
+- `session_strategy` returns the declared observation-masking configuration
+- `persist` returns the declared workflow context keys
+- `inject_state` stores a callable formatter over persisted state
+
+Notes:
+
+- This spec covers stored configuration and formatter behavior only.
+- It does not yet assert retry replacement, message persistence, or masking at chat runtime.
 
 ### `spec/smith/tools/contract_spec.rb`
 
@@ -519,6 +559,27 @@ Notes:
 
 - This spec checks namespace presence only.
 - It does not yet assert built-in tool behavior.
+
+### `spec/smith/tools/failure_policy_spec.rb`
+
+Purpose:
+
+- asserts the documented distinction between terminal policy failures and advisory approval metadata
+
+Architecture basis:
+
+- Section 5.6, Error Hierarchy
+- Section 6, Tool Governance
+
+Documented contracts covered:
+
+- authorization denial raises `Smith::ToolPolicyDenied`
+- approval metadata alone does not block execution without a host hook
+
+Notes:
+
+- This spec covers only the behavior explicitly described in the architecture.
+- It does not yet assert retriable tool-guardrail failures.
 
 ### `spec/smith/guardrails/contract_spec.rb`
 
@@ -653,6 +714,27 @@ Notes:
 - This spec checks named operational surface only.
 - It does not yet assert namespace isolation, opaque ref semantics, or garbage-collection behavior.
 
+### `spec/smith/artifacts/lifecycle_spec.rb`
+
+Purpose:
+
+- asserts the documented basic lifecycle behavior of the in-memory artifact backend
+
+Architecture basis:
+
+- Section 4.7, Artifact Store
+
+Documented contracts covered:
+
+- storing returns an opaque ref
+- fetching returns stored content
+- expired refs are discoverable through `expired(retention:)`
+
+Notes:
+
+- This spec covers the in-memory backend only.
+- It does not yet assert tenant/execution isolation.
+
 ## Uncovered Contracts by Architecture Section
 
 These are not gaps in the architecture review. They are uncovered or only partially covered contracts in the current RSpec suite.
@@ -676,7 +758,7 @@ Recommended future specs:
 Not yet directly specified:
 
 - events fire only for successfully completed steps
-- handlers are always rescued and cannot affect step success
+- handlers are always rescued and cannot affect step success during dispatch
 - host progress callbacks are outside Smith’s event contract
 - event ordering constraints
 
@@ -717,7 +799,8 @@ Recommended future specs:
 Partially covered:
 
 - DSL is covered
-- observation masking behavior is not yet covered
+- stored session strategy / persist / inject_state formatter behavior is covered
+- observation masking behavior at chat runtime is not yet covered
 - injected-state replacement-on-retry is not yet covered
 - persisted key filtering in `to_state` is not yet covered
 
@@ -735,6 +818,7 @@ Partially covered:
   - `store`
   - `fetch`
   - `expired`
+- in-memory store/fetch/expiry behavior is covered
 - namespace-scoped content addressing is not yet covered
 - retention and isolation configuration is not yet covered
 - artifact handoff references are not yet covered
@@ -761,6 +845,8 @@ Partially covered:
 - `Smith::Tool` base contract is covered
 - built-in tool namespace and tool entry points are covered
 - top-level configuration surface used by artifacts/tracing is covered
+- authorization-denied terminal behavior is covered
+- approval-without-host-hook advisory behavior is covered
 
 Recommended future specs:
 
