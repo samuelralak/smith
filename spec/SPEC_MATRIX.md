@@ -1,0 +1,671 @@
+# Smith Contract Spec Matrix
+
+This matrix maps the current RSpec contract suite to the authoritative architecture document:
+
+- Architecture: `/home/samuelralak/Projects/Cadence/AGENT_GEM_ARCHITECTURE.md`
+
+Rule for future spec changes:
+
+1. Every new assertion must be traceable to the architecture document.
+2. If the architecture document is ambiguous, the ambiguity should be resolved in the document first or explicitly called out in the spec review.
+3. Prefer contract assertions over implementation-coupled assertions.
+
+## Coverage Summary
+
+Current contract coverage exists for:
+
+- top-level namespaces and error hierarchy
+- agent inheritance, DSL, and registry binding
+- workflow DSL and serialization entry points
+- workflow pattern namespaces
+- artifact namespace, top-level accessor, and built-in backend entry points
+- guardrail base DSL and attachment points
+- event bus surface, filtering, scoped subscriptions, and typed event schema declaration
+- budget ledger surface
+- context manager DSL
+- tool base class, policy DSL, and capability metadata declaration
+- trace adapter namespaces
+
+Important contracts from the architecture document that are not yet directly specified:
+
+- top-level configuration surface (`Smith.configure` and documented config attributes)
+- guardrail pipeline ordering and failure behavior
+- workflow run result shape
+- failure-transition auto-generation
+- event best-effort semantics beyond surface API
+- parallel branch cancellation and merge behavior
+- `to_state` hash shape
+- context injection replacement-on-retry semantics
+- advisory approval behavior and host-hook boundary
+- artifact store operational interface and lifecycle
+- observability content opt-in and field-level controls
+- built-in `Smith::Tools` namespace and tool entry points
+
+## File-to-Document Mapping
+
+### `spec/smith/architecture_spec.rb`
+
+Purpose:
+
+- asserts the core namespace surface promised by the architecture
+- asserts the documented error taxonomy
+- asserts foundational trace and persistence namespaces from the roadmap and gem structure
+
+Architecture basis:
+
+- Section 4, Core Abstractions
+- Section 4.8, Observability
+- Section 5.6, Error Hierarchy
+- Section 7, Gem Structure
+- Section 11, Implementation Roadmap
+
+Documented contracts covered:
+
+- `Smith::Agent`
+- `Smith::Workflow`
+- `Smith::Events`
+- `Smith::Event`
+- `Smith::Tool`
+- `Smith::Context`
+- `Smith::Budget`
+- `Smith::Trace`
+- `Smith::Errors`
+- `Smith::Types`
+- `Smith::Trace::Memory`
+- `Smith::Trace::Logger`
+- `Smith::Trace::OpenTelemetry`
+- `Smith::Workflow::Persistence`
+- `Smith::BudgetExceeded`
+- `Smith::DeadlineExceeded`
+- `Smith::MaxTransitionsExceeded`
+- `Smith::GuardrailFailed`
+- `Smith::ToolGuardrailFailed`
+- `Smith::ToolPolicyDenied`
+- `Smith::AgentError`
+- `Smith::WorkflowError`
+- `Smith::SerializationError`
+
+Notes:
+
+- This spec intentionally checks namespace existence and inheritance hierarchy only.
+- It does not prescribe implementation layout beyond the names explicitly promised in the architecture.
+
+### `spec/smith/agent/contract_spec.rb`
+
+Purpose:
+
+- asserts the central `Smith::Agent` layering contract
+- verifies that Smith extends RubyLLM rather than replacing it
+- verifies the extra DSL surface promised by the architecture
+
+Architecture basis:
+
+- Section 4.1, Agent
+- Section 5.1, Agent Invocation
+- Section 11, Phase 1 Foundation
+
+Documented contracts covered:
+
+- `Smith::Agent < RubyLLM::Agent`
+- RubyLLM compatibility surface retained:
+  - `.chat_model`
+  - `.model`
+  - `.tools`
+  - `.instructions`
+  - `.temperature`
+  - `.thinking`
+  - `.schema`
+  - `.find`
+  - `.create`
+  - `.chat`
+- Smith DSL additions:
+  - `.budget`
+  - `.guardrails`
+  - `.output_schema`
+  - `.register_as`
+
+Notes:
+
+- The spec uses a stub class to confirm the documented DSL shape can be declared.
+- It does not assert invocation behavior yet. That belongs in future runtime specs once the implementation exists.
+
+### `spec/smith/agent/registry_spec.rb`
+
+Purpose:
+
+- asserts the explicit agent-to-workflow registry seam described in workflow execution
+
+Architecture basis:
+
+- Section 5.2, Workflow Execution
+- Section 7, Gem Structure
+
+Documented contracts covered:
+
+- `Smith::Agent::Registry`
+- `.find`
+- explicit registration via `.register_as`
+
+Notes:
+
+- This spec does not yet assert inferred registration from class name because the document frames that as a convention, not a mandatory Phase 1 contract.
+
+### `spec/smith/workflow/contract_spec.rb`
+
+Purpose:
+
+- asserts the core workflow DSL and execution entry points
+- asserts the documented transition declaration shape
+
+Architecture basis:
+
+- Section 4.2, Workflow
+- Section 5.2, Workflow Execution
+- Section 5.4, Guardrail Attachment
+
+Documented contracts covered:
+
+- class DSL:
+  - `.initial_state`
+  - `.state`
+  - `.transition`
+  - `.budget`
+  - `.max_transitions`
+  - `.guardrails`
+  - `.context_manager`
+- instance/class execution surface:
+  - `#advance!`
+  - `#run!`
+  - `#state`
+  - `#to_state`
+  - `.from_state`
+- transition block surface:
+  - `execute`
+  - `on_success`
+  - `on_failure`
+
+Notes:
+
+- This spec currently checks surface availability, not runtime transition behavior.
+- The architecture gives enough support for the DSL shape, but not yet enough detail to assert all transition side effects without over-prescribing implementation.
+
+### `spec/smith/workflow/patterns_spec.rb`
+
+Purpose:
+
+- asserts the explicit pattern namespaces promised in the roadmap
+- asserts that orchestrator-worker remains bounded by workflow limits, not free-form loops
+
+Architecture basis:
+
+- Section 3, Design Principles
+- Section 5.2, Workflow Execution
+- Section 11, Phase 3 Workflow Patterns
+
+Documented contracts covered:
+
+- `Smith::Workflow::Pipeline`
+- `Smith::Workflow::Router`
+- `Smith::Workflow::Parallel`
+- workflow transition-bounded execution via `.max_transitions`
+
+Notes:
+
+- This spec covers presence of the named pattern entry points only.
+- It does not yet specify router confidence thresholds, parallel merge rules, or evaluator/orchestrator stop conditions.
+
+### `spec/smith/workflow/serialization_spec.rb`
+
+Purpose:
+
+- asserts the persistence seam between Smith and the host app
+
+Architecture basis:
+
+- Section 1, Execution Model
+- Section 4.2, Workflow
+- Section 5.3, State Serialization
+- Section 7, Gem Structure
+
+Documented contracts covered:
+
+- `Smith::Workflow::Persistence`
+- `#to_state`
+- `.from_state`
+
+Notes:
+
+- This spec intentionally stops at entry points.
+- The architecture gives a documented hash format, but the current suite has not yet encoded the exact shape.
+
+### `spec/smith/events/contract_spec.rb`
+
+Purpose:
+
+- asserts the typed event-bus surface
+- verifies scoped subscriptions and cancellation handles
+
+Architecture basis:
+
+- Section 4.3, Events
+- Section 11, Phase 1 Foundation
+
+Documented contracts covered:
+
+- `Smith::Event`
+- `Smith::Events.on`
+- `Smith::Events.within`
+- subscription handle with `#cancel`
+
+Notes:
+
+- This spec covers API surface only.
+- It does not yet assert best-effort rescue semantics, step-scoped emission, or non-authoritative behavior.
+
+### `spec/smith/events/scoping_spec.rb`
+
+Purpose:
+
+- asserts the extra event subscription forms explicitly shown in the architecture
+
+Architecture basis:
+
+- Section 4.3, Events
+
+Documented contracts covered:
+
+- filtered subscription via `if:`
+- scoped subscription object yielded by `Smith::Events.within`
+- `scope.on`
+
+Notes:
+
+- This spec intentionally checks declaration and subscription surface only.
+- It does not yet assert dispatch-time predicate behavior.
+
+### `spec/smith/events/schema_spec.rb`
+
+Purpose:
+
+- asserts the typed event-schema declaration shape shown explicitly in the architecture
+
+Architecture basis:
+
+- Section 4.3, Events
+
+Documented contracts covered:
+
+- `Smith::Event.attribute`
+- `Smith::Types::String`
+- `Smith::Types::Integer`
+- inherited event correlation fields:
+  - `execution_id`
+  - `trace_id`
+
+Notes:
+
+- This spec checks schema declaration surface, not event dispatch/runtime serialization.
+
+### `spec/smith/budget/contract_spec.rb`
+
+Purpose:
+
+- asserts the ledger contract that the architecture treats as a central safety boundary
+
+Architecture basis:
+
+- Section 4.5, Budget Controller
+- Section 5.2, Workflow Execution
+- Section 5.5, Assumptions
+- Section 5.6, Error Hierarchy
+
+Documented contracts covered:
+
+- `Smith::Budget::Ledger`
+- `#reserve!`
+- `#reconcile!`
+- `#release!`
+- `Smith::BudgetExceeded`
+
+Behavior currently asserted:
+
+- reservation checks against committed plus reserved usage
+- reconciliation frees prior reservation and charges actual usage
+- release frees reservation on failure/cancellation paths
+
+Notes:
+
+- The spec uses `allocate` and minimal ivar seeding because the architecture defines ledger behavior but does not yet define a public initializer contract.
+- This is the only current spec that still relies on internal state setup for object construction; that is deliberate and currently justified.
+
+### `spec/smith/context/contract_spec.rb`
+
+Purpose:
+
+- asserts the workflow-attached context-manager surface
+
+Architecture basis:
+
+- Section 4.6, Context Manager
+- Section 5.1, Agent Invocation
+
+Documented contracts covered:
+
+- `Smith::Context`
+- `.session_strategy`
+- `.persist`
+- `.inject_state`
+- workflow-level `.context_manager`
+
+Notes:
+
+- This spec deliberately checks only the declaration surface.
+- It does not yet assert masking semantics, injected-state replacement, or persistence filtering behavior.
+
+### `spec/smith/tools/contract_spec.rb`
+
+Purpose:
+
+- asserts the tool base class and the tool-author contract
+
+Architecture basis:
+
+- Section 5.1, Agent Invocation
+- Section 6, Tool Governance
+- Section 11, Phase 1 Foundation
+
+Documented contracts covered:
+
+- `Smith::Tool < RubyLLM::Tool`
+- `.category`
+- `.capabilities`
+- `.authorize`
+- tool authors define `perform`, not `execute`
+
+Notes:
+
+- This spec does not yet assert the approval metadata boundary or retriable-vs-terminal failure behavior.
+
+### `spec/smith/tools/capabilities_spec.rb`
+
+Purpose:
+
+- asserts the capability metadata declaration shape described in tool governance
+
+Architecture basis:
+
+- Section 6, Tool Governance
+
+Documented contracts covered:
+
+- `capabilities do ... end`
+- `sensitivity`
+- `privilege`
+- `network`
+- `approval`
+- `data_volume`
+
+Notes:
+
+- This spec only checks that the metadata can be declared in the documented shape.
+- It does not yet assert policy effects derived from those annotations.
+
+### `spec/smith/guardrails/contract_spec.rb`
+
+Purpose:
+
+- asserts the three-layer guardrail declaration surface and its attachment points
+
+Architecture basis:
+
+- Section 4.4, Guardrails
+- Section 5.4, Guardrail Attachment
+- Section 11, Phase 2 Guardrails and Context
+
+Documented contracts covered:
+
+- `Smith::Guardrails`
+- `.input`
+- `.tool`
+- `.output`
+- attachment to `Smith::Agent`
+- attachment to `Smith::Workflow`
+
+Notes:
+
+- This spec covers declaration surface only.
+- It does not yet assert ordering, blocking semantics, or workflow-before-agent precedence at runtime.
+
+### `spec/smith/trace/contract_spec.rb`
+
+Purpose:
+
+- asserts the trace adapter namespace surface promised by the architecture
+
+Architecture basis:
+
+- Section 4.8, Observability
+- Section 11, Phase 1 and Phase 4 Roadmap
+
+Documented contracts covered:
+
+- `Smith::Trace`
+- `Smith::Trace::Memory`
+- `Smith::Trace::Logger`
+- `Smith::Trace::OpenTelemetry`
+
+Notes:
+
+- This spec covers namespace presence only.
+- It does not yet specify trace payload shape, redaction rules, or content opt-in behavior.
+
+### `spec/smith/artifacts/contract_spec.rb`
+
+Purpose:
+
+- asserts the artifact-store namespace and the built-in backends shown explicitly in the architecture
+
+Architecture basis:
+
+- Section 4.7, Artifact Store
+- Section 11, Phase 4 Production Readiness
+
+Documented contracts covered:
+
+- `Smith::Artifacts`
+- `Smith::Artifacts::Memory`
+- `Smith::Artifacts::File`
+- top-level accessor `Smith.artifacts`
+
+Notes:
+
+- This spec covers entry points only.
+- It does not yet specify `store`/`fetch` semantics, retention behavior, or namespace isolation.
+
+## Uncovered Contracts by Architecture Section
+
+These are not gaps in the architecture review. They are uncovered or only partially covered contracts in the current RSpec suite.
+
+### Section 4.2 Workflow
+
+Not yet directly specified:
+
+- narrow resume semantics
+- host-owned idempotent step boundaries
+- non-serialization of agent instances
+- default `:fail` transition generation when `:failed` exists
+
+Recommended future specs:
+
+- `spec/smith/workflow/resume_spec.rb`
+- `spec/smith/workflow/failure_transition_spec.rb`
+
+### Section 4.3 Events
+
+Not yet directly specified:
+
+- events fire only for successfully completed steps
+- handlers are always rescued and cannot affect step success
+- host progress callbacks are outside Smith’s event contract
+- event ordering constraints
+
+Recommended future specs:
+
+- `spec/smith/events/runtime_spec.rb`
+
+### Section 4.4 Guardrails
+
+Currently uncovered:
+
+- workflow-level vs agent-level guardrail attachment
+- input guardrails run before model/tool execution
+- output guardrails run after model completion
+- tool guardrail ordering
+- no async output validation leakage
+
+Recommended future specs:
+
+- `spec/smith/guardrails/contract_spec.rb`
+- `spec/smith/guardrails/ordering_spec.rb`
+
+### Section 4.5 Budget Controller
+
+Partially covered:
+
+- ledger API is covered
+- provider-timeout optimistic release semantics are not yet covered
+- deadline behavior is not yet covered
+- parallel branch cancellation budget cleanup is not yet covered
+
+Recommended future specs:
+
+- `spec/smith/budget/runtime_spec.rb`
+
+### Section 4.6 Context Manager
+
+Partially covered:
+
+- DSL is covered
+- observation masking behavior is not yet covered
+- injected-state replacement-on-retry is not yet covered
+- persisted key filtering in `to_state` is not yet covered
+
+Recommended future specs:
+
+- `spec/smith/context/runtime_spec.rb`
+
+### Section 4.7 Artifact Store
+
+Partially covered:
+
+- namespace and built-in backends are covered
+- top-level accessor is covered
+- artifact store operational interface is not yet covered:
+  - `store`
+  - `fetch`
+  - `expired`
+- namespace-scoped content addressing is not yet covered
+- retention and isolation configuration is not yet covered
+- artifact handoff references are not yet covered
+
+Recommended future specs:
+
+- `spec/smith/artifacts/contract_spec.rb`
+
+### Section 4.8 Observability
+
+Partially covered:
+
+- trace namespaces are covered
+- top-level configuration surface for trace setup is not yet covered
+- structural traces by default are not yet covered
+- content opt-in is not yet covered
+- redaction/disabling controls are not yet covered
+
+### Section 5.1 Agent Invocation and Section 6 Tool Governance
+
+Partially covered:
+
+- `Smith::Agent` layering is covered
+- `Smith::Tool` base contract is covered
+- built-in tool namespace and tool entry points are not yet covered:
+  - `Smith::Tools`
+  - built-in tools named in the gem structure (`web_search`, `url_fetcher`, `think`)
+- top-level configuration surface used by artifacts/tracing is not yet covered
+
+Recommended future specs:
+
+- `spec/smith/trace/runtime_spec.rb`
+
+### Section 5.2 Workflow Execution
+
+Partially covered:
+
+- `advance!`, `run!`, and DSL are covered
+- `run!` result object shape is not yet covered
+- parallel branch failure behavior is not yet covered
+- `MaxTransitionsExceeded` terminal semantics are not yet covered
+
+Recommended future specs:
+
+- `spec/smith/workflow/run_result_spec.rb`
+- `spec/smith/workflow/parallel_spec.rb`
+
+### Section 5.3 State Serialization
+
+Partially covered:
+
+- entry points are covered
+- exact hash shape is not yet covered:
+  - `class`
+  - `state`
+  - `context`
+  - `budget_consumed`
+  - `step_count`
+  - `created_at`
+  - `updated_at`
+
+Recommended future specs:
+
+- `spec/smith/workflow/state_shape_spec.rb`
+
+### Section 5.6 Error Hierarchy and Section 6 Tool Governance
+
+Partially covered:
+
+- error classes exist
+- tool DSL exists
+- retriable vs terminal behavior is not yet covered
+- approval metadata remains advisory without host hook is not yet covered
+
+Recommended future specs:
+
+- `spec/smith/tools/failure_policy_spec.rb`
+
+## Source-Backed Contracts to Protect Carefully
+
+The following architecture areas are especially sensitive because they were repeatedly justified against external sources during review:
+
+- workflow-first, bounded pattern hierarchy
+- events as observational side effects, not orchestration authority
+- synchronous guardrail boundaries
+- opt-in content tracing
+- explicit host-app responsibility for durability and approval flows
+
+When adding specs in these areas:
+
+1. Re-read the architecture section first.
+2. Re-check the surrounding summary tables and roadmap text.
+3. Avoid encoding stronger behavior than the document claims.
+
+## Recommended Next Spec Additions
+
+Highest-value next additions, in order:
+
+1. Guardrail ordering and failure semantics
+2. `to_state` hash shape and non-serialization guarantees
+3. `run!` result shape and `MaxTransitionsExceeded` behavior
+4. event best-effort runtime behavior
+5. advisory approval vs host-hook enforcement
+6. context injection replacement-on-retry
+7. artifact store contract
