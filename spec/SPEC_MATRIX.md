@@ -29,12 +29,11 @@ Current contract coverage exists for:
 
 Important contracts from the architecture document that are not yet directly specified:
 
-- guardrail pipeline ordering and failure behavior
-- workflow run result shape
+- guardrail failure behavior
 - failure-transition auto-generation
 - event best-effort semantics beyond surface API
 - parallel branch cancellation and merge behavior
-- `to_state` hash shape
+- `MaxTransitionsExceeded` terminal state behavior beyond exception raising
 - context injection replacement-on-retry semantics
 - advisory approval behavior and host-hook boundary
 - artifact store lifecycle semantics
@@ -272,6 +271,62 @@ Notes:
 - This spec intentionally stops at entry points.
 - The architecture gives a documented hash format, but the current suite has not yet encoded the exact shape.
 
+### `spec/smith/workflow/state_shape_spec.rb`
+
+Purpose:
+
+- asserts the documented `to_state` hash shape and round-trip serialization surface
+
+Architecture basis:
+
+- Section 5.3, State Serialization
+- Section 5.5, Assumptions
+
+Documented contracts covered:
+
+- exact `to_state` keys:
+  - `class`
+  - `state`
+  - `context`
+  - `budget_consumed`
+  - `step_count`
+  - `created_at`
+  - `updated_at`
+- round-trip via `.from_state`
+- JSON-serializable state payload
+
+Notes:
+
+- This spec checks state shape and round-trip behavior only.
+- It does not yet assert non-serialization of every possible Ruby object in nested structures.
+
+### `spec/smith/workflow/run_result_spec.rb`
+
+Purpose:
+
+- asserts the documented `run!` result surface and max-transition failure behavior
+
+Architecture basis:
+
+- Section 5.2, Workflow Execution
+- Section 5.6, Error Hierarchy
+
+Documented contracts covered:
+
+- `run!` result responds to:
+  - `state`
+  - `output`
+  - `steps`
+  - `total_cost`
+  - `total_tokens`
+- `Smith::MaxTransitionsExceeded`
+- workflow remains in its current state when max transitions are exceeded
+
+Notes:
+
+- This spec checks the documented result interface and exception behavior.
+- It does not yet assert the full content of `steps` entries.
+
 ### `spec/smith/events/contract_spec.rb`
 
 Purpose:
@@ -491,6 +546,27 @@ Notes:
 - This spec covers declaration surface only.
 - It does not yet assert ordering, blocking semantics, or workflow-before-agent precedence at runtime.
 
+### `spec/smith/guardrails/order_spec.rb`
+
+Purpose:
+
+- asserts the documented declaration ordering within the three guardrail layers
+
+Architecture basis:
+
+- Section 4.4, Guardrails
+
+Documented contracts covered:
+
+- input declarations preserve order
+- tool declarations preserve order and options
+- output declarations preserve order and options
+
+Notes:
+
+- This spec covers layer ordering as declared.
+- It does not yet assert runtime execution ordering across workflow-level and agent-level guardrails.
+
 ### `spec/smith/guardrails/builtins_spec.rb`
 
 Purpose:
@@ -613,9 +689,9 @@ Recommended future specs:
 Currently uncovered:
 
 - workflow-level vs agent-level guardrail attachment precedence
-- input guardrails run before model/tool execution
-- output guardrails run after model completion
-- tool guardrail ordering
+- input guardrails run before model/tool execution at runtime
+- output guardrails run after model completion at runtime
+- tool guardrail ordering at invocation time
 - no async output validation leakage
 
 Recommended future specs:
@@ -695,9 +771,9 @@ Recommended future specs:
 Partially covered:
 
 - `advance!`, `run!`, and DSL are covered
-- `run!` result object shape is not yet covered
+- `run!` result object shape is covered at the method-surface level
 - parallel branch failure behavior is not yet covered
-- `MaxTransitionsExceeded` terminal semantics are not yet covered
+- `MaxTransitionsExceeded` exception + current-state behavior are covered
 
 Recommended future specs:
 
@@ -709,14 +785,8 @@ Recommended future specs:
 Partially covered:
 
 - entry points are covered
-- exact hash shape is not yet covered:
-  - `class`
-  - `state`
-  - `context`
-  - `budget_consumed`
-  - `step_count`
-  - `created_at`
-  - `updated_at`
+- exact documented hash shape is covered
+- non-serialization guarantees are only partially covered
 
 Recommended future specs:
 
