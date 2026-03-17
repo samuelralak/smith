@@ -2,6 +2,8 @@
 
 module Smith
   class Workflow
+    include Persistence
+
     DEFAULT_MAX_TRANSITIONS = 100
 
     RunResult = Struct.new(:state, :output, :steps, :total_cost, :total_tokens)
@@ -97,28 +99,7 @@ module Smith
 
     attr_reader :state
 
-    def to_state
-      {
-        class: self.class.name,
-        state: @state,
-        context: @context,
-        budget_consumed: @budget_consumed,
-        step_count: @step_count,
-        created_at: @created_at,
-        updated_at: @updated_at
-      }
-    end
-
     private
-
-    def restore_state(hash)
-      @state = hash[:state]
-      @context = hash[:context] || {}
-      @budget_consumed = hash[:budget_consumed] || {}
-      @step_count = hash[:step_count] || 0
-      @created_at = hash[:created_at]
-      @updated_at = hash[:updated_at]
-    end
 
     def terminal?
       true

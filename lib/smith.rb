@@ -76,10 +76,10 @@ require_relative "smith/context"
 require_relative "smith/agent"
 require_relative "smith/agent/registry"
 
-# Workflow (Transition must load before Workflow)
+# Workflow (Transition and Persistence must load before Workflow)
 require_relative "smith/workflow/transition"
-require_relative "smith/workflow"
 require_relative "smith/workflow/persistence"
+require_relative "smith/workflow"
 require_relative "smith/workflow/pipeline"
 require_relative "smith/workflow/router"
 require_relative "smith/workflow/parallel"
