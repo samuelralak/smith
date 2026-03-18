@@ -29,6 +29,10 @@ module Smith
         sub
       end
 
+      def emit(event)
+        subscriptions.each { |sub| dispatch_to(sub, event) }
+      end
+
       def within
         scope = Scope.new
         yield scope
@@ -38,6 +42,18 @@ module Smith
 
       def reset!
         @subscriptions = []
+      end
+
+      private
+
+      def dispatch_to(sub, event)
+        return if sub.cancelled?
+        return unless event.is_a?(sub.event_class)
+        return if sub.predicate && !sub.predicate.call(event)
+
+        sub.handler.call(event)
+      rescue StandardError => e
+        Smith.config.logger&.error("Smith::Events handler error: #{e.message}")
       end
     end
   end

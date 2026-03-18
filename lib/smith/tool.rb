@@ -37,14 +37,28 @@ module Smith
 
         @authorize = block
       end
+
+      def before_execute(&block)
+        return @before_execute unless block_given?
+
+        @before_execute = block
+      end
     end
 
     def execute(**kwargs)
+      run_before_execute_hook!(kwargs)
       check_authorization!(kwargs)
       perform(**kwargs)
     end
 
     private
+
+    def run_before_execute_hook!(kwargs)
+      hook = self.class.before_execute
+      return unless hook
+
+      hook.call(self, kwargs)
+    end
 
     def check_authorization!(kwargs)
       authorizer = self.class.authorize

@@ -5,13 +5,14 @@ require "securerandom"
 module Smith
   module Artifacts
     class Memory
-      def initialize
+      def initialize(namespace: nil)
+        @namespace = namespace
         @store = {}
         @metadata = {}
       end
 
       def store(data, content_type: "application/octet-stream")
-        ref = SecureRandom.uuid
+        ref = generate_ref
         @store[ref] = data
         @metadata[ref] = { content_type: content_type, stored_at: Time.now.utc }
         ref
@@ -26,6 +27,13 @@ module Smith
 
         cutoff = Time.now.utc - retention
         @metadata.select { |_, meta| meta[:stored_at] < cutoff }.keys
+      end
+
+      private
+
+      def generate_ref
+        raw = SecureRandom.uuid
+        @namespace ? "#{@namespace}:#{raw}" : raw
       end
     end
   end

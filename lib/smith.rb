@@ -71,8 +71,11 @@ require_relative "smith/tools/think"
 
 # Guardrails and Context (no internal deps)
 require_relative "smith/guardrails"
+require_relative "smith/guardrails/runner"
 require_relative "smith/guardrails/url_verifier"
 require_relative "smith/context"
+require_relative "smith/context/observation_masking"
+require_relative "smith/context/state_injection"
 
 # Agent (depends on RubyLLM::Agent)
 require_relative "smith/agent"

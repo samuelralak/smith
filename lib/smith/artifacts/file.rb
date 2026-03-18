@@ -6,12 +6,13 @@ require "json"
 module Smith
   module Artifacts
     class File
-      def initialize(dir:)
+      def initialize(dir:, namespace: nil)
         @dir = dir
+        @namespace = namespace
       end
 
       def store(data, content_type: "application/octet-stream")
-        ref = SecureRandom.uuid
+        ref = generate_ref
         ::File.write(::File.join(@dir, ref), data)
         ::File.write(::File.join(@dir, "#{ref}.meta"), JSON.generate(content_type: content_type))
         ref
@@ -30,6 +31,13 @@ module Smith
           ref = ::File.basename(path)
           ref if ::File.mtime(path).utc < cutoff
         end
+      end
+
+      private
+
+      def generate_ref
+        raw = SecureRandom.uuid
+        @namespace ? "#{@namespace}:#{raw}" : raw
       end
     end
   end
