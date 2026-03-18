@@ -90,8 +90,10 @@ module Smith
       end
 
       def build_branch(transition, index, prepared_input: nil, guardrail_sources: nil)
+        branch_ledger = @ledger
         proc do |signal|
           Tool.current_guardrails = guardrail_sources
+          reserved = reserve_branch_budget(branch_ledger)
           begin
             raise Smith::WorkflowError, "cancelled" if signal.cancelled?
 
@@ -99,8 +101,12 @@ module Smith
 
             raise Smith::WorkflowError, "cancelled" if signal.cancelled?
 
+            reconcile_branch_budget(branch_ledger, reserved)
+            reserved = nil
+
             { branch: index, agent: transition.agent_name, output: output }
           ensure
+            release_branch_budget(branch_ledger, reserved) if reserved
             Tool.current_guardrails = nil
           end
         end
@@ -114,16 +120,6 @@ module Smith
         return unless fail_transition
 
         @state = fail_transition.to
-      end
-
-      def emit_step_completed(transition, _output)
-        Smith::Events.emit(
-          Events::StepCompleted.new(
-            transition: transition.name,
-            from: transition.from,
-            to: transition.to
-          )
-        )
       end
     end
   end

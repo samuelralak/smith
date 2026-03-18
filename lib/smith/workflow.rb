@@ -7,6 +7,8 @@ module Smith
     include DSL
     include Persistence
     include GuardrailIntegration
+    include BudgetIntegration
+    include EventIntegration
     include Execution
 
     DEFAULT_MAX_TRANSITIONS = 100

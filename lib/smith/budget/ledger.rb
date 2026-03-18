@@ -3,6 +3,8 @@
 module Smith
   module Budget
     class Ledger
+      attr_reader :limits
+
       def initialize(limits: {})
         @mutex = Mutex.new
         @limits = limits
