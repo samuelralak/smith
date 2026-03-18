@@ -26,27 +26,27 @@ Current contract coverage exists for:
 - workflow DSL, transition metadata capture, serialization entry points, exact state shape, run-result surface, and persisted-context filtering
 - workflow pattern namespaces
 - artifact namespace, top-level accessor, configured-store resolution, built-in backend entry points, and named operational methods
+- artifact lifecycle behavior, including opaque refs, per-store isolation, and namespace-prefixed refs
 - guardrail base DSL, attachment points, and built-in URL verifier namespace
-- event bus surface, filtering, scoped subscriptions, typed event schema declaration with runtime correlation values, and subscription lifecycle behavior
+- event bus surface, filtering, scoped subscriptions, typed event schema declaration with runtime correlation values, subscription lifecycle behavior, and direct dispatch ordering/rescue semantics
 - budget ledger surface with denied-reservation, lower-actual reconciliation, and multi-dimension behavior
 - context manager DSL, stored runtime configuration, subclass inheritance behavior, and persisted-key serialization contract
-- tool base class, policy DSL, runtime execute-to-perform delegation, capability metadata declaration, built-in tool namespaces, and current approval/authorization failure policy boundary
-- trace adapter namespaces
+- tool base class, policy DSL, runtime execute-to-perform delegation, capability metadata declaration, built-in tool namespaces, and pre-dispatch approval/authorization failure policy boundary
+- trace adapter namespaces and memory-adapter content policy behavior
 
 Important contracts from the architecture document that are not yet directly specified:
 
 - guardrail failure behavior
-- event best-effort rescue behavior during dispatch
 - parallel branch cancellation and merge behavior
 - `MaxTransitionsExceeded` terminal state behavior beyond exception raising
 - context injection replacement-on-retry semantics
-- approval-required behavior when a host pre-dispatch hook is installed
-- artifact namespace isolation semantics
-- observability redaction, field-level controls, and runtime content-tracing policy
+- successful-step-only event emission from workflow execution
+- artifact namespace isolation semantics beyond ref prefixing
+- observability field-level controls and trace emission integration
 
 ## Implementation-Required Areas
 
-These areas now require substantial runtime implementation work before the next meaningful behavior/integration specs can be added without inventing APIs or hidden mechanisms.
+These areas still require additional runtime implementation work before the next meaningful end-to-end behavior/integration specs can be added without inventing APIs or hidden mechanisms. Some helper seams now exist; the remaining gap is wiring and workflow integration.
 
 ### 1. Guardrail execution pipeline
 
@@ -55,15 +55,15 @@ Architecture basis:
 - Section 4.4, Guardrails
 - Section 5.4, Guardrail Attachment
 
-Why implementation is required:
+Why more implementation is required:
 
 - The architecture requires synchronous blocking execution for input, tool, and output guardrails.
 - It also requires workflow-level guardrails to run before agent-level guardrails.
-- Current code stores guardrail declarations and attachments, but does not yet expose a real execution path around agent/workflow/tool execution.
+- Current code now includes a guardrail runner helper, but it is not yet wired around agent/workflow/tool execution.
 
 What the implementation agent needs to add:
 
-- a real runtime application seam for input/output/tool guardrails
+- integration of the existing guardrail runner into real input/output/tool execution
 - workflow-level then agent-level execution ordering
 - failure propagation via `Smith::GuardrailFailed` / `Smith::ToolGuardrailFailed`
 
@@ -73,16 +73,13 @@ Architecture basis:
 
 - Section 4.3, Events
 
-Why implementation is required:
+Why more implementation is required:
 
 - The architecture defines dispatch-time guarantees: synchronous inline delivery, rescued/logged handler errors, successful-step-only scope, and subscription-order dispatch.
-- Current code exposes subscription registration and lifecycle only. There is no event emission/dispatch path yet.
+- Current code now includes an event emission/dispatch path with subscription-order dispatch and rescued/logged handlers, but workflow execution does not emit step-completion events yet.
 
 What the implementation agent needs to add:
 
-- a dispatch/emission seam
-- rescued/logged handler failure behavior
-- ordering guarantees within a dispatch
 - successful-step-only emission integration from workflow execution
 
 ### 3. Parallel workflow behavior
@@ -91,14 +88,14 @@ Architecture basis:
 
 - Section 5.2, Workflow Execution
 
-Why implementation is required:
+Why more implementation is required:
 
 - The architecture defines cooperative cancellation, discarding completed branch outputs on failure, and budget cleanup across branches.
-- Current code exposes only the pattern namespace, not a parallel execution runtime.
+- Current code now includes a parallel execution helper with cancellation signalling, but it is not yet integrated into workflow execution, failure routing, or budget handling.
 
 What the implementation agent needs to add:
 
-- a parallel step execution path
+- integration of the existing parallel helper into workflow step execution
 - failure routing through `on_failure`
 - cooperative cancellation checks
 - discard semantics for completed branch outputs
@@ -110,10 +107,10 @@ Architecture basis:
 
 - Section 4.6, Context Manager
 
-Why implementation is required:
+Why more implementation is required:
 
 - The architecture defines observation masking at chat runtime and injected-state replacement on retry.
-- Current code stores configuration and formatter blocks, but does not yet integrate with session/chat execution.
+- Current code now includes masking and state-injection helpers, but they are not yet integrated with session/chat execution.
 
 What the implementation agent needs to add:
 
@@ -128,14 +125,14 @@ Architecture basis:
 - Section 5.6, Error Hierarchy
 - Section 6, Tool Governance
 
-Why implementation is required:
+Why more implementation is required:
 
 - The architecture explicitly allows a host-installed pre-dispatch approval hook to raise `Smith::ToolPolicyDenied`.
-- Current tool execution has no host-hook seam, so the behavior cannot yet be specified without inventing an API.
+- Current tool execution now has a generic `before_execute` pre-dispatch seam, but there is still no documented or integrated host-level approval wiring path.
 
 What the implementation agent needs to add:
 
-- a pre-dispatch policy/approval hook seam around `Smith::Tool#execute`
+- host-level integration guidance around the existing pre-dispatch tool hook
 - propagation of host-denied approval as terminal `Smith::ToolPolicyDenied`
 
 ### 6. Artifact namespace isolation
@@ -144,10 +141,10 @@ Architecture basis:
 
 - Section 4.7, Artifact Store
 
-Why implementation is required:
+Why more implementation is required:
 
 - The architecture requires artifact refs to be namespaced to execution/tenant context.
-- Current memory-store behavior is intentionally minimal and not namespace-aware.
+- Current memory-store behavior now supports namespace-prefixed refs, but execution/tenant integration and same-namespace fetch policy are not yet implemented.
 
 What the implementation agent needs to add:
 
@@ -161,16 +158,14 @@ Architecture basis:
 
 - Section 4.8, Observability
 
-Why implementation is required:
+Why more implementation is required:
 
 - The architecture defines runtime trace policy, including `trace_content = :redacted` and field-level controls.
-- Current code exposes only config and adapter namespaces, not actual trace emission or filtering.
+- Current code now includes a memory trace adapter with content filtering, but trace emission integration and field-level controls are not yet implemented.
 
 What the implementation agent needs to add:
 
-- trace emission path
-- structural vs content field handling
-- redaction mode behavior
+- trace emission integration from workflow/agent/tool runtime
 - per-field disabling behavior
 
 ## File-to-Document Mapping
@@ -586,10 +581,14 @@ Documented contracts covered:
 - explicit subscription cancellation marks the handle as cancelled
 - subscriptions are retained in registration order
 - `reset!` clears registered subscriptions
+- direct event dispatch preserves subscription order
+- direct event dispatch respects event-class and predicate filtering
+- direct event dispatch rescues and logs handler failures without aborting dispatch
 
 Notes:
 
-- This spec does not yet assert rescued dispatch behavior because the architecture does not name a public emit API.
+- This spec covers direct dispatch through the now-exposed event bus seam.
+- It does not yet assert successful-step-only emission from workflow execution.
 
 ### `spec/smith/budget/contract_spec.rb`
 
@@ -780,6 +779,7 @@ Documented contracts covered:
 
 - authorization denial raises `Smith::ToolPolicyDenied`
 - approval metadata alone does not block execution without a host hook
+- pre-dispatch hook denial raises `Smith::ToolPolicyDenied`
 
 Notes:
 
@@ -873,7 +873,29 @@ Documented contracts covered:
 Notes:
 
 - This spec covers namespace presence only.
-- It does not yet specify trace payload shape, redaction rules, or content opt-in behavior.
+- Payload and content-policy behavior are covered separately in `spec/smith/trace/runtime_spec.rb`.
+
+### `spec/smith/trace/runtime_spec.rb`
+
+Purpose:
+
+- asserts the runtime content-policy behavior exposed by the in-memory trace adapter
+
+Architecture basis:
+
+- Section 4.8, Observability
+
+Documented contracts covered:
+
+- structural trace data is recorded by default while content fields are omitted
+- `trace_content = :redacted` masks string content fields
+- `trace_content = true` retains full content
+- structural trace type toggles disable recording for the relevant trace category
+
+Notes:
+
+- This spec covers adapter-level runtime behavior only.
+- It does not yet assert trace emission integration from workflow/agent/tool execution or field-level disabling beyond the documented structural toggles.
 
 ### `spec/smith/artifacts/contract_spec.rb`
 
@@ -938,11 +960,13 @@ Documented contracts covered:
 - fresh refs are not reported as expired
 - separate payloads produce distinct opaque refs
 - separate store instances do not share stored data
+- namespace-prefixed refs are supported
+- identical payloads stored in different namespaces yield different refs
 
 Notes:
 
 - This spec covers the in-memory backend only.
-- It does not yet assert tenant/execution isolation.
+- It does not yet assert execution/tenant-driven namespace integration or same-namespace fetch enforcement.
 
 ## Uncovered Contracts by Architecture Section
 
@@ -964,13 +988,12 @@ Recommended future specs:
 Not yet directly specified:
 
 - events fire only for successfully completed steps
-- handlers are always rescued and cannot affect step success during dispatch
 - host progress callbacks are outside Smith’s event contract
-- event ordering constraints
+- workflow-driven event emission after state advancement
 
 Recommended future specs:
 
-- extend `spec/smith/events/runtime_spec.rb` with dispatch rescue, successful-step scope, and ordering semantics
+- extend `spec/smith/events/runtime_spec.rb` with successful-step scope once workflow execution emits events
 
 ### Section 4.4 Guardrails
 
@@ -1032,6 +1055,8 @@ Partially covered:
 - fresh/non-expired behavior is covered
 - distinct refs for distinct payloads are covered
 - separate in-memory stores are isolated from each other
+- namespace-prefixed refs are covered
+- different namespaces producing different refs are covered
 - namespace-scoped content addressing is not yet covered
 - retention and isolation configuration is not yet covered
 - artifact handoff references are not yet covered
@@ -1048,7 +1073,9 @@ Partially covered:
 - top-level configuration surface for trace setup is covered
 - structural trace defaults are covered
 - content tracing is covered as opt-in by default
-- redaction/disabling controls are not yet covered
+- memory-adapter redaction behavior is covered
+- structural trace-type disabling is covered
+- field-level controls and runtime emission integration are not yet covered
 
 ### Section 5.1 Agent Invocation and Section 6 Tool Governance
 
@@ -1096,11 +1123,12 @@ Partially covered:
 - tool DSL exists
 - retriable vs terminal behavior is not yet covered
 - approval metadata remains advisory without host hook is covered
-- host-hook-installed approval denial behavior is not yet covered
+- pre-dispatch hook denial behavior is covered
+- host-level approval wiring semantics remain only partially covered
 
 Recommended future specs:
 
-- extend `spec/smith/tools/failure_policy_spec.rb` with host-hook-installed approval denial behavior
+- extend `spec/smith/tools/failure_policy_spec.rb` only if a distinct host-level approval integration seam is introduced beyond the current pre-dispatch hook
 
 ## Source-Backed Contracts to Protect Carefully
 

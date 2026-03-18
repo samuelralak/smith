@@ -60,4 +60,52 @@ RSpec.describe "Smith events runtime contract" do
 
     expect(events.subscriptions).to eq([])
   end
+
+  it "dispatches matching handlers in subscription order" do
+    typed_event = with_stubbed_class("SpecOrderedDispatchEvent", event_class)
+    observed = []
+
+    events.on(typed_event) { |_event| observed << :first }
+    events.on(typed_event) { |_event| observed << :second }
+
+    events.emit(typed_event.new(execution_id: "exec-1", trace_id: "trace-1"))
+
+    expect(observed).to eq(%i[first second])
+  end
+
+  it "dispatches only to matching event classes and predicates" do
+    typed_event = with_stubbed_class("SpecFilteredDispatchEvent", event_class)
+    other_event = with_stubbed_class("SpecIgnoredDispatchEvent", event_class)
+    observed = []
+
+    events.on(typed_event, if: ->(event) { event.execution_id == "match" }) { |event| observed << event.execution_id }
+    events.on(other_event) { |_event| observed << :wrong_class }
+
+    events.emit(typed_event.new(execution_id: "skip", trace_id: "trace-1"))
+    events.emit(typed_event.new(execution_id: "match", trace_id: "trace-2"))
+
+    expect(observed).to eq(["match"])
+  end
+
+  it "rescues and logs handler failures without aborting the dispatch" do
+    typed_event = with_stubbed_class("SpecRescuedEvent", event_class)
+    logger = instance_double("Logger")
+    observed = []
+    original_logger = Smith.config.logger
+
+    allow(logger).to receive(:error)
+    Smith.configure { |config| config.logger = logger }
+
+    events.on(typed_event) { |_event| raise "boom" }
+    events.on(typed_event) { |_event| observed << :ran }
+
+    expect do
+      events.emit(typed_event.new(execution_id: "exec-1", trace_id: "trace-1"))
+    end.not_to raise_error
+
+    expect(observed).to eq([:ran])
+    expect(logger).to have_received(:error).with(/Smith::Events handler error: boom/)
+  ensure
+    Smith.configure { |config| config.logger = original_logger }
+  end
 end

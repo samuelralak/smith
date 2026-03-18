@@ -33,4 +33,28 @@ RSpec.describe "Smith::Tool failure policy contract" do
 
     expect(tool.execute(context: { user: nil }, query: "test")).to include(query: "test")
   end
+
+  it "allows a pre-dispatch hook to deny execution with ToolPolicyDenied" do
+    policy_denied = require_const("Smith::ToolPolicyDenied")
+
+    tool = with_stubbed_class("SpecHookDeniedTool", tool_class) do
+      category :action
+
+      capabilities do
+        approval :required
+      end
+
+      before_execute do |_tool, _kwargs|
+        raise policy_denied, "approval required"
+      end
+
+      def perform(**_kwargs)
+        raise "perform should not run"
+      end
+    end.new
+
+    expect do
+      tool.execute(context: { user: :ok }, query: "test")
+    end.to raise_error(policy_denied, "approval required")
+  end
 end

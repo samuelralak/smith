@@ -50,4 +50,24 @@ RSpec.describe "Smith::Artifacts::Memory lifecycle contract" do
 
     expect(second_store.fetch(ref)).to be_nil
   end
+
+  it "prefixes refs with the configured namespace when present" do
+    store = memory_store_class.new(namespace: "execution-123")
+
+    ref = store.store("report")
+
+    expect(ref).to start_with("execution-123:")
+  end
+
+  it "generates distinct refs for identical payloads stored in different namespaces" do
+    first_store = memory_store_class.new(namespace: "execution-a")
+    second_store = memory_store_class.new(namespace: "execution-b")
+
+    first_ref = first_store.store("same-payload")
+    second_ref = second_store.store("same-payload")
+
+    expect(first_ref).not_to eq(second_ref)
+    expect(first_ref).to start_with("execution-a:")
+    expect(second_ref).to start_with("execution-b:")
+  end
 end
