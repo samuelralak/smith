@@ -18,7 +18,13 @@ module Smith
     end
 
     class << self
-      attr_accessor :current_guardrails
+      def current_guardrails
+        Thread.current[:smith_tool_guardrails]
+      end
+
+      def current_guardrails=(value)
+        Thread.current[:smith_tool_guardrails] = value
+      end
 
       def category(value = nil)
         return @category if value.nil?

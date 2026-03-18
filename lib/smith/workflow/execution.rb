@@ -23,7 +23,7 @@ module Smith
         prepared_input = session&.prepare!
 
         output = if transition.parallel?
-                   execute_parallel_step(transition)
+                   execute_parallel_step(transition, prepared_input: prepared_input)
                  else
                    execute_transition_body(transition, prepared_input: prepared_input)
                  end
@@ -57,7 +57,8 @@ module Smith
       end
 
       def execute_transition_body(transition, prepared_input: nil)
-        @last_prepared_input = prepared_input
+        effective_input = prepared_input || @last_prepared_input
+        @last_prepared_input = effective_input
 
         return nil unless transition.agent_name
 
@@ -65,7 +66,7 @@ module Smith
         return nil unless agent_class
         return nil if agent_class.chat_kwargs[:model].nil?
 
-        invoke_agent(agent_class, prepared_input)
+        invoke_agent(agent_class, effective_input)
       end
 
       def invoke_agent(agent_class, prepared_input)
@@ -73,11 +74,15 @@ module Smith
 
         prepared_input&.each { |msg| chat.add_message(msg) }
 
+        schema = agent_class.output_schema
+        chat = chat.with_schema(schema) if schema
+
         response = chat.complete
         response&.content
       end
 
-      def execute_parallel_step(transition)
+      def execute_parallel_step(transition, prepared_input: nil)
+        @last_prepared_input = prepared_input
         count = resolve_branch_count(transition)
         branches = Array.new(count) do |i|
           build_branch(transition, i)
