@@ -30,6 +30,7 @@ module Smith
       def state(name)
         @states ||= []
         @states << name unless @states.include?(name)
+        generate_fail_transition if name == :failed
       end
 
       def transition(name, from:, to:, &)
@@ -65,6 +66,15 @@ module Smith
         workflow = allocate
         workflow.send(:restore_state, hash)
         workflow
+      end
+
+      private
+
+      def generate_fail_transition
+        @transitions ||= {}
+        return if @transitions.key?(:fail)
+
+        @transitions[:fail] = Transition.new(:fail, from: nil, to: :failed)
       end
     end
 
