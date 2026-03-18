@@ -83,28 +83,29 @@ module Smith
 
       def execute_parallel_step(transition, prepared_input: nil)
         @last_prepared_input = prepared_input
-        count = resolve_branch_count(transition)
+        guardrail_sources = Tool.current_guardrails
+        count = Parallel.resolve_branch_count(transition, @context)
         branches = Array.new(count) do |i|
-          build_branch(transition, i)
+          build_branch(transition, i, guardrail_sources: guardrail_sources)
         end
         Parallel.execute(branches: branches)
       end
 
-      def build_branch(transition, index)
+      def build_branch(transition, index, guardrail_sources: nil)
         proc do |signal|
-          raise Smith::WorkflowError, "cancelled" if signal.cancelled?
+          Tool.current_guardrails = guardrail_sources
+          begin
+            raise Smith::WorkflowError, "cancelled" if signal.cancelled?
 
-          output = execute_transition_body(transition)
+            output = execute_transition_body(transition)
 
-          raise Smith::WorkflowError, "cancelled" if signal.cancelled?
+            raise Smith::WorkflowError, "cancelled" if signal.cancelled?
 
-          { branch: index, agent: transition.agent_name, output: output }
+            { branch: index, agent: transition.agent_name, output: output }
+          ensure
+            Tool.current_guardrails = nil
+          end
         end
-      end
-
-      def resolve_branch_count(transition)
-        count = transition.agent_opts[:count]
-        count.respond_to?(:call) ? count.call(@context) : (count || 1)
       end
 
       def handle_step_failure(transition, _error)

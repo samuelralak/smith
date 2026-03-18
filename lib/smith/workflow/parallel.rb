@@ -19,6 +19,11 @@ module Smith
         end
       end
 
+      def self.resolve_branch_count(transition, context)
+        count = transition.agent_opts[:count]
+        count.respond_to?(:call) ? count.call(context) : (count || 1)
+      end
+
       def self.execute(branches:)
         signal = CancellationSignal.new
 
