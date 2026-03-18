@@ -137,12 +137,11 @@ Architecture basis:
 Why more implementation is required:
 
 - The architecture requires artifact refs to be namespaced to execution/tenant context.
-- Current memory-store behavior now supports namespace-prefixed refs, but execution/tenant integration and same-namespace fetch policy are not yet implemented.
+- Current memory-store behavior now supports namespace-prefixed refs plus namespace-owned fetch and expired-query behavior in the memory backend. Namespace-scoped content addressing and retention/isolation configuration integration are still not implemented.
 
 What the implementation agent needs to add:
 
 - namespace-aware ref generation / lookup
-- same-tenant fetch behavior and cross-tenant isolation behavior
 - retention/isolation configuration integration
 
 ### 7. Trace runtime policy
@@ -1095,6 +1094,9 @@ Partially covered:
 - separate in-memory stores are isolated from each other
 - namespace-prefixed refs are covered
 - different namespaces producing different refs are covered
+- same-namespace fetch behavior is covered
+- cross-namespace fetch isolation is covered
+- namespace-scoped expired-query behavior is covered
 - namespace-scoped content addressing is not yet covered
 - retention and isolation configuration is not yet covered
 - artifact handoff references are not yet covered
