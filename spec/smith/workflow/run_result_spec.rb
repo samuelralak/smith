@@ -6,14 +6,9 @@ RSpec.describe "Smith::Workflow run result contract" do
   it "returns a result object with the documented workflow summary surface" do
     workflow = with_stubbed_class("SpecRunResultWorkflow", workflow_class) do
       initial_state :idle
+      state :done
 
-      define_method(:terminal?) do
-        @terminal_checked ||= false
-        return true if @terminal_checked
-
-        @terminal_checked = true
-        false
-      end
+      transition :go, from: :idle, to: :done
     end.new
 
     result = workflow.run!
@@ -26,26 +21,21 @@ RSpec.describe "Smith::Workflow run result contract" do
   it "raises MaxTransitionsExceeded and leaves the workflow in its current state" do
     workflow = with_stubbed_class("SpecBoundedWorkflow", workflow_class) do
       initial_state :idle
+      state :step_one
+      state :step_two
       max_transitions 1
 
-      define_method(:terminal?) do
-        @terminal_checks ||= 0
-        @terminal_checks += 1
-        @terminal_checks > 3
-      end
+      transition :first, from: :idle, to: :step_one
+      transition :second, from: :step_one, to: :step_two
     end.new
 
     expect { workflow.run! }.to raise_error(require_const("Smith::MaxTransitionsExceeded"))
-    expect(workflow.state).to eq(:idle)
+    expect(workflow.state).to eq(:step_one)
   end
 
   it "returns immediately when the workflow is already terminal" do
     workflow = with_stubbed_class("SpecImmediatelyTerminalWorkflow", workflow_class) do
       initial_state :idle
-
-      define_method(:terminal?) do
-        true
-      end
     end.new
 
     result = workflow.run!
@@ -55,20 +45,23 @@ RSpec.describe "Smith::Workflow run result contract" do
     expect(result.output).to be_nil
   end
 
-  it "advances until terminal? becomes true" do
+  it "advances through transitions until no further transition exists" do
     workflow = with_stubbed_class("SpecAdvancingWorkflow", workflow_class) do
       initial_state :idle
+      state :step_one
+      state :step_two
+      state :done
 
-      define_method(:terminal?) do
-        @terminal_checks ||= 0
-        @terminal_checks += 1
-        @terminal_checks > 3
-      end
+      transition :first, from: :idle, to: :step_one
+      transition :second, from: :step_one, to: :step_two
+      transition :third, from: :step_two, to: :done
     end.new
 
-    workflow.run!
+    result = workflow.run!
 
     expect(workflow.to_state[:step_count]).to eq(3)
-    expect(workflow.state).to eq(:idle)
+    expect(workflow.state).to eq(:done)
+    expect(result.steps.length).to eq(3)
+    expect(result.state).to eq(:done)
   end
 end

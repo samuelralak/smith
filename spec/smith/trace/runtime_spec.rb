@@ -20,11 +20,11 @@ RSpec.describe "Smith tracing runtime behavior" do
     adapter.record(type: :tool_call, data: { content: "secret", prompt: "question", attempts: 2 })
 
     expect(adapter.traces).to eq([
-      {
-        type: :tool_call,
-        data: { content: "[REDACTED]", prompt: "[REDACTED]", attempts: 2 }
-      }
-    ])
+                                   {
+                                     type: :tool_call,
+                                     data: { content: "[REDACTED]", prompt: "[REDACTED]", attempts: 2 }
+                                   }
+                                 ])
   ensure
     Smith.configure { |config| config.trace_content = original_value }
   end

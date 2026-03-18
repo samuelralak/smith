@@ -61,6 +61,14 @@ module Smith
           @context_manager_class = klass
         end
 
+        def transitions_from(state)
+          all = (@transitions || {}).values
+          exact = all.select { |t| t.from == state }
+          return exact unless exact.empty?
+
+          all.select { |t| t.from.nil? }
+        end
+
         def from_state(hash)
           workflow = allocate
           workflow.send(:restore_state, hash)
