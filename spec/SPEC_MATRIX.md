@@ -28,7 +28,7 @@ Current contract coverage exists for:
 - artifact namespace, top-level accessor, configured-store resolution, built-in backend entry points, and named operational methods
 - artifact lifecycle behavior, including opaque refs, per-store isolation, and namespace-prefixed refs
 - guardrail base DSL, attachment points, and built-in URL verifier namespace
-- event bus surface, filtering, scoped subscriptions, typed event schema declaration with runtime correlation values, subscription lifecycle behavior, and direct dispatch ordering/rescue semantics
+- event bus surface, filtering, scoped subscriptions, typed event schema declaration with runtime correlation values, subscription lifecycle behavior, direct dispatch ordering/rescue semantics, and workflow success-only event emission surface
 - budget ledger surface with denied-reservation, lower-actual reconciliation, and multi-dimension behavior
 - context manager DSL, stored runtime configuration, subclass inheritance behavior, and persisted-key serialization contract
 - tool base class, policy DSL, runtime execute-to-perform delegation, capability metadata declaration, built-in tool namespaces, and pre-dispatch approval/authorization failure policy boundary
@@ -37,12 +37,11 @@ Current contract coverage exists for:
 Important contracts from the architecture document that are not yet directly specified:
 
 - guardrail failure behavior
-- tool-guardrail enforcement at tool invocation boundaries
 - retriable `Smith::ToolGuardrailFailed` behavior for malformed args / rate-limit cases
-- parallel branch cancellation and merge behavior
+- architecture-faithful sourcing of tool guardrails from workflow/agent-attached guardrails
+- parallel branch cancellation and merge behavior beyond the current workflow-level failure/discard surface
 - `MaxTransitionsExceeded` terminal state behavior beyond exception raising
 - context injection replacement-on-retry semantics
-- successful-step-only event emission from workflow execution
 - artifact namespace isolation semantics beyond ref prefixing
 - observability field-level controls and trace emission integration
 
@@ -61,13 +60,12 @@ Why more implementation is required:
 
 - The architecture requires synchronous blocking execution for input, tool, and output guardrails.
 - It also requires workflow-level guardrails to run before agent-level guardrails.
-- Current code now wires workflow-level and agent-level input/output guardrails into workflow execution, but tool guardrails and deeper blocking/failure semantics are not yet fully integrated.
+- Current code now wires workflow-level and agent-level input/output guardrails into workflow execution and routes tool guardrails through workflow/agent-attached guardrails, but deeper blocking/failure semantics are not yet fully specified and exercised.
 
 What the implementation agent needs to add:
 
-- tool-guardrail integration at tool invocation boundaries
 - deeper failure/blocking semantics around executed steps
-- `Smith::ToolGuardrailFailed` runtime integration
+- richer end-to-end exercising of `Smith::ToolGuardrailFailed`
 
 ### 2. Event dispatch semantics
 
@@ -78,11 +76,11 @@ Architecture basis:
 Why more implementation is required:
 
 - The architecture defines dispatch-time guarantees: synchronous inline delivery, rescued/logged handler errors, successful-step-only scope, and subscription-order dispatch.
-- Current code now includes an event emission/dispatch path with subscription-order dispatch and rescued/logged handlers, but workflow execution does not emit step-completion events yet.
+- Current code now includes an event emission/dispatch path with subscription-order dispatch, rescued/logged handlers, and workflow success-only emission. Typed workflow step-event specificity remains incomplete.
 
 What the implementation agent needs to add:
 
-- successful-step-only emission integration from workflow execution
+- typed workflow step-event specificity beyond the current base-event emission
 
 ### 3. Parallel workflow behavior
 
@@ -93,14 +91,11 @@ Architecture basis:
 Why more implementation is required:
 
 - The architecture defines cooperative cancellation, discarding completed branch outputs on failure, and budget cleanup across branches.
-- Current code now includes a parallel execution helper with cancellation signalling, but it is not yet integrated into workflow execution, failure routing, or budget handling.
+- Current code now integrates parallel execution into workflow runtime, routes branch failures through workflow failure handling, performs basic cancellation checks inside branch execution, and is now partially covered by workflow-level specs. Richer branch execution and budget handling are still incomplete.
 
 What the implementation agent needs to add:
 
-- integration of the existing parallel helper into workflow step execution
-- failure routing through `on_failure`
-- cooperative cancellation checks
-- discard semantics for completed branch outputs
+- deeper end-to-end branch execution beyond placeholder outputs
 - budget cleanup for cancelled branches
 
 ### 4. Context/session runtime integration
@@ -595,7 +590,8 @@ Documented contracts covered:
 Notes:
 
 - This spec covers direct dispatch through the now-exposed event bus seam.
-- It does not yet assert successful-step-only emission from workflow execution.
+- It now asserts successful-step-only emission from workflow execution.
+- It does not yet assert typed workflow step-event specificity.
 
 ### `spec/smith/budget/contract_spec.rb`
 
@@ -723,7 +719,7 @@ Documented contracts covered:
 Notes:
 
 - This spec covers delegation behavior only.
-- It does not yet assert invocation-boundary tool guardrails or retriable tool-guardrail failures.
+- It does not yet assert invocation-boundary tool guardrails or retriable tool-guardrail failures, even though the runtime now has a preliminary implementation path.
 
 ### `spec/smith/tools/capabilities_spec.rb`
 
@@ -1097,7 +1093,8 @@ Partially covered:
 - top-level configuration surface used by artifacts/tracing is covered
 - authorization-denied terminal behavior is covered
 - approval-without-host-hook advisory behavior is covered
-- invocation-boundary tool-guardrail enforcement is not yet covered
+- invocation-boundary tool-guardrail enforcement is implemented but not yet covered by specs
+- tool guardrails are now sourced from workflow/agent-attached guardrails in implementation, but that attachment model is not yet directly specified by tests
 - category/capability metadata policy effects are not yet covered
 
 ### Section 5.2 Workflow Execution
@@ -1110,7 +1107,8 @@ Partially covered:
 - `on_success` runtime selection is covered
 - wildcard `:fail` exclusion from normal transition lookup is covered
 - workflow-level then agent-level guardrail participation is covered
-- parallel branch failure behavior is not yet covered
+- parallel branch count resolution, workflow-level failure routing, and discard-on-failure surface are covered
+- parallel cancellation budget cleanup is not yet covered
 - `MaxTransitionsExceeded` exception + current-state behavior are covered
 
 Recommended future specs:
@@ -1136,15 +1134,15 @@ Partially covered:
 - error classes exist
 - tool DSL exists
 - terminal policy-denial behavior is partially covered
-- retriable `Smith::ToolGuardrailFailed` behavior is not yet covered
+- retriable `Smith::ToolGuardrailFailed` runtime path exists in implementation but is not yet covered by specs
 - approval metadata remains advisory without host hook is covered
 - pre-dispatch hook denial behavior is covered
 - host-level approval wiring semantics remain only partially covered
 
 Recommended future specs:
 
-- extend `spec/smith/tools/failure_policy_spec.rb` with retriable `Smith::ToolGuardrailFailed` behavior once tool-boundary guardrails are implemented
-- extend `spec/smith/tools/runtime_spec.rb` with invocation-boundary tool-guardrail checks once `Smith::Tool#execute` integrates `Guardrails::Runner.run_tool`
+- extend `spec/smith/tools/failure_policy_spec.rb` with retriable `Smith::ToolGuardrailFailed` behavior
+- extend `spec/smith/tools/runtime_spec.rb` with invocation-boundary tool-guardrail checks sourced from workflow/agent-attached guardrails
 
 ## Source-Backed Contracts to Protect Carefully
 

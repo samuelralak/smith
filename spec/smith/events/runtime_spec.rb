@@ -3,6 +3,7 @@
 RSpec.describe "Smith events runtime contract" do
   let(:events) { require_const("Smith::Events") }
   let(:event_class) { require_const("Smith::Event") }
+  let(:workflow_class) { require_const("Smith::Workflow") }
 
   before do
     events.reset! if events.respond_to?(:reset!)
@@ -107,5 +108,50 @@ RSpec.describe "Smith events runtime contract" do
     expect(logger).to have_received(:error).with(/Smith::Events handler error: boom/)
   ensure
     Smith.configure { |config| config.logger = original_logger }
+  end
+
+  it "emits a workflow event after a successful workflow step completes" do
+    observed = []
+    workflow = with_stubbed_class("SpecWorkflowEventSuccessWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done
+    end.new
+
+    events.on(event_class) { |event| observed << event }
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    expect(observed.length).to eq(1)
+    expect(observed.first).to be_a(event_class)
+    expect(observed.first.execution_id).to be_a(String)
+    expect(observed.first.trace_id).to be_a(String)
+  end
+
+  it "does not emit a workflow event when a workflow step fails" do
+    observed = []
+    workflow = with_stubbed_class("SpecWorkflowEventFailureWorkflow", workflow_class) do
+      initial_state :idle
+      state :running
+      state :failed
+
+      transition :start, from: :idle, to: :running do
+        execute :spec_event_agent
+        on_failure :fail
+      end
+    end.new
+
+    workflow.define_singleton_method(:execute_transition_body) do |_transition|
+      raise Smith::WorkflowError, "step failed"
+    end
+
+    events.on(event_class) { |event| observed << event }
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:failed)
+    expect(observed).to eq([])
   end
 end
