@@ -38,7 +38,6 @@ Current contract coverage exists for:
 Important contracts from the architecture document that are not yet directly specified:
 
 - retriable `Smith::ToolGuardrailFailed` behavior for malformed args / rate-limit cases
-- architecture-faithful sourcing of tool guardrails from workflow/agent-attached guardrails
 - parallel branch cancellation and merge behavior beyond the current workflow-level failure/discard surface
 - `MaxTransitionsExceeded` terminal state behavior beyond exception raising
 - context injection replacement-on-retry semantics
@@ -60,8 +59,8 @@ Why more implementation is required:
 
 - The architecture requires synchronous blocking execution for input, tool, and output guardrails.
 - It also requires workflow-level guardrails to run before agent-level guardrails.
-- Current code now wires workflow-level and agent-level input/output guardrails into workflow execution and routes tool guardrails through workflow/agent-attached guardrails, but deeper blocking/failure semantics are not yet fully specified and exercised.
-- Current code now wires workflow-level and agent-level input/output guardrails into workflow execution and routes tool guardrails through workflow/agent-attached guardrails. Workflow-level blocking/failure-routing behavior is now partially covered; tool-boundary behavior remains less exercised.
+- Current code now wires workflow-level and agent-level input/output guardrails into workflow execution and routes tool guardrails through workflow/agent-attached guardrails. Workflow-level blocking/failure-routing behavior is covered, and parallel branch tool-guardrail visibility is now covered at the workflow boundary.
+- Remaining tool-boundary behavior is narrower: retriable `Smith::ToolGuardrailFailed` and richer end-to-end tool-loop exercising are still not directly covered.
 
 What the implementation agent needs to add:
 
@@ -107,11 +106,11 @@ Architecture basis:
 Why more implementation is required:
 
 - The architecture defines observation masking at chat runtime and injected-state replacement on retry.
-- Current code now exposes a Smith-owned prepared-input seam that performs injection and masking before execution. Full RubyLLM `.ask` / `.complete` integration is still incomplete.
+- Current code now exposes a Smith-owned prepared-input seam that performs injection and masking before execution, and non-parallel workflow execution now uses a real RubyLLM `.complete` path. `.ask` selection and fuller call-path richness are still incomplete.
 
 What the implementation agent needs to add:
 
-- fuller `.ask` / `.complete` path integration beyond the current prepared-input seam
+- `.ask` selection and fuller call-path richness beyond the current `.complete` seam
 
 ### 5. Host-installed approval denial path
 
@@ -472,6 +471,7 @@ Notes:
 - It now also covers two workflow-control semantics:
   - failure-only wildcard `:fail`
   - runtime use of `on_success`
+- It now also covers real last-step output from workflow agent execution and runtime `output_schema` application.
 - It does not yet assert the full content of `steps` entries.
 
 ### `spec/smith/workflow/context_persistence_spec.rb`
@@ -494,6 +494,32 @@ Notes:
 
 - This spec covers persisted-key filtering only.
 - It does not yet assert inject-state retry replacement or observation masking at chat runtime.
+
+### `spec/smith/workflow/parallel_spec.rb`
+
+Purpose:
+
+- asserts the workflow-visible parallel execution behavior exposed by the runtime
+
+Architecture basis:
+
+- Section 5.2, Workflow Execution
+- Section 4.4, Guardrails
+- Section 4.6, Context Manager
+
+Documented contracts covered:
+
+- parallel transitions return one branch result per configured branch on success
+- callable branch counts derive from workflow context
+- branch failure routes workflow execution through `on_failure`
+- successful branch outputs are discarded when the parallel step fails
+- prepared input is reused across parallel branch execution
+- workflow-attached tool guardrails remain visible inside parallel branch threads
+
+Notes:
+
+- This spec covers workflow-visible parallel behavior, prepared-input reuse, and attached tool-guardrail visibility in branch threads.
+- It does not yet assert budget cleanup or richer provider-style in-flight completion behavior.
 
 ### `spec/smith/events/contract_spec.rb`
 
@@ -669,7 +695,7 @@ Documented contracts covered:
 
 Notes:
 
-- This spec covers stored configuration, formatter behavior, prepared-input masking, message persistence, and replacement of injected state on repeated preparation.
+- This spec covers stored configuration, formatter behavior, prepared-input masking, message persistence, replacement of injected state on repeated preparation, and the prepared-input seam consumed by workflow execution.
 - It does not yet assert full RubyLLM `.ask` / `.complete` integration.
 
 ### `spec/smith/tools/contract_spec.rb`
@@ -1040,6 +1066,7 @@ Partially covered:
 - prepared-input masking behavior is covered
 - injected-state replacement on repeated preparation is covered
 - persisted key filtering in `to_state`/`from_state` is covered
+- the prepared-input seam consumed by workflow execution is covered
 
 Recommended future specs:
 
@@ -1092,8 +1119,8 @@ Partially covered:
 - top-level configuration surface used by artifacts/tracing is covered
 - authorization-denied terminal behavior is covered
 - approval-without-host-hook advisory behavior is covered
-- invocation-boundary tool-guardrail enforcement is implemented but not yet covered by specs
-- tool guardrails are now sourced from workflow/agent-attached guardrails in implementation, but that attachment model is not yet directly specified by tests
+- runtime `output_schema` participation in workflow agent execution is covered
+- attached tool-guardrail visibility is covered at the workflow boundary, including parallel branch threads
 - category/capability metadata policy effects are not yet covered
 
 ### Section 5.2 Workflow Execution
@@ -1102,17 +1129,18 @@ Partially covered:
 
 - `advance!`, `run!`, and DSL are covered
 - `run!` result object shape is covered at the method-surface level
+- real last-step workflow output is covered
 - immediate-terminal and advance-until-terminal behavior are covered
 - `on_success` runtime selection is covered
 - wildcard `:fail` exclusion from normal transition lookup is covered
 - workflow-level then agent-level guardrail participation is covered
-- parallel branch count resolution, workflow-level failure routing, and discard-on-failure surface are covered
+- parallel branch count resolution, prepared-input reuse, workflow-level failure routing, discard-on-failure surface, and attached tool-guardrail visibility are covered
 - parallel cancellation budget cleanup is not yet covered
 - `MaxTransitionsExceeded` exception + current-state behavior are covered
 
 Recommended future specs:
 
-- `spec/smith/workflow/parallel_spec.rb`
+- extend `spec/smith/workflow/parallel_spec.rb` only if budget-cleanup or richer provider-style branch semantics are added
 
 ### Section 5.3 State Serialization
 
@@ -1141,7 +1169,7 @@ Partially covered:
 Recommended future specs:
 
 - extend `spec/smith/tools/failure_policy_spec.rb` with retriable `Smith::ToolGuardrailFailed` behavior
-- extend `spec/smith/tools/runtime_spec.rb` with invocation-boundary tool-guardrail checks sourced from workflow/agent-attached guardrails
+- extend tool runtime coverage with retriable `Smith::ToolGuardrailFailed` behavior once a cleaner end-to-end tool loop seam exists
 
 ## Source-Backed Contracts to Protect Carefully
 

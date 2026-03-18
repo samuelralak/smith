@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.describe "Smith::Workflow run result contract" do
+  let(:agent_class) { require_const("Smith::Agent") }
   let(:workflow_class) { require_const("Smith::Workflow") }
 
   it "returns a result object with the documented workflow summary surface" do
@@ -100,5 +101,48 @@ RSpec.describe "Smith::Workflow run result contract" do
 
     expect(workflow.state).to eq(:done)
     expect(result.steps.map { |step| step[:transition] }).to eq(%i[start finish])
+  end
+
+  it "returns real last-step output and applies output_schema during workflow agent execution" do
+    schema_class = Class.new
+    seen_messages = []
+    seen_schema = []
+
+    agent = with_stubbed_class("SpecRunResultOutputAgent", agent_class) do
+      register_as :spec_run_result_output_agent
+      model "gpt-5-mini"
+      output_schema schema_class
+    end
+
+    fake_chat = Object.new
+    fake_chat.define_singleton_method(:add_message) do |message|
+      seen_messages << message
+    end
+    fake_chat.define_singleton_method(:with_schema) do |schema|
+      seen_schema << schema
+      self
+    end
+    fake_chat.define_singleton_method(:complete) do
+      Struct.new(:content).new({ "status" => "ok" })
+    end
+
+    allow(agent).to receive(:chat).and_return(fake_chat)
+
+    workflow = with_stubbed_class("SpecRunResultOutputWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_run_result_output_agent
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    expect(result.output).to eq({ "status" => "ok" })
+    expect(result.steps.first[:output]).to eq({ "status" => "ok" })
+    expect(seen_schema).to eq([schema_class])
+    expect(seen_messages).to eq([])
   end
 end
