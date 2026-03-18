@@ -37,7 +37,7 @@ Current contract coverage exists for:
 
 Important contracts from the architecture document that are not yet directly specified:
 
-- retriable `Smith::ToolGuardrailFailed` behavior for malformed args / rate-limit cases
+- specific malformed-args / rate-limit variants of retriable `Smith::ToolGuardrailFailed`
 - parallel branch cancellation and merge behavior beyond the current workflow-level failure/discard surface
 - `MaxTransitionsExceeded` terminal state behavior beyond exception raising
 - context injection replacement-on-retry semantics
@@ -60,11 +60,11 @@ Why more implementation is required:
 - The architecture requires synchronous blocking execution for input, tool, and output guardrails.
 - It also requires workflow-level guardrails to run before agent-level guardrails.
 - Current code now wires workflow-level and agent-level input/output guardrails into workflow execution and routes tool guardrails through workflow/agent-attached guardrails. Workflow-level blocking/failure-routing behavior is covered, and parallel branch tool-guardrail visibility is now covered at the workflow boundary.
-- Remaining tool-boundary behavior is narrower: retriable `Smith::ToolGuardrailFailed` and richer end-to-end tool-loop exercising are still not directly covered.
+- Remaining tool-boundary behavior is narrower: specific malformed-args / rate-limit variants of retriable `Smith::ToolGuardrailFailed` and richer end-to-end tool-loop exercising are still not directly covered.
 
 What the implementation agent needs to add:
 
-- richer end-to-end exercising of `Smith::ToolGuardrailFailed`
+- richer end-to-end exercising of specific malformed-args / rate-limit `Smith::ToolGuardrailFailed` cases
 
 ### 2. Event dispatch semantics
 
@@ -743,7 +743,7 @@ Documented contracts covered:
 Notes:
 
 - This spec covers delegation behavior only.
-- It does not yet assert invocation-boundary tool guardrails or retriable tool-guardrail failures, even though the runtime now has a preliminary implementation path.
+- It does not yet assert the retriable `Smith::ToolGuardrailFailed` distinction or attached-guardrail sourcing paths, which are covered separately in `spec/smith/tools/failure_policy_spec.rb`.
 
 ### `spec/smith/tools/capabilities_spec.rb`
 
@@ -807,11 +807,14 @@ Documented contracts covered:
 - authorization denial raises `Smith::ToolPolicyDenied`
 - approval metadata alone does not block execution without a host hook
 - pre-dispatch hook denial raises `Smith::ToolPolicyDenied`
+- workflow-attached tool guardrails can raise `Smith::ToolGuardrailFailed`
+- agent-attached tool guardrails can raise `Smith::ToolGuardrailFailed`
+- tool-guardrail failure prevents `perform`
 
 Notes:
 
-- This spec covers only the behavior explicitly described in the architecture.
-- It does not yet assert Smith-enforced retriable tool-guardrail failures.
+- This spec now covers the terminal-vs-retriable distinction at the tool boundary and both workflow-attached and agent-attached tool-guardrail sourcing paths.
+- It does not yet distinguish specific malformed-args vs rate-limit variants of retriable failure.
 
 ### `spec/smith/guardrails/contract_spec.rb`
 
@@ -1121,6 +1124,7 @@ Partially covered:
 - approval-without-host-hook advisory behavior is covered
 - runtime `output_schema` participation in workflow agent execution is covered
 - attached tool-guardrail visibility is covered at the workflow boundary, including parallel branch threads
+- retriable `Smith::ToolGuardrailFailed` is covered at the workflow boundary for both workflow-attached and agent-attached guardrails
 - category/capability metadata policy effects are not yet covered
 
 ### Section 5.2 Workflow Execution
@@ -1161,15 +1165,14 @@ Partially covered:
 - error classes exist
 - tool DSL exists
 - terminal policy-denial behavior is partially covered
-- retriable `Smith::ToolGuardrailFailed` runtime path exists in implementation but is not yet covered by specs
+- retriable `Smith::ToolGuardrailFailed` runtime path is covered at the workflow boundary
 - approval metadata remains advisory without host hook is covered
 - pre-dispatch hook denial behavior is covered
 - host-level approval wiring semantics remain only partially covered
 
 Recommended future specs:
 
-- extend `spec/smith/tools/failure_policy_spec.rb` with retriable `Smith::ToolGuardrailFailed` behavior
-- extend tool runtime coverage with retriable `Smith::ToolGuardrailFailed` behavior once a cleaner end-to-end tool loop seam exists
+- extend tool/runtime coverage only if specific malformed-args / rate-limit variants or a richer end-to-end tool loop become observable
 
 ## Source-Backed Contracts to Protect Carefully
 
