@@ -24,6 +24,10 @@ module Smith
       def on_failure(transition_name)
         @failure_transition = transition_name
       end
+
+      def parallel?
+        agent_opts&.dig(:parallel) == true
+      end
     end
   end
 end

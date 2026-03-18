@@ -21,24 +21,24 @@ module Smith
 
       def self.execute(branches:)
         signal = CancellationSignal.new
-        first_error = Concurrent::AtomicReference.new(nil)
 
         futures = branches.map do |branch|
-          Concurrent::Future.execute do
-            branch.call(signal)
-          rescue StandardError => e
-            first_error.compare_and_set(nil, e)
-            signal.cancel!
+          Concurrent::Promises.future(branch, signal) do |b, s|
+            b.call(s)
+          rescue StandardError
+            s.cancel!
             raise
           end
         end
 
-        futures.each(&:wait)
+        fulfilled, values, reasons = Concurrent::Promises.zip(*futures).result
 
-        error = first_error.value
-        raise error if error
+        unless fulfilled
+          error = reasons.compact.first
+          raise error
+        end
 
-        futures.map(&:value)
+        values
       end
     end
   end

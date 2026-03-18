@@ -19,7 +19,13 @@ module Smith
       def run_guarded_step(transition, agent_class)
         run_input_guardrails(agent_class)
         apply_tool_guardrails(agent_class)
-        output = execute_transition_body(transition)
+
+        output = if transition.parallel?
+                   execute_parallel_step(transition)
+                 else
+                   execute_transition_body(transition)
+                 end
+
         run_output_guardrails(output, agent_class)
         output
       end
@@ -42,6 +48,19 @@ module Smith
 
         Agent::Registry.find(transition.agent_name)
         nil
+      end
+
+      def execute_parallel_step(transition)
+        count = resolve_branch_count(transition)
+        branches = Array.new(count) do |i|
+          proc { |_signal| { branch: i, agent: transition.agent_name, output: nil } }
+        end
+        Parallel.execute(branches: branches)
+      end
+
+      def resolve_branch_count(transition)
+        count = transition.agent_opts[:count]
+        count.respond_to?(:call) ? count.call(@context) : (count || 1)
       end
 
       def apply_tool_guardrails(agent_class)
