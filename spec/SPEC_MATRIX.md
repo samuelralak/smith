@@ -33,7 +33,7 @@ Current contract coverage exists for:
 - budget ledger surface with denied-reservation, lower-actual reconciliation, and multi-dimension behavior
 - context manager DSL, stored runtime configuration, subclass inheritance behavior, and persisted-key serialization contract
 - tool base class, policy DSL, runtime execute-to-perform delegation, capability metadata declaration, built-in tool namespaces, and pre-dispatch approval/authorization failure policy boundary
-- trace adapter namespaces and memory-adapter content policy behavior
+- trace adapter namespaces, runtime transition/tool emission surface, and memory-adapter content policy behavior
 
 Important contracts from the architecture document that are not yet directly specified:
 
@@ -42,7 +42,7 @@ Important contracts from the architecture document that are not yet directly spe
 - `MaxTransitionsExceeded` terminal state behavior beyond exception raising
 - context injection replacement-on-retry semantics
 - artifact namespace isolation semantics beyond ref prefixing
-- observability field-level controls and trace emission integration
+- observability field-level controls beyond the current runtime trace emission surface
 
 ## Implementation-Required Areas
 
@@ -155,11 +155,10 @@ Architecture basis:
 Why more implementation is required:
 
 - The architecture defines runtime trace policy, including `trace_content = :redacted` and field-level controls.
-- Current code now includes a memory trace adapter with content filtering, but trace emission integration and field-level controls are not yet implemented.
+- Current code now includes adapter-level filtering plus runtime trace emission for workflow transitions and tool execution. The remaining gap is field-level controls and any broader trace richness beyond the current transition/tool surface.
 
 What the implementation agent needs to add:
 
-- trace emission integration from workflow/agent/tool runtime
 - per-field disabling behavior
 
 ## File-to-Document Mapping
@@ -927,8 +926,8 @@ Documented contracts covered:
 
 Notes:
 
-- This spec covers adapter-level runtime behavior only.
-- It does not yet assert trace emission integration from workflow/agent/tool execution or field-level disabling beyond the documented structural toggles.
+- This spec covers adapter-level runtime behavior plus runtime trace emission from successful workflow steps and tool execution, including class-configured adapter support and best-effort adapter failure handling.
+- It does not yet assert per-field disabling behavior beyond the documented structural toggles.
 
 ### `spec/smith/artifacts/contract_spec.rb`
 
@@ -1111,7 +1110,11 @@ Partially covered:
 - content tracing is covered as opt-in by default
 - memory-adapter redaction behavior is covered
 - structural trace-type disabling is covered
-- field-level controls and runtime emission integration are not yet covered
+- runtime transition trace emission is covered
+- runtime tool-call trace emission is covered
+- class-configured adapter support is covered
+- best-effort adapter failure handling is covered
+- field-level controls are not yet covered
 
 ### Section 5.1 Agent Invocation and Section 6 Tool Governance
 
