@@ -80,4 +80,23 @@ RSpec.describe "Smith::Workflow contract" do
     expect(fail_transition.name).to eq(:fail)
     expect(fail_transition.to).to eq(:failed)
   end
+
+  it "allows an explicit fail transition to override the auto-generated default" do
+    klass = with_stubbed_class("SpecExplicitFailWorkflow", workflow_class) do
+      initial_state :idle
+      state :processing
+      state :failed
+
+      transition :fail, from: :processing, to: :failed do
+        execute :failure_agent, mode: :cleanup
+      end
+    end
+
+    fail_transition = klass.instance_variable_get(:@transitions).fetch(:fail)
+
+    expect(fail_transition.from).to eq(:processing)
+    expect(fail_transition.to).to eq(:failed)
+    expect(fail_transition.agent_name).to eq(:failure_agent)
+    expect(fail_transition.agent_opts).to eq(mode: :cleanup)
+  end
 end

@@ -20,4 +20,34 @@ RSpec.describe "Smith::Artifacts::Memory lifecycle contract" do
 
     expect(store.expired(retention: 60)).to include(ref)
   end
+
+  it "does not report fresh refs as expired" do
+    store = memory_store_class.new
+
+    ref = store.store("fresh")
+
+    expect(store.expired(retention: 3600)).not_to include(ref)
+  end
+
+  it "returns distinct opaque refs for distinct stored payloads" do
+    store = memory_store_class.new
+
+    first_ref = store.store("one")
+    second_ref = store.store("two")
+
+    expect(first_ref).to be_a(String)
+    expect(second_ref).to be_a(String)
+    expect(first_ref).not_to eq(second_ref)
+    expect(first_ref).not_to eq("one")
+    expect(second_ref).not_to eq("two")
+  end
+
+  it "isolates data between separate store instances" do
+    first_store = memory_store_class.new
+    second_store = memory_store_class.new
+
+    ref = first_store.store("first")
+
+    expect(second_store.fetch(ref)).to be_nil
+  end
 end

@@ -31,4 +31,30 @@ RSpec.describe "Smith::Context runtime contract" do
     expect(formatter).to respond_to(:call)
     expect(formatter.call(current_findings: "timeline stable")).to eq("summary: timeline stable")
   end
+
+  it "copies persisted keys into subclasses without mutating the parent" do
+    parent = with_stubbed_class("SpecParentContext", context_class) do
+      persist :current_findings
+    end
+
+    child = with_stubbed_class("SpecChildContext", parent) do
+      persist :source_urls
+    end
+
+    expect(parent.persist).to eq(%i[current_findings])
+    expect(child.persist).to eq(%i[current_findings source_urls])
+  end
+
+  it "allows subclasses to override inject_state without mutating the parent" do
+    parent = with_stubbed_class("SpecParentInjectContext", context_class) do
+      inject_state { |_persisted| "parent" }
+    end
+
+    child = with_stubbed_class("SpecChildInjectContext", parent) do
+      inject_state { |_persisted| "child" }
+    end
+
+    expect(parent.inject_state.call({})).to eq("parent")
+    expect(child.inject_state.call({})).to eq("child")
+  end
 end

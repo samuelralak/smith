@@ -27,11 +27,10 @@ Current contract coverage exists for:
 - workflow pattern namespaces
 - artifact namespace, top-level accessor, configured-store resolution, built-in backend entry points, and named operational methods
 - guardrail base DSL, attachment points, and built-in URL verifier namespace
-- event bus surface, filtering, scoped subscriptions, typed event schema declaration, and subscription lifecycle behavior
 - event bus surface, filtering, scoped subscriptions, typed event schema declaration with runtime correlation values, and subscription lifecycle behavior
-- budget ledger surface
-- context manager DSL, stored runtime configuration, and persisted-key serialization contract
-- tool base class, policy DSL, capability metadata declaration, built-in tool namespaces, and current approval/authorization failure policy boundary
+- budget ledger surface with denied-reservation, lower-actual reconciliation, and multi-dimension behavior
+- context manager DSL, stored runtime configuration, subclass inheritance behavior, and persisted-key serialization contract
+- tool base class, policy DSL, runtime execute-to-perform delegation, capability metadata declaration, built-in tool namespaces, and current approval/authorization failure policy boundary
 - trace adapter namespaces
 
 Important contracts from the architecture document that are not yet directly specified:
@@ -44,6 +43,135 @@ Important contracts from the architecture document that are not yet directly spe
 - approval-required behavior when a host pre-dispatch hook is installed
 - artifact namespace isolation semantics
 - observability redaction, field-level controls, and runtime content-tracing policy
+
+## Implementation-Required Areas
+
+These areas now require substantial runtime implementation work before the next meaningful behavior/integration specs can be added without inventing APIs or hidden mechanisms.
+
+### 1. Guardrail execution pipeline
+
+Architecture basis:
+
+- Section 4.4, Guardrails
+- Section 5.4, Guardrail Attachment
+
+Why implementation is required:
+
+- The architecture requires synchronous blocking execution for input, tool, and output guardrails.
+- It also requires workflow-level guardrails to run before agent-level guardrails.
+- Current code stores guardrail declarations and attachments, but does not yet expose a real execution path around agent/workflow/tool execution.
+
+What the implementation agent needs to add:
+
+- a real runtime application seam for input/output/tool guardrails
+- workflow-level then agent-level execution ordering
+- failure propagation via `Smith::GuardrailFailed` / `Smith::ToolGuardrailFailed`
+
+### 2. Event dispatch semantics
+
+Architecture basis:
+
+- Section 4.3, Events
+
+Why implementation is required:
+
+- The architecture defines dispatch-time guarantees: synchronous inline delivery, rescued/logged handler errors, successful-step-only scope, and subscription-order dispatch.
+- Current code exposes subscription registration and lifecycle only. There is no event emission/dispatch path yet.
+
+What the implementation agent needs to add:
+
+- a dispatch/emission seam
+- rescued/logged handler failure behavior
+- ordering guarantees within a dispatch
+- successful-step-only emission integration from workflow execution
+
+### 3. Parallel workflow behavior
+
+Architecture basis:
+
+- Section 5.2, Workflow Execution
+
+Why implementation is required:
+
+- The architecture defines cooperative cancellation, discarding completed branch outputs on failure, and budget cleanup across branches.
+- Current code exposes only the pattern namespace, not a parallel execution runtime.
+
+What the implementation agent needs to add:
+
+- a parallel step execution path
+- failure routing through `on_failure`
+- cooperative cancellation checks
+- discard semantics for completed branch outputs
+- budget cleanup for cancelled branches
+
+### 4. Context/session runtime integration
+
+Architecture basis:
+
+- Section 4.6, Context Manager
+
+Why implementation is required:
+
+- The architecture defines observation masking at chat runtime and injected-state replacement on retry.
+- Current code stores configuration and formatter blocks, but does not yet integrate with session/chat execution.
+
+What the implementation agent needs to add:
+
+- masking over session message history before LLM calls
+- injected-state insertion before `.ask` / `.complete`
+- replacement of prior injected state on retry/resume of the same step
+
+### 5. Host-installed approval denial path
+
+Architecture basis:
+
+- Section 5.6, Error Hierarchy
+- Section 6, Tool Governance
+
+Why implementation is required:
+
+- The architecture explicitly allows a host-installed pre-dispatch approval hook to raise `Smith::ToolPolicyDenied`.
+- Current tool execution has no host-hook seam, so the behavior cannot yet be specified without inventing an API.
+
+What the implementation agent needs to add:
+
+- a pre-dispatch policy/approval hook seam around `Smith::Tool#execute`
+- propagation of host-denied approval as terminal `Smith::ToolPolicyDenied`
+
+### 6. Artifact namespace isolation
+
+Architecture basis:
+
+- Section 4.7, Artifact Store
+
+Why implementation is required:
+
+- The architecture requires artifact refs to be namespaced to execution/tenant context.
+- Current memory-store behavior is intentionally minimal and not namespace-aware.
+
+What the implementation agent needs to add:
+
+- namespace-aware ref generation / lookup
+- same-tenant fetch behavior and cross-tenant isolation behavior
+- retention/isolation configuration integration
+
+### 7. Trace runtime policy
+
+Architecture basis:
+
+- Section 4.8, Observability
+
+Why implementation is required:
+
+- The architecture defines runtime trace policy, including `trace_content = :redacted` and field-level controls.
+- Current code exposes only config and adapter namespaces, not actual trace emission or filtering.
+
+What the implementation agent needs to add:
+
+- trace emission path
+- structural vs content field handling
+- redaction mode behavior
+- per-field disabling behavior
 
 ## File-to-Document Mapping
 
@@ -236,6 +364,7 @@ Documented contracts covered:
   - `success_transition`
   - `failure_transition`
 - default `:fail` transition is auto-generated when a workflow declares `:failed`
+- explicit `:fail` transition overrides the auto-generated default
 
 Notes:
 
@@ -342,6 +471,8 @@ Documented contracts covered:
   - `total_tokens`
 - `Smith::MaxTransitionsExceeded`
 - workflow remains in its current state when max transitions are exceeded
+- `run!` returns immediately when already terminal
+- `run!` advances until `terminal?` becomes true
 
 Notes:
 
@@ -453,6 +584,8 @@ Documented contracts covered:
 - scoped subscriptions auto-cancel on block exit
 - filtered subscriptions retain the declared predicate
 - explicit subscription cancellation marks the handle as cancelled
+- subscriptions are retained in registration order
+- `reset!` clears registered subscriptions
 
 Notes:
 
@@ -484,6 +617,9 @@ Behavior currently asserted:
 - reservation checks against committed plus reserved usage
 - reconciliation frees prior reservation and charges actual usage
 - release frees reservation on failure/cancellation paths
+- denied reservation leaves available capacity unchanged
+- lower actual usage frees the unused reserved portion
+- dimensions are tracked independently
 
 Notes:
 
@@ -528,6 +664,8 @@ Documented contracts covered:
 - `session_strategy` returns the declared observation-masking configuration
 - `persist` returns the declared workflow context keys
 - `inject_state` stores a callable formatter over persisted state
+- subclasses inherit persisted keys by copy without mutating the parent
+- subclasses can override `inject_state` without mutating the parent
 
 Notes:
 
@@ -557,6 +695,29 @@ Documented contracts covered:
 Notes:
 
 - This spec does not yet assert the approval metadata boundary or retriable-vs-terminal failure behavior.
+
+### `spec/smith/tools/runtime_spec.rb`
+
+Purpose:
+
+- asserts runtime behavior at the existing `Smith::Tool#execute` seam
+
+Architecture basis:
+
+- Section 5.1, Agent Invocation
+- Section 6, Tool Governance
+
+Documented contracts covered:
+
+- Smith-owned `execute` delegates to user-defined `perform` after enforcement
+- tool arguments flow through `execute` into `perform`
+- authorization receives the passed runtime context
+- failed authorization prevents `perform` from running
+
+Notes:
+
+- This spec covers delegation behavior only.
+- It does not yet assert retriable tool-guardrail failures or host-hook-installed approval denial.
 
 ### `spec/smith/tools/capabilities_spec.rb`
 
@@ -774,6 +935,9 @@ Documented contracts covered:
 - storing returns an opaque ref
 - fetching returns stored content
 - expired refs are discoverable through `expired(retention:)`
+- fresh refs are not reported as expired
+- separate payloads produce distinct opaque refs
+- separate store instances do not share stored data
 
 Notes:
 
@@ -828,6 +992,9 @@ Recommended future specs:
 Partially covered:
 
 - ledger API is covered
+- denied reservation state preservation is covered
+- lower-actual reconciliation behavior is covered
+- multi-dimension independence is covered
 - provider-timeout optimistic release semantics are not yet covered
 - deadline behavior is not yet covered
 - parallel branch cancellation budget cleanup is not yet covered
@@ -842,6 +1009,7 @@ Partially covered:
 
 - DSL is covered
 - stored session strategy / persist / inject_state formatter behavior is covered
+- subclass inheritance/override behavior is covered
 - observation masking behavior at chat runtime is not yet covered
 - injected-state replacement-on-retry is not yet covered
 - persisted key filtering in `to_state`/`from_state` is covered
@@ -861,6 +1029,9 @@ Partially covered:
   - `fetch`
   - `expired`
 - in-memory store/fetch/expiry behavior is covered
+- fresh/non-expired behavior is covered
+- distinct refs for distinct payloads are covered
+- separate in-memory stores are isolated from each other
 - namespace-scoped content addressing is not yet covered
 - retention and isolation configuration is not yet covered
 - artifact handoff references are not yet covered
@@ -885,6 +1056,7 @@ Partially covered:
 
 - `Smith::Agent` layering is covered
 - `Smith::Tool` base contract is covered
+- `Smith::Tool#execute` delegation/context/authorization-gate behavior is covered
 - built-in tool namespace and tool entry points are covered
 - top-level configuration surface used by artifacts/tracing is covered
 - authorization-denied terminal behavior is covered
@@ -896,6 +1068,7 @@ Partially covered:
 
 - `advance!`, `run!`, and DSL are covered
 - `run!` result object shape is covered at the method-surface level
+- immediate-terminal and advance-until-terminal behavior are covered
 - parallel branch failure behavior is not yet covered
 - `MaxTransitionsExceeded` exception + current-state behavior are covered
 

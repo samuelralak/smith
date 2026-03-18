@@ -39,4 +39,25 @@ RSpec.describe "Smith events runtime contract" do
 
     expect(handle.cancelled?).to be(true)
   end
+
+  it "retains subscriptions in registration order" do
+    first_event = with_stubbed_class("SpecFirstOrderedEvent", event_class)
+    second_event = with_stubbed_class("SpecSecondOrderedEvent", event_class)
+
+    first = events.on(first_event) { |_event| nil }
+    second = events.on(second_event) { |_event| nil }
+
+    expect(events.subscriptions.last(2)).to eq([first, second])
+  end
+
+  it "reset! clears all registered subscriptions" do
+    typed_event = with_stubbed_class("SpecResettableEvent", event_class)
+
+    events.on(typed_event) { |_event| nil }
+    expect(events.subscriptions).not_to be_empty
+
+    events.reset!
+
+    expect(events.subscriptions).to eq([])
+  end
 end

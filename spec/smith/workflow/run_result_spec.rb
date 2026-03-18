@@ -38,4 +38,37 @@ RSpec.describe "Smith::Workflow run result contract" do
     expect { workflow.run! }.to raise_error(require_const("Smith::MaxTransitionsExceeded"))
     expect(workflow.state).to eq(:idle)
   end
+
+  it "returns immediately when the workflow is already terminal" do
+    workflow = with_stubbed_class("SpecImmediatelyTerminalWorkflow", workflow_class) do
+      initial_state :idle
+
+      define_method(:terminal?) do
+        true
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:idle)
+    expect(result.steps).to eq([])
+    expect(result.output).to be_nil
+  end
+
+  it "advances until terminal? becomes true" do
+    workflow = with_stubbed_class("SpecAdvancingWorkflow", workflow_class) do
+      initial_state :idle
+
+      define_method(:terminal?) do
+        @terminal_checks ||= 0
+        @terminal_checks += 1
+        @terminal_checks > 3
+      end
+    end.new
+
+    workflow.run!
+
+    expect(workflow.to_state[:step_count]).to eq(3)
+    expect(workflow.state).to eq(:idle)
+  end
 end
