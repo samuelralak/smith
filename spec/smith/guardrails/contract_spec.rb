@@ -58,4 +58,43 @@ RSpec.describe "Smith::Guardrails contract" do
     expect(agent.guardrails).to be(agent_guardrails)
     expect(workflow.guardrails).to be(workflow_guardrails)
   end
+
+  it "runs workflow-level guardrails before agent-level guardrails during workflow execution" do
+    observed = []
+
+    workflow_guardrails = with_stubbed_class("SpecWorkflowRuntimeGuardrails", guardrails_class) do
+      define_method(:workflow_input) { |_payload| observed << :workflow_input }
+      define_method(:workflow_output) { |_payload| observed << :workflow_output }
+
+      input :workflow_input
+      output :workflow_output
+    end
+
+    agent_guardrails = with_stubbed_class("SpecAgentRuntimeGuardrails", guardrails_class) do
+      define_method(:agent_input) { |_payload| observed << :agent_input }
+      define_method(:agent_output) { |_payload| observed << :agent_output }
+
+      input :agent_input
+      output :agent_output
+    end
+
+    with_stubbed_class("SpecRuntimeGuardedAgent", agent_class) do
+      guardrails agent_guardrails
+      register_as :spec_runtime_guarded_agent
+    end
+
+    workflow = with_stubbed_class("SpecRuntimeGuardedWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      guardrails workflow_guardrails
+
+      transition :start, from: :idle, to: :done do
+        execute :spec_runtime_guarded_agent
+      end
+    end.new
+
+    workflow.run!
+
+    expect(observed).to eq(%i[workflow_input agent_input workflow_output agent_output])
+  end
 end

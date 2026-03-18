@@ -64,4 +64,41 @@ RSpec.describe "Smith::Workflow run result contract" do
     expect(result.steps.length).to eq(3)
     expect(result.state).to eq(:done)
   end
+
+  it "does not treat the wildcard fail transition as a normal next step" do
+    workflow = with_stubbed_class("SpecNoWildcardNormalFlowWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :finish, from: :idle, to: :done
+    end.new
+
+    result = workflow.run!
+
+    expect(workflow.state).to eq(:done)
+    expect(result.state).to eq(:done)
+    expect(result.steps.map { |step| step[:transition] }).to eq([:finish])
+  end
+
+  it "uses on_success to select the named next transition when multiple transitions share a state" do
+    workflow = with_stubbed_class("SpecOnSuccessWorkflow", workflow_class) do
+      initial_state :idle
+      state :ready
+      state :done
+      state :alternate_done
+
+      transition :start, from: :idle, to: :ready do
+        on_success :finish
+      end
+
+      transition :alternate, from: :ready, to: :alternate_done
+      transition :finish, from: :ready, to: :done
+    end.new
+
+    result = workflow.run!
+
+    expect(workflow.state).to eq(:done)
+    expect(result.steps.map { |step| step[:transition] }).to eq(%i[start finish])
+  end
 end

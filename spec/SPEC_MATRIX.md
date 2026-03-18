@@ -37,6 +37,8 @@ Current contract coverage exists for:
 Important contracts from the architecture document that are not yet directly specified:
 
 - guardrail failure behavior
+- tool-guardrail enforcement at tool invocation boundaries
+- retriable `Smith::ToolGuardrailFailed` behavior for malformed args / rate-limit cases
 - parallel branch cancellation and merge behavior
 - `MaxTransitionsExceeded` terminal state behavior beyond exception raising
 - context injection replacement-on-retry semantics
@@ -59,13 +61,13 @@ Why more implementation is required:
 
 - The architecture requires synchronous blocking execution for input, tool, and output guardrails.
 - It also requires workflow-level guardrails to run before agent-level guardrails.
-- Current code now includes a guardrail runner helper, but it is not yet wired around agent/workflow/tool execution.
+- Current code now wires workflow-level and agent-level input/output guardrails into workflow execution, but tool guardrails and deeper blocking/failure semantics are not yet fully integrated.
 
 What the implementation agent needs to add:
 
-- integration of the existing guardrail runner into real input/output/tool execution
-- workflow-level then agent-level execution ordering
-- failure propagation via `Smith::GuardrailFailed` / `Smith::ToolGuardrailFailed`
+- tool-guardrail integration at tool invocation boundaries
+- deeper failure/blocking semantics around executed steps
+- `Smith::ToolGuardrailFailed` runtime integration
 
 ### 2. Event dispatch semantics
 
@@ -468,10 +470,15 @@ Documented contracts covered:
 - workflow remains in its current state when max transitions are exceeded
 - `run!` returns immediately when already terminal
 - `run!` advances until `terminal?` becomes true
+- wildcard `:fail` is not treated as a normal next step
+- `on_success` selects the named next transition when multiple transitions share a state
 
 Notes:
 
 - This spec checks the documented result interface and exception behavior.
+- It now also covers two workflow-control semantics:
+  - failure-only wildcard `:fail`
+  - runtime use of `on_success`
 - It does not yet assert the full content of `steps` entries.
 
 ### `spec/smith/workflow/context_persistence_spec.rb`
@@ -716,7 +723,7 @@ Documented contracts covered:
 Notes:
 
 - This spec covers delegation behavior only.
-- It does not yet assert retriable tool-guardrail failures or host-hook-installed approval denial.
+- It does not yet assert invocation-boundary tool guardrails or retriable tool-guardrail failures.
 
 ### `spec/smith/tools/capabilities_spec.rb`
 
@@ -784,7 +791,7 @@ Documented contracts covered:
 Notes:
 
 - This spec covers only the behavior explicitly described in the architecture.
-- It does not yet assert retriable tool-guardrail failures.
+- It does not yet assert Smith-enforced retriable tool-guardrail failures.
 
 ### `spec/smith/guardrails/contract_spec.rb`
 
@@ -806,11 +813,13 @@ Documented contracts covered:
 - `.output`
 - attachment to `Smith::Agent`
 - attachment to `Smith::Workflow`
+- workflow-level guardrails run before agent-level guardrails during workflow execution
 
 Notes:
 
-- This spec covers declaration surface only.
-- It does not yet assert ordering, blocking semantics, or workflow-before-agent precedence at runtime.
+- This spec primarily covers declaration surface and attachment points.
+- It now also covers the runtime requirement that workflow-level guardrails precede agent-level guardrails.
+- It does not yet assert full blocking/failure semantics or tool guardrail execution.
 
 ### `spec/smith/guardrails/order_spec.rb`
 
@@ -999,15 +1008,15 @@ Recommended future specs:
 
 Currently uncovered:
 
-- workflow-level vs agent-level guardrail attachment precedence
 - input guardrails run before model/tool execution at runtime
 - output guardrails run after model completion at runtime
 - tool guardrail ordering at invocation time
+- guardrail failure propagation/blocking semantics
 - no async output validation leakage
 
 Recommended future specs:
 
-- extend `spec/smith/guardrails/contract_spec.rb` with runtime attachment precedence and blocking semantics
+- extend `spec/smith/guardrails/contract_spec.rb` with blocking/failure semantics around executed steps
 - extend `spec/smith/guardrails/order_spec.rb` with runtime execution ordering checks if stable seams are added
 
 ### Section 4.5 Budget Controller
@@ -1088,6 +1097,8 @@ Partially covered:
 - top-level configuration surface used by artifacts/tracing is covered
 - authorization-denied terminal behavior is covered
 - approval-without-host-hook advisory behavior is covered
+- invocation-boundary tool-guardrail enforcement is not yet covered
+- category/capability metadata policy effects are not yet covered
 
 ### Section 5.2 Workflow Execution
 
@@ -1096,6 +1107,9 @@ Partially covered:
 - `advance!`, `run!`, and DSL are covered
 - `run!` result object shape is covered at the method-surface level
 - immediate-terminal and advance-until-terminal behavior are covered
+- `on_success` runtime selection is covered
+- wildcard `:fail` exclusion from normal transition lookup is covered
+- workflow-level then agent-level guardrail participation is covered
 - parallel branch failure behavior is not yet covered
 - `MaxTransitionsExceeded` exception + current-state behavior are covered
 
@@ -1121,14 +1135,16 @@ Partially covered:
 
 - error classes exist
 - tool DSL exists
-- retriable vs terminal behavior is not yet covered
+- terminal policy-denial behavior is partially covered
+- retriable `Smith::ToolGuardrailFailed` behavior is not yet covered
 - approval metadata remains advisory without host hook is covered
 - pre-dispatch hook denial behavior is covered
 - host-level approval wiring semantics remain only partially covered
 
 Recommended future specs:
 
-- extend `spec/smith/tools/failure_policy_spec.rb` only if a distinct host-level approval integration seam is introduced beyond the current pre-dispatch hook
+- extend `spec/smith/tools/failure_policy_spec.rb` with retriable `Smith::ToolGuardrailFailed` behavior once tool-boundary guardrails are implemented
+- extend `spec/smith/tools/runtime_spec.rb` with invocation-boundary tool-guardrail checks once `Smith::Tool#execute` integrates `Guardrails::Runner.run_tool`
 
 ## Source-Backed Contracts to Protect Carefully
 
