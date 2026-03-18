@@ -28,6 +28,7 @@ Current contract coverage exists for:
 - artifact namespace, top-level accessor, configured-store resolution, built-in backend entry points, and named operational methods
 - guardrail base DSL, attachment points, and built-in URL verifier namespace
 - event bus surface, filtering, scoped subscriptions, typed event schema declaration, and subscription lifecycle behavior
+- event bus surface, filtering, scoped subscriptions, typed event schema declaration with runtime correlation values, and subscription lifecycle behavior
 - budget ledger surface
 - context manager DSL, stored runtime configuration, and persisted-key serialization contract
 - tool base class, policy DSL, capability metadata declaration, built-in tool namespaces, and current approval/authorization failure policy boundary
@@ -431,6 +432,7 @@ Documented contracts covered:
 - inherited event correlation fields:
   - `execution_id`
   - `trace_id`
+- instantiated typed events carry `execution_id` and `trace_id` values
 
 Notes:
 

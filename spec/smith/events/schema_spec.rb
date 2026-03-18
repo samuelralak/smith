@@ -19,4 +19,19 @@ RSpec.describe "Smith event schema contract" do
     expect(typed_event).to be < event_class
     expect(typed_event.instance_methods).to include(:execution_id, :trace_id)
   end
+
+  it "instantiates typed events with execution_id and trace_id values" do
+    string_type = require_const("Smith::Types::String")
+
+    typed_event = with_stubbed_class("SpecRuntimeTypedEvent", event_class) do
+      attribute :workflow_id, string_type
+    end
+
+    event = typed_event.new(workflow_id: "wf-123")
+
+    expect(event.execution_id).to be_a(String)
+    expect(event.trace_id).to be_a(String)
+    expect(event.execution_id).not_to be_empty
+    expect(event.trace_id).not_to be_empty
+  end
 end
