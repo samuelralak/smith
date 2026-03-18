@@ -76,25 +76,21 @@ module Smith
       def build_branch(transition, index)
         branch_ledger = @ledger
         proc do |signal|
-          reserved = false
+          reservation = nil
           begin
             raise Smith::WorkflowError, "cancelled" if signal.cancelled?
-
-            if branch_ledger
-              branch_ledger.reserve!(:parallel_branches, 1)
-              reserved = true
-            end
 
             output = execute_transition_body(transition)
 
             raise Smith::WorkflowError, "cancelled" if signal.cancelled?
 
-            branch_ledger&.reconcile!(:parallel_branches, 1, 1) if reserved
-            reserved = false
-
             { branch: index, agent: transition.agent_name, output: output }
           ensure
-            branch_ledger&.release!(:parallel_branches, 1) if reserved
+            # Budget release boundary for cancelled branches.
+            # When real token/cost reservations are made during agent
+            # execution, this ensure block is where release! will run
+            # for cancelled branches per architecture §4.5/§5.2.
+            branch_ledger&.release!(reservation.first, reservation.last) if reservation
           end
         end
       end
