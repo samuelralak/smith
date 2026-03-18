@@ -57,7 +57,9 @@ module Smith
       run_before_execute_hook!(kwargs)
       check_authorization!(kwargs)
       run_tool_guardrails!(kwargs)
-      perform(**kwargs)
+      result = perform(**kwargs)
+      Smith::Trace.record(type: :tool_call, data: { tool: name })
+      result
     end
 
     private
