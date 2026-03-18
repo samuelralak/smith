@@ -104,6 +104,7 @@ RSpec.describe "Smith::Tool failure policy contract" do
 
     expect(result.state).to eq(:failed)
     expect(result.steps.first[:error]).to be_a(tool_guardrail_failed)
+    expect(result.steps.first[:error].message).to eq("rate limit")
     expect(observed_perform).to eq([])
   end
 
@@ -146,6 +147,7 @@ RSpec.describe "Smith::Tool failure policy contract" do
 
     expect(result.state).to eq(:failed)
     expect(result.steps.first[:error]).to be_a(tool_guardrail_failed)
+    expect(result.steps.first[:error].message).to eq("malformed args")
     expect(result.steps.first[:error]).not_to be_a(require_const("Smith::ToolPolicyDenied"))
   end
 end

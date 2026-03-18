@@ -37,7 +37,6 @@ Current contract coverage exists for:
 
 Important contracts from the architecture document that are not yet directly specified:
 
-- specific malformed-args / rate-limit variants of retriable `Smith::ToolGuardrailFailed`
 - parallel branch cancellation and merge behavior beyond the current workflow-level failure/discard surface
 - `MaxTransitionsExceeded` terminal state behavior beyond exception raising
 - context injection replacement-on-retry semantics
@@ -60,11 +59,11 @@ Why more implementation is required:
 - The architecture requires synchronous blocking execution for input, tool, and output guardrails.
 - It also requires workflow-level guardrails to run before agent-level guardrails.
 - Current code now wires workflow-level and agent-level input/output guardrails into workflow execution and routes tool guardrails through workflow/agent-attached guardrails. Workflow-level blocking/failure-routing behavior is covered, and parallel branch tool-guardrail visibility is now covered at the workflow boundary.
-- Remaining tool-boundary behavior is narrower: specific malformed-args / rate-limit variants of retriable `Smith::ToolGuardrailFailed` and richer end-to-end tool-loop exercising are still not directly covered.
+- Remaining tool-boundary behavior is narrower: richer end-to-end tool-loop exercising is still not directly covered beyond the current workflow-boundary retriable failure coverage.
 
 What the implementation agent needs to add:
 
-- richer end-to-end exercising of specific malformed-args / rate-limit `Smith::ToolGuardrailFailed` cases
+- richer end-to-end exercising of the tool loop beyond the current workflow-boundary retriable failure coverage
 
 ### 2. Event dispatch semantics
 
@@ -90,11 +89,11 @@ Architecture basis:
 Why more implementation is required:
 
 - The architecture defines cooperative cancellation, discarding completed branch outputs on failure, and budget cleanup across branches.
-- Current code now integrates parallel execution into workflow runtime, routes branch failures through workflow failure handling, performs basic cancellation checks inside branch execution, and now exercises a real branch budget reservation/reconcile/release lifecycle. Richer branch execution and estimate-based budget enforcement are still incomplete.
+- Current code now integrates parallel execution into workflow runtime, routes branch failures through workflow failure handling, performs basic cancellation checks inside branch execution, runs the same real agent invocation path as non-parallel execution, and exercises a real branch budget reservation/reconcile/release lifecycle. Estimate-based budget enforcement and richer branch-result semantics beyond the current workflow-visible surface are still incomplete.
 
 What the implementation agent needs to add:
 
-- deeper end-to-end branch execution beyond placeholder outputs
+- richer branch-result semantics beyond the current workflow-visible surface
 - estimate-based budget reservation and enforcement beyond the current zero-amount lifecycle
 
 ### 4. Context/session runtime integration
@@ -814,7 +813,7 @@ Documented contracts covered:
 Notes:
 
 - This spec now covers the terminal-vs-retriable distinction at the tool boundary and both workflow-attached and agent-attached tool-guardrail sourcing paths.
-- It does not yet distinguish specific malformed-args vs rate-limit variants of retriable failure.
+- It now distinguishes the named `"malformed args"` and `"rate limit"` variants of retriable failure at the workflow boundary.
 
 ### `spec/smith/guardrails/contract_spec.rb`
 
@@ -1133,7 +1132,7 @@ Partially covered:
 - approval-without-host-hook advisory behavior is covered
 - runtime `output_schema` participation in workflow agent execution is covered
 - attached tool-guardrail visibility is covered at the workflow boundary, including parallel branch threads
-- retriable `Smith::ToolGuardrailFailed` is covered at the workflow boundary for both workflow-attached and agent-attached guardrails
+- retriable `Smith::ToolGuardrailFailed` is covered at the workflow boundary for both workflow-attached and agent-attached guardrails, including the named `"rate limit"` and `"malformed args"` variants
 - category/capability metadata policy effects are not yet covered
 
 ### Section 5.2 Workflow Execution
@@ -1174,14 +1173,14 @@ Partially covered:
 - error classes exist
 - tool DSL exists
 - terminal policy-denial behavior is partially covered
-- retriable `Smith::ToolGuardrailFailed` runtime path is covered at the workflow boundary
+- retriable `Smith::ToolGuardrailFailed` runtime path is covered at the workflow boundary, including the named `"malformed args"` and `"rate limit"` variants
 - approval metadata remains advisory without host hook is covered
 - pre-dispatch hook denial behavior is covered
 - host-level approval wiring semantics remain only partially covered
 
 Recommended future specs:
 
-- extend tool/runtime coverage only if specific malformed-args / rate-limit variants or a richer end-to-end tool loop become observable
+- extend tool/runtime coverage only if a richer end-to-end tool loop becomes observable
 
 ## Source-Backed Contracts to Protect Carefully
 
