@@ -42,7 +42,7 @@ Important contracts from the architecture document that are not yet directly spe
 - `MaxTransitionsExceeded` terminal state behavior beyond exception raising
 - context injection replacement-on-retry semantics
 - artifact namespace isolation semantics beyond ref prefixing
-- observability field-level controls beyond the current runtime trace emission surface
+- broader observability richness beyond the current runtime trace emission and `trace_fields` control surface
 
 ## Implementation-Required Areas
 
@@ -155,11 +155,11 @@ Architecture basis:
 Why more implementation is required:
 
 - The architecture defines runtime trace policy, including `trace_content = :redacted` and field-level controls.
-- Current code now includes adapter-level filtering plus runtime trace emission for workflow transitions and tool execution. The remaining gap is field-level controls and any broader trace richness beyond the current transition/tool surface.
+- Current code now includes adapter-level filtering, runtime trace emission for workflow transitions and tool execution, and field-level structural filtering through `trace_fields`. The remaining gap is any broader trace richness beyond the current transition/tool surface.
 
 What the implementation agent needs to add:
 
-- per-field disabling behavior
+- any broader trace richness beyond the current transition/tool surface
 
 ## File-to-Document Mapping
 
@@ -923,11 +923,15 @@ Documented contracts covered:
 - `trace_content = :redacted` masks string content fields
 - `trace_content = true` retains full content
 - structural trace type toggles disable recording for the relevant trace category
+- `trace_fields` filters transition trace payload fields
+- `trace_fields` filters tool-call trace payload fields
+- unknown `trace_fields` entries are ignored
+- unconfigured trace types remain unchanged
 
 Notes:
 
 - This spec covers adapter-level runtime behavior plus runtime trace emission from successful workflow steps and tool execution, including class-configured adapter support and best-effort adapter failure handling.
-- It does not yet assert per-field disabling behavior beyond the documented structural toggles.
+- It now asserts the documented `trace_fields` filtering behavior for the currently emitted trace types.
 
 ### `spec/smith/artifacts/contract_spec.rb`
 
@@ -1114,7 +1118,7 @@ Partially covered:
 - runtime tool-call trace emission is covered
 - class-configured adapter support is covered
 - best-effort adapter failure handling is covered
-- field-level controls are not yet covered
+- `trace_fields` structural filtering is covered
 
 ### Section 5.1 Agent Invocation and Section 6 Tool Governance
 

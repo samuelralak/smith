@@ -24,6 +24,7 @@ RSpec.describe "Smith configuration contract" do
       trace_tool_calls=
       trace_token_usage=
       trace_cost=
+      trace_fields=
       trace_content=
       trace_retention=
       trace_tenant_isolation=

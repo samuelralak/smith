@@ -21,6 +21,7 @@ module Smith
   setting :trace_tool_calls, default: true
   setting :trace_token_usage, default: true
   setting :trace_cost, default: true
+  setting :trace_fields
   setting :trace_content, default: false
   setting :trace_retention
   setting :trace_tenant_isolation, default: false

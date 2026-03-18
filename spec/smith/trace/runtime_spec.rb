@@ -16,6 +16,15 @@ RSpec.describe "Smith tracing runtime behavior" do
     Smith::Trace.reset!
   end
 
+  def with_trace_fields(fields)
+    original_fields = Smith.config.trace_fields
+
+    Smith.configure { |config| config.trace_fields = fields }
+    yield
+  ensure
+    Smith.configure { |config| config.trace_fields = original_fields }
+  end
+
   it "records structural trace data by default while omitting content fields" do
     adapter = memory_trace_class.new
 
@@ -66,6 +75,74 @@ RSpec.describe "Smith tracing runtime behavior" do
     expect(adapter.traces).to eq([])
   ensure
     Smith.configure { |config| config.trace_tool_calls = original_value }
+  end
+
+  it "filters transition trace fields through the configured field allowlist" do
+    adapter = memory_trace_class.new
+
+    with_trace_adapter(adapter) do
+      with_trace_fields(transition: %i[transition to]) do
+        Smith::Trace.record(type: :transition, data: { transition: :finish, from: :idle, to: :done })
+      end
+    end
+
+    expect(adapter.traces).to eq([
+                                   {
+                                     type: :transition,
+                                     data: { transition: :finish, to: :done }
+                                   }
+                                 ])
+  end
+
+  it "filters tool-call trace fields through the configured field allowlist" do
+    adapter = memory_trace_class.new
+
+    with_trace_adapter(adapter) do
+      with_trace_fields(tool_call: %i[tool]) do
+        Smith::Trace.record(type: :tool_call, data: { tool: "search", duration: 12 })
+      end
+    end
+
+    expect(adapter.traces).to eq([
+                                   {
+                                     type: :tool_call,
+                                     data: { tool: "search" }
+                                   }
+                                 ])
+  end
+
+  it "ignores unknown field names in trace field configuration" do
+    adapter = memory_trace_class.new
+
+    with_trace_adapter(adapter) do
+      with_trace_fields(transition: %i[transition missing_field]) do
+        Smith::Trace.record(type: :transition, data: { transition: :finish, from: :idle, to: :done })
+      end
+    end
+
+    expect(adapter.traces).to eq([
+                                   {
+                                     type: :transition,
+                                     data: { transition: :finish }
+                                   }
+                                 ])
+  end
+
+  it "leaves unconfigured trace types unchanged" do
+    adapter = memory_trace_class.new
+
+    with_trace_adapter(adapter) do
+      with_trace_fields(transition: %i[transition]) do
+        Smith::Trace.record(type: :tool_call, data: { tool: "search", duration: 12 })
+      end
+    end
+
+    expect(adapter.traces).to eq([
+                                   {
+                                     type: :tool_call,
+                                     data: { tool: "search", duration: 12 }
+                                   }
+                                 ])
   end
 
   it "emits a transition trace after a successful workflow step completes" do

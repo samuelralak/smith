@@ -6,7 +6,7 @@ module Smith
       adapter = resolve_adapter
       return unless adapter
 
-      adapter.record(type: type, data: data)
+      adapter.record(type: type, data: filter_fields(type, data))
     rescue StandardError => e
       Smith.config.logger&.error("Smith::Trace adapter error: #{e.message}")
     end
@@ -25,6 +25,18 @@ module Smith
 
     def self.reset!
       @adapter_instances = nil
+    end
+
+    def self.filter_fields(type, data)
+      configured_fields = Smith.config.trace_fields
+      return data unless configured_fields.is_a?(Hash)
+
+      allowed = configured_fields[type]
+      return data unless allowed.respond_to?(:include?)
+
+      data.each_with_object({}) do |(key, value), filtered|
+        filtered[key] = value if allowed.include?(key)
+      end
     end
   end
 end
