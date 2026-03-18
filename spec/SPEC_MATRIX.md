@@ -29,7 +29,7 @@ Current contract coverage exists for:
 - artifact lifecycle behavior, including opaque refs, per-store isolation, and namespace-prefixed refs
 - guardrail base DSL, attachment points, and built-in URL verifier namespace
 - guardrail runtime ordering, blocking, and failure-routing surface
-- event bus surface, filtering, scoped subscriptions, typed event schema declaration with runtime correlation values, subscription lifecycle behavior, direct dispatch ordering/rescue semantics, and workflow success-only event emission surface
+- event bus surface, filtering, scoped subscriptions, typed event schema declaration with runtime correlation values, subscription lifecycle behavior, direct dispatch ordering/rescue semantics, and typed workflow success-only event emission surface
 - budget ledger surface with denied-reservation, lower-actual reconciliation, and multi-dimension behavior
 - context manager DSL, stored runtime configuration, subclass inheritance behavior, and persisted-key serialization contract
 - tool base class, policy DSL, runtime execute-to-perform delegation, capability metadata declaration, built-in tool namespaces, and pre-dispatch approval/authorization failure policy boundary
@@ -76,11 +76,11 @@ Architecture basis:
 Why more implementation is required:
 
 - The architecture defines dispatch-time guarantees: synchronous inline delivery, rescued/logged handler errors, successful-step-only scope, and subscription-order dispatch.
-- Current code now includes an event emission/dispatch path with subscription-order dispatch, rescued/logged handlers, and workflow success-only emission. Typed workflow step-event specificity remains incomplete.
+- Current code now includes an event emission/dispatch path with subscription-order dispatch, rescued/logged handlers, and typed workflow success-only emission. Any remaining gap is broader workflow event taxonomy, not typed step-completed emission itself.
 
 What the implementation agent needs to add:
 
-- typed workflow step-event specificity beyond the current base-event emission
+- any broader workflow event taxonomy beyond the current typed step-completed emission
 
 ### 3. Parallel workflow behavior
 
@@ -589,7 +589,7 @@ Notes:
 
 - This spec covers direct dispatch through the now-exposed event bus seam.
 - It now asserts successful-step-only emission from workflow execution.
-- It does not yet assert typed workflow step-event specificity.
+- It now asserts typed workflow step-event specificity and base-subscriber compatibility.
 
 ### `spec/smith/budget/contract_spec.rb`
 

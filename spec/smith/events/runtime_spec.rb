@@ -3,6 +3,7 @@
 RSpec.describe "Smith events runtime contract" do
   let(:events) { require_const("Smith::Events") }
   let(:event_class) { require_const("Smith::Event") }
+  let(:step_completed_class) { require_const("Smith::Events::StepCompleted") }
   let(:workflow_class) { require_const("Smith::Workflow") }
 
   before do
@@ -125,9 +126,37 @@ RSpec.describe "Smith events runtime contract" do
 
     expect(result.state).to eq(:done)
     expect(observed.length).to eq(1)
-    expect(observed.first).to be_a(event_class)
+    expect(observed.first).to be_a(step_completed_class)
     expect(observed.first.execution_id).to be_a(String)
     expect(observed.first.trace_id).to be_a(String)
+    expect(observed.first.transition).to eq(:finish)
+    expect(observed.first.from).to eq(:idle)
+    expect(observed.first.to).to eq(:done)
+  end
+
+  it "allows typed subscribers and base-event subscribers to observe the same workflow step event" do
+    base_observed = []
+    typed_observed = []
+
+    workflow = with_stubbed_class("SpecWorkflowTypedEventWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done
+    end.new
+
+    events.on(event_class) { |event| base_observed << event }
+    events.on(step_completed_class) { |event| typed_observed << event }
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    expect(base_observed.length).to eq(1)
+    expect(typed_observed.length).to eq(1)
+    expect(base_observed.first).to be_a(step_completed_class)
+    expect(typed_observed.first).to be_a(step_completed_class)
+    expect(base_observed.first.transition).to eq(:finish)
+    expect(typed_observed.first.transition).to eq(:finish)
   end
 
   it "does not emit a workflow event when a workflow step fails" do
