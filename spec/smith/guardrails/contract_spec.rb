@@ -37,4 +37,25 @@ RSpec.describe "Smith::Guardrails contract" do
     expect(agent).to be < agent_class
     expect(workflow).to be < workflow_class
   end
+
+  it "retains distinct workflow-level and agent-level guardrail assignments when both exist" do
+    workflow_guardrails = with_stubbed_class("SpecWorkflowLevelGuardrails", guardrails_class) do
+      input :workflow_check
+    end
+
+    agent_guardrails = with_stubbed_class("SpecAgentLevelGuardrails", guardrails_class) do
+      input :agent_check
+    end
+
+    agent = with_stubbed_class("SpecDualGuardedAgent", agent_class) do
+      guardrails agent_guardrails
+    end
+
+    workflow = with_stubbed_class("SpecDualGuardedWorkflow", workflow_class) do
+      guardrails workflow_guardrails
+    end
+
+    expect(agent.guardrails).to be(agent_guardrails)
+    expect(workflow.guardrails).to be(workflow_guardrails)
+  end
 end
