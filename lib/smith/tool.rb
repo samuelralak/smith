@@ -18,6 +18,8 @@ module Smith
     end
 
     class << self
+      attr_accessor :current_guardrails
+
       def category(value = nil)
         return @category if value.nil?
 
@@ -42,12 +44,6 @@ module Smith
         return @before_execute unless block_given?
 
         @before_execute = block
-      end
-
-      def guardrails(klass = nil)
-        return @guardrails_class if klass.nil?
-
-        @guardrails_class = klass
       end
     end
 
@@ -76,10 +72,12 @@ module Smith
     end
 
     def run_tool_guardrails!(kwargs)
-      guardrails_class = self.class.guardrails
-      return unless guardrails_class
+      guardrails_classes = self.class.current_guardrails
+      return unless guardrails_classes
 
-      Guardrails::Runner.run_tool(guardrails_class, name.to_sym, kwargs)
+      Array(guardrails_classes).each do |guardrails_class|
+        Guardrails::Runner.run_tool(guardrails_class, name.to_sym, kwargs)
+      end
     end
 
     def perform(**kwargs)

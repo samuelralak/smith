@@ -81,10 +81,11 @@ require_relative "smith/context/state_injection"
 require_relative "smith/agent"
 require_relative "smith/agent/registry"
 
-# Workflow (Transition, DSL, and Persistence must load before Workflow)
+# Workflow (Transition, DSL, Persistence, and Execution must load before Workflow)
 require_relative "smith/workflow/transition"
 require_relative "smith/workflow/dsl"
 require_relative "smith/workflow/persistence"
+require_relative "smith/workflow/execution"
 require_relative "smith/workflow"
 require_relative "smith/workflow/pipeline"
 require_relative "smith/workflow/router"
