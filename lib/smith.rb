@@ -46,6 +46,7 @@ require_relative "smith/event"
 require_relative "smith/events"
 require_relative "smith/events/subscription"
 require_relative "smith/events/bus"
+require_relative "smith/events/step_completed"
 
 # Budget (depends on Errors)
 require_relative "smith/budget"

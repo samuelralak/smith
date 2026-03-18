@@ -121,11 +121,12 @@ module Smith
         @state = fail_transition.to
       end
 
-      def emit_step_completed(_transition, _output)
+      def emit_step_completed(transition, _output)
         Smith::Events.emit(
-          Smith::Event.new(
-            execution_id: SecureRandom.uuid,
-            trace_id: SecureRandom.uuid
+          Events::StepCompleted.new(
+            transition: transition.name,
+            from: transition.from,
+            to: transition.to
           )
         )
       end
