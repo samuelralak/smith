@@ -25,6 +25,11 @@ module Smith
         ObservationMasking.apply(@messages, strategy: strategy)
       end
 
+      def prepare!
+        inject_state!
+        masked_view
+      end
+
       def append(message)
         @messages << message
       end

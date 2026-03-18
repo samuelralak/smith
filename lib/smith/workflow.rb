@@ -12,7 +12,7 @@ module Smith
 
     RunResult = Struct.new(:state, :output, :steps, :total_cost, :total_tokens)
 
-    attr_reader :state
+    attr_reader :state, :last_prepared_input, :session_messages
 
     def initialize(context: {})
       @state = self.class.initial_state

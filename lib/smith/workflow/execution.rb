@@ -19,12 +19,13 @@ module Smith
       def run_guarded_step(transition, agent_class)
         run_input_guardrails(agent_class)
         apply_tool_guardrails(agent_class)
-        apply_context_injection
+        session = build_session
+        prepared_input = session&.prepare!
 
         output = if transition.parallel?
                    execute_parallel_step(transition)
                  else
-                   execute_transition_body(transition)
+                   execute_transition_body(transition, prepared_input: prepared_input)
                  end
 
         run_output_guardrails(output, agent_class)
@@ -38,13 +39,26 @@ module Smith
         { transition: transition.name, from: transition.from, to: transition.to, output: output }
       end
 
+      def build_session
+        manager = self.class.context_manager
+        return nil unless manager
+
+        Context::Session.new(
+          messages: @session_messages ||= [],
+          context_manager: manager,
+          persisted_context: @context
+        )
+      end
+
       def resolve_agent_class(transition)
         return nil unless transition.agent_name
 
         Agent::Registry.find(transition.agent_name)
       end
 
-      def execute_transition_body(transition)
+      def execute_transition_body(transition, prepared_input: nil)
+        @last_prepared_input = prepared_input
+
         return nil unless transition.agent_name
 
         Agent::Registry.find(transition.agent_name)
@@ -74,18 +88,6 @@ module Smith
       def resolve_branch_count(transition)
         count = transition.agent_opts[:count]
         count.respond_to?(:call) ? count.call(@context) : (count || 1)
-      end
-
-      def apply_context_injection
-        manager = self.class.context_manager
-        return unless manager
-
-        session = Context::Session.new(
-          messages: @session_messages ||= [],
-          context_manager: manager,
-          persisted_context: @context
-        )
-        session.inject_state!
       end
 
       def apply_tool_guardrails(agent_class)
