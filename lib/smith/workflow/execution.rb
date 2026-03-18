@@ -61,8 +61,20 @@ module Smith
 
         return nil unless transition.agent_name
 
-        Agent::Registry.find(transition.agent_name)
-        nil
+        agent_class = Agent::Registry.find(transition.agent_name)
+        return nil unless agent_class
+        return nil if agent_class.chat_kwargs[:model].nil?
+
+        invoke_agent(agent_class, prepared_input)
+      end
+
+      def invoke_agent(agent_class, prepared_input)
+        chat = agent_class.chat
+
+        prepared_input&.each { |msg| chat.add_message(msg) }
+
+        response = chat.complete
+        response&.content
       end
 
       def execute_parallel_step(transition)
