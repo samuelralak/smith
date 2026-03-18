@@ -90,12 +90,12 @@ Architecture basis:
 Why more implementation is required:
 
 - The architecture defines cooperative cancellation, discarding completed branch outputs on failure, and budget cleanup across branches.
-- Current code now integrates parallel execution into workflow runtime, routes branch failures through workflow failure handling, performs basic cancellation checks inside branch execution, and is now partially covered by workflow-level specs. Richer branch execution and budget handling are still incomplete.
+- Current code now integrates parallel execution into workflow runtime, routes branch failures through workflow failure handling, performs basic cancellation checks inside branch execution, and now exercises a real branch budget reservation/reconcile/release lifecycle. Richer branch execution and estimate-based budget enforcement are still incomplete.
 
 What the implementation agent needs to add:
 
 - deeper end-to-end branch execution beyond placeholder outputs
-- budget cleanup for cancelled branches
+- estimate-based budget reservation and enforcement beyond the current zero-amount lifecycle
 
 ### 4. Context/session runtime integration
 
@@ -519,7 +519,8 @@ Documented contracts covered:
 Notes:
 
 - This spec covers workflow-visible parallel behavior, prepared-input reuse, and attached tool-guardrail visibility in branch threads.
-- It does not yet assert budget cleanup or richer provider-style in-flight completion behavior.
+- It now asserts the parallel branch budget reservation/reconcile/release lifecycle.
+- It does not yet assert richer provider-style in-flight completion behavior or estimate-based budget enforcement.
 
 ### `spec/smith/events/contract_spec.rb`
 
@@ -1051,9 +1052,10 @@ Partially covered:
 - denied reservation state preservation is covered
 - lower-actual reconciliation behavior is covered
 - multi-dimension independence is covered
+- zero-amount parallel branch reservation/reconcile/release lifecycle is covered
 - provider-timeout optimistic release semantics are not yet covered
 - deadline behavior is not yet covered
-- parallel branch cancellation budget cleanup is not yet covered
+- estimate-based parallel branch budgeting is not yet covered
 
 Recommended future specs:
 
@@ -1138,13 +1140,13 @@ Partially covered:
 - `on_success` runtime selection is covered
 - wildcard `:fail` exclusion from normal transition lookup is covered
 - workflow-level then agent-level guardrail participation is covered
-- parallel branch count resolution, prepared-input reuse, workflow-level failure routing, discard-on-failure surface, and attached tool-guardrail visibility are covered
-- parallel cancellation budget cleanup is not yet covered
+- parallel branch count resolution, prepared-input reuse, workflow-level failure routing, discard-on-failure surface, attached tool-guardrail visibility, and zero-amount budget lifecycle are covered
+- estimate-based parallel budget enforcement is not yet covered
 - `MaxTransitionsExceeded` exception + current-state behavior are covered
 
 Recommended future specs:
 
-- extend `spec/smith/workflow/parallel_spec.rb` only if budget-cleanup or richer provider-style branch semantics are added
+- extend `spec/smith/workflow/parallel_spec.rb` only if estimate-based budgeting or richer provider-style branch semantics are added
 
 ### Section 5.3 State Serialization
 

@@ -224,4 +224,108 @@ RSpec.describe "Smith::Workflow parallel execution" do
     expect(observed_payloads).to all(include(context: {}))
     expect(observed_payloads).to all(include(:branch, :prepared_input))
   end
+
+  it "reserves and reconciles workflow budget for successful parallel branches" do
+    workflow = with_stubbed_class("SpecParallelBudgetSuccessWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      budget total_tokens: 100, total_cost: 1.0
+
+      transition :fan_out, from: :idle, to: :done do
+        execute :spec_parallel_agent, parallel: true, count: 2
+      end
+    end.new
+
+    observed = Queue.new
+    ledger = workflow.ledger
+
+    allow(ledger).to receive(:reserve!).and_wrap_original do |original, key, amount|
+      observed << [:reserve, key, amount]
+      original.call(key, amount)
+    end
+    allow(ledger).to receive(:reconcile!).and_wrap_original do |original, key, reserved_amount, actual_amount|
+      observed << [:reconcile, key, reserved_amount, actual_amount]
+      original.call(key, reserved_amount, actual_amount)
+    end
+    allow(ledger).to receive(:release!).and_wrap_original do |original, key, amount|
+      observed << [:release, key, amount]
+      original.call(key, amount)
+    end
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    entries = []
+    entries << observed.pop until observed.empty?
+
+    reserve_entries = entries.select { |entry| entry[0] == :reserve }
+    reconcile_entries = entries.select { |entry| entry[0] == :reconcile }
+    release_entries = entries.select { |entry| entry[0] == :release }
+
+    expect(reserve_entries).to contain_exactly(
+      [:reserve, :total_tokens, 0],
+      [:reserve, :total_cost, 0],
+      [:reserve, :total_tokens, 0],
+      [:reserve, :total_cost, 0]
+    )
+    expect(reconcile_entries).to contain_exactly(
+      [:reconcile, :total_tokens, 0, 0],
+      [:reconcile, :total_cost, 0, 0],
+      [:reconcile, :total_tokens, 0, 0],
+      [:reconcile, :total_cost, 0, 0]
+    )
+    expect(release_entries).to eq([])
+  end
+
+  it "releases reserved workflow budget when a parallel branch fails" do
+    workflow = with_stubbed_class("SpecParallelBudgetFailureWorkflow", workflow_class) do
+      initial_state :idle
+      state :running
+      state :failed
+      budget total_tokens: 100, total_cost: 1.0
+
+      transition :fan_out, from: :idle, to: :running do
+        execute :spec_parallel_agent, parallel: true, count: 2
+        on_failure :fail
+      end
+    end.new
+
+    workflow.define_singleton_method(:execute_transition_body) do |_transition, prepared_input: nil|
+      @parallel_calls ||= 0
+      @parallel_calls += 1
+      raise Smith::WorkflowError, "branch failed" if @parallel_calls == 1
+
+      sleep 0.01
+      :ok
+    end
+
+    observed = Queue.new
+    ledger = workflow.ledger
+
+    allow(ledger).to receive(:reserve!).and_wrap_original do |original, key, amount|
+      observed << [:reserve, key, amount]
+      original.call(key, amount)
+    end
+    allow(ledger).to receive(:reconcile!).and_wrap_original do |original, key, reserved_amount, actual_amount|
+      observed << [:reconcile, key, reserved_amount, actual_amount]
+      original.call(key, reserved_amount, actual_amount)
+    end
+    allow(ledger).to receive(:release!).and_wrap_original do |original, key, amount|
+      observed << [:release, key, amount]
+      original.call(key, amount)
+    end
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:failed)
+    entries = []
+    entries << observed.pop until observed.empty?
+
+    reserve_entries = entries.select { |entry| entry[0] == :reserve }
+    release_entries = entries.select { |entry| entry[0] == :release }
+
+    expect(reserve_entries.length).to be >= 2
+    expect(release_entries.length).to be >= 2
+    expect(release_entries).to all(satisfy { |entry| entry[2] == 0 })
+  end
 end
