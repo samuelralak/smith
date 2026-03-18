@@ -57,8 +57,7 @@ module Smith
       end
 
       def execute_transition_body(transition, prepared_input: nil)
-        effective_input = prepared_input || @last_prepared_input
-        @last_prepared_input = effective_input
+        @last_prepared_input = prepared_input
 
         return nil unless transition.agent_name
 
@@ -66,7 +65,7 @@ module Smith
         return nil unless agent_class
         return nil if agent_class.chat_kwargs[:model].nil?
 
-        invoke_agent(agent_class, effective_input)
+        invoke_agent(agent_class, prepared_input)
       end
 
       def invoke_agent(agent_class, prepared_input)
@@ -82,22 +81,21 @@ module Smith
       end
 
       def execute_parallel_step(transition, prepared_input: nil)
-        @last_prepared_input = prepared_input
         guardrail_sources = Tool.current_guardrails
         count = Parallel.resolve_branch_count(transition, @context)
         branches = Array.new(count) do |i|
-          build_branch(transition, i, guardrail_sources: guardrail_sources)
+          build_branch(transition, i, prepared_input: prepared_input, guardrail_sources: guardrail_sources)
         end
         Parallel.execute(branches: branches)
       end
 
-      def build_branch(transition, index, guardrail_sources: nil)
+      def build_branch(transition, index, prepared_input: nil, guardrail_sources: nil)
         proc do |signal|
           Tool.current_guardrails = guardrail_sources
           begin
             raise Smith::WorkflowError, "cancelled" if signal.cancelled?
 
-            output = execute_transition_body(transition)
+            output = execute_transition_body(transition, prepared_input: prepared_input)
 
             raise Smith::WorkflowError, "cancelled" if signal.cancelled?
 

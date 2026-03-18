@@ -1,6 +1,10 @@
 # frozen_string_literal: true
 
 RSpec.describe "Smith::Workflow parallel execution" do
+  let(:agent_class) { require_const("Smith::Agent") }
+  let(:context_class) { require_const("Smith::Context") }
+  let(:guardrails_class) { require_const("Smith::Guardrails") }
+  let(:tool_class) { require_const("Smith::Tool") }
   let(:workflow_class) { require_const("Smith::Workflow") }
   let(:workflow_error) { require_const("Smith::WorkflowError") }
 
@@ -59,7 +63,7 @@ RSpec.describe "Smith::Workflow parallel execution" do
       transition :finish, from: :running, to: :done
     end.new
 
-    workflow.define_singleton_method(:execute_transition_body) do |_transition|
+    workflow.define_singleton_method(:execute_transition_body) do |_transition, prepared_input: nil|
       @parallel_calls ||= 0
       @parallel_calls += 1
       raise Smith::WorkflowError, "branch failed" if @parallel_calls == 1
@@ -91,7 +95,7 @@ RSpec.describe "Smith::Workflow parallel execution" do
       transition :finish, from: :running, to: :done
     end.new
 
-    workflow.define_singleton_method(:execute_transition_body) do |_transition|
+    workflow.define_singleton_method(:execute_transition_body) do |_transition, prepared_input: nil|
       @parallel_calls ||= 0
       @parallel_calls += 1
       return :ok if @parallel_calls == 1
@@ -105,5 +109,119 @@ RSpec.describe "Smith::Workflow parallel execution" do
     expect(result.output).to be_nil
     expect(result.steps.first).not_to have_key(:output)
     expect(result.steps.first[:error]).to be_a(workflow_error)
+  end
+
+  it "reuses the prepared input for each parallel branch execution" do
+    manager = with_stubbed_class("SpecParallelPreparedInputContext", context_class) do
+      session_strategy :observation_masking, window: 1
+
+      inject_state do |persisted|
+        "summary: #{persisted[:current_findings]}"
+      end
+    end
+
+    seen_branch_inputs = []
+    agent = with_stubbed_class("SpecParallelPreparedInputAgent", agent_class) do
+      register_as :spec_parallel_prepared_input_agent
+      model "gpt-5-mini"
+    end
+
+    allow(agent).to receive(:chat) do
+      chat = Object.new
+      messages = []
+
+      chat.define_singleton_method(:add_message) do |message|
+        messages << message
+      end
+      chat.define_singleton_method(:complete) do
+        seen_branch_inputs << messages.dup
+        Struct.new(:content).new("ok")
+      end
+
+      chat
+    end
+
+    workflow = with_stubbed_class("SpecParallelPreparedInputWorkflow", workflow_class) do
+      context_manager manager
+      initial_state :idle
+      state :done
+
+      transition :fan_out, from: :idle, to: :done do
+        execute :spec_parallel_prepared_input_agent, parallel: true, count: 2
+      end
+    end.new(context: { current_findings: "stable" })
+
+    workflow.instance_variable_set(
+      :@session_messages,
+      [
+        { role: :user, content: "older" },
+        { role: :assistant, content: "middle" },
+        { role: :user, content: "latest" }
+      ]
+    )
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    expect(seen_branch_inputs).to eq(
+      [
+        [
+          { role: :system, content: "[smith:injected-state]\nsummary: stable" },
+          { role: :user, content: "latest" }
+        ],
+        [
+          { role: :system, content: "[smith:injected-state]\nsummary: stable" },
+          { role: :user, content: "latest" }
+        ]
+      ]
+    )
+  end
+
+  it "applies attached tool guardrails inside parallel branch threads" do
+    observed = Queue.new
+
+    guardrailed_tool = with_stubbed_class("SpecParallelGuardrailedTool", tool_class) do
+      def perform(**kwargs)
+        kwargs
+      end
+    end
+    tool_name = guardrailed_tool.new.name.to_sym
+
+    workflow_guardrails = with_stubbed_class("SpecParallelToolGuardrails", guardrails_class) do
+      define_method(:capture_tool_payload) do |payload|
+        observed << payload
+      end
+
+      tool :capture_tool_payload, on: [tool_name]
+    end
+
+    with_stubbed_class("SpecParallelToolGuardrailAgent", agent_class) do
+      register_as :spec_parallel_tool_guardrail_agent
+    end
+
+    workflow = with_stubbed_class("SpecParallelToolGuardrailWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      guardrails workflow_guardrails
+
+      transition :fan_out, from: :idle, to: :done do
+        execute :spec_parallel_tool_guardrail_agent, parallel: true, count: 2
+      end
+    end.new
+
+    workflow.define_singleton_method(:execute_transition_body) do |_transition, prepared_input: nil|
+      guardrailed_tool.new.execute(context: @context, branch: Thread.current.object_id, prepared_input: prepared_input)
+      :ok
+    end
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    observed_payloads = []
+    observed_payloads << observed.pop until observed.empty?
+
+    expect(observed_payloads.length).to eq(2)
+    expect(observed_payloads).to all(include(context: {}))
+    expect(observed_payloads).to all(include(:branch, :prepared_input))
   end
 end

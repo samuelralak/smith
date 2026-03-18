@@ -172,7 +172,7 @@ RSpec.describe "Smith events runtime contract" do
       end
     end.new
 
-    workflow.define_singleton_method(:execute_transition_body) do |_transition|
+    workflow.define_singleton_method(:execute_transition_body) do |_transition, prepared_input: nil|
       raise Smith::WorkflowError, "step failed"
     end
 
