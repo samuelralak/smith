@@ -76,6 +76,7 @@ require_relative "smith/guardrails/url_verifier"
 require_relative "smith/context"
 require_relative "smith/context/observation_masking"
 require_relative "smith/context/state_injection"
+require_relative "smith/context/session"
 
 # Agent (depends on RubyLLM::Agent)
 require_relative "smith/agent"

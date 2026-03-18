@@ -19,6 +19,7 @@ module Smith
       def run_guarded_step(transition, agent_class)
         run_input_guardrails(agent_class)
         apply_tool_guardrails(agent_class)
+        apply_context_injection
 
         output = if transition.parallel?
                    execute_parallel_step(transition)
@@ -73,6 +74,18 @@ module Smith
       def resolve_branch_count(transition)
         count = transition.agent_opts[:count]
         count.respond_to?(:call) ? count.call(@context) : (count || 1)
+      end
+
+      def apply_context_injection
+        manager = self.class.context_manager
+        return unless manager
+
+        session = Context::Session.new(
+          messages: @session_messages ||= [],
+          context_manager: manager,
+          persisted_context: @context
+        )
+        session.inject_state!
       end
 
       def apply_tool_guardrails(agent_class)
