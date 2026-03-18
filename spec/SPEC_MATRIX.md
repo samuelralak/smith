@@ -28,6 +28,7 @@ Current contract coverage exists for:
 - artifact namespace, top-level accessor, configured-store resolution, built-in backend entry points, and named operational methods
 - artifact lifecycle behavior, including opaque refs, per-store isolation, and namespace-prefixed refs
 - guardrail base DSL, attachment points, and built-in URL verifier namespace
+- guardrail runtime ordering, blocking, and failure-routing surface
 - event bus surface, filtering, scoped subscriptions, typed event schema declaration with runtime correlation values, subscription lifecycle behavior, direct dispatch ordering/rescue semantics, and workflow success-only event emission surface
 - budget ledger surface with denied-reservation, lower-actual reconciliation, and multi-dimension behavior
 - context manager DSL, stored runtime configuration, subclass inheritance behavior, and persisted-key serialization contract
@@ -36,7 +37,6 @@ Current contract coverage exists for:
 
 Important contracts from the architecture document that are not yet directly specified:
 
-- guardrail failure behavior
 - retriable `Smith::ToolGuardrailFailed` behavior for malformed args / rate-limit cases
 - architecture-faithful sourcing of tool guardrails from workflow/agent-attached guardrails
 - parallel branch cancellation and merge behavior beyond the current workflow-level failure/discard surface
@@ -61,10 +61,10 @@ Why more implementation is required:
 - The architecture requires synchronous blocking execution for input, tool, and output guardrails.
 - It also requires workflow-level guardrails to run before agent-level guardrails.
 - Current code now wires workflow-level and agent-level input/output guardrails into workflow execution and routes tool guardrails through workflow/agent-attached guardrails, but deeper blocking/failure semantics are not yet fully specified and exercised.
+- Current code now wires workflow-level and agent-level input/output guardrails into workflow execution and routes tool guardrails through workflow/agent-attached guardrails. Workflow-level blocking/failure-routing behavior is now partially covered; tool-boundary behavior remains less exercised.
 
 What the implementation agent needs to add:
 
-- deeper failure/blocking semantics around executed steps
 - richer end-to-end exercising of `Smith::ToolGuardrailFailed`
 
 ### 2. Event dispatch semantics
@@ -107,13 +107,11 @@ Architecture basis:
 Why more implementation is required:
 
 - The architecture defines observation masking at chat runtime and injected-state replacement on retry.
-- Current code now includes masking and state-injection helpers, but they are not yet integrated with session/chat execution.
+- Current code now exposes a Smith-owned prepared-input seam that performs injection and masking before execution. Full RubyLLM `.ask` / `.complete` integration is still incomplete.
 
 What the implementation agent needs to add:
 
-- masking over session message history before LLM calls
-- injected-state insertion before `.ask` / `.complete`
-- replacement of prior injected state on retry/resume of the same step
+- fuller `.ask` / `.complete` path integration beyond the current prepared-input seam
 
 ### 5. Host-installed approval denial path
 
@@ -671,8 +669,8 @@ Documented contracts covered:
 
 Notes:
 
-- This spec covers stored configuration and formatter behavior only.
-- It does not yet assert retry replacement, message persistence, or masking at chat runtime.
+- This spec covers stored configuration, formatter behavior, prepared-input masking, message persistence, and replacement of injected state on repeated preparation.
+- It does not yet assert full RubyLLM `.ask` / `.complete` integration.
 
 ### `spec/smith/tools/contract_spec.rb`
 
@@ -1002,18 +1000,19 @@ Recommended future specs:
 
 ### Section 4.4 Guardrails
 
-Currently uncovered:
+Partially covered:
 
 - input guardrails run before model/tool execution at runtime
 - output guardrails run after model completion at runtime
+- input and output guardrail failures route workflow execution through `on_failure`
 - tool guardrail ordering at invocation time
-- guardrail failure propagation/blocking semantics
+- tool-boundary guardrail failure semantics are not yet covered
 - no async output validation leakage
 
 Recommended future specs:
 
-- extend `spec/smith/guardrails/contract_spec.rb` with blocking/failure semantics around executed steps
-- extend `spec/smith/guardrails/order_spec.rb` with runtime execution ordering checks if stable seams are added
+- `spec/smith/guardrails/runtime_spec.rb`
+- extend `spec/smith/guardrails/order_spec.rb` only if additional stable seams are added
 
 ### Section 4.5 Budget Controller
 
@@ -1038,13 +1037,13 @@ Partially covered:
 - DSL is covered
 - stored session strategy / persist / inject_state formatter behavior is covered
 - subclass inheritance/override behavior is covered
-- observation masking behavior at chat runtime is not yet covered
-- injected-state replacement-on-retry is not yet covered
+- prepared-input masking behavior is covered
+- injected-state replacement on repeated preparation is covered
 - persisted key filtering in `to_state`/`from_state` is covered
 
 Recommended future specs:
 
-- extend `spec/smith/context/runtime_spec.rb` with observation-masking and retry-replacement behavior
+- extend `spec/smith/context/runtime_spec.rb` only if fuller RubyLLM call-path integration is added
 
 ### Section 4.7 Artifact Store
 
