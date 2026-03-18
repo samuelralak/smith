@@ -35,4 +35,11 @@ RSpec.describe "Smith configuration contract" do
   it "keeps trace content opt-in by default" do
     expect(Smith.config.trace_content).to be(false)
   end
+
+  it "enables structural trace fields by default" do
+    expect(Smith.config.trace_transitions).to be(true)
+    expect(Smith.config.trace_tool_calls).to be(true)
+    expect(Smith.config.trace_token_usage).to be(true)
+    expect(Smith.config.trace_cost).to be(true)
+  end
 end

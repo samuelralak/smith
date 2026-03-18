@@ -28,4 +28,15 @@ RSpec.describe "Smith events runtime contract" do
 
     expect(handle.predicate).to be(predicate)
   end
+
+  it "marks a subscription as cancelled when the handle is cancelled" do
+    typed_event = with_stubbed_class("SpecCancellableEvent", event_class)
+
+    handle = events.on(typed_event) { |_event| nil }
+    expect(handle.cancelled?).to be(false)
+
+    handle.cancel
+
+    expect(handle.cancelled?).to be(true)
+  end
 end

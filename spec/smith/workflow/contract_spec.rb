@@ -36,4 +36,48 @@ RSpec.describe "Smith::Workflow contract" do
 
     expect(klass).to be < workflow_class
   end
+
+  it "stores the documented transition metadata for execute, on_success, and on_failure" do
+    klass = with_stubbed_class("SpecTransitionMetadataWorkflow", workflow_class) do
+      initial_state :idle
+      state :ready
+
+      transition :start, from: :idle, to: :ready do
+        execute :spec_research_agent, schema: :result_schema
+        on_success :finish
+        on_failure :fail
+      end
+    end
+
+    transition = klass.instance_variable_get(:@transitions).fetch(:start)
+
+    expect(transition.name).to eq(:start)
+    expect(transition.from).to eq(:idle)
+    expect(transition.to).to eq(:ready)
+    expect(transition.agent_name).to eq(:spec_research_agent)
+    expect(transition.agent_opts).to eq(schema: :result_schema)
+    expect(transition.success_transition).to eq(:finish)
+    expect(transition.failure_transition).to eq(:fail)
+  end
+
+  it "auto-generates a default fail transition when a failed state exists" do
+    klass = with_stubbed_class("SpecAutoFailWorkflow", workflow_class) do
+      initial_state :idle
+      state :processing
+      state :failed
+
+      transition :start, from: :idle, to: :processing do
+        execute :spec_research_agent
+        on_failure :fail
+      end
+    end
+
+    transitions = klass.instance_variable_get(:@transitions)
+
+    expect(transitions).to include(:fail)
+
+    fail_transition = transitions.fetch(:fail)
+    expect(fail_transition.name).to eq(:fail)
+    expect(fail_transition.to).to eq(:failed)
+  end
 end

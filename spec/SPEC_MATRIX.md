@@ -10,18 +10,24 @@ Rule for future spec changes:
 2. If the architecture document is ambiguous, the ambiguity should be resolved in the document first or explicitly called out in the spec review.
 3. Prefer contract assertions over implementation-coupled assertions.
 
+Interpretation note:
+
+- This matrix records what the spec suite covers.
+- Coverage here means "specified by tests," not "currently implemented without failures."
+- If a spec exists and currently fails, the contract is still covered here and the failure represents a live implementation drift.
+
 ## Coverage Summary
 
 Current contract coverage exists for:
 
 - top-level namespaces and error hierarchy
-- top-level configuration surface, including content-tracing opt-in default
+- top-level configuration surface, including structural-trace defaults and content-tracing opt-in default
 - agent inheritance, DSL, and registry binding
-- workflow DSL, serialization entry points, exact state shape, run-result surface, and persisted-context filtering
+- workflow DSL, transition metadata capture, serialization entry points, exact state shape, run-result surface, and persisted-context filtering
 - workflow pattern namespaces
 - artifact namespace, top-level accessor, configured-store resolution, built-in backend entry points, and named operational methods
 - guardrail base DSL, attachment points, and built-in URL verifier namespace
-- event bus surface, filtering, scoped subscriptions, typed event schema declaration, and scoped-subscription runtime lifecycle
+- event bus surface, filtering, scoped subscriptions, typed event schema declaration, and subscription lifecycle behavior
 - budget ledger surface
 - context manager DSL, stored runtime configuration, and persisted-key serialization contract
 - tool base class, policy DSL, capability metadata declaration, built-in tool namespaces, and current approval/authorization failure policy boundary
@@ -30,14 +36,13 @@ Current contract coverage exists for:
 Important contracts from the architecture document that are not yet directly specified:
 
 - guardrail failure behavior
-- failure-transition auto-generation
 - event best-effort rescue behavior during dispatch
 - parallel branch cancellation and merge behavior
 - `MaxTransitionsExceeded` terminal state behavior beyond exception raising
 - context injection replacement-on-retry semantics
 - approval-required behavior when a host pre-dispatch hook is installed
 - artifact namespace isolation semantics
-- observability content opt-in and field-level controls
+- observability redaction, field-level controls, and runtime content-tracing policy
 
 ## File-to-Document Mapping
 
@@ -118,10 +123,15 @@ Documented contracts covered:
   - `trace_retention=`
   - `trace_tenant_isolation=`
 - `trace_content` defaults to `false` (content tracing is opt-in)
+- structural trace fields default to enabled:
+  - `trace_transitions == true`
+  - `trace_tool_calls == true`
+  - `trace_token_usage == true`
+  - `trace_cost == true`
 
 Notes:
 
-- This spec checks the documented configuration surface and opt-in content-tracing default.
+- This spec checks the documented configuration surface, structural-trace defaults, and opt-in content-tracing default.
 - It does not yet assert runtime adapter behavior beyond configuration values.
 
 ### `spec/smith/agent/contract_spec.rb`
@@ -217,10 +227,19 @@ Documented contracts covered:
   - `execute`
   - `on_success`
   - `on_failure`
+- declared transitions retain:
+  - `from`
+  - `to`
+  - `agent_name`
+  - `agent_opts`
+  - `success_transition`
+  - `failure_transition`
+- default `:fail` transition is auto-generated when a workflow declares `:failed`
 
 Notes:
 
-- This spec currently checks surface availability, not runtime transition behavior.
+- This spec checks DSL surface and declared transition metadata only.
+- The default `:fail` transition contract is covered here even if the current implementation is still failing that spec.
 - The architecture gives enough support for the DSL shape, but not yet enough detail to assert all transition side effects without over-prescribing implementation.
 
 ### `spec/smith/workflow/patterns_spec.rb`
@@ -270,7 +289,7 @@ Documented contracts covered:
 Notes:
 
 - This spec intentionally stops at entry points.
-- The architecture gives a documented hash format, but the current suite has not yet encoded the exact shape.
+- Exact state-shape coverage lives in `spec/smith/workflow/state_shape_spec.rb`.
 
 ### `spec/smith/workflow/state_shape_spec.rb`
 
@@ -431,6 +450,7 @@ Documented contracts covered:
 
 - scoped subscriptions auto-cancel on block exit
 - filtered subscriptions retain the declared predicate
+- explicit subscription cancellation marks the handle as cancelled
 
 Notes:
 
@@ -768,13 +788,10 @@ Not yet directly specified:
 
 - narrow resume semantics
 - host-owned idempotent step boundaries
-- non-serialization of agent instances
-- default `:fail` transition generation when `:failed` exists
 
 Recommended future specs:
 
 - `spec/smith/workflow/resume_spec.rb`
-- `spec/smith/workflow/failure_transition_spec.rb`
 
 ### Section 4.3 Events
 
@@ -787,7 +804,7 @@ Not yet directly specified:
 
 Recommended future specs:
 
-- `spec/smith/events/runtime_spec.rb`
+- extend `spec/smith/events/runtime_spec.rb` with dispatch rescue, successful-step scope, and ordering semantics
 
 ### Section 4.4 Guardrails
 
@@ -801,8 +818,8 @@ Currently uncovered:
 
 Recommended future specs:
 
-- `spec/smith/guardrails/contract_spec.rb`
-- `spec/smith/guardrails/ordering_spec.rb`
+- extend `spec/smith/guardrails/contract_spec.rb` with runtime attachment precedence and blocking semantics
+- extend `spec/smith/guardrails/order_spec.rb` with runtime execution ordering checks if stable seams are added
 
 ### Section 4.5 Budget Controller
 
@@ -815,7 +832,7 @@ Partially covered:
 
 Recommended future specs:
 
-- `spec/smith/budget/runtime_spec.rb`
+- add `spec/smith/budget/runtime_spec.rb`
 
 ### Section 4.6 Context Manager
 
@@ -829,7 +846,7 @@ Partially covered:
 
 Recommended future specs:
 
-- `spec/smith/context/runtime_spec.rb`
+- extend `spec/smith/context/runtime_spec.rb` with observation-masking and retry-replacement behavior
 
 ### Section 4.7 Artifact Store
 
@@ -848,7 +865,7 @@ Partially covered:
 
 Recommended future specs:
 
-- `spec/smith/artifacts/contract_spec.rb`
+- extend the current artifact specs with namespace-isolation and handoff-reference coverage
 
 ### Section 4.8 Observability
 
@@ -856,8 +873,8 @@ Partially covered:
 
 - trace namespaces are covered
 - top-level configuration surface for trace setup is covered
+- structural trace defaults are covered
 - content tracing is covered as opt-in by default
-- structural traces by default are not yet covered
 - redaction/disabling controls are not yet covered
 
 ### Section 5.1 Agent Invocation and Section 6 Tool Governance
@@ -871,10 +888,6 @@ Partially covered:
 - authorization-denied terminal behavior is covered
 - approval-without-host-hook advisory behavior is covered
 
-Recommended future specs:
-
-- `spec/smith/trace/runtime_spec.rb`
-
 ### Section 5.2 Workflow Execution
 
 Partially covered:
@@ -886,7 +899,6 @@ Partially covered:
 
 Recommended future specs:
 
-- `spec/smith/workflow/run_result_spec.rb`
 - `spec/smith/workflow/parallel_spec.rb`
 
 ### Section 5.3 State Serialization
@@ -899,7 +911,7 @@ Partially covered:
 
 Recommended future specs:
 
-- `spec/smith/workflow/state_shape_spec.rb`
+- extend the workflow serialization/state-shape specs with deeper non-serialization guarantees if explicit rejection behavior is added
 
 ### Section 5.6 Error Hierarchy and Section 6 Tool Governance
 
@@ -908,11 +920,12 @@ Partially covered:
 - error classes exist
 - tool DSL exists
 - retriable vs terminal behavior is not yet covered
-- approval metadata remains advisory without host hook is not yet covered
+- approval metadata remains advisory without host hook is covered
+- host-hook-installed approval denial behavior is not yet covered
 
 Recommended future specs:
 
-- `spec/smith/tools/failure_policy_spec.rb`
+- extend `spec/smith/tools/failure_policy_spec.rb` with host-hook-installed approval denial behavior
 
 ## Source-Backed Contracts to Protect Carefully
 
@@ -935,9 +948,9 @@ When adding specs in these areas:
 Highest-value next additions, in order:
 
 1. Guardrail ordering and failure semantics
-2. `to_state` hash shape and non-serialization guarantees
-3. `run!` result shape and `MaxTransitionsExceeded` behavior
-4. event best-effort runtime behavior
-5. advisory approval vs host-hook enforcement
-6. context injection replacement-on-retry
-7. artifact store contract
+2. event best-effort runtime behavior
+3. host-hook-installed approval denial behavior
+4. context injection replacement-on-retry
+5. artifact namespace isolation semantics
+6. observability redaction and field-level controls
+7. resume/idempotent step-boundary behavior
