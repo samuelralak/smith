@@ -5,6 +5,8 @@ require "securerandom"
 module Smith
   module Artifacts
     class Memory
+      attr_reader :namespace
+
       def initialize(namespace: nil)
         @namespace = namespace
         @store = {}
@@ -19,6 +21,8 @@ module Smith
       end
 
       def fetch(ref)
+        return nil unless owns_ref?(ref)
+
         @store[ref]
       end
 
@@ -26,7 +30,7 @@ module Smith
         return [] unless retention
 
         cutoff = Time.now.utc - retention
-        @metadata.select { |_, meta| meta[:stored_at] < cutoff }.keys
+        @metadata.select { |ref, meta| owns_ref?(ref) && meta[:stored_at] < cutoff }.keys
       end
 
       private
@@ -34,6 +38,14 @@ module Smith
       def generate_ref
         raw = SecureRandom.uuid
         @namespace ? "#{@namespace}:#{raw}" : raw
+      end
+
+      def owns_ref?(ref)
+        if @namespace
+          ref.start_with?("#{@namespace}:")
+        else
+          !ref.include?(":")
+        end
       end
     end
   end
