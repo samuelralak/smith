@@ -9,7 +9,7 @@ module Smith
         agent_class = resolve_agent_class(transition)
         output = run_guarded_step(transition, agent_class)
         complete_step(transition, output)
-      rescue Smith::Error => e
+      rescue StandardError => e
         handle_step_failure(transition, e)
         { transition: transition.name, from: transition.from, to: transition.to, error: e }
       ensure
@@ -53,9 +53,21 @@ module Smith
       def execute_parallel_step(transition)
         count = resolve_branch_count(transition)
         branches = Array.new(count) do |i|
-          proc { |_signal| { branch: i, agent: transition.agent_name, output: nil } }
+          build_branch(transition, i)
         end
         Parallel.execute(branches: branches)
+      end
+
+      def build_branch(transition, index)
+        proc do |signal|
+          raise Smith::WorkflowError, "cancelled" if signal.cancelled?
+
+          output = execute_transition_body(transition)
+
+          raise Smith::WorkflowError, "cancelled" if signal.cancelled?
+
+          { branch: index, agent: transition.agent_name, output: output }
+        end
       end
 
       def resolve_branch_count(transition)
