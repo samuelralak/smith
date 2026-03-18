@@ -20,6 +20,8 @@ module Smith
         subclass.instance_variable_set(:@context_manager_class, @context_manager_class)
       end
 
+      # State machine DSL
+
       def initial_state(name = nil)
         return @initial_state_name if name.nil?
 
@@ -37,6 +39,8 @@ module Smith
         @transitions ||= {}
         @transitions[name] = Transition.new(name, from: from, to: to, &)
       end
+
+      # Workflow configuration DSL
 
       def budget(**opts)
         return @budget_config if opts.empty?
@@ -62,6 +66,8 @@ module Smith
         @context_manager_class = klass
       end
 
+      # Construction
+
       def from_state(hash)
         workflow = allocate
         workflow.send(:restore_state, hash)
@@ -78,8 +84,12 @@ module Smith
       end
     end
 
+    # Instance
+
+    attr_reader :state
+
     def initialize(context: {})
-      @state = self.class.send(:instance_variable_get, :@initial_state_name)
+      @state = self.class.initial_state
       @context = context
       @budget_consumed = {}
       @step_count = 0
@@ -106,8 +116,6 @@ module Smith
         total_tokens: 0
       )
     end
-
-    attr_reader :state
 
     private
 
