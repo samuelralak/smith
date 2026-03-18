@@ -44,6 +44,8 @@ require_relative "smith/errors"
 # Event system (depends on Types)
 require_relative "smith/event"
 require_relative "smith/events"
+require_relative "smith/events/subscription"
+require_relative "smith/events/bus"
 
 # Budget (depends on Errors)
 require_relative "smith/budget"
