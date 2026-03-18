@@ -106,11 +106,11 @@ Architecture basis:
 Why more implementation is required:
 
 - The architecture defines observation masking at chat runtime and injected-state replacement on retry.
-- Current code now exposes a Smith-owned prepared-input seam that performs injection and masking before execution, and non-parallel workflow execution now uses a real RubyLLM `.complete` path. `.ask` selection and fuller call-path richness are still incomplete.
+- Current code now exposes a Smith-owned prepared-input seam that performs injection and masking before execution, and workflow execution correctly uses a real RubyLLM `.complete` path over prepared message sets. Broader call-path richness beyond the current workflow-driven `.complete` model is still incomplete.
 
 What the implementation agent needs to add:
 
-- `.ask` selection and fuller call-path richness beyond the current `.complete` seam
+- any broader call-path richness beyond the current workflow-driven `.complete` seam
 
 ### 5. Host-installed approval denial path
 
@@ -697,7 +697,7 @@ Documented contracts covered:
 Notes:
 
 - This spec covers stored configuration, formatter behavior, prepared-input masking, message persistence, replacement of injected state on repeated preparation, and the prepared-input seam consumed by workflow execution.
-- It does not yet assert full RubyLLM `.ask` / `.complete` integration.
+- It does not yet assert any broader call-path richness beyond the current workflow-driven `.complete` integration.
 
 ### `spec/smith/tools/contract_spec.rb`
 
@@ -1075,7 +1075,7 @@ Partially covered:
 
 Recommended future specs:
 
-- extend `spec/smith/context/runtime_spec.rb` only if fuller RubyLLM call-path integration is added
+- extend `spec/smith/context/runtime_spec.rb` only if broader workflow call-path richness is added
 
 ### Section 4.7 Artifact Store
 
