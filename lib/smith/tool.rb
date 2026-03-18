@@ -43,11 +43,18 @@ module Smith
 
         @before_execute = block
       end
+
+      def guardrails(klass = nil)
+        return @guardrails_class if klass.nil?
+
+        @guardrails_class = klass
+      end
     end
 
     def execute(**kwargs)
       run_before_execute_hook!(kwargs)
       check_authorization!(kwargs)
+      run_tool_guardrails!(kwargs)
       perform(**kwargs)
     end
 
@@ -66,6 +73,13 @@ module Smith
 
       context = kwargs[:context]
       raise ToolPolicyDenied unless authorizer.call(context)
+    end
+
+    def run_tool_guardrails!(kwargs)
+      guardrails_class = self.class.guardrails
+      return unless guardrails_class
+
+      Guardrails::Runner.run_tool(guardrails_class, name.to_sym, kwargs)
     end
 
     def perform(**kwargs)
