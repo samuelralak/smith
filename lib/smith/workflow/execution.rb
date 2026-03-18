@@ -74,41 +74,34 @@ module Smith
       end
 
       def build_branch(transition, index)
+        branch_ledger = @ledger
         proc do |signal|
-          raise Smith::WorkflowError, "cancelled" if signal.cancelled?
+          reserved = false
+          begin
+            raise Smith::WorkflowError, "cancelled" if signal.cancelled?
 
-          output = execute_transition_body(transition)
+            if branch_ledger
+              branch_ledger.reserve!(:parallel_branches, 1)
+              reserved = true
+            end
 
-          raise Smith::WorkflowError, "cancelled" if signal.cancelled?
+            output = execute_transition_body(transition)
 
-          { branch: index, agent: transition.agent_name, output: output }
+            raise Smith::WorkflowError, "cancelled" if signal.cancelled?
+
+            branch_ledger&.reconcile!(:parallel_branches, 1, 1) if reserved
+            reserved = false
+
+            { branch: index, agent: transition.agent_name, output: output }
+          ensure
+            branch_ledger&.release!(:parallel_branches, 1) if reserved
+          end
         end
       end
 
       def resolve_branch_count(transition)
         count = transition.agent_opts[:count]
         count.respond_to?(:call) ? count.call(@context) : (count || 1)
-      end
-
-      def apply_tool_guardrails(agent_class)
-        sources = [self.class.guardrails, agent_class&.guardrails].compact
-        Tool.current_guardrails = sources.empty? ? nil : sources
-      end
-
-      def run_input_guardrails(agent_class)
-        wf_guardrails = self.class.guardrails
-        Guardrails::Runner.run_inputs(wf_guardrails, @context) if wf_guardrails
-
-        agent_guardrails = agent_class&.guardrails
-        Guardrails::Runner.run_inputs(agent_guardrails, @context) if agent_guardrails
-      end
-
-      def run_output_guardrails(output, agent_class)
-        wf_guardrails = self.class.guardrails
-        Guardrails::Runner.run_outputs(wf_guardrails, output) if wf_guardrails
-
-        agent_guardrails = agent_class&.guardrails
-        Guardrails::Runner.run_outputs(agent_guardrails, output) if agent_guardrails
       end
 
       def handle_step_failure(transition, _error)

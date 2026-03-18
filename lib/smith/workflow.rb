@@ -6,13 +6,14 @@ module Smith
   class Workflow
     include DSL
     include Persistence
+    include GuardrailIntegration
     include Execution
 
     DEFAULT_MAX_TRANSITIONS = 100
 
     RunResult = Struct.new(:state, :output, :steps, :total_cost, :total_tokens)
 
-    attr_reader :state, :last_prepared_input, :session_messages
+    attr_reader :state, :last_prepared_input, :session_messages, :ledger
 
     def initialize(context: {})
       @state = self.class.initial_state
@@ -20,6 +21,7 @@ module Smith
       @budget_consumed = {}
       @step_count = 0
       @next_transition_name = nil
+      @ledger = build_ledger
       @created_at = Time.now.utc.iso8601
       @updated_at = @created_at
     end
@@ -56,6 +58,13 @@ module Smith
 
     def terminal?
       self.class.transitions_from(@state).empty? && @next_transition_name.nil?
+    end
+
+    def build_ledger
+      config = self.class.budget
+      return nil unless config
+
+      Budget::Ledger.new(limits: config)
     end
 
     def resolve_transition
