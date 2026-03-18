@@ -62,11 +62,11 @@ module Smith
         end
 
         def transitions_from(state)
-          all = (@transitions || {}).values
-          exact = all.select { |t| t.from == state }
-          return exact unless exact.empty?
+          (@transitions || {}).values.select { |t| t.from == state }
+        end
 
-          all.select { |t| t.from.nil? }
+        def find_transition(name)
+          (@transitions || {})[name]
         end
 
         def from_state(hash)
