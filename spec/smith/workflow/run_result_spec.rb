@@ -145,4 +145,66 @@ RSpec.describe "Smith::Workflow run result contract" do
     expect(seen_schema).to eq([schema_class])
     expect(seen_messages).to eq([])
   end
+
+  it "allows after_completion to hand off an artifact ref through workflow output using the configured backend" do
+    backend_stores = []
+    original_store = Smith.config.artifact_store
+
+    configured_backend = Object.new
+    configured_backend.define_singleton_method(:store) do |data, content_type: "application/octet-stream", execution_namespace: nil|
+      backend_stores << { data: data, content_type: content_type, execution_namespace: execution_namespace }
+      "backend-ref-#{backend_stores.length}"
+    end
+    configured_backend.define_singleton_method(:fetch) { |_ref| nil }
+    configured_backend.define_singleton_method(:expired) { |retention: nil, execution_namespace: nil| [] }
+
+    Smith.configure do |config|
+      config.artifact_store = configured_backend
+    end
+
+    agent = with_stubbed_class("SpecArtifactHandoffAgent", agent_class) do
+      register_as :spec_artifact_handoff_agent
+      model "gpt-5-mini"
+
+      define_method(:after_completion) do |result, _context|
+        ref = Smith.artifacts.store(result[:full_report], content_type: "application/json")
+        { report_ref: ref, summary: result[:summary] }
+      end
+    end
+
+    fake_chat = Object.new
+    fake_chat.define_singleton_method(:add_message) { |_message| nil }
+    fake_chat.define_singleton_method(:complete) do
+      Struct.new(:content).new({ full_report: '{"report":"full"}', summary: "brief" })
+    end
+
+    allow(agent).to receive(:chat).and_return(fake_chat)
+
+    workflow = with_stubbed_class("SpecArtifactHandoffWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_artifact_handoff_agent
+      end
+    end.new
+
+    result = workflow.run!
+    execution_namespace = workflow.to_state[:execution_namespace]
+
+    expect(result.state).to eq(:done)
+    expect(result.output).to eq(
+      report_ref: "#{execution_namespace}:backend-ref-1",
+      summary: "brief"
+    )
+    expect(result.steps.first[:output]).to eq(result.output)
+    expect(backend_stores.length).to eq(1)
+    expect(backend_stores.first[:data]).to eq('{"report":"full"}')
+    expect(backend_stores.first[:content_type]).to eq("application/json")
+    expect(backend_stores.first[:execution_namespace]).to eq(execution_namespace)
+  ensure
+    Smith.configure do |config|
+      config.artifact_store = original_store
+    end
+  end
 end

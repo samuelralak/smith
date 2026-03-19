@@ -13,11 +13,12 @@ module Smith
         @metadata = {}
       end
 
-      def store(data, content_type: "application/octet-stream")
+      def store(data, content_type: "application/octet-stream", execution_namespace: nil)
         enforce_tenant_isolation!
         ref = generate_ref(data)
         @store[ref] = data
         @metadata[ref] ||= { content_type: content_type, stored_at: Time.now.utc }
+        @metadata[ref][:execution_namespace] = execution_namespace if execution_namespace
         ref
       end
 
@@ -28,12 +29,16 @@ module Smith
         @store[ref]
       end
 
-      def expired(retention: nil)
+      def expired(retention: nil, execution_namespace: nil)
         effective_retention = retention || Smith.config.artifact_retention
         return [] unless effective_retention
 
         cutoff = Time.now.utc - effective_retention
-        @metadata.select { |ref, meta| owns_ref?(ref) && meta[:stored_at] < cutoff }.keys
+        @metadata.select do |ref, meta|
+          owns_ref?(ref) &&
+            meta[:stored_at] < cutoff &&
+            (execution_namespace.nil? || meta[:execution_namespace] == execution_namespace)
+        end.keys
       end
 
       private
