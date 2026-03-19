@@ -1,18 +1,18 @@
 # frozen_string_literal: true
 
-require "digest"
-
 module Smith
   module Artifacts
     class ScopedStore
       def initialize(backend:, namespace:)
         @backend = backend
         @namespace = namespace
+        @owned_refs = []
       end
 
       def store(data, content_type: "application/octet-stream")
-        ref = @backend.store(data, content_type: content_type)
-        "#{@namespace}:#{ref}"
+        inner_ref = @backend.store(data, content_type: content_type)
+        @owned_refs << inner_ref
+        "#{@namespace}:#{inner_ref}"
       end
 
       def fetch(ref)
@@ -23,7 +23,9 @@ module Smith
       end
 
       def expired(retention: nil)
-        @backend.expired(retention: retention).map { |ref| "#{@namespace}:#{ref}" }
+        backend_expired = @backend.expired(retention: retention)
+        owned_expired = backend_expired & @owned_refs
+        owned_expired.map { |ref| "#{@namespace}:#{ref}" }
       end
     end
   end
