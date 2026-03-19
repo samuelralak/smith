@@ -137,11 +137,11 @@ Architecture basis:
 Why more implementation is required:
 
 - The architecture requires artifact refs to be namespaced to execution/tenant context.
-- Current memory-store behavior now supports namespace-prefixed refs, namespace-scoped content-addressed refs, namespace-owned fetch and expired-query behavior, retention fallback from config, and tenant-isolation namespace enforcement in the memory backend. Artifact handoff references remain the main uncovered artifact behavior.
+- Current runtime now supports namespace-prefixed refs, namespace-scoped content-addressed refs, namespace-owned fetch and expired-query behavior in the memory backend, retention fallback, tenant-isolation namespace enforcement, configured-backend artifact handoff refs, and stable execution namespaces across serialization. Remaining artifact gaps are broader host-level orchestration concerns rather than missing store or handoff-runtime seams.
 
 What the implementation agent needs to add:
 
-- artifact handoff references
+- broader host-level artifact orchestration only if the architecture is extended further
 
 ### 7. Trace runtime policy
 
@@ -990,6 +990,7 @@ Documented contracts covered:
 - storing returns an opaque ref
 - fetching returns stored content
 - expired refs are discoverable through `expired(retention:)`
+- execution-scoped backend writes and expiry filtering are supported through the scoped artifact-store interface
 - fresh refs are not reported as expired
 - separate payloads produce distinct opaque refs
 - separate store instances do not share stored data
@@ -999,7 +1000,7 @@ Documented contracts covered:
 Notes:
 
 - This spec covers the in-memory backend only.
-- It does not yet assert execution/tenant-driven namespace integration or same-namespace fetch enforcement.
+- The artifact contract spec also covers the execution-scoped wrapper/backend interface used for namespaced handoff and expiry filtering.
 
 ## Uncovered Contracts by Architecture Section
 
@@ -1099,11 +1100,14 @@ Partially covered:
 - namespace-scoped expired-query behavior is covered
 - namespace-scoped content addressing is covered in the memory backend
 - retention fallback and tenant-isolation namespace enforcement are covered in the memory backend
-- artifact handoff references are not yet covered
+- scoped wrapper expired queries are covered for shared-backend execution ownership
+- artifact handoff references are covered at the workflow output boundary
+- configured artifact backend preservation during handoff is covered
+- execution-namespace stability across serialization is covered
 
 Recommended future specs:
 
-- extend the current artifact specs with namespace-isolation and handoff-reference coverage
+- extend the current artifact specs if broader host-level artifact handoff orchestration is added
 
 ### Section 4.8 Observability
 
