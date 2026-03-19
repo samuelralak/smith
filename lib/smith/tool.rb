@@ -57,8 +57,12 @@ module Smith
       run_before_execute_hook!(kwargs)
       check_authorization!(kwargs)
       run_tool_guardrails!(kwargs)
+
+      start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       result = perform(**kwargs)
-      Smith::Trace.record(type: :tool_call, data: { tool: name })
+      duration = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
+
+      emit_tool_trace(kwargs, result, duration)
       result
     end
 
@@ -86,6 +90,14 @@ module Smith
       Array(guardrails_classes).each do |guardrails_class|
         Guardrails::Runner.run_tool(guardrails_class, name.to_sym, kwargs)
       end
+    end
+
+    def emit_tool_trace(kwargs, result, duration)
+      Smith::Trace.record(
+        type: :tool_call,
+        data: { tool: name, args: kwargs, result: result, duration: duration },
+        sensitivity: self.class.capabilities&.dig(:sensitivity) || :low
+      )
     end
 
     def perform(**kwargs)

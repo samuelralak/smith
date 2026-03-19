@@ -10,7 +10,7 @@ module Smith
         cost: :trace_cost
       }.freeze
 
-      CONTENT_KEYS = %i[content prompt response].freeze
+      CONTENT_KEYS = %i[content prompt response args result].freeze
 
       attr_reader :traces
 

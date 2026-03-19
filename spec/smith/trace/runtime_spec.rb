@@ -272,12 +272,10 @@ RSpec.describe "Smith tracing runtime behavior" do
     end
 
     expect(result).to eq({ context: {}, query: "status" })
-    expect(adapter.traces).to include(
-      {
-        type: :tool_call,
-        data: { tool: traced_tool.new.name }
-      }
-    )
+    tool_traces = adapter.traces.select { |t| t[:type] == :tool_call }
+    expect(tool_traces.length).to eq(1)
+    expect(tool_traces.first[:data][:tool]).to eq(traced_tool.new.name)
+    expect(tool_traces.first[:data]).to have_key(:duration)
   end
 
   it "respects transition trace toggles during workflow runtime emission" do
