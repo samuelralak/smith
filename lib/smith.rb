@@ -30,11 +30,19 @@ module Smith
   setting :logger, default: nil
 
   def self.artifacts
-    config.artifact_store || (@_default_artifacts ||= Artifacts::Memory.new)
+    scoped_artifacts || config.artifact_store || (@_default_artifacts ||= Artifacts::Memory.new)
   end
 
   def self.artifacts=(store)
     config.artifact_store = store
+  end
+
+  def self.scoped_artifacts
+    Thread.current[:smith_scoped_artifacts]
+  end
+
+  def self.scoped_artifacts=(store)
+    Thread.current[:smith_scoped_artifacts] = store
   end
 end
 
@@ -92,6 +100,7 @@ require_relative "smith/workflow/persistence"
 require_relative "smith/workflow/guardrail_integration"
 require_relative "smith/workflow/budget_integration"
 require_relative "smith/workflow/event_integration"
+require_relative "smith/workflow/artifact_integration"
 require_relative "smith/workflow/execution"
 require_relative "smith/workflow"
 require_relative "smith/workflow/pipeline"

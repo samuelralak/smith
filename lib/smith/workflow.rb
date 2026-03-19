@@ -9,6 +9,7 @@ module Smith
     include GuardrailIntegration
     include BudgetIntegration
     include EventIntegration
+    include ArtifactIntegration
     include Execution
 
     DEFAULT_MAX_TRANSITIONS = 100

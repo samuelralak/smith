@@ -9,13 +9,14 @@ module Smith
 
       def execute_step(transition)
         agent_class = resolve_agent_class(transition)
-        output = run_guarded_step(transition, agent_class)
+        output = with_scoped_artifacts { run_guarded_step(transition, agent_class) }
         complete_step(transition, output)
       rescue StandardError => e
         handle_step_failure(transition, e)
         { transition: transition.name, from: transition.from, to: transition.to, error: e }
       ensure
         Tool.current_guardrails = nil
+        Smith.scoped_artifacts = nil
       end
 
       def run_guarded_step(transition, agent_class)
@@ -39,17 +40,6 @@ module Smith
         @next_transition_name = transition.success_transition
         emit_step_completed(transition, output)
         { transition: transition.name, from: transition.from, to: transition.to, output: output }
-      end
-
-      def build_session
-        manager = self.class.context_manager
-        return nil unless manager
-
-        Context::Session.new(
-          messages: @session_messages ||= [],
-          context_manager: manager,
-          persisted_context: @context
-        )
       end
 
       def resolve_agent_class(transition)
@@ -86,34 +76,46 @@ module Smith
 
       def execute_parallel_step(transition, prepared_input: nil)
         guardrail_sources = Tool.current_guardrails
+        scoped_store = propagate_scoped_artifacts
         count = Parallel.resolve_branch_count(transition, @context)
         branches = Array.new(count) do |i|
-          build_branch(transition, i, prepared_input: prepared_input, guardrail_sources: guardrail_sources)
+          build_branch(transition, i,
+                       prepared_input: prepared_input,
+                       guardrail_sources: guardrail_sources,
+                       scoped_store: scoped_store)
         end
         Parallel.execute(branches: branches)
       end
 
-      def build_branch(transition, index, prepared_input: nil, guardrail_sources: nil)
+      def build_branch(transition, index, prepared_input: nil, guardrail_sources: nil, scoped_store: nil)
         branch_ledger = @ledger
         proc do |signal|
-          Tool.current_guardrails = guardrail_sources
+          setup_branch_thread(guardrail_sources, scoped_store)
           reserved = reserve_branch_budget(branch_ledger)
           begin
             raise Smith::WorkflowError, "cancelled" if signal.cancelled?
 
             output = execute_transition_body(transition, prepared_input: prepared_input)
-
             raise Smith::WorkflowError, "cancelled" if signal.cancelled?
 
             reconcile_branch_budget(branch_ledger, reserved)
             reserved = nil
-
             { branch: index, agent: transition.agent_name, output: output }
           ensure
             release_branch_budget(branch_ledger, reserved) if reserved
-            Tool.current_guardrails = nil
+            teardown_branch_thread
           end
         end
+      end
+
+      def setup_branch_thread(guardrail_sources, scoped_store)
+        Tool.current_guardrails = guardrail_sources
+        Smith.scoped_artifacts = scoped_store
+      end
+
+      def teardown_branch_thread
+        Tool.current_guardrails = nil
+        Smith.scoped_artifacts = nil
       end
 
       def handle_step_failure(transition, _error)
