@@ -278,6 +278,86 @@ RSpec.describe "Smith tracing runtime behavior" do
     expect(tool_traces.first[:data]).to have_key(:duration)
   end
 
+  it "keeps tool traces structural-only by default regardless of low sensitivity" do
+    adapter = memory_trace_class.new
+
+    traced_tool = with_stubbed_class("SpecLowSensitivityTraceTool", tool_class) do
+      capabilities do
+        sensitivity :low
+      end
+
+      def perform(**kwargs)
+        { ok: "yes" }
+      end
+    end
+
+    with_trace_adapter(adapter) do
+      traced_tool.new.execute(context: { user: :ok }, query: "status")
+    end
+
+    tool_trace = adapter.traces.find { |trace| trace[:type] == :tool_call }
+    expect(tool_trace[:data][:tool]).to eq(traced_tool.new.name)
+    expect(tool_trace[:data]).to have_key(:duration)
+    expect(tool_trace[:data]).not_to have_key(:args)
+    expect(tool_trace[:data]).not_to have_key(:result)
+  end
+
+  it "redacts tool args and result for medium sensitivity when content tracing is enabled" do
+    adapter = memory_trace_class.new
+    original_value = Smith.config.trace_content
+
+    traced_tool = with_stubbed_class("SpecMediumSensitivityTraceTool", tool_class) do
+      capabilities do
+        sensitivity :medium
+      end
+
+      def perform(**kwargs)
+        { result: "sensitive" }
+      end
+    end
+
+    Smith.configure { |config| config.trace_content = true }
+
+    with_trace_adapter(adapter) do
+      traced_tool.new.execute(context: { user: :ok }, query: "status")
+    end
+
+    tool_trace = adapter.traces.find { |trace| trace[:type] == :tool_call }
+    expect(tool_trace[:data][:tool]).to eq(traced_tool.new.name)
+    expect(tool_trace[:data][:args]).to eq(context: { user: :ok }, query: "[REDACTED]")
+    expect(tool_trace[:data][:result]).to eq(result: "[REDACTED]")
+  ensure
+    Smith.configure { |config| config.trace_content = original_value }
+  end
+
+  it "suppresses tool args and result for high sensitivity even when content tracing is enabled" do
+    adapter = memory_trace_class.new
+    original_value = Smith.config.trace_content
+
+    traced_tool = with_stubbed_class("SpecHighSensitivityTraceTool", tool_class) do
+      capabilities do
+        sensitivity :high
+      end
+
+      def perform(**kwargs)
+        { result: "sensitive" }
+      end
+    end
+
+    Smith.configure { |config| config.trace_content = true }
+
+    with_trace_adapter(adapter) do
+      traced_tool.new.execute(context: { user: :ok }, query: "status")
+    end
+
+    tool_trace = adapter.traces.find { |trace| trace[:type] == :tool_call }
+    expect(tool_trace[:data][:tool]).to eq(traced_tool.new.name)
+    expect(tool_trace[:data]).not_to have_key(:args)
+    expect(tool_trace[:data]).not_to have_key(:result)
+  ensure
+    Smith.configure { |config| config.trace_content = original_value }
+  end
+
   it "respects transition trace toggles during workflow runtime emission" do
     adapter = memory_trace_class.new
     original_value = Smith.config.trace_transitions

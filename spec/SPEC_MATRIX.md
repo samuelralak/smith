@@ -764,7 +764,9 @@ Documented contracts covered:
 Notes:
 
 - This spec only checks that the metadata can be declared in the documented shape.
-- It does not yet assert policy effects derived from those annotations.
+- Policy effects are now partially covered elsewhere:
+  - `sensitivity` now affects tool trace behavior
+  - `privilege`, `network`, and `data_volume` effects are still not covered
 
 ### `spec/smith/tools/builtins_spec.rb`
 
@@ -1142,7 +1144,10 @@ Partially covered:
 - runtime `output_schema` participation in workflow agent execution is covered
 - attached tool-guardrail visibility is covered at the workflow boundary, including parallel branch threads
 - retriable `Smith::ToolGuardrailFailed` is covered at the workflow boundary for both workflow-attached and agent-attached guardrails, including the named `"rate limit"` and `"malformed args"` variants
-- category/capability metadata policy effects are not yet covered
+- capability metadata policy effects are partially covered:
+  - `approval` advisory behavior is covered
+  - `sensitivity`-driven tool trace behavior is covered
+  - `privilege`, `network`, and `data_volume` policy effects are not yet covered
 
 ### Section 5.2 Workflow Execution
 
