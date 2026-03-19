@@ -1117,7 +1117,10 @@ Partially covered:
 - top-level configuration surface for trace setup is covered
 - structural trace defaults are covered
 - content tracing is covered as opt-in by default
-- memory-adapter redaction behavior is covered
+- memory-adapter filtering behavior is covered
+- built-in logger adapter runtime behavior is covered
+- built-in OpenTelemetry adapter runtime behavior is covered
+- OpenTelemetry graceful degradation when the dependency is unavailable is covered
 - structural trace-type disabling is covered
 - runtime transition trace emission is covered
 - runtime tool-call trace emission is covered

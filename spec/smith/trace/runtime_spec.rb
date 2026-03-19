@@ -2,6 +2,8 @@
 
 RSpec.describe "Smith tracing runtime behavior" do
   let(:memory_trace_class) { require_const("Smith::Trace::Memory") }
+  let(:logger_trace_class) { require_const("Smith::Trace::Logger") }
+  let(:open_telemetry_trace_class) { require_const("Smith::Trace::OpenTelemetry") }
   let(:tool_class) { require_const("Smith::Tool") }
   let(:workflow_class) { require_const("Smith::Workflow") }
 
@@ -23,6 +25,15 @@ RSpec.describe "Smith tracing runtime behavior" do
     yield
   ensure
     Smith.configure { |config| config.trace_fields = original_fields }
+  end
+
+  def with_configured_logger(logger)
+    original_logger = Smith.config.logger
+
+    Smith.configure { |config| config.logger = logger }
+    yield
+  ensure
+    Smith.configure { |config| config.logger = original_logger }
   end
 
   it "records structural trace data by default while omitting content fields" do
@@ -191,6 +202,61 @@ RSpec.describe "Smith tracing runtime behavior" do
     end
   end
 
+  it "records runtime-emitted traces through the built-in logger adapter class" do
+    observed = []
+    logger = Object.new
+    logger.define_singleton_method(:info) do |message|
+      observed << message
+    end
+
+    workflow = with_stubbed_class("SpecTraceLoggerAdapterWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done
+    end.new
+
+    with_configured_logger(logger) do
+      with_trace_adapter(logger_trace_class) do
+        result = workflow.run!
+        expect(result.state).to eq(:done)
+      end
+    end
+
+    expect(observed).to eq([
+                             "[Smith::Trace] transition: #{{
+                               transition: :finish,
+                               from: :idle,
+                               to: :done
+                             }.inspect}"
+                           ])
+  end
+
+  it "applies content filtering in the built-in logger adapter output" do
+    observed = []
+    logger = Object.new
+    original_value = Smith.config.trace_content
+
+    logger.define_singleton_method(:info) do |message|
+      observed << message
+    end
+
+    Smith.configure { |config| config.trace_content = :redacted }
+
+    with_configured_logger(logger) do
+      logger_trace_class.new.record(type: :tool_call, data: { tool: "search", content: "secret" })
+    end
+
+    expect(observed).to eq([
+                             "[Smith::Trace] tool_call: #{{
+                               tool: "[REDACTED]",
+                               content: "[REDACTED]"
+                             }.inspect}"
+                           ])
+  ensure
+    Smith.configure { |config| config.trace_content = original_value }
+  end
+
   it "emits a tool-call trace after tool execution" do
     adapter = memory_trace_class.new
 
@@ -278,5 +344,81 @@ RSpec.describe "Smith tracing runtime behavior" do
     end.not_to raise_error
 
     expect(result).to eq("ok")
+  end
+
+  it "records traces through the built-in OpenTelemetry adapter when the dependency surface is available" do
+    span = Object.new
+    observed_attributes = []
+    span.define_singleton_method(:set_attribute) do |key, value|
+      observed_attributes << [key, value]
+    end
+
+    tracer = Object.new
+    observed_span_names = []
+    tracer.define_singleton_method(:in_span) do |name, &block|
+      observed_span_names << name
+      block.call(span)
+    end
+
+    provider = Object.new
+    provider.define_singleton_method(:tracer) do |name, version|
+      tracer
+    end
+
+    stub_const("OpenTelemetry", Module.new)
+    allow(OpenTelemetry).to receive(:tracer_provider).and_return(provider)
+    allow_any_instance_of(open_telemetry_trace_class).to receive(:require)
+      .with("opentelemetry-api").and_return(true)
+
+    workflow = with_stubbed_class("SpecTraceOpenTelemetryWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done
+    end.new
+
+    with_trace_adapter(open_telemetry_trace_class) do
+      result = workflow.run!
+      expect(result.state).to eq(:done)
+    end
+
+    expect(observed_span_names).to eq(["smith.transition"])
+    expect(observed_attributes).to contain_exactly(
+      ["smith.transition", "finish"],
+      ["smith.from", "idle"],
+      ["smith.to", "done"]
+    )
+  end
+
+  it "degrades safely when the OpenTelemetry dependency is unavailable" do
+    observed_warnings = []
+    logger = Object.new
+    logger.define_singleton_method(:warn) do |message|
+      observed_warnings << message
+    end
+
+    allow_any_instance_of(open_telemetry_trace_class).to receive(:require)
+      .with("opentelemetry-api").and_raise(LoadError)
+
+    workflow = with_stubbed_class("SpecTraceOpenTelemetryMissingDependencyWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done
+    end.new
+
+    expect do
+      with_configured_logger(logger) do
+        with_trace_adapter(open_telemetry_trace_class) do
+          result = workflow.run!
+          expect(result.state).to eq(:done)
+        end
+      end
+    end.not_to raise_error
+
+    expect(observed_warnings).to eq([
+                                      "Smith::Trace::OpenTelemetry requires the opentelemetry-api gem. " \
+                                      "Add it to your Gemfile to enable OpenTelemetry tracing."
+                                    ])
   end
 end
