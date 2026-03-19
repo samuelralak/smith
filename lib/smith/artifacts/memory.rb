@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "securerandom"
+require "digest"
 
 module Smith
   module Artifacts
@@ -14,30 +14,33 @@ module Smith
       end
 
       def store(data, content_type: "application/octet-stream")
-        ref = generate_ref
+        enforce_tenant_isolation!
+        ref = generate_ref(data)
         @store[ref] = data
-        @metadata[ref] = { content_type: content_type, stored_at: Time.now.utc }
+        @metadata[ref] ||= { content_type: content_type, stored_at: Time.now.utc }
         ref
       end
 
       def fetch(ref)
+        enforce_tenant_isolation!
         return nil unless owns_ref?(ref)
 
         @store[ref]
       end
 
       def expired(retention: nil)
-        return [] unless retention
+        effective_retention = retention || Smith.config.artifact_retention
+        return [] unless effective_retention
 
-        cutoff = Time.now.utc - retention
+        cutoff = Time.now.utc - effective_retention
         @metadata.select { |ref, meta| owns_ref?(ref) && meta[:stored_at] < cutoff }.keys
       end
 
       private
 
-      def generate_ref
-        raw = SecureRandom.uuid
-        @namespace ? "#{@namespace}:#{raw}" : raw
+      def generate_ref(data)
+        content_hash = Digest::SHA256.hexdigest(data.to_s)
+        @namespace ? "#{@namespace}:#{content_hash}" : content_hash
       end
 
       def owns_ref?(ref)
@@ -46,6 +49,12 @@ module Smith
         else
           !ref.include?(":")
         end
+      end
+
+      def enforce_tenant_isolation!
+        return unless Smith.config.artifact_tenant_isolation
+
+        raise Smith::Error, "artifact_tenant_isolation requires a namespace" unless @namespace
       end
     end
   end
