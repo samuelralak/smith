@@ -62,6 +62,24 @@ RSpec.describe "Smith::Tool failure policy contract" do
     end.to raise_error(policy_denied, "approval required")
   end
 
+  it "raises ToolPolicyDenied when privilege :elevated is missing a user context" do
+    policy_denied = require_const("Smith::ToolPolicyDenied")
+
+    tool = with_stubbed_class("SpecPrivilegeDeniedTool", tool_class) do
+      capabilities do
+        privilege :elevated
+      end
+
+      def perform(**_kwargs)
+        raise "perform should not run"
+      end
+    end.new
+
+    expect do
+      tool.execute(context: { role: :elevated }, query: "test")
+    end.to raise_error(policy_denied, "privilege requires context[:user]")
+  end
+
   it "raises ToolGuardrailFailed and blocks perform when an attached tool guardrail rejects the call" do
     observed_perform = []
 

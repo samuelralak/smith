@@ -766,7 +766,8 @@ Notes:
 - This spec only checks that the metadata can be declared in the documented shape.
 - Policy effects are now partially covered elsewhere:
   - `sensitivity` now affects tool trace behavior
-  - `privilege`, `network`, and `data_volume` effects are still not covered
+  - `privilege` now affects baseline tool policy gating
+  - `network` and `data_volume` effects are still not covered
 
 ### `spec/smith/tools/builtins_spec.rb`
 
@@ -1147,7 +1148,8 @@ Partially covered:
 - capability metadata policy effects are partially covered:
   - `approval` advisory behavior is covered
   - `sensitivity`-driven tool trace behavior is covered
-  - `privilege`, `network`, and `data_volume` policy effects are not yet covered
+  - `privilege` baseline gate behavior is covered
+  - `network` and `data_volume` policy effects are not yet covered
 
 ### Section 5.2 Workflow Execution
 
