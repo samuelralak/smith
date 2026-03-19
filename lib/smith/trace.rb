@@ -8,7 +8,7 @@ module Smith
       adapter = resolve_adapter
       return unless adapter
 
-      filtered = apply_sensitivity(data, sensitivity)
+      filtered = apply_content_policy(data, sensitivity)
       filtered = filter_fields(type, filtered)
       adapter.record(type: type, data: filtered)
     rescue StandardError => e
@@ -29,6 +29,17 @@ module Smith
 
     def self.reset!
       @adapter_instances = nil
+    end
+
+    def self.apply_content_policy(data, sensitivity)
+      case Smith.config.trace_content
+      when true
+        apply_sensitivity(data, sensitivity)
+      when :redacted
+        apply_sensitivity(redact_sensitive_keys(data), sensitivity)
+      else
+        data.except(*SENSITIVITY_CONTENT_KEYS)
+      end
     end
 
     def self.apply_sensitivity(data, sensitivity)
