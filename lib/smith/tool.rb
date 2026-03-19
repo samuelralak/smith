@@ -55,6 +55,7 @@ module Smith
 
     def execute(**kwargs)
       run_before_execute_hook!(kwargs)
+      check_privilege!(kwargs)
       check_authorization!(kwargs)
       run_tool_guardrails!(kwargs)
 
@@ -73,6 +74,29 @@ module Smith
       return unless hook
 
       hook.call(self, kwargs)
+    end
+
+    def check_privilege!(kwargs)
+      privilege = self.class.capabilities&.dig(:privilege)
+      return if privilege.nil? || privilege == :none
+
+      context = kwargs[:context] || {}
+      enforce_privilege!(privilege, context)
+    end
+
+    def enforce_privilege!(privilege, context)
+      require_authenticated!(context) if %i[authenticated elevated].include?(privilege)
+      require_elevated!(context) if privilege == :elevated
+    end
+
+    def require_authenticated!(context)
+      raise ToolPolicyDenied, "privilege requires context[:user]" unless context[:user]
+    end
+
+    def require_elevated!(context)
+      return if context[:role] == :elevated
+
+      raise ToolPolicyDenied, "privilege :elevated requires context[:role] == :elevated"
     end
 
     def check_authorization!(kwargs)
