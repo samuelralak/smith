@@ -12,7 +12,7 @@ RSpec.describe "Smith::Workflow state serialization shape" do
 
     state = workflow.to_state
 
-    expect(state.keys).to eq(%i[class state context budget_consumed step_count created_at updated_at])
+    expect(state.keys).to eq(%i[class state context budget_consumed step_count execution_namespace created_at updated_at])
     expect(state[:class]).to eq("SpecStateWorkflow")
     expect(state[:state]).to eq(:idle)
     expect(state[:context]).to eq(branch_count: 6, metadata: { topic: "history" })

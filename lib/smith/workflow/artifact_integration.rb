@@ -1,17 +1,20 @@
 # frozen_string_literal: true
 
+require "securerandom"
+
 module Smith
   class Workflow
     module ArtifactIntegration
       private
 
       def with_scoped_artifacts
-        Smith.scoped_artifacts = Artifacts::Memory.new(namespace: execution_namespace)
+        backend = Smith.config.artifact_store || Smith.artifacts
+        Smith.scoped_artifacts = Artifacts::ScopedStore.new(backend: backend, namespace: execution_namespace)
         yield
       end
 
       def execution_namespace
-        @execution_namespace ||= "#{self.class.name || "workflow"}:#{object_id}"
+        @execution_namespace ||= SecureRandom.uuid
       end
 
       def propagate_scoped_artifacts

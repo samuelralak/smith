@@ -10,6 +10,7 @@ module Smith
           context: persisted_context,
           budget_consumed: @budget_consumed,
           step_count: @step_count,
+          execution_namespace: @execution_namespace,
           created_at: @created_at,
           updated_at: @updated_at
         }
@@ -22,6 +23,7 @@ module Smith
         @context = filter_persisted_context(hash[:context] || {})
         @budget_consumed = hash[:budget_consumed] || {}
         @step_count = hash[:step_count] || 0
+        @execution_namespace = hash[:execution_namespace]
         @created_at = hash[:created_at]
         @updated_at = hash[:updated_at]
       end

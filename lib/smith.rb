@@ -71,6 +71,7 @@ require_relative "smith/trace/open_telemetry"
 require_relative "smith/artifacts"
 require_relative "smith/artifacts/memory"
 require_relative "smith/artifacts/file"
+require_relative "smith/artifacts/scoped_store"
 
 # Tool (depends on RubyLLM::Tool)
 require_relative "smith/tool"
