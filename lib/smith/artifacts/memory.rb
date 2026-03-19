@@ -17,8 +17,8 @@ module Smith
         enforce_tenant_isolation!
         ref = generate_ref(data)
         @store[ref] = data
-        @metadata[ref] ||= { content_type: content_type, stored_at: Time.now.utc }
-        @metadata[ref][:execution_namespace] = execution_namespace if execution_namespace
+        @metadata[ref] ||= { content_type: content_type, stored_at: Time.now.utc, execution_namespaces: [] }
+        tag_execution_namespace(ref, execution_namespace)
         ref
       end
 
@@ -34,14 +34,23 @@ module Smith
         return [] unless effective_retention
 
         cutoff = Time.now.utc - effective_retention
-        @metadata.select do |ref, meta|
-          owns_ref?(ref) &&
-            meta[:stored_at] < cutoff &&
-            (execution_namespace.nil? || meta[:execution_namespace] == execution_namespace)
-        end.keys
+        @metadata.select { |ref, meta| expired_match?(ref, meta, cutoff, execution_namespace) }.keys
       end
 
       private
+
+      def tag_execution_namespace(ref, execution_namespace)
+        return unless execution_namespace
+
+        namespaces = @metadata[ref][:execution_namespaces]
+        namespaces << execution_namespace unless namespaces.include?(execution_namespace)
+      end
+
+      def expired_match?(ref, meta, cutoff, execution_namespace)
+        owns_ref?(ref) &&
+          meta[:stored_at] < cutoff &&
+          (execution_namespace.nil? || meta[:execution_namespaces]&.include?(execution_namespace))
+      end
 
       def generate_ref(data)
         content_hash = Digest::SHA256.hexdigest(data.to_s)
