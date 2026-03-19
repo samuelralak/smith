@@ -71,6 +71,15 @@ RSpec.describe "Smith::Artifacts::Memory lifecycle contract" do
     expect(second_ref).to start_with("execution-b:")
   end
 
+  it "reuses the same ref for identical payloads in the same namespace" do
+    store = memory_store_class.new(namespace: "execution-a")
+
+    first_ref = store.store("same-payload")
+    second_ref = store.store("same-payload")
+
+    expect(first_ref).to eq(second_ref)
+  end
+
   it "fetches a namespaced ref within the same namespace" do
     store = memory_store_class.new(namespace: "execution-123")
 
@@ -111,5 +120,31 @@ RSpec.describe "Smith::Artifacts::Memory lifecycle contract" do
 
     expect(first_store.expired(retention: 60)).to eq([first_ref])
     expect(second_store.expired(retention: 60)).to eq([second_ref])
+  end
+
+  it "uses the configured artifact retention when no retention is passed" do
+    store = memory_store_class.new(namespace: "execution-a")
+    original_retention = Smith.config.artifact_retention
+
+    Smith.configure { |config| config.artifact_retention = 60 }
+
+    ref = store.store("data")
+    metadata = store.instance_variable_get(:@metadata)
+    metadata[ref][:stored_at] = Time.now.utc - 3600
+
+    expect(store.expired).to eq([ref])
+  ensure
+    Smith.configure { |config| config.artifact_retention = original_retention }
+  end
+
+  it "requires a namespace when artifact tenant isolation is enabled" do
+    store = memory_store_class.new
+    original_value = Smith.config.artifact_tenant_isolation
+
+    Smith.configure { |config| config.artifact_tenant_isolation = true }
+
+    expect { store.store("payload") }.to raise_error(require_const("Smith::Error"), /artifact_tenant_isolation requires a namespace/)
+  ensure
+    Smith.configure { |config| config.artifact_tenant_isolation = original_value }
   end
 end
