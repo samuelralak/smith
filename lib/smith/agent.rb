@@ -10,6 +10,7 @@ module Smith
         subclass.instance_variable_set(:@budget_config, @budget_config)
         subclass.instance_variable_set(:@guardrails_class, @guardrails_class)
         subclass.instance_variable_set(:@output_schema_class, @output_schema_class)
+        subclass.instance_variable_set(:@data_volume, @data_volume)
         subclass.instance_variable_set(:@registered_name, nil)
       end
 
@@ -29,6 +30,12 @@ module Smith
         return @output_schema_class if klass.nil?
 
         @output_schema_class = klass
+      end
+
+      def data_volume(value = nil)
+        return @data_volume if value.nil?
+
+        @data_volume = value
       end
 
       def register_as(name = nil)

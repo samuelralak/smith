@@ -10,6 +10,7 @@ module Smith
     include BudgetIntegration
     include EventIntegration
     include ArtifactIntegration
+    include DataVolumePolicy
     include Execution
 
     DEFAULT_MAX_TRANSITIONS = 100

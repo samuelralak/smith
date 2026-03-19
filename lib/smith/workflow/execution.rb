@@ -31,6 +31,7 @@ module Smith
                    execute_transition_body(transition, prepared_input: prepared_input)
                  end
 
+        validate_data_volume!(output, agent_class)
         run_output_guardrails(output, agent_class)
         output
       end
