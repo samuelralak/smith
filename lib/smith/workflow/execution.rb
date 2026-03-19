@@ -3,6 +3,8 @@
 module Smith
   class Workflow
     module Execution
+      include Agent::Lifecycle
+
       private
 
       def execute_step(transition)
@@ -77,7 +79,9 @@ module Smith
         chat = chat.with_schema(schema) if schema
 
         response = chat.complete
-        response&.content
+        result = response&.content
+
+        run_after_completion(agent_class, result, @context)
       end
 
       def execute_parallel_step(transition, prepared_input: nil)
