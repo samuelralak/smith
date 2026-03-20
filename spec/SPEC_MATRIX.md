@@ -56,8 +56,8 @@ Why more implementation is required:
 
 - The architecture requires synchronous blocking execution for input, tool, and output guardrails.
 - It also requires workflow-level guardrails to run before agent-level guardrails.
-- Current code now wires workflow-level and agent-level input/output guardrails into workflow execution and routes tool guardrails through workflow/agent-attached guardrails. Workflow-level blocking/failure-routing behavior is covered, and parallel branch tool-guardrail visibility is now covered at the workflow boundary.
-- Remaining tool-boundary behavior is narrower: richer end-to-end tool-loop exercising is still not directly covered beyond the current workflow-boundary retriable failure coverage.
+- Current code now wires workflow-level and agent-level input/output guardrails into workflow execution and routes tool guardrails through workflow/agent-attached guardrails. Workflow-level blocking/failure-routing behavior, tool-boundary retriable failure semantics, and parallel-branch tool-guardrail visibility are covered at the workflow boundary.
+- The remaining gap is no longer core guardrail pipeline wiring. It is only any richer end-to-end tool-loop exercising beyond the current workflow-boundary contract surface.
 
 What the implementation agent needs to add:
 
@@ -72,11 +72,13 @@ Architecture basis:
 Why more implementation is required:
 
 - The architecture defines dispatch-time guarantees: synchronous inline delivery, rescued/logged handler errors, successful-step-only scope, and subscription-order dispatch.
-- Current code now includes an event emission/dispatch path with subscription-order dispatch, rescued/logged handlers, and typed workflow success-only emission. Any remaining gap is broader workflow event taxonomy, not typed step-completed emission itself.
+- Current code now includes an event emission/dispatch path with subscription-order dispatch, rescued/logged handlers, and typed workflow success-only emission.
+- The architecture now explicitly defines Smith's built-in event taxonomy as minimal, centered on `Smith::Events::StepCompleted`.
+- Richer semantic event classes are host-defined by default unless explicitly promoted by the architecture later.
 
 What the implementation agent needs to add:
 
-- any broader workflow event taxonomy beyond the current typed step-completed emission
+- no additional Smith core event taxonomy by default; only implement more built-in event classes if the architecture is explicitly extended
 
 ### 3. Parallel workflow behavior
 
@@ -87,12 +89,13 @@ Architecture basis:
 Why more implementation is required:
 
 - The architecture defines cooperative cancellation, discarding completed branch outputs on failure, and budget cleanup across branches.
-- Current code now integrates parallel execution into workflow runtime, routes branch failures through workflow failure handling, performs basic cancellation checks inside branch execution, runs the same real agent invocation path as non-parallel execution, and exercises a real branch budget reservation/reconcile/release lifecycle. Estimate-based budget enforcement and richer branch-result semantics beyond the current workflow-visible surface are still incomplete.
+- Current code now integrates parallel execution into workflow runtime, routes branch failures through workflow failure handling, performs cancellation checks inside branch execution, runs the same real agent invocation path as non-parallel execution, and covers estimate-based token reservation/reconcile/release, remaining-budget-based branch estimation, and serial/parallel budget settlement.
+- The remaining gap is no longer basic parallel budget/runtime wiring. It is limited to richer branch-result or provider-style in-flight semantics beyond the current workflow-visible surface.
 
 What the implementation agent needs to add:
 
 - richer branch-result semantics beyond the current workflow-visible surface
-- estimate-based budget reservation and enforcement beyond the current zero-amount lifecycle
+- any provider-style in-flight branch semantics only if the architecture is extended further
 
 ### 4. Context/session runtime integration
 
@@ -1053,7 +1056,7 @@ Partially covered:
 - input and output guardrail failures route workflow execution through `on_failure`
 - tool guardrail ordering at invocation time
 - cooperative pre-agent-call deadline failure routing is covered
-- tool-boundary guardrail failure semantics are not yet covered
+- tool-boundary retriable guardrail failure semantics are covered at the workflow boundary
 - no async output validation leakage
 
 Recommended future specs:
