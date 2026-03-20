@@ -822,6 +822,7 @@ Notes:
 
 - This spec now covers the terminal-vs-retriable distinction at the tool boundary and both workflow-attached and agent-attached tool-guardrail sourcing paths.
 - It now distinguishes the named `"malformed args"` and `"rate limit"` variants of retriable failure at the workflow boundary.
+- It now also covers host-hook denial based on declared `network` metadata.
 
 ### `spec/smith/guardrails/contract_spec.rb`
 
@@ -1047,6 +1048,7 @@ Partially covered:
 - output guardrails run after model completion at runtime
 - input and output guardrail failures route workflow execution through `on_failure`
 - tool guardrail ordering at invocation time
+- cooperative pre-agent-call deadline failure routing is covered
 - tool-boundary guardrail failure semantics are not yet covered
 - no async output validation leakage
 
@@ -1065,7 +1067,7 @@ Partially covered:
 - multi-dimension independence is covered
 - estimate-based parallel token reservation/reconcile/release behavior is covered at the workflow boundary
 - provider-timeout optimistic release semantics are not yet covered
-- deadline behavior is not yet covered
+- cooperative wall_clock deadline behavior is covered at Smith-owned call boundaries
 
 Recommended future specs:
 
@@ -1148,6 +1150,7 @@ Partially covered:
 - top-level configuration surface used by artifacts/tracing is covered
 - authorization-denied terminal behavior is covered
 - approval-without-host-hook advisory behavior is covered
+- cooperative pre-tool-call deadline enforcement is covered
 - runtime `output_schema` participation in workflow agent execution is covered
 - attached tool-guardrail visibility is covered at the workflow boundary, including parallel branch threads
 - retriable `Smith::ToolGuardrailFailed` is covered at the workflow boundary for both workflow-attached and agent-attached guardrails, including the named `"rate limit"` and `"malformed args"` variants
@@ -1170,11 +1173,12 @@ Partially covered:
 - wildcard `:fail` exclusion from normal transition lookup is covered
 - workflow-level then agent-level guardrail participation is covered
 - parallel branch count resolution, prepared-input reuse, workflow-level failure routing, discard-on-failure surface, attached tool-guardrail visibility, and estimate-based parallel token budget enforcement are covered
+- cooperative pre-agent-call deadline enforcement is covered
 - `MaxTransitionsExceeded` exception + current-state behavior are covered
 
 Recommended future specs:
 
-- extend `spec/smith/workflow/parallel_spec.rb` only if richer provider-style branch semantics, deadline handling, or provider-timeout budget behavior are added
+- extend `spec/smith/workflow/parallel_spec.rb` only if richer provider-style branch semantics or provider-timeout budget behavior are added
 
 ### Section 5.3 State Serialization
 

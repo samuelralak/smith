@@ -3,6 +3,7 @@
 RSpec.describe "Smith::Guardrails runtime behavior" do
   let(:guardrails_class) { require_const("Smith::Guardrails") }
   let(:agent_class) { require_const("Smith::Agent") }
+  let(:deadline_exceeded) { require_const("Smith::DeadlineExceeded") }
   let(:workflow_class) { require_const("Smith::Workflow") }
   let(:guardrail_failed) { require_const("Smith::GuardrailFailed") }
 
@@ -115,5 +116,39 @@ RSpec.describe "Smith::Guardrails runtime behavior" do
 
     expect(result.state).to eq(:failed)
     expect(observed).to eq([])
+  end
+
+  it "routes through on_failure when the cooperative wall_clock deadline is exceeded before the agent call" do
+    agent = with_stubbed_class("SpecDeadlineWorkflowAgent", agent_class) do
+      register_as :spec_deadline_workflow_agent
+      model "gpt-5-mini"
+    end
+
+    fake_chat = Object.new
+    fake_chat.define_singleton_method(:add_message) { |_message| nil }
+    fake_chat.define_singleton_method(:complete) do
+      raise "chat.complete should not be called after deadline expiry"
+    end
+
+    allow(agent).to receive(:chat).and_return(fake_chat)
+
+    workflow = with_stubbed_class("SpecDeadlineWorkflow", workflow_class) do
+      initial_state :idle
+      state :running
+      state :failed
+      budget wall_clock: 0
+
+      transition :start, from: :idle, to: :running do
+        execute :spec_deadline_workflow_agent
+        on_failure :fail
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:failed)
+    expect(workflow.state).to eq(:failed)
+    expect(result.steps.first[:error]).to be_a(deadline_exceeded)
+    expect(result.steps.first[:error].message).to eq("wall_clock deadline exceeded")
   end
 end

@@ -2,6 +2,7 @@
 
 RSpec.describe "Smith::Tool runtime behavior" do
   let(:tool_class) { require_const("Smith::Tool") }
+  let(:deadline_exceeded) { require_const("Smith::DeadlineExceeded") }
 
   it "delegates execute to perform after Smith-owned enforcement" do
     tool = with_stubbed_class("SpecDelegatingTool", tool_class) do
@@ -112,5 +113,26 @@ RSpec.describe "Smith::Tool runtime behavior" do
                              [:authorize, { user: :ok }],
                              [:perform, { context: { user: :ok }, query: "test" }]
                            ])
+  end
+
+  it "denies tool execution before perform when the cooperative wall_clock deadline is exceeded" do
+    observed = []
+
+    tool = with_stubbed_class("SpecDeadlineTool", tool_class) do
+      define_method(:perform) do |**_kwargs|
+        observed << :perform
+        :ok
+      end
+    end.new
+
+    tool_class.current_deadline = Time.now.utc - 1
+
+    expect do
+      tool.execute(context: { user: :ok }, query: "test")
+    end.to raise_error(deadline_exceeded, "wall_clock deadline exceeded during tool execution")
+
+    expect(observed).to eq([])
+  ensure
+    tool_class.current_deadline = nil
   end
 end
