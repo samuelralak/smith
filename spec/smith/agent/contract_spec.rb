@@ -8,7 +8,7 @@ RSpec.describe "Smith::Agent contract" do
   end
 
   it "exposes the documented Smith DSL additions" do
-    %i[budget guardrails output_schema register_as].each do |dsl|
+    %i[budget guardrails output_schema data_volume register_as].each do |dsl|
       expect(agent_class).to respond_to(dsl), "expected Smith::Agent to implement .#{dsl}"
     end
   end
@@ -27,6 +27,7 @@ RSpec.describe "Smith::Agent contract" do
       temperature 0.3
       budget token_limit: 100_000, tool_calls: 20
       output_schema Class.new
+      data_volume :unbounded
       instructions do |context|
         context[:system_prompt]
       end

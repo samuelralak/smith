@@ -207,4 +207,169 @@ RSpec.describe "Smith::Workflow run result contract" do
       config.artifact_store = original_store
     end
   end
+
+  it "allows bounded agent outputs to remain inline without artifact refs" do
+    agent = with_stubbed_class("SpecBoundedInlineOutputAgent", agent_class) do
+      register_as :spec_bounded_inline_output_agent
+      model "gpt-5-mini"
+      data_volume :bounded
+    end
+
+    fake_chat = Object.new
+    fake_chat.define_singleton_method(:add_message) { |_message| nil }
+    fake_chat.define_singleton_method(:complete) do
+      Struct.new(:content).new({ summary: "brief", status: "ok" })
+    end
+
+    allow(agent).to receive(:chat).and_return(fake_chat)
+
+    workflow = with_stubbed_class("SpecBoundedInlineOutputWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_bounded_inline_output_agent
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    expect(result.output).to eq(summary: "brief", status: "ok")
+    expect(result.steps.first[:output]).to eq(result.output)
+  end
+
+  it "accepts unbounded agent outputs when they use artifact-ref handoff plus lightweight fields" do
+    backend_stores = []
+    original_store = Smith.config.artifact_store
+
+    configured_backend = Object.new
+    configured_backend.define_singleton_method(:store) do |data, content_type: "application/octet-stream", execution_namespace: nil|
+      backend_stores << { data: data, content_type: content_type, execution_namespace: execution_namespace }
+      "backend-ref-#{backend_stores.length}"
+    end
+    configured_backend.define_singleton_method(:fetch) { |_ref| nil }
+    configured_backend.define_singleton_method(:expired) { |retention: nil, execution_namespace: nil| [] }
+
+    Smith.configure do |config|
+      config.artifact_store = configured_backend
+    end
+
+    agent = with_stubbed_class("SpecUnboundedArtifactRefAgent", agent_class) do
+      register_as :spec_unbounded_artifact_ref_agent
+      model "gpt-5-mini"
+      data_volume :unbounded
+
+      define_method(:after_completion) do |result, _context|
+        ref = Smith.artifacts.store(result[:full_report], content_type: "application/json")
+        { report_ref: ref, summary: result[:summary], status: "ok" }
+      end
+    end
+
+    fake_chat = Object.new
+    fake_chat.define_singleton_method(:add_message) { |_message| nil }
+    fake_chat.define_singleton_method(:complete) do
+      Struct.new(:content).new({ full_report: '{"report":"full"}', summary: "brief" })
+    end
+
+    allow(agent).to receive(:chat).and_return(fake_chat)
+
+    workflow = with_stubbed_class("SpecUnboundedArtifactRefWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_unbounded_artifact_ref_agent
+      end
+    end.new
+
+    result = workflow.run!
+    execution_namespace = workflow.to_state[:execution_namespace]
+
+    expect(result.state).to eq(:done)
+    expect(result.output).to eq(
+      report_ref: "#{execution_namespace}:backend-ref-1",
+      summary: "brief",
+      status: "ok"
+    )
+    expect(result.steps.first[:output]).to eq(result.output)
+    expect(backend_stores.length).to eq(1)
+    expect(backend_stores.first[:execution_namespace]).to eq(execution_namespace)
+  ensure
+    Smith.configure do |config|
+      config.artifact_store = original_store
+    end
+  end
+
+  it "routes through on_failure when an unbounded agent output does not include an artifact ref" do
+    guardrail_failed = require_const("Smith::GuardrailFailed")
+
+    agent = with_stubbed_class("SpecUnboundedMissingRefAgent", agent_class) do
+      register_as :spec_unbounded_missing_ref_agent
+      model "gpt-5-mini"
+      data_volume :unbounded
+    end
+
+    fake_chat = Object.new
+    fake_chat.define_singleton_method(:add_message) { |_message| nil }
+    fake_chat.define_singleton_method(:complete) do
+      Struct.new(:content).new({ summary: "brief", status: "ok" })
+    end
+
+    allow(agent).to receive(:chat).and_return(fake_chat)
+
+    workflow = with_stubbed_class("SpecUnboundedMissingRefWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_unbounded_missing_ref_agent
+        on_failure :fail
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:failed)
+    expect(workflow.state).to eq(:failed)
+    expect(result.steps.first[:error]).to be_a(guardrail_failed)
+    expect(result.steps.first[:error].message).to match(/requires at least one \*_ref key/)
+  end
+
+  it "routes through on_failure when an unbounded agent output includes non-scalar inline values" do
+    guardrail_failed = require_const("Smith::GuardrailFailed")
+
+    agent = with_stubbed_class("SpecUnboundedNestedInlineAgent", agent_class) do
+      register_as :spec_unbounded_nested_inline_agent
+      model "gpt-5-mini"
+      data_volume :unbounded
+    end
+
+    fake_chat = Object.new
+    fake_chat.define_singleton_method(:add_message) { |_message| nil }
+    fake_chat.define_singleton_method(:complete) do
+      Struct.new(:content).new({ report_ref: "opaque-ref", summary: { nested: true } })
+    end
+
+    allow(agent).to receive(:chat).and_return(fake_chat)
+
+    workflow = with_stubbed_class("SpecUnboundedNestedInlineWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_unbounded_nested_inline_agent
+        on_failure :fail
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:failed)
+    expect(workflow.state).to eq(:failed)
+    expect(result.steps.first[:error]).to be_a(guardrail_failed)
+    expect(result.steps.first[:error].message).to match(/requires lightweight scalar values/)
+  end
 end

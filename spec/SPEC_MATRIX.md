@@ -280,6 +280,7 @@ Documented contracts covered:
   - `.budget`
   - `.guardrails`
   - `.output_schema`
+  - `.data_volume`
   - `.register_as`
 
 Notes:
@@ -468,6 +469,10 @@ Notes:
   - failure-only wildcard `:fail`
   - runtime use of `on_success`
 - It now also covers real last-step output from workflow agent execution and runtime `output_schema` application.
+- It now also covers `data_volume`-driven workflow output shaping:
+  - bounded outputs may remain inline
+  - unbounded outputs may pass with artifact-ref handoff plus lightweight scalar fields
+  - invalid unbounded output shapes route through `on_failure` at the workflow boundary
 - It does not yet assert the full content of `steps` entries.
 
 ### `spec/smith/workflow/context_persistence_spec.rb`
@@ -767,7 +772,8 @@ Notes:
 - Policy effects are now partially covered elsewhere:
   - `sensitivity` now affects tool trace behavior
   - `privilege` now affects baseline tool policy gating
-  - `network` and `data_volume` effects are still not covered
+  - `data_volume` now affects workflow-boundary handoff shape for unbounded outputs
+  - `network` effects are still not covered
 
 ### `spec/smith/tools/builtins_spec.rb`
 
@@ -1149,7 +1155,8 @@ Partially covered:
   - `approval` advisory behavior is covered
   - `sensitivity`-driven tool trace behavior is covered
   - `privilege` baseline gate behavior is covered
-  - `network` and `data_volume` policy effects are not yet covered
+  - `data_volume` unbounded handoff-shape enforcement is covered
+  - `network` policy effects are not yet covered
 
 ### Section 5.2 Workflow Execution
 
