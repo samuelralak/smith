@@ -5,31 +5,11 @@ module Smith
     module Execution
       include Agent::Lifecycle
 
-      AgentResult = Struct.new(:content, :input_tokens, :output_tokens) do
-        def self.from_response(response, content)
-          new(
-            content,
-            response.respond_to?(:input_tokens) ? (response.input_tokens || 0) : 0,
-            response.respond_to?(:output_tokens) ? (response.output_tokens || 0) : 0
-          )
-        end
-      end
-      BranchEnv = Struct.new(:prepared_input, :guardrail_sources, :scoped_store, :branch_count) do
-        def setup_thread
-          Smith::Tool.current_guardrails = guardrail_sources
-          Smith.scoped_artifacts = scoped_store
-        end
-
-        def teardown_thread
-          Smith::Tool.current_guardrails = nil
-          Smith.scoped_artifacts = nil
-        end
-      end
-
       private
 
       def execute_step(transition)
         agent_class = resolve_agent_class(transition)
+        Tool.current_deadline = wall_clock_deadline
         output = with_scoped_artifacts { run_guarded_step(transition, agent_class) }
         complete_step(transition, output)
       rescue StandardError => e
@@ -37,6 +17,7 @@ module Smith
         { transition: transition.name, from: transition.from, to: transition.to, error: e }
       ensure
         Tool.current_guardrails = nil
+        Tool.current_deadline = nil
         Smith.scoped_artifacts = nil
       end
 
@@ -88,6 +69,7 @@ module Smith
         prepared_input&.each { |msg| chat.add_message(msg) }
         chat = chat.with_schema(agent_class.output_schema) if agent_class.output_schema
 
+        check_deadline!
         response = chat.complete
         content = run_after_completion(agent_class, response&.content, @context)
 
@@ -96,7 +78,9 @@ module Smith
 
       def execute_parallel_step(transition, prepared_input: nil)
         count = Parallel.resolve_branch_count(transition, @context)
-        env = BranchEnv.new(prepared_input, Tool.current_guardrails, propagate_scoped_artifacts, count)
+        env = BranchEnv.new(
+          prepared_input, Tool.current_guardrails, propagate_scoped_artifacts, count, wall_clock_deadline
+        )
         branches = Array.new(count) { |i| build_branch(transition, i, env) }
         Parallel.execute(branches: branches)
       end
@@ -112,17 +96,22 @@ module Smith
         begin
           raise Smith::WorkflowError, "cancelled" if signal.cancelled?
 
+          check_deadline!
+
           result = execute_transition_body(transition, prepared_input: env.prepared_input)
           raise Smith::WorkflowError, "cancelled" if signal.cancelled?
 
-          agent_result = result.is_a?(AgentResult) ? result : nil
-          reconcile_branch_budget(ledger, reserved, agent_result: agent_result)
-          reserved = nil
-          { branch: index, agent: transition.agent_name, output: agent_result&.content || result }
+          finalize_branch(transition, index, result, ledger, reserved).tap { reserved = nil }
         ensure
           release_branch_budget(ledger, reserved) if reserved
           env.teardown_thread
         end
+      end
+
+      def finalize_branch(transition, index, result, ledger, reserved)
+        agent_result = result.is_a?(AgentResult) ? result : nil
+        reconcile_branch_budget(ledger, reserved, agent_result: agent_result)
+        { branch: index, agent: transition.agent_name, output: agent_result&.content || result }
       end
     end
   end

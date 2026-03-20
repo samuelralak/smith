@@ -11,11 +11,36 @@ module Smith
     include EventIntegration
     include ArtifactIntegration
     include DataVolumePolicy
+    include DeadlineEnforcement
     include Execution
 
     DEFAULT_MAX_TRANSITIONS = 100
 
     RunResult = Struct.new(:state, :output, :steps, :total_cost, :total_tokens)
+
+    AgentResult = Struct.new(:content, :input_tokens, :output_tokens) do
+      def self.from_response(response, content)
+        new(
+          content,
+          response.respond_to?(:input_tokens) ? (response.input_tokens || 0) : 0,
+          response.respond_to?(:output_tokens) ? (response.output_tokens || 0) : 0
+        )
+      end
+    end
+
+    BranchEnv = Struct.new(:prepared_input, :guardrail_sources, :scoped_store, :branch_count, :deadline) do
+      def setup_thread
+        Smith::Tool.current_guardrails = guardrail_sources
+        Smith::Tool.current_deadline = deadline
+        Smith.scoped_artifacts = scoped_store
+      end
+
+      def teardown_thread
+        Smith::Tool.current_guardrails = nil
+        Smith::Tool.current_deadline = nil
+        Smith.scoped_artifacts = nil
+      end
+    end
 
     attr_reader :state, :last_prepared_input, :session_messages, :ledger
 

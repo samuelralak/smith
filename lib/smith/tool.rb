@@ -26,6 +26,14 @@ module Smith
         Thread.current[:smith_tool_guardrails] = value
       end
 
+      def current_deadline
+        Thread.current[:smith_tool_deadline]
+      end
+
+      def current_deadline=(value)
+        Thread.current[:smith_tool_deadline] = value
+      end
+
       def category(value = nil)
         return @category if value.nil?
 
@@ -55,9 +63,11 @@ module Smith
 
     def execute(**kwargs)
       run_before_execute_hook!(kwargs)
+      check_tool_deadline!
       check_privilege!(kwargs)
       check_authorization!(kwargs)
       run_tool_guardrails!(kwargs)
+      check_tool_deadline!
 
       start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       result = perform(**kwargs)
@@ -122,6 +132,13 @@ module Smith
         data: { tool: name, args: kwargs, result: result, duration: duration },
         sensitivity: self.class.capabilities&.dig(:sensitivity) || :low
       )
+    end
+
+    def check_tool_deadline!
+      deadline = self.class.current_deadline
+      return unless deadline
+
+      raise DeadlineExceeded, "wall_clock deadline exceeded during tool execution" if Time.now.utc >= deadline
     end
 
     def perform(**kwargs)
