@@ -453,4 +453,65 @@ RSpec.describe "Smith::Workflow parallel execution" do
       [:reconcile, :total_tokens, 50, 12]
     )
   end
+
+  it "bases parallel branch estimates on remaining budget after prior serial consumption" do
+    serial_agent = with_stubbed_class("SpecMixedBudgetSerialAgent", agent_class) do
+      register_as :spec_mixed_budget_serial_agent
+      model "gpt-5-mini"
+    end
+
+    parallel_agent = with_stubbed_class("SpecMixedBudgetParallelAgent", agent_class) do
+      register_as :spec_mixed_budget_parallel_agent
+      model "gpt-5-mini"
+    end
+
+    serial_chat = Object.new
+    serial_chat.define_singleton_method(:add_message) { |_message| nil }
+    serial_chat.define_singleton_method(:complete) do
+      Struct.new(:content, :input_tokens, :output_tokens).new("serial", 20, 15)
+    end
+
+    parallel_chat = Object.new
+    parallel_chat.define_singleton_method(:add_message) { |_message| nil }
+    parallel_chat.define_singleton_method(:complete) do
+      Struct.new(:content, :input_tokens, :output_tokens).new("parallel", 0, 0)
+    end
+
+    allow(serial_agent).to receive(:chat).and_return(serial_chat)
+    allow(parallel_agent).to receive(:chat).and_return(parallel_chat)
+
+    workflow = with_stubbed_class("SpecMixedBudgetWorkflow", workflow_class) do
+      initial_state :idle
+      state :serial_done
+      state :done
+      budget total_tokens: 50_000
+
+      transition :serial_step, from: :idle, to: :serial_done do
+        execute :spec_mixed_budget_serial_agent
+        on_success :fan_out
+      end
+
+      transition :fan_out, from: :serial_done, to: :done do
+        execute :spec_mixed_budget_parallel_agent, parallel: true, count: 2
+      end
+    end.new
+
+    observed = Queue.new
+    ledger = workflow.ledger
+
+    allow(ledger).to receive(:reserve!).and_wrap_original do |original, key, amount|
+      observed << [:reserve, key, amount]
+      original.call(key, amount)
+    end
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    entries = []
+    entries << observed.pop until observed.empty?
+
+    total_token_reserves = entries.select { |entry| entry[0] == :reserve && entry[1] == :total_tokens }
+    expect(total_token_reserves).to include([:reserve, :total_tokens, 50_000])
+    expect(total_token_reserves.count([:reserve, :total_tokens, 24_982])).to eq(2)
+  end
 end

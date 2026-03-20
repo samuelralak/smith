@@ -522,7 +522,11 @@ Notes:
   - token reservation floor behavior under small limits
   - reservation denial before branch work when budget would be exceeded
   - token reconciliation from response metadata
-- It does not yet assert richer provider-style in-flight completion behavior, deadline handling, or provider-timeout optimistic release behavior.
+- It now also asserts:
+  - remaining-budget-based parallel estimates after prior serial consumption
+  - serial reservation/reconcile/release behavior at the workflow boundary
+  - reconcile-on-failure when Smith-side `after_completion` raises after a successful provider response
+- It does not yet assert richer provider-style in-flight completion behavior or provider-timeout optimistic release behavior.
 
 ### `spec/smith/events/contract_spec.rb`
 
@@ -1066,6 +1070,8 @@ Partially covered:
 - lower-actual reconciliation behavior is covered
 - multi-dimension independence is covered
 - estimate-based parallel token reservation/reconcile/release behavior is covered at the workflow boundary
+- serial token reservation/reconcile/release behavior is covered at the workflow boundary
+- post-response Smith-side failure reconciliation from observed usage is covered
 - provider-timeout optimistic release semantics are not yet covered
 - cooperative wall_clock deadline behavior is covered at Smith-owned call boundaries
 
@@ -1173,6 +1179,7 @@ Partially covered:
 - wildcard `:fail` exclusion from normal transition lookup is covered
 - workflow-level then agent-level guardrail participation is covered
 - parallel branch count resolution, prepared-input reuse, workflow-level failure routing, discard-on-failure surface, attached tool-guardrail visibility, and estimate-based parallel token budget enforcement are covered
+- serial token budget settlement and remaining-budget-based parallel estimation are covered
 - cooperative pre-agent-call deadline enforcement is covered
 - `MaxTransitionsExceeded` exception + current-state behavior are covered
 

@@ -372,4 +372,181 @@ RSpec.describe "Smith::Workflow run result contract" do
     expect(result.steps.first[:error]).to be_a(guardrail_failed)
     expect(result.steps.first[:error].message).to match(/requires lightweight scalar values/)
   end
+
+  it "reserves and reconciles serial workflow budget from response token metadata" do
+    agent = with_stubbed_class("SpecSerialBudgetAgent", agent_class) do
+      register_as :spec_serial_budget_agent
+      model "gpt-5-mini"
+    end
+
+    fake_chat = Object.new
+    fake_chat.define_singleton_method(:add_message) { |_message| nil }
+    fake_chat.define_singleton_method(:complete) do
+      Struct.new(:content, :input_tokens, :output_tokens).new("ok", 7, 5)
+    end
+
+    allow(agent).to receive(:chat).and_return(fake_chat)
+
+    workflow = with_stubbed_class("SpecSerialBudgetWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      budget total_tokens: 100
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_serial_budget_agent
+      end
+    end.new
+
+    observed = Queue.new
+    ledger = workflow.ledger
+
+    allow(ledger).to receive(:reserve!).and_wrap_original do |original, key, amount|
+      observed << [:reserve, key, amount]
+      original.call(key, amount)
+    end
+    allow(ledger).to receive(:reconcile!).and_wrap_original do |original, key, reserved_amount, actual_amount|
+      observed << [:reconcile, key, reserved_amount, actual_amount]
+      original.call(key, reserved_amount, actual_amount)
+    end
+    allow(ledger).to receive(:release!).and_wrap_original do |original, key, amount|
+      observed << [:release, key, amount]
+      original.call(key, amount)
+    end
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    entries = []
+    entries << observed.pop until observed.empty?
+
+    expect(entries.select { |entry| entry[0] == :reserve }).to contain_exactly(
+      [:reserve, :total_tokens, 100]
+    )
+    expect(entries.select { |entry| entry[0] == :reconcile }).to contain_exactly(
+      [:reconcile, :total_tokens, 100, 12]
+    )
+    expect(entries.select { |entry| entry[0] == :release }).to eq([])
+  end
+
+  it "releases serial workflow budget when the provider call fails before usage is known" do
+    workflow_error = require_const("Smith::WorkflowError")
+
+    agent = with_stubbed_class("SpecSerialBudgetFailureAgent", agent_class) do
+      register_as :spec_serial_budget_failure_agent
+      model "gpt-5-mini"
+    end
+
+    fake_chat = Object.new
+    fake_chat.define_singleton_method(:add_message) { |_message| nil }
+    fake_chat.define_singleton_method(:complete) do
+      raise workflow_error, "provider failed"
+    end
+
+    allow(agent).to receive(:chat).and_return(fake_chat)
+
+    workflow = with_stubbed_class("SpecSerialBudgetFailureWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+      budget total_tokens: 100
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_serial_budget_failure_agent
+        on_failure :fail
+      end
+    end.new
+
+    observed = Queue.new
+    ledger = workflow.ledger
+
+    allow(ledger).to receive(:reserve!).and_wrap_original do |original, key, amount|
+      observed << [:reserve, key, amount]
+      original.call(key, amount)
+    end
+    allow(ledger).to receive(:reconcile!).and_wrap_original do |original, key, reserved_amount, actual_amount|
+      observed << [:reconcile, key, reserved_amount, actual_amount]
+      original.call(key, reserved_amount, actual_amount)
+    end
+    allow(ledger).to receive(:release!).and_wrap_original do |original, key, amount|
+      observed << [:release, key, amount]
+      original.call(key, amount)
+    end
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:failed)
+    entries = []
+    entries << observed.pop until observed.empty?
+
+    expect(entries.select { |entry| entry[0] == :reserve }).to contain_exactly(
+      [:reserve, :total_tokens, 100]
+    )
+    expect(entries.select { |entry| entry[0] == :reconcile }).to eq([])
+    expect(entries.select { |entry| entry[0] == :release }).to contain_exactly(
+      [:release, :total_tokens, 100]
+    )
+  end
+
+  it "reconciles observed usage when after_completion fails after a successful provider response" do
+    workflow_error = require_const("Smith::WorkflowError")
+
+    agent = with_stubbed_class("SpecAfterCompletionBudgetAgent", agent_class) do
+      register_as :spec_after_completion_budget_agent
+      model "gpt-5-mini"
+
+      define_method(:after_completion) do |_result, _context|
+        raise workflow_error, "after completion failed"
+      end
+    end
+
+    fake_chat = Object.new
+    fake_chat.define_singleton_method(:add_message) { |_message| nil }
+    fake_chat.define_singleton_method(:complete) do
+      Struct.new(:content, :input_tokens, :output_tokens).new("ok", 7, 5)
+    end
+
+    allow(agent).to receive(:chat).and_return(fake_chat)
+
+    workflow = with_stubbed_class("SpecAfterCompletionBudgetWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+      budget total_tokens: 100
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_after_completion_budget_agent
+        on_failure :fail
+      end
+    end.new
+
+    observed = Queue.new
+    ledger = workflow.ledger
+
+    allow(ledger).to receive(:reserve!).and_wrap_original do |original, key, amount|
+      observed << [:reserve, key, amount]
+      original.call(key, amount)
+    end
+    allow(ledger).to receive(:reconcile!).and_wrap_original do |original, key, reserved_amount, actual_amount|
+      observed << [:reconcile, key, reserved_amount, actual_amount]
+      original.call(key, reserved_amount, actual_amount)
+    end
+    allow(ledger).to receive(:release!).and_wrap_original do |original, key, amount|
+      observed << [:release, key, amount]
+      original.call(key, amount)
+    end
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:failed)
+    entries = []
+    entries << observed.pop until observed.empty?
+
+    expect(entries.select { |entry| entry[0] == :reserve }).to contain_exactly(
+      [:reserve, :total_tokens, 100]
+    )
+    expect(entries.select { |entry| entry[0] == :reconcile }).to contain_exactly(
+      [:reconcile, :total_tokens, 100, 12]
+    )
+    expect(entries.select { |entry| entry[0] == :release }).to eq([])
+  end
 end
