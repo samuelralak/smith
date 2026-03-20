@@ -12,6 +12,20 @@ module Smith
         instance.after_completion(result, context)
       end
 
+      def complete_with_provider(agent_class, prepared_input)
+        chat = agent_class.chat
+        prepared_input&.each { |msg| chat.add_message(msg) }
+        chat = chat.with_schema(agent_class.output_schema) if agent_class.output_schema
+
+        begin
+          chat.complete
+        rescue Smith::Error
+          raise
+        rescue StandardError => e
+          raise Smith::AgentError, e.message
+        end
+      end
+
       def snapshot_and_finalize(agent_class, response)
         agent_result = Workflow::AgentResult.from_response(response, response&.content)
         Thread.current[:smith_last_agent_result] = agent_result

@@ -8,9 +8,8 @@ module Smith
       private
 
       def execute_step(transition)
-        agent_class = resolve_agent_class(transition)
         Tool.current_deadline = wall_clock_deadline
-        output = with_scoped_artifacts { run_guarded_step(transition, agent_class) }
+        output = with_scoped_artifacts { run_guarded_step(transition) }
         complete_step(transition, output)
       rescue StandardError => e
         handle_step_failure(transition, e)
@@ -21,7 +20,8 @@ module Smith
         Smith.scoped_artifacts = nil
       end
 
-      def run_guarded_step(transition, agent_class)
+      def run_guarded_step(transition)
+        agent_class = transition.agent_name ? Agent::Registry.find(transition.agent_name) : nil
         run_input_guardrails(agent_class)
         apply_tool_guardrails(agent_class)
         session = build_session
@@ -45,12 +45,6 @@ module Smith
         { transition: transition.name, from: transition.from, to: transition.to, output: output }
       end
 
-      def resolve_agent_class(transition)
-        return nil unless transition.agent_name
-
-        Agent::Registry.find(transition.agent_name)
-      end
-
       def execute_transition_body(transition, prepared_input: nil)
         @last_prepared_input = prepared_input
 
@@ -64,12 +58,8 @@ module Smith
       end
 
       def invoke_agent(agent_class, prepared_input)
-        chat = agent_class.chat
-        prepared_input&.each { |msg| chat.add_message(msg) }
-        chat = chat.with_schema(agent_class.output_schema) if agent_class.output_schema
-
         check_deadline!
-        response = chat.complete
+        response = complete_with_provider(agent_class, prepared_input)
         snapshot_and_finalize(agent_class, response)
       end
 
@@ -114,13 +104,15 @@ module Smith
       end
 
       def guarded_branch_call(transition, env, signal)
-        raise Smith::WorkflowError, "cancelled" if signal.cancelled?
-
+        check_cancellation!(signal)
         check_deadline!
         result = execute_transition_body(transition, prepared_input: env.prepared_input)
-        raise Smith::WorkflowError, "cancelled" if signal.cancelled?
-
+        check_cancellation!(signal)
         result
+      end
+
+      def check_cancellation!(signal)
+        raise Smith::WorkflowError, "cancelled" if signal.cancelled?
       end
     end
   end
