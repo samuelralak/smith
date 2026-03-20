@@ -25,6 +25,16 @@ module Smith
         agent_guardrails = agent_class&.guardrails
         Guardrails::Runner.run_outputs(agent_guardrails, output) if agent_guardrails
       end
+
+      def handle_step_failure(transition, _error)
+        failure_name = transition.failure_transition
+        return unless failure_name
+
+        fail_transition = self.class.find_transition(failure_name)
+        return unless fail_transition
+
+        @state = fail_transition.to
+      end
     end
   end
 end

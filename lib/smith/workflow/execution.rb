@@ -5,6 +5,27 @@ module Smith
     module Execution
       include Agent::Lifecycle
 
+      AgentResult = Struct.new(:content, :input_tokens, :output_tokens) do
+        def self.from_response(response, content)
+          new(
+            content,
+            response.respond_to?(:input_tokens) ? (response.input_tokens || 0) : 0,
+            response.respond_to?(:output_tokens) ? (response.output_tokens || 0) : 0
+          )
+        end
+      end
+      BranchEnv = Struct.new(:prepared_input, :guardrail_sources, :scoped_store, :branch_count) do
+        def setup_thread
+          Smith::Tool.current_guardrails = guardrail_sources
+          Smith.scoped_artifacts = scoped_store
+        end
+
+        def teardown_thread
+          Smith::Tool.current_guardrails = nil
+          Smith.scoped_artifacts = nil
+        end
+      end
+
       private
 
       def execute_step(transition)
@@ -28,7 +49,8 @@ module Smith
         output = if transition.parallel?
                    execute_parallel_step(transition, prepared_input: prepared_input)
                  else
-                   execute_transition_body(transition, prepared_input: prepared_input)
+                   result = execute_transition_body(transition, prepared_input: prepared_input)
+                   result.is_a?(AgentResult) ? result.content : result
                  end
 
         validate_data_volume!(output, agent_class)
@@ -63,70 +85,44 @@ module Smith
 
       def invoke_agent(agent_class, prepared_input)
         chat = agent_class.chat
-
         prepared_input&.each { |msg| chat.add_message(msg) }
-
-        schema = agent_class.output_schema
-        chat = chat.with_schema(schema) if schema
+        chat = chat.with_schema(agent_class.output_schema) if agent_class.output_schema
 
         response = chat.complete
-        result = response&.content
+        content = run_after_completion(agent_class, response&.content, @context)
 
-        run_after_completion(agent_class, result, @context)
+        AgentResult.from_response(response, content)
       end
 
       def execute_parallel_step(transition, prepared_input: nil)
-        guardrail_sources = Tool.current_guardrails
-        scoped_store = propagate_scoped_artifacts
         count = Parallel.resolve_branch_count(transition, @context)
-        branches = Array.new(count) do |i|
-          build_branch(transition, i,
-                       prepared_input: prepared_input,
-                       guardrail_sources: guardrail_sources,
-                       scoped_store: scoped_store)
-        end
+        env = BranchEnv.new(prepared_input, Tool.current_guardrails, propagate_scoped_artifacts, count)
+        branches = Array.new(count) { |i| build_branch(transition, i, env) }
         Parallel.execute(branches: branches)
       end
 
-      def build_branch(transition, index, prepared_input: nil, guardrail_sources: nil, scoped_store: nil)
+      def build_branch(transition, index, env)
         branch_ledger = @ledger
-        proc do |signal|
-          setup_branch_thread(guardrail_sources, scoped_store)
-          reserved = reserve_branch_budget(branch_ledger)
-          begin
-            raise Smith::WorkflowError, "cancelled" if signal.cancelled?
+        proc { |signal| run_branch(transition, index, env, branch_ledger, signal) }
+      end
 
-            output = execute_transition_body(transition, prepared_input: prepared_input)
-            raise Smith::WorkflowError, "cancelled" if signal.cancelled?
+      def run_branch(transition, index, env, ledger, signal)
+        env.setup_thread
+        reserved = reserve_branch_budget(ledger, branch_count: env.branch_count)
+        begin
+          raise Smith::WorkflowError, "cancelled" if signal.cancelled?
 
-            reconcile_branch_budget(branch_ledger, reserved)
-            reserved = nil
-            { branch: index, agent: transition.agent_name, output: output }
-          ensure
-            release_branch_budget(branch_ledger, reserved) if reserved
-            teardown_branch_thread
-          end
+          result = execute_transition_body(transition, prepared_input: env.prepared_input)
+          raise Smith::WorkflowError, "cancelled" if signal.cancelled?
+
+          agent_result = result.is_a?(AgentResult) ? result : nil
+          reconcile_branch_budget(ledger, reserved, agent_result: agent_result)
+          reserved = nil
+          { branch: index, agent: transition.agent_name, output: agent_result&.content || result }
+        ensure
+          release_branch_budget(ledger, reserved) if reserved
+          env.teardown_thread
         end
-      end
-
-      def setup_branch_thread(guardrail_sources, scoped_store)
-        Tool.current_guardrails = guardrail_sources
-        Smith.scoped_artifacts = scoped_store
-      end
-
-      def teardown_branch_thread
-        Tool.current_guardrails = nil
-        Smith.scoped_artifacts = nil
-      end
-
-      def handle_step_failure(transition, _error)
-        failure_name = transition.failure_transition
-        return unless failure_name
-
-        fail_transition = self.class.find_transition(failure_name)
-        return unless fail_transition
-
-        @state = fail_transition.to
       end
     end
   end

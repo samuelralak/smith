@@ -3,25 +3,49 @@
 module Smith
   class Workflow
     module BudgetIntegration
+      TOKEN_DIMENSIONS = %i[total_tokens token_limit].freeze
+
       private
 
-      def reserve_branch_budget(ledger)
+      def reserve_branch_budget(ledger, branch_count:)
         return nil unless ledger
 
-        ledger.limits.each_key { |dim| ledger.reserve!(dim, 0) }
-        ledger.limits.keys
+        estimates = ledger.limits.each_with_object({}) do |(dim, limit), est|
+          est[dim] = estimate_for_dimension(dim, limit, branch_count)
+        end
+
+        estimates.each { |dim, amount| ledger.reserve!(dim, amount) }
+        estimates
       end
 
-      def reconcile_branch_budget(ledger, dimensions)
-        return unless ledger && dimensions
+      def reconcile_branch_budget(ledger, estimates, agent_result: nil)
+        return unless ledger && estimates
 
-        dimensions.each { |dim| ledger.reconcile!(dim, 0, 0) }
+        actual_tokens = (agent_result&.input_tokens || 0) + (agent_result&.output_tokens || 0)
+        estimates.each { |dim, amt| ledger.reconcile!(dim, amt, actual_for_dimension(dim, actual_tokens)) }
       end
 
-      def release_branch_budget(ledger, dimensions)
-        return unless ledger && dimensions
+      def actual_for_dimension(dim, actual_tokens)
+        if TOKEN_DIMENSIONS.include?(dim) then actual_tokens
+        elsif dim == :tool_calls then 1
+        else 0
+        end
+      end
 
-        dimensions.each { |dim| ledger.release!(dim, 0) }
+      def release_branch_budget(ledger, estimates)
+        return unless ledger && estimates
+
+        estimates.each { |dim, amount| ledger.release!(dim, amount) }
+      end
+
+      def estimate_for_dimension(dim, limit, branch_count)
+        if TOKEN_DIMENSIONS.include?(dim)
+          limit / branch_count
+        elsif dim == :tool_calls
+          1
+        else
+          0
+        end
       end
     end
   end

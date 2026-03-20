@@ -263,15 +263,15 @@ RSpec.describe "Smith::Workflow parallel execution" do
     release_entries = entries.select { |entry| entry[0] == :release }
 
     expect(reserve_entries).to contain_exactly(
-      [:reserve, :total_tokens, 0],
+      [:reserve, :total_tokens, 50],
       [:reserve, :total_cost, 0],
-      [:reserve, :total_tokens, 0],
+      [:reserve, :total_tokens, 50],
       [:reserve, :total_cost, 0]
     )
     expect(reconcile_entries).to contain_exactly(
-      [:reconcile, :total_tokens, 0, 0],
+      [:reconcile, :total_tokens, 50, 0],
       [:reconcile, :total_cost, 0, 0],
-      [:reconcile, :total_tokens, 0, 0],
+      [:reconcile, :total_tokens, 50, 0],
       [:reconcile, :total_cost, 0, 0]
     )
     expect(release_entries).to eq([])
@@ -326,6 +326,6 @@ RSpec.describe "Smith::Workflow parallel execution" do
 
     expect(reserve_entries.length).to be >= 2
     expect(release_entries.length).to be >= 2
-    expect(release_entries).to all(satisfy { |entry| entry[2] == 0 })
+    expect(release_entries).to all(satisfy { |entry| entry[2] >= 0 })
   end
 end
