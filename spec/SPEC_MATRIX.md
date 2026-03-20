@@ -39,13 +39,11 @@ Important contracts from the architecture document that are not yet directly spe
 
 - parallel branch cancellation and merge behavior beyond the current workflow-level failure/discard surface
 - `MaxTransitionsExceeded` terminal state behavior beyond exception raising
-- context injection replacement-on-retry semantics
-- artifact namespace isolation semantics beyond ref prefixing
 - broader observability richness beyond the current runtime trace emission and `trace_fields` control surface
 
 ## Implementation-Required Areas
 
-These areas still require additional runtime implementation work before the next meaningful end-to-end behavior/integration specs can be added without inventing APIs or hidden mechanisms. Some helper seams now exist; the remaining gap is wiring and workflow integration.
+These areas still mark the main remaining runtime or integration gaps after the recent artifact, observability, and capability-policy phases. Not every item below requires a new Smith runtime seam; some are now narrower integration or taxonomy gaps.
 
 ### 1. Guardrail execution pipeline
 
@@ -105,36 +103,36 @@ Architecture basis:
 Why more implementation is required:
 
 - The architecture defines observation masking at chat runtime and injected-state replacement on retry.
-- Current code now exposes a Smith-owned prepared-input seam that performs injection and masking before execution, and workflow execution correctly uses a real RubyLLM `.complete` path over prepared message sets. Broader call-path richness beyond the current workflow-driven `.complete` model is still incomplete.
+- Current code now exposes a Smith-owned prepared-input seam that performs injection and masking before execution, and workflow execution correctly uses a real RubyLLM `.complete` path over prepared message sets. Injected-state replacement is already covered. The remaining gap is any broader call-path richness beyond the current workflow-driven `.complete` model.
 
 What the implementation agent needs to add:
 
 - any broader call-path richness beyond the current workflow-driven `.complete` seam
 
-### 5. Host-installed approval denial path
+### 5. Host-installed host policy integration
 
 Architecture basis:
 
 - Section 5.6, Error Hierarchy
 - Section 6, Tool Governance
 
-Why more implementation is required:
+Why more implementation may be required:
 
-- The architecture explicitly allows a host-installed pre-dispatch approval hook to raise `Smith::ToolPolicyDenied`.
-- Current tool execution now has a generic `before_execute` pre-dispatch seam, but there is still no documented or integrated host-level approval wiring path.
+- The architecture explicitly allows host-installed pre-dispatch policy to deny tool execution with `Smith::ToolPolicyDenied`.
+- Current tool execution now has a generic `before_execute` pre-dispatch seam, and the suite now covers approval- and network-metadata-driven denial through that boundary.
+- The remaining gap is broader host integration guidance or richer end-to-end host wiring, not the core Smith runtime seam.
 
 What the implementation agent needs to add:
 
-- host-level integration guidance around the existing pre-dispatch tool hook
-- propagation of host-denied approval as terminal `Smith::ToolPolicyDenied`
+- any richer host-integration guidance or end-to-end wiring beyond the existing pre-dispatch tool hook, only if the architecture is extended further
 
-### 6. Artifact namespace isolation
+### 6. Artifact host orchestration
 
 Architecture basis:
 
 - Section 4.7, Artifact Store
 
-Why more implementation is required:
+Why more implementation may be required:
 
 - The architecture requires artifact refs to be namespaced to execution/tenant context.
 - Current runtime now supports namespace-prefixed refs, namespace-scoped content-addressed refs, namespace-owned fetch and expired-query behavior in the memory backend, retention fallback, tenant-isolation namespace enforcement, configured-backend artifact handoff refs, and stable execution namespaces across serialization. Remaining artifact gaps are broader host-level orchestration concerns rather than missing store or handoff-runtime seams.
@@ -143,16 +141,16 @@ What the implementation agent needs to add:
 
 - broader host-level artifact orchestration only if the architecture is extended further
 
-### 7. Trace runtime policy
+### 7. Trace richness
 
 Architecture basis:
 
 - Section 4.8, Observability
 
-Why more implementation is required:
+Why more implementation may be required:
 
 - The architecture defines runtime trace policy, including `trace_content = :redacted` and field-level controls.
-- Current code now includes adapter-level filtering, runtime trace emission for workflow transitions and tool execution, and field-level structural filtering through `trace_fields`. The remaining gap is any broader trace richness beyond the current transition/tool surface.
+- Current code now includes adapter-level filtering, runtime trace emission for workflow transitions and tool execution, built-in logger/OpenTelemetry adapters, capability-aware sensitivity handling, and field-level structural filtering through `trace_fields`. The remaining gap is any broader trace richness beyond the current transition/tool surface.
 
 What the implementation agent needs to add:
 
