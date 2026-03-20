@@ -773,7 +773,7 @@ Notes:
   - `sensitivity` now affects tool trace behavior
   - `privilege` now affects baseline tool policy gating
   - `data_volume` now affects workflow-boundary handoff shape for unbounded outputs
-  - `network` effects are still not covered
+  - `network` now supports host-hook denial based on declared egress class
 
 ### `spec/smith/tools/builtins_spec.rb`
 
@@ -1156,7 +1156,7 @@ Partially covered:
   - `sensitivity`-driven tool trace behavior is covered
   - `privilege` baseline gate behavior is covered
   - `data_volume` unbounded handoff-shape enforcement is covered
-  - `network` policy effects are not yet covered
+  - `network` host-hook enforcement via declared capability metadata is covered
 
 ### Section 5.2 Workflow Execution
 

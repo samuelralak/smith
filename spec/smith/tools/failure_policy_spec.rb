@@ -62,6 +62,35 @@ RSpec.describe "Smith::Tool failure policy contract" do
     end.to raise_error(policy_denied, "approval required")
   end
 
+  it "allows a pre-dispatch hook to deny execution based on declared network metadata" do
+    policy_denied = require_const("Smith::ToolPolicyDenied")
+    observed_perform = []
+
+    tool = with_stubbed_class("SpecExternalNetworkDeniedTool", tool_class) do
+      category :action
+
+      capabilities do
+        network :external
+      end
+
+      before_execute do |tool_instance, _kwargs|
+        network_class = tool_instance.class.capabilities&.dig(:network)
+        raise policy_denied, "external network denied" if network_class == :external
+      end
+
+      define_method(:perform) do |**_kwargs|
+        observed_perform << :ran
+        :ok
+      end
+    end.new
+
+    expect do
+      tool.execute(context: { user: :ok }, query: "test")
+    end.to raise_error(policy_denied, "external network denied")
+
+    expect(observed_perform).to eq([])
+  end
+
   it "raises ToolPolicyDenied when privilege :elevated is missing a user context" do
     policy_denied = require_const("Smith::ToolPolicyDenied")
 
