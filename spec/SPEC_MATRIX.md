@@ -518,8 +518,11 @@ Documented contracts covered:
 Notes:
 
 - This spec covers workflow-visible parallel behavior, prepared-input reuse, and attached tool-guardrail visibility in branch threads.
-- It now asserts the parallel branch budget reservation/reconcile/release lifecycle.
-- It does not yet assert richer provider-style in-flight completion behavior or estimate-based budget enforcement.
+- It now asserts the parallel branch budget reservation/reconcile/release lifecycle, including:
+  - token reservation floor behavior under small limits
+  - reservation denial before branch work when budget would be exceeded
+  - token reconciliation from response metadata
+- It does not yet assert richer provider-style in-flight completion behavior, deadline handling, or provider-timeout optimistic release behavior.
 
 ### `spec/smith/events/contract_spec.rb`
 
@@ -1060,10 +1063,9 @@ Partially covered:
 - denied reservation state preservation is covered
 - lower-actual reconciliation behavior is covered
 - multi-dimension independence is covered
-- zero-amount parallel branch reservation/reconcile/release lifecycle is covered
+- estimate-based parallel token reservation/reconcile/release behavior is covered at the workflow boundary
 - provider-timeout optimistic release semantics are not yet covered
 - deadline behavior is not yet covered
-- estimate-based parallel branch budgeting is not yet covered
 
 Recommended future specs:
 
@@ -1167,13 +1169,12 @@ Partially covered:
 - `on_success` runtime selection is covered
 - wildcard `:fail` exclusion from normal transition lookup is covered
 - workflow-level then agent-level guardrail participation is covered
-- parallel branch count resolution, prepared-input reuse, workflow-level failure routing, discard-on-failure surface, attached tool-guardrail visibility, and zero-amount budget lifecycle are covered
-- estimate-based parallel budget enforcement is not yet covered
+- parallel branch count resolution, prepared-input reuse, workflow-level failure routing, discard-on-failure surface, attached tool-guardrail visibility, and estimate-based parallel token budget enforcement are covered
 - `MaxTransitionsExceeded` exception + current-state behavior are covered
 
 Recommended future specs:
 
-- extend `spec/smith/workflow/parallel_spec.rb` only if estimate-based budgeting or richer provider-style branch semantics are added
+- extend `spec/smith/workflow/parallel_spec.rb` only if richer provider-style branch semantics, deadline handling, or provider-timeout budget behavior are added
 
 ### Section 5.3 State Serialization
 

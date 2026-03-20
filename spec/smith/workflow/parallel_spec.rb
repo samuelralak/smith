@@ -328,4 +328,129 @@ RSpec.describe "Smith::Workflow parallel execution" do
     expect(release_entries.length).to be >= 2
     expect(release_entries).to all(satisfy { |entry| entry[2] >= 0 })
   end
+
+  it "uses a token reservation floor of 1 for positive limits smaller than branch count" do
+    workflow = with_stubbed_class("SpecParallelBudgetFloorWorkflow", workflow_class) do
+      initial_state :idle
+      state :running
+      state :failed
+      budget total_tokens: 1
+
+      transition :fan_out, from: :idle, to: :running do
+        execute :spec_parallel_agent, parallel: true, count: 2
+        on_failure :fail
+      end
+    end.new
+
+    observed = Queue.new
+    ledger = workflow.ledger
+
+    allow(ledger).to receive(:reserve!).and_wrap_original do |original, key, amount|
+      observed << [:reserve, key, amount]
+      original.call(key, amount)
+    end
+
+    workflow.define_singleton_method(:execute_transition_body) do |_transition, prepared_input: nil|
+      sleep 0.05
+      super(_transition, prepared_input: prepared_input)
+    end
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:failed)
+    entries = []
+    entries << observed.pop until observed.empty?
+
+    reserve_entries = entries.select { |entry| entry[0] == :reserve }
+    expect(reserve_entries).to include([:reserve, :total_tokens, 1])
+    expect(reserve_entries.length).to be >= 2
+  end
+
+  it "denies a parallel branch before branch work when reservation would exceed budget" do
+    budget_exceeded = require_const("Smith::BudgetExceeded")
+
+    workflow = with_stubbed_class("SpecParallelBudgetDeniedWorkflow", workflow_class) do
+      initial_state :idle
+      state :running
+      state :failed
+      budget total_tokens: 1
+
+      transition :fan_out, from: :idle, to: :running do
+        execute :spec_parallel_agent, parallel: true, count: 2
+        on_failure :fail
+      end
+    end.new
+
+    reservation_failures = Queue.new
+    ledger = workflow.ledger
+
+    allow(ledger).to receive(:reserve!).and_wrap_original do |original, key, amount|
+      original.call(key, amount)
+    rescue budget_exceeded => e
+      reservation_failures << [key, amount, e.class]
+      raise
+    end
+
+    executed = Queue.new
+    workflow.define_singleton_method(:execute_transition_body) do |_transition, prepared_input: nil|
+      executed << :ran
+      sleep 0.05
+      super(_transition, prepared_input: prepared_input)
+    end
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:failed)
+    expect(workflow.state).to eq(:failed)
+    expect(executed.size).to eq(1)
+    failures = []
+    failures << reservation_failures.pop until reservation_failures.empty?
+    expect(failures).to include([:total_tokens, 1, budget_exceeded])
+  end
+
+  it "reconciles parallel branch reservations with response token metadata" do
+    agent = with_stubbed_class("SpecParallelBudgetTokenAgent", agent_class) do
+      register_as :spec_parallel_budget_token_agent
+      model "gpt-5-mini"
+    end
+
+    allow(agent).to receive(:chat) do
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_message| nil }
+      chat.define_singleton_method(:complete) do
+        Struct.new(:content, :input_tokens, :output_tokens).new("ok", 7, 5)
+      end
+      chat
+    end
+
+    workflow = with_stubbed_class("SpecParallelBudgetTokenWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      budget total_tokens: 100
+
+      transition :fan_out, from: :idle, to: :done do
+        execute :spec_parallel_budget_token_agent, parallel: true, count: 2
+      end
+    end.new
+
+    observed = Queue.new
+    ledger = workflow.ledger
+
+    allow(ledger).to receive(:reconcile!).and_wrap_original do |original, key, reserved_amount, actual_amount|
+      observed << [:reconcile, key, reserved_amount, actual_amount]
+      original.call(key, reserved_amount, actual_amount)
+    end
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    entries = []
+    entries << observed.pop until observed.empty?
+
+    reconcile_entries = entries.select { |entry| entry[0] == :reconcile }
+    expect(reconcile_entries).to contain_exactly(
+      [:reconcile, :total_tokens, 50, 12],
+      [:reconcile, :total_tokens, 50, 12]
+    )
+  end
 end
