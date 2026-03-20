@@ -111,6 +111,88 @@ RSpec.describe "Smith::Workflow parallel execution" do
     expect(result.steps.first[:error]).to be_a(workflow_error)
   end
 
+  it "cancels sibling branches cooperatively at the next check boundary" do
+    cancellation_observations = Queue.new
+    started_barrier = Concurrent::CountDownLatch.new(3)
+    call_counter = Concurrent::AtomicFixnum.new(0)
+
+    workflow = with_stubbed_class("SpecParallelCoopCancelWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :fan_out, from: :idle, to: :done do
+        execute :spec_parallel_agent, parallel: true, count: 3
+        on_failure :fail
+      end
+    end.new
+
+    workflow.define_singleton_method(:execute_transition_body) do |_transition, prepared_input: nil|
+      branch = call_counter.increment
+      started_barrier.count_down
+      started_barrier.wait(1)
+
+      if branch == 1
+        raise Smith::WorkflowError, "branch failed"
+      end
+
+      sleep 0.05
+      :ok
+    end
+
+    workflow.define_singleton_method(:check_cancellation!) do |signal|
+      if signal.cancelled?
+        cancellation_observations << Thread.current.object_id
+        raise Smith::WorkflowError, "cancelled"
+      end
+    end
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:failed)
+
+    observed = []
+    observed << cancellation_observations.pop until cancellation_observations.empty?
+    expect(observed.length).to be >= 1
+  end
+
+  it "does not interrupt in-flight branch work but discards its output on step failure" do
+    branch_outputs = Queue.new
+    call_counter = Concurrent::AtomicFixnum.new(0)
+
+    workflow = with_stubbed_class("SpecParallelInflightWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :fan_out, from: :idle, to: :done do
+        execute :spec_parallel_agent, parallel: true, count: 2
+        on_failure :fail
+      end
+    end.new
+
+    workflow.define_singleton_method(:execute_transition_body) do |_transition, prepared_input: nil|
+      branch = call_counter.increment
+
+      if branch == 1
+        sleep 0.05
+        branch_outputs << :branch_0_completed
+        :branch_0_result
+      else
+        raise Smith::WorkflowError, "branch failed"
+      end
+    end
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:failed)
+    expect(result.output).to be_nil
+
+    finished = []
+    finished << branch_outputs.pop until branch_outputs.empty?
+    expect(finished).to include(:branch_0_completed)
+  end
+
   it "reuses the prepared input for each parallel branch execution" do
     manager = with_stubbed_class("SpecParallelPreparedInputContext", context_class) do
       session_strategy :observation_masking, window: 1

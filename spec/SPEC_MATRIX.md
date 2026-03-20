@@ -37,8 +37,7 @@ Current contract coverage exists for:
 
 Important contracts from the architecture document that are not yet directly specified:
 
-- parallel branch cancellation and merge behavior beyond the current workflow-level failure/discard surface
-- `MaxTransitionsExceeded` terminal state behavior beyond exception raising
+- richer parallel branch merge or provider-style in-flight semantics beyond the current cooperative cancellation and failure/discard surface
 - broader observability richness beyond the current runtime trace emission and `trace_fields` control surface
 
 ## Implementation-Required Areas
@@ -514,6 +513,8 @@ Documented contracts covered:
 - parallel transitions return one branch result per configured branch on success
 - callable branch counts derive from workflow context
 - branch failure routes workflow execution through `on_failure`
+- sibling branches observe cooperative cancellation at the post-execute check boundary
+- in-flight branch work completes but its output is discarded on step failure
 - successful branch outputs are discarded when the parallel step fails
 - prepared input is reused across parallel branch execution
 - workflow-attached tool guardrails remain visible inside parallel branch threads
@@ -529,7 +530,7 @@ Notes:
   - remaining-budget-based parallel estimates after prior serial consumption
   - serial reservation/reconcile/release behavior at the workflow boundary
   - reconcile-on-failure when Smith-side `after_completion` raises after a successful provider response
-- It does not yet assert richer provider-style in-flight completion behavior or provider-timeout optimistic release behavior.
+- It does not yet assert richer provider-style in-flight completion behavior or provider-timeout optimistic release behavior beyond the current cooperative cancellation and failure/discard surface.
 
 ### `spec/smith/events/contract_spec.rb`
 
@@ -1184,7 +1185,7 @@ Partially covered:
 - parallel branch count resolution, prepared-input reuse, workflow-level failure routing, discard-on-failure surface, attached tool-guardrail visibility, and estimate-based parallel token budget enforcement are covered
 - serial token budget settlement and remaining-budget-based parallel estimation are covered
 - cooperative pre-agent-call deadline enforcement is covered
-- `MaxTransitionsExceeded` exception + current-state behavior are covered
+- `MaxTransitionsExceeded` exception, current-state preservation, and non-resumable repeated/rehydrated behavior are covered
 
 Recommended future specs:
 

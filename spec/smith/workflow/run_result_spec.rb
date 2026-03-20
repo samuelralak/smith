@@ -34,6 +34,46 @@ RSpec.describe "Smith::Workflow run result contract" do
     expect(workflow.state).to eq(:step_one)
   end
 
+  it "raises MaxTransitionsExceeded again instead of resuming on a repeated run!" do
+    workflow = with_stubbed_class("SpecRepeatedBoundedWorkflow", workflow_class) do
+      initial_state :idle
+      state :step_one
+      state :step_two
+      max_transitions 1
+
+      transition :first, from: :idle, to: :step_one
+      transition :second, from: :step_one, to: :step_two
+    end.new
+
+    expect { workflow.run! }.to raise_error(require_const("Smith::MaxTransitionsExceeded"))
+    expect(workflow.state).to eq(:step_one)
+
+    expect { workflow.run! }.to raise_error(require_const("Smith::MaxTransitionsExceeded"))
+    expect(workflow.state).to eq(:step_one)
+  end
+
+  it "does not resume past MaxTransitionsExceeded after restoring from persisted state" do
+    workflow_class_with_limit = with_stubbed_class("SpecPersistedBoundedWorkflow", workflow_class) do
+      initial_state :idle
+      state :step_one
+      state :step_two
+      max_transitions 1
+
+      transition :first, from: :idle, to: :step_one
+      transition :second, from: :step_one, to: :step_two
+    end
+
+    workflow = workflow_class_with_limit.new
+
+    expect { workflow.run! }.to raise_error(require_const("Smith::MaxTransitionsExceeded"))
+    expect(workflow.state).to eq(:step_one)
+
+    restored = workflow_class_with_limit.from_state(workflow.to_state)
+
+    expect { restored.run! }.to raise_error(require_const("Smith::MaxTransitionsExceeded"))
+    expect(restored.state).to eq(:step_one)
+  end
+
   it "returns immediately when the workflow is already terminal" do
     workflow = with_stubbed_class("SpecImmediatelyTerminalWorkflow", workflow_class) do
       initial_state :idle
