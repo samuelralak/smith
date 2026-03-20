@@ -549,4 +549,83 @@ RSpec.describe "Smith::Workflow run result contract" do
     )
     expect(entries.select { |entry| entry[0] == :release }).to eq([])
   end
+
+  it "wraps provider call failures from chat.complete as AgentError" do
+    agent_error = require_const("Smith::AgentError")
+    upstream_error = Class.new(StandardError)
+
+    agent = with_stubbed_class("SpecAgentErrorWrappingAgent", agent_class) do
+      register_as :spec_agent_error_wrapping_agent
+      model "gpt-5-mini"
+    end
+
+    fake_chat = Object.new
+    fake_chat.define_singleton_method(:add_message) { |_message| nil }
+    fake_chat.define_singleton_method(:complete) do
+      raise upstream_error, "provider exploded"
+    end
+
+    allow(agent).to receive(:chat).and_return(fake_chat)
+
+    workflow = with_stubbed_class("SpecAgentErrorWrappingWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_agent_error_wrapping_agent
+        on_failure :fail
+      end
+    end.new
+
+    result = workflow.run!
+    error = result.steps.first[:error]
+
+    expect(result.state).to eq(:failed)
+    expect(error).to be_a(agent_error)
+    expect(error.message).to eq("provider exploded")
+    expect(error.cause).to be_a(upstream_error)
+    expect(error.cause.message).to eq("provider exploded")
+  end
+
+  it "does not wrap after_completion failures as AgentError after a successful provider response" do
+    agent_error = require_const("Smith::AgentError")
+    workflow_error = require_const("Smith::WorkflowError")
+
+    agent = with_stubbed_class("SpecAfterCompletionNotAgentErrorAgent", agent_class) do
+      register_as :spec_after_completion_not_agent_error_agent
+      model "gpt-5-mini"
+
+      define_method(:after_completion) do |_result, _context|
+        raise workflow_error, "after completion failed"
+      end
+    end
+
+    fake_chat = Object.new
+    fake_chat.define_singleton_method(:add_message) { |_message| nil }
+    fake_chat.define_singleton_method(:complete) do
+      Struct.new(:content, :input_tokens, :output_tokens).new("ok", 1, 1)
+    end
+
+    allow(agent).to receive(:chat).and_return(fake_chat)
+
+    workflow = with_stubbed_class("SpecAfterCompletionNotAgentErrorWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_after_completion_not_agent_error_agent
+        on_failure :fail
+      end
+    end.new
+
+    result = workflow.run!
+    error = result.steps.first[:error]
+
+    expect(result.state).to eq(:failed)
+    expect(error).to be_a(workflow_error)
+    expect(error).not_to be_a(agent_error)
+    expect(error.message).to eq("after completion failed")
+  end
 end

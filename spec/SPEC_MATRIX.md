@@ -1204,6 +1204,7 @@ Recommended future specs:
 Partially covered:
 
 - error classes exist
+- provider/LLM call failures are wrapped as `Smith::AgentError` at the workflow runtime boundary
 - tool DSL exists
 - terminal policy-denial behavior is partially covered
 - retriable `Smith::ToolGuardrailFailed` runtime path is covered at the workflow boundary, including the named `"malformed args"` and `"rate limit"` variants
@@ -1214,6 +1215,7 @@ Partially covered:
 Recommended future specs:
 
 - extend tool/runtime coverage only if a richer end-to-end tool loop becomes observable
+- extend workflow runtime coverage only if provider/setup failure taxonomy is refined beyond the current `chat.complete` wrapping boundary
 
 ## Source-Backed Contracts to Protect Carefully
 
