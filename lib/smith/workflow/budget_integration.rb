@@ -26,10 +26,7 @@ module Smith
       end
 
       def actual_for_dimension(dim, actual_tokens)
-        if TOKEN_DIMENSIONS.include?(dim) then actual_tokens
-        elsif dim == :tool_calls then 1
-        else 0
-        end
+        TOKEN_DIMENSIONS.include?(dim) ? actual_tokens : 0
       end
 
       def release_branch_budget(ledger, estimates)
@@ -39,13 +36,9 @@ module Smith
       end
 
       def estimate_for_dimension(dim, limit, branch_count)
-        if TOKEN_DIMENSIONS.include?(dim)
-          limit / branch_count
-        elsif dim == :tool_calls
-          1
-        else
-          0
-        end
+        return 0 unless TOKEN_DIMENSIONS.include?(dim)
+
+        [limit / branch_count, 1].max
       end
     end
   end
