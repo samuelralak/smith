@@ -38,7 +38,6 @@ Current contract coverage exists for:
 Important contracts from the architecture document that are not yet directly specified:
 
 - richer parallel branch merge or provider-style in-flight semantics beyond the current cooperative cancellation and failure/discard surface
-- broader observability richness beyond the current runtime trace emission and `trace_fields` control surface
 
 ## Implementation-Required Areas
 
@@ -143,7 +142,7 @@ What the implementation agent needs to add:
 
 - broader host-level artifact orchestration only if the architecture is extended further
 
-### 7. Trace richness
+### 7. Token Usage Tracing
 
 Architecture basis:
 
@@ -151,12 +150,10 @@ Architecture basis:
 
 Why more implementation may be required:
 
-- The architecture defines runtime trace policy, including `trace_content = :redacted` and field-level controls.
-- Current code now includes adapter-level filtering, runtime trace emission for workflow transitions and tool execution, built-in logger/OpenTelemetry adapters, capability-aware sensitivity handling, and field-level structural filtering through `trace_fields`. The remaining gap is any broader trace richness beyond the current transition/tool surface.
-
-What the implementation agent needs to add:
-
-- any broader trace richness beyond the current transition/tool surface
+- The architecture guarantees a built-in `token_usage` trace surface alongside `transition` and `tool_call`, emitted only when both `input_tokens` and `output_tokens` are present and trustworthy. Partial or absent usage metadata does not produce a built-in token-usage trace.
+- Current code now includes adapter-level filtering, runtime trace emission for workflow transitions, tool execution, and token usage, built-in logger/OpenTelemetry adapters, capability-aware sensitivity handling, and field-level structural filtering through `trace_fields`.
+- All three guaranteed built-in trace types (`transition`, `tool_call`, `token_usage`) are now implemented and spec-covered.
+- `cost` remains outside the guaranteed built-in trace surface.
 
 ## File-to-Document Mapping
 
@@ -943,11 +940,18 @@ Documented contracts covered:
 - `trace_fields` filters tool-call trace payload fields
 - unknown `trace_fields` entries are ignored
 - unconfigured trace types remain unchanged
+- successful workflow agent call emits a `token_usage` trace with observed input/output token counts
+- `trace_token_usage = false` suppresses `token_usage` emission
+- provider failure before usage is known does not emit `token_usage`
+- successful provider response that lacks usage metadata does not emit `token_usage`
+- successful provider response with only partial usage metadata does not emit `token_usage`
+- successful provider response followed by `after_completion` failure still emits `token_usage` when both counts are present
 
 Notes:
 
-- This spec covers adapter-level runtime behavior plus runtime trace emission from successful workflow steps and tool execution, including class-configured adapter support and best-effort adapter failure handling.
-- It now asserts the documented `trace_fields` filtering behavior for the currently emitted trace types.
+- This spec covers adapter-level runtime behavior plus runtime trace emission from successful workflow steps, tool execution, and token usage, including class-configured adapter support and best-effort adapter failure handling.
+- It asserts the documented `trace_fields` filtering behavior for emitted trace types.
+- All three guaranteed built-in trace types (`transition`, `tool_call`, `token_usage`) are now covered.
 
 ### `spec/smith/artifacts/contract_spec.rb`
 

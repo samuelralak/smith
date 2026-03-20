@@ -499,4 +499,239 @@ RSpec.describe "Smith tracing runtime behavior" do
                                       "Add it to your Gemfile to enable OpenTelemetry tracing."
                                     ])
   end
+
+  it "emits a token_usage trace after a successful workflow agent call with observed counts" do
+    agent_class = require_const("Smith::Agent")
+
+    agent = with_stubbed_class("SpecTraceTokenUsageAgent", agent_class) do
+      register_as :spec_trace_token_usage_agent
+      model "gpt-5-mini"
+    end
+
+    allow(agent).to receive(:chat) do
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_msg| nil }
+      chat.define_singleton_method(:complete) do
+        Struct.new(:content, :input_tokens, :output_tokens).new("ok", 15, 8)
+      end
+      chat
+    end
+
+    adapter = memory_trace_class.new
+
+    workflow = with_stubbed_class("SpecTraceTokenUsageWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_trace_token_usage_agent
+      end
+    end.new
+
+    with_trace_adapter(adapter) do
+      result = workflow.run!
+      expect(result.state).to eq(:done)
+    end
+
+    token_traces = adapter.traces.select { |t| t[:type] == :token_usage }
+    expect(token_traces.length).to eq(1)
+    expect(token_traces.first[:data]).to eq({ input_tokens: 15, output_tokens: 8 })
+  end
+
+  it "suppresses token_usage emission when trace_token_usage is false" do
+    agent_class = require_const("Smith::Agent")
+
+    agent = with_stubbed_class("SpecTraceTokenUsageSuppressedAgent", agent_class) do
+      register_as :spec_trace_token_usage_suppressed_agent
+      model "gpt-5-mini"
+    end
+
+    allow(agent).to receive(:chat) do
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_msg| nil }
+      chat.define_singleton_method(:complete) do
+        Struct.new(:content, :input_tokens, :output_tokens).new("ok", 10, 5)
+      end
+      chat
+    end
+
+    adapter = memory_trace_class.new
+    original_value = Smith.config.trace_token_usage
+
+    workflow = with_stubbed_class("SpecTraceTokenUsageSuppressedWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_trace_token_usage_suppressed_agent
+      end
+    end.new
+
+    Smith.configure { |config| config.trace_token_usage = false }
+
+    with_trace_adapter(adapter) do
+      result = workflow.run!
+      expect(result.state).to eq(:done)
+    end
+
+    token_traces = adapter.traces.select { |t| t[:type] == :token_usage }
+    expect(token_traces).to eq([])
+  ensure
+    Smith.configure { |config| config.trace_token_usage = original_value }
+  end
+
+  it "does not emit token_usage when the provider call fails before usage is known" do
+    agent_class = require_const("Smith::Agent")
+
+    agent = with_stubbed_class("SpecTraceTokenUsageFailAgent", agent_class) do
+      register_as :spec_trace_token_usage_fail_agent
+      model "gpt-5-mini"
+    end
+
+    allow(agent).to receive(:chat) do
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_msg| nil }
+      chat.define_singleton_method(:complete) { raise StandardError, "provider down" }
+      chat
+    end
+
+    adapter = memory_trace_class.new
+
+    workflow = with_stubbed_class("SpecTraceTokenUsageFailWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_trace_token_usage_fail_agent
+        on_failure :fail
+      end
+    end.new
+
+    with_trace_adapter(adapter) do
+      result = workflow.run!
+      expect(result.state).to eq(:failed)
+    end
+
+    token_traces = adapter.traces.select { |t| t[:type] == :token_usage }
+    expect(token_traces).to eq([])
+  end
+
+  it "emits token_usage even when after_completion fails after a successful provider response" do
+    agent_class = require_const("Smith::Agent")
+
+    agent = with_stubbed_class("SpecTraceTokenUsageAfterFailAgent", agent_class) do
+      register_as :spec_trace_token_usage_after_fail_agent
+      model "gpt-5-mini"
+
+      def after_completion(_result, _context)
+        raise Smith::WorkflowError, "after_completion failed"
+      end
+    end
+
+    allow(agent).to receive(:chat) do
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_msg| nil }
+      chat.define_singleton_method(:complete) do
+        Struct.new(:content, :input_tokens, :output_tokens).new("ok", 20, 12)
+      end
+      chat
+    end
+
+    adapter = memory_trace_class.new
+
+    workflow = with_stubbed_class("SpecTraceTokenUsageAfterFailWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_trace_token_usage_after_fail_agent
+        on_failure :fail
+      end
+    end.new
+
+    with_trace_adapter(adapter) do
+      result = workflow.run!
+      expect(result.state).to eq(:failed)
+    end
+
+    token_traces = adapter.traces.select { |t| t[:type] == :token_usage }
+    expect(token_traces.length).to eq(1)
+    expect(token_traces.first[:data]).to eq({ input_tokens: 20, output_tokens: 12 })
+  end
+
+  it "does not emit token_usage when the provider response lacks usage metadata" do
+    agent_class = require_const("Smith::Agent")
+
+    agent = with_stubbed_class("SpecTraceTokenUsageNoMetadataAgent", agent_class) do
+      register_as :spec_trace_token_usage_no_metadata_agent
+      model "gpt-5-mini"
+    end
+
+    allow(agent).to receive(:chat) do
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_msg| nil }
+      chat.define_singleton_method(:complete) do
+        Struct.new(:content).new("ok")
+      end
+      chat
+    end
+
+    adapter = memory_trace_class.new
+
+    workflow = with_stubbed_class("SpecTraceTokenUsageNoMetadataWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_trace_token_usage_no_metadata_agent
+      end
+    end.new
+
+    with_trace_adapter(adapter) do
+      result = workflow.run!
+      expect(result.state).to eq(:done)
+    end
+
+    token_traces = adapter.traces.select { |t| t[:type] == :token_usage }
+    expect(token_traces).to eq([])
+  end
+
+  it "does not emit token_usage when the provider response has only partial usage metadata" do
+    agent_class = require_const("Smith::Agent")
+
+    agent = with_stubbed_class("SpecTraceTokenUsagePartialAgent", agent_class) do
+      register_as :spec_trace_token_usage_partial_agent
+      model "gpt-5-mini"
+    end
+
+    allow(agent).to receive(:chat) do
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_msg| nil }
+      chat.define_singleton_method(:complete) do
+        Struct.new(:content, :input_tokens).new("ok", 15)
+      end
+      chat
+    end
+
+    adapter = memory_trace_class.new
+
+    workflow = with_stubbed_class("SpecTraceTokenUsagePartialWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_trace_token_usage_partial_agent
+      end
+    end.new
+
+    with_trace_adapter(adapter) do
+      result = workflow.run!
+      expect(result.state).to eq(:done)
+    end
+
+    token_traces = adapter.traces.select { |t| t[:type] == :token_usage }
+    expect(token_traces).to eq([])
+  end
 end

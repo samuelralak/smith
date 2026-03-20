@@ -22,9 +22,13 @@ module Smith
       def self.from_response(response, content)
         new(
           content,
-          response.respond_to?(:input_tokens) ? (response.input_tokens || 0) : 0,
-          response.respond_to?(:output_tokens) ? (response.output_tokens || 0) : 0
+          response.respond_to?(:input_tokens) ? response.input_tokens : nil,
+          response.respond_to?(:output_tokens) ? response.output_tokens : nil
         )
+      end
+
+      def usage_known?
+        !input_tokens.nil? && !output_tokens.nil?
       end
     end
 

@@ -29,9 +29,19 @@ module Smith
       def snapshot_and_finalize(agent_class, response)
         agent_result = Workflow::AgentResult.from_response(response, response&.content)
         Thread.current[:smith_last_agent_result] = agent_result
+        emit_token_usage(agent_result)
 
         agent_result.content = run_after_completion(agent_class, agent_result.content, @context)
         agent_result
+      end
+
+      def emit_token_usage(agent_result)
+        return unless agent_result.usage_known?
+
+        Smith::Trace.record(
+          type: :token_usage,
+          data: { input_tokens: agent_result.input_tokens, output_tokens: agent_result.output_tokens }
+        )
       end
     end
   end
