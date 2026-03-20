@@ -7,15 +7,19 @@ module Smith
 
       private
 
-      def reserve_branch_budget(ledger, branch_count:)
+      def reserve_branch_budget(ledger, branch_estimates:)
+        return nil unless ledger && branch_estimates
+
+        branch_estimates.each { |dim, amount| ledger.reserve!(dim, amount) }
+        branch_estimates
+      end
+
+      def compute_branch_estimates(ledger, branch_count:)
         return nil unless ledger
 
-        estimates = ledger.limits.each_with_object({}) do |(dim, limit), est|
-          est[dim] = estimate_for_dimension(dim, limit, branch_count)
+        ledger.limits.each_with_object({}) do |(dim, _limit), est|
+          est[dim] = estimate_for_dimension(dim, ledger.remaining(dim), branch_count)
         end
-
-        estimates.each { |dim, amount| ledger.reserve!(dim, amount) }
-        estimates
       end
 
       def reconcile_branch_budget(ledger, estimates, agent_result: nil)
@@ -33,6 +37,33 @@ module Smith
         return unless ledger && estimates
 
         estimates.each { |dim, amount| ledger.release!(dim, amount) }
+      end
+
+      def settle_budget_on_failure(ledger, estimates, agent_result)
+        return unless ledger && estimates
+
+        if agent_result
+          reconcile_branch_budget(ledger, estimates, agent_result: agent_result)
+        else
+          release_branch_budget(ledger, estimates)
+        end
+      end
+
+      def reserve_serial_budget(ledger)
+        return nil unless ledger
+
+        estimates = ledger.limits.each_with_object({}) do |(dim, _limit), est|
+          est[dim] = TOKEN_DIMENSIONS.include?(dim) ? ledger.remaining(dim) : 0
+        end
+
+        estimates.each { |dim, amount| ledger.reserve!(dim, amount) }
+        estimates
+      end
+
+      def finalize_branch(transition, index, result, ledger, reserved)
+        agent_result = result.is_a?(Workflow::AgentResult) ? result : nil
+        reconcile_branch_budget(ledger, reserved, agent_result: agent_result)
+        { branch: index, agent: transition.agent_name, output: agent_result&.content || result }
       end
 
       def estimate_for_dimension(dim, limit, branch_count)

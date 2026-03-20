@@ -28,7 +28,7 @@ module Smith
       end
     end
 
-    BranchEnv = Struct.new(:prepared_input, :guardrail_sources, :scoped_store, :branch_count, :deadline) do
+    BranchEnv = Struct.new(:prepared_input, :guardrail_sources, :scoped_store, :branch_estimates, :deadline) do
       def setup_thread
         Smith::Tool.current_guardrails = guardrail_sources
         Smith::Tool.current_deadline = deadline

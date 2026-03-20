@@ -30,8 +30,7 @@ module Smith
         output = if transition.parallel?
                    execute_parallel_step(transition, prepared_input: prepared_input)
                  else
-                   result = execute_transition_body(transition, prepared_input: prepared_input)
-                   result.is_a?(AgentResult) ? result.content : result
+                   execute_serial_step(transition, prepared_input: prepared_input)
                  end
 
         validate_data_volume!(output, agent_class)
@@ -71,47 +70,57 @@ module Smith
 
         check_deadline!
         response = chat.complete
-        content = run_after_completion(agent_class, response&.content, @context)
+        snapshot_and_finalize(agent_class, response)
+      end
 
-        AgentResult.from_response(response, content)
+      def execute_serial_step(transition, prepared_input: nil)
+        Thread.current[:smith_last_agent_result] = nil
+        reserved = reserve_serial_budget(@ledger)
+        begin
+          result = execute_transition_body(transition, prepared_input: prepared_input)
+          agent_result = result.is_a?(AgentResult) ? result : nil
+          reconcile_branch_budget(@ledger, reserved, agent_result: agent_result)
+          reserved = nil
+          agent_result&.content || result
+        ensure
+          settle_budget_on_failure(@ledger, reserved, Thread.current[:smith_last_agent_result]) if reserved
+          Thread.current[:smith_last_agent_result] = nil
+        end
       end
 
       def execute_parallel_step(transition, prepared_input: nil)
         count = Parallel.resolve_branch_count(transition, @context)
+        estimates = compute_branch_estimates(@ledger, branch_count: count)
         env = BranchEnv.new(
-          prepared_input, Tool.current_guardrails, propagate_scoped_artifacts, count, wall_clock_deadline
+          prepared_input, Tool.current_guardrails, propagate_scoped_artifacts, estimates, wall_clock_deadline
         )
-        branches = Array.new(count) { |i| build_branch(transition, i, env) }
+        ledger = @ledger
+        branches = Array.new(count) { |i| proc { |signal| run_branch(transition, i, env, ledger, signal) } }
         Parallel.execute(branches: branches)
-      end
-
-      def build_branch(transition, index, env)
-        branch_ledger = @ledger
-        proc { |signal| run_branch(transition, index, env, branch_ledger, signal) }
       end
 
       def run_branch(transition, index, env, ledger, signal)
         env.setup_thread
-        reserved = reserve_branch_budget(ledger, branch_count: env.branch_count)
+        Thread.current[:smith_last_agent_result] = nil
+        reserved = reserve_branch_budget(ledger, branch_estimates: env.branch_estimates)
         begin
-          raise Smith::WorkflowError, "cancelled" if signal.cancelled?
-
-          check_deadline!
-
-          result = execute_transition_body(transition, prepared_input: env.prepared_input)
-          raise Smith::WorkflowError, "cancelled" if signal.cancelled?
-
+          result = guarded_branch_call(transition, env, signal)
           finalize_branch(transition, index, result, ledger, reserved).tap { reserved = nil }
         ensure
-          release_branch_budget(ledger, reserved) if reserved
+          settle_budget_on_failure(ledger, reserved, Thread.current[:smith_last_agent_result]) if reserved
+          Thread.current[:smith_last_agent_result] = nil
           env.teardown_thread
         end
       end
 
-      def finalize_branch(transition, index, result, ledger, reserved)
-        agent_result = result.is_a?(AgentResult) ? result : nil
-        reconcile_branch_budget(ledger, reserved, agent_result: agent_result)
-        { branch: index, agent: transition.agent_name, output: agent_result&.content || result }
+      def guarded_branch_call(transition, env, signal)
+        raise Smith::WorkflowError, "cancelled" if signal.cancelled?
+
+        check_deadline!
+        result = execute_transition_body(transition, prepared_input: env.prepared_input)
+        raise Smith::WorkflowError, "cancelled" if signal.cancelled?
+
+        result
       end
     end
   end

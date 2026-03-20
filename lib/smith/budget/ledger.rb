@@ -33,6 +33,10 @@ module Smith
           @reserved[key] = [0, @reserved[key] - amount].max
         end
       end
+
+      def remaining(key)
+        @mutex.synchronize { [@limits[key] - @consumed[key] - @reserved[key], 0].max }
+      end
     end
   end
 end
