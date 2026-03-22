@@ -22,7 +22,7 @@ Current contract coverage exists for:
 
 - top-level namespaces and error hierarchy
 - top-level configuration surface, including structural-trace defaults and content-tracing opt-in default
-- agent inheritance, DSL, and registry binding
+- agent inheritance, DSL, registry binding, and fallback model-chain runtime behavior
 - workflow DSL, transition metadata capture, serialization entry points, exact state shape, run-result surface, best-known execution cost aggregation, and persisted-context filtering
 - workflow pattern namespaces
 - artifact namespace, top-level accessor, configured-store resolution, built-in backend entry points, and named operational methods
@@ -172,6 +172,23 @@ Why more implementation may be required:
 What the implementation agent needs to add:
 
 - richer provider-specific pricing dimensions or non-model fee accounting only if the architecture is extended further
+
+### 9. Fallback Model Chains
+
+Architecture basis:
+
+- Section 5.1, Agent Invocation
+- Section 11, Phase 4 Production Readiness
+
+Why more implementation may be required:
+
+- The architecture now defines fallback as an agent-level ordered model chain with Smith-owned transient-failure classification, shared budget/deadline accounting across attempts, and no fallback by default on policy, schema, or guardrail failures.
+- Current code now includes agent-level `fallback_models`, lifecycle fallback chaining, attempt-aware pricing via `model_used`, and accounting of failed transient attempts when trustworthy usage metadata is present.
+- Remaining future work is richer provider-aware classification or observability, not the core fallback-chain contract.
+
+What the implementation agent needs to add:
+
+- richer provider/deployment descriptors, attempt-history observability, or broader provider-aware classification only if the architecture is extended further
 
 ## File-to-Document Mapping
 
@@ -323,6 +340,38 @@ Documented contracts covered:
 Notes:
 
 - This spec does not yet assert inferred registration from class name because the document frames that as a convention, not a mandatory Phase 1 contract.
+
+### `spec/smith/agent/fallback_spec.rb`
+
+Purpose:
+
+- asserts the first-phase agent-level fallback model-chain runtime behavior
+
+Architecture basis:
+
+- Section 5.1, Agent Invocation (Fallback model chains)
+- Section 11, Phase 4 Production Readiness
+
+Documented contracts covered:
+
+- primary model success does not invoke fallbacks
+- transient upstream failure falls through to the next ordered fallback model
+- exhausted fallback chain fails with `Smith::AgentError`
+- non-transient provider errors do not fallback
+- `Smith::Error` subclasses do not fallback
+- fallback model chains are inherited by subclasses
+- agents without `fallback_models` retain single-model behavior
+- fallback model lists deduplicate entries while preserving order
+- successful fallback attempts are priced against the model that actually succeeded
+- failed transient attempts with known usage contribute to aggregate token and best-known cost accounting
+- failed transient attempts with unknown usage remain optimistic and do not fabricate accounting
+- blank fallback model entries are rejected
+
+Notes:
+
+- Fallback remains an agent-lifecycle helper, not a workflow-level routing primitive.
+- Same-model retry is not implemented as a separate Smith loop in first phase.
+- This spec covers the bounded local fallback chain, not richer provider/deployment-specific failover policy.
 
 ### `spec/smith/workflow/contract_spec.rb`
 

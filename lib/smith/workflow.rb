@@ -18,13 +18,14 @@ module Smith
 
     RunResult = Struct.new(:state, :output, :steps, :total_cost, :total_tokens)
 
-    AgentResult = Struct.new(:content, :input_tokens, :output_tokens, :cost) do
-      def self.from_response(response, content)
+    AgentResult = Struct.new(:content, :input_tokens, :output_tokens, :cost, :model_used) do
+      def self.from_response(response, content, model_used: nil)
         new(
           content,
           response.respond_to?(:input_tokens) ? response.input_tokens : nil,
           response.respond_to?(:output_tokens) ? response.output_tokens : nil,
-          nil
+          nil,
+          model_used
         )
       end
 

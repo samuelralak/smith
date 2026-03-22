@@ -11,6 +11,7 @@ module Smith
         subclass.instance_variable_set(:@guardrails_class, @guardrails_class)
         subclass.instance_variable_set(:@output_schema_class, @output_schema_class)
         subclass.instance_variable_set(:@data_volume, @data_volume)
+        subclass.instance_variable_set(:@fallback_models_list, @fallback_models_list&.dup)
         subclass.instance_variable_set(:@registered_name, nil)
       end
 
@@ -36,6 +37,15 @@ module Smith
         return @data_volume if value.nil?
 
         @data_volume = value
+      end
+
+      def fallback_models(*models)
+        return @fallback_models_list if models.empty?
+
+        entries = models.flatten.compact.map(&:to_s)
+        raise Smith::WorkflowError, "fallback_models entries must not be blank" if entries.any?(&:empty?)
+
+        @fallback_models_list = entries.uniq
       end
 
       def register_as(name = nil)
