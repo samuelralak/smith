@@ -378,8 +378,39 @@ Documented contracts covered:
 Notes:
 
 - This spec covers presence of the named pattern entry points only.
+- Pipeline runtime behavior is covered in `spec/smith/workflow/pipeline_spec.rb`.
 - Router runtime behavior is covered in `spec/smith/workflow/router_spec.rb`.
 - It does not yet specify evaluator/orchestrator stop conditions.
+
+### `spec/smith/workflow/pipeline_spec.rb`
+
+Purpose:
+
+- asserts the Pipeline declarative linear-stage runtime behavior
+
+Architecture basis:
+
+- Section 5.2, Workflow Execution (Pipeline helper)
+
+Documented contracts covered:
+
+- pipeline stages execute in declared order
+- each stage compiles to ordinary workflow transitions with generated `on_success` chaining
+- the last stage output surfaces as the workflow result
+- pipeline stage failure routes through normal `on_failure`
+- a pipeline must declare at least one stage
+- pipeline name is required
+- pipeline `from:` is required
+- pipeline `to:` is required
+- stage name is required
+- stage `execute:` is required
+- stage names must be unique within a pipeline
+- generated transition names must not collide with existing workflow transitions
+
+Notes:
+
+- Pipeline is a DSL/compiler layer only; it does not introduce a separate runner.
+- Existing workflow runtime behavior still applies unchanged once the generated transitions execute.
 
 ### `spec/smith/workflow/router_spec.rb`
 
