@@ -3,7 +3,7 @@
 module Smith
   class Workflow
     class Transition
-      attr_reader :name, :from, :to, :agent_name, :agent_opts, :success_transition, :failure_transition
+      attr_reader :name, :from, :to, :agent_name, :agent_opts, :success_transition, :failure_transition, :router_config
 
       def initialize(name, from:, to:, &)
         @name = name
@@ -23,6 +23,15 @@ module Smith
 
       def on_failure(transition_name)
         @failure_transition = transition_name
+      end
+
+      def route(agent_name, routes:, confidence_threshold:, fallback:)
+        @agent_name = agent_name
+        @router_config = { routes: routes, confidence_threshold: confidence_threshold, fallback: fallback }
+      end
+
+      def routed?
+        !@router_config.nil?
       end
 
       def parallel?

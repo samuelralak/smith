@@ -378,7 +378,39 @@ Documented contracts covered:
 Notes:
 
 - This spec covers presence of the named pattern entry points only.
-- It does not yet specify router confidence thresholds, parallel merge rules, or evaluator/orchestrator stop conditions.
+- Router runtime behavior is covered in `spec/smith/workflow/router_spec.rb`.
+- It does not yet specify evaluator/orchestrator stop conditions.
+
+### `spec/smith/workflow/router_spec.rb`
+
+Purpose:
+
+- asserts the Router structured intent classification runtime behavior
+
+Architecture basis:
+
+- Section 5.2, Workflow Execution (Router helper)
+
+Documented contracts covered:
+
+- high-confidence classifier result selects the mapped specialist transition
+- low-confidence result selects the configured fallback transition
+- unknown route key in classifier output fails the step normally
+- mapped transition name must be declared on the workflow or the step fails normally
+- fallback transition name must be declared on the workflow or the step fails normally
+- missing `:route` key in classifier output fails the step normally
+- missing `:confidence` key in classifier output fails the step normally
+- confidence outside 0.0..1.0 fails the step normally
+- non-hash classifier output fails the step normally
+- classifier agent failure routes through on_failure
+- router classifier output still passes through normal output guardrails before routing is finalized
+- transitions remain the control-flow authority across a full routed workflow
+
+Notes:
+
+- Router selects transition names, not agents directly. Transitions remain authoritative.
+- Classifier agent uses the normal agent invocation path (budget, deadline, AgentError wrapping, token_usage trace all apply).
+- Fallback is only for low confidence. Malformed output fails the step, never silently falls back.
 
 ### `spec/smith/workflow/serialization_spec.rb`
 

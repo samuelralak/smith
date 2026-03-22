@@ -24,8 +24,7 @@ module Smith
         agent_class = transition.agent_name ? Agent::Registry.find(transition.agent_name) : nil
         run_input_guardrails(agent_class)
         apply_tool_guardrails(agent_class)
-        session = build_session
-        prepared_input = session&.prepare!
+        prepared_input = build_session&.prepare!
 
         output = if transition.parallel?
                    execute_parallel_step(transition, prepared_input: prepared_input)
@@ -35,14 +34,22 @@ module Smith
 
         validate_data_volume!(output, agent_class)
         run_output_guardrails(output, agent_class)
-        output
+        resolve_router_output(transition, output)
       end
 
       def complete_step(transition, output)
         @state = transition.to
-        @next_transition_name = transition.success_transition
+        @next_transition_name = @router_next_transition || transition.success_transition
+        @router_next_transition = nil
         emit_step_completed(transition, output)
         { transition: transition.name, from: transition.from, to: transition.to, output: output }
+      end
+
+      def resolve_router_output(transition, output)
+        return output unless transition.routed?
+
+        @router_next_transition = Router.resolve(output, transition.router_config, workflow_class: self.class)
+        nil # routed steps have no user-facing output
       end
 
       def execute_transition_body(transition, prepared_input: nil)
