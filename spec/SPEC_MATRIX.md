@@ -381,7 +381,7 @@ Notes:
 - Pipeline runtime behavior is covered in `spec/smith/workflow/pipeline_spec.rb`.
 - Router runtime behavior is covered in `spec/smith/workflow/router_spec.rb`.
 - Evaluator-optimizer runtime behavior is covered in `spec/smith/workflow/evaluator_optimizer_spec.rb`.
-- It does not yet specify orchestrator-worker stop/delegation behavior.
+- Orchestrator-worker runtime behavior is covered in `spec/smith/workflow/orchestrator_worker_spec.rb`.
 
 ### `spec/smith/workflow/pipeline_spec.rb`
 
@@ -507,6 +507,52 @@ Notes:
 
 - This covers the first local child-execution backend, not the future durable child-execution store/backend.
 - Parent-facing semantics remain simple even though the runtime uses a dedicated nested-execution seam.
+
+### `spec/smith/workflow/orchestrator_worker_spec.rb`
+
+Purpose:
+
+- asserts the first-phase orchestrator-worker bounded delegation runtime behavior
+
+Architecture basis:
+
+- Section 5.2, Workflow Execution (Orchestrator-worker helper)
+- Section 11, Phase 3 Workflow Patterns
+
+Documented contracts covered:
+
+- orchestrator may emit valid final output and complete the parent step successfully
+- orchestrator may emit worker tasks, receive normalized worker results, and continue to a later orchestration round
+- exhausting `max_delegation_rounds` without final output fails the step normally
+- exceeding `max_workers` fails the step normally
+- explicit `stop` signal fails the step normally
+- orchestrator output must contain exactly one of `:tasks`, `:final`, or `:stop`
+- non-hash orchestrator output fails the step normally
+- task payloads are validated against `task_schema`
+- worker outputs are validated against `worker_output_schema`
+- final output is validated against `final_output_schema`
+- worker failures route through normal `on_failure`
+- worker execution uses a Smith-owned worker execution seam while remaining inside one parent workflow step
+- orchestrator-worker keeps parent step count parent-scoped
+- orchestrate declaration requires:
+  - `orchestrator`
+  - `worker`
+  - `task_schema`
+  - `worker_output_schema`
+  - `final_output_schema`
+  - positive integer `max_workers`
+  - positive integer `max_delegation_rounds`
+- orchestrate schemas must expose the declared first-phase schema surface via `required_keys`
+- transition DSL rejects combining `orchestrate` with:
+  - `execute`
+  - `route`
+  - `workflow`
+  - `optimize`
+
+Notes:
+
+- This covers the first local orchestrator-worker backend, not the future durable/distributed worker execution backend.
+- Workers remain bounded by Smith-owned limits and inherited parent protections; the helper does not create a free-form multi-agent swarm.
 
 ### `spec/smith/workflow/serialization_spec.rb`
 

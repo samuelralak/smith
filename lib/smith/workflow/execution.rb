@@ -6,6 +6,7 @@ module Smith
       include Agent::Lifecycle
       include NestedExecution
       include EvaluatorOptimizer
+      include OrchestratorWorker
 
       private
 
@@ -33,14 +34,6 @@ module Smith
         validate_data_volume!(output, agent_class)
         run_output_guardrails(output, agent_class)
         resolve_router_output(transition, output)
-      end
-
-      def dispatch_step(transition, prepared_input: nil)
-        if transition.parallel? then execute_parallel_step(transition, prepared_input: prepared_input)
-        elsif transition.nested? then execute_nested_workflow(transition)
-        elsif transition.optimized? then execute_optimization_step(transition, prepared_input: prepared_input)
-        else execute_serial_step(transition, prepared_input: prepared_input)
-        end
       end
 
       def complete_step(transition, output)
