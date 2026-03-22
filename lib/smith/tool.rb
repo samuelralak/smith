@@ -2,20 +2,14 @@
 
 require "ruby_llm"
 
+require_relative "tool/capability_builder"
+require_relative "tool/policy"
+require_relative "tool/budget_enforcement"
+
 module Smith
   class Tool < RubyLLM::Tool
-    class CapabilityBuilder
-      def initialize
-        @capabilities = {}
-      end
-
-      def sensitivity(value)  = @capabilities[:sensitivity] = value
-      def privilege(value)    = @capabilities[:privilege] = value
-      def network(value)      = @capabilities[:network] = value
-      def approval(value)     = @capabilities[:approval] = value
-      def data_volume(value)  = @capabilities[:data_volume] = value
-      def to_h                = @capabilities
-    end
+    include Policy
+    include BudgetEnforcement
 
     class << self
       def current_guardrails
@@ -32,6 +26,22 @@ module Smith
 
       def current_deadline=(value)
         Thread.current[:smith_tool_deadline] = value
+      end
+
+      def current_ledger
+        Thread.current[:smith_tool_ledger]
+      end
+
+      def current_ledger=(value)
+        Thread.current[:smith_tool_ledger] = value
+      end
+
+      def current_tool_call_allowance
+        Thread.current[:smith_tool_call_allowance]
+      end
+
+      def current_tool_call_allowance=(value)
+        Thread.current[:smith_tool_call_allowance] = value
       end
 
       def category(value = nil)
@@ -68,6 +78,7 @@ module Smith
       check_authorization!(kwargs)
       run_tool_guardrails!(kwargs)
       check_tool_deadline!
+      charge_tool_call!
 
       start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       result = perform(**kwargs)
@@ -84,37 +95,6 @@ module Smith
       return unless hook
 
       hook.call(self, kwargs)
-    end
-
-    def check_privilege!(kwargs)
-      privilege = self.class.capabilities&.dig(:privilege)
-      return if privilege.nil? || privilege == :none
-
-      context = kwargs[:context] || {}
-      enforce_privilege!(privilege, context)
-    end
-
-    def enforce_privilege!(privilege, context)
-      require_authenticated!(context) if %i[authenticated elevated].include?(privilege)
-      require_elevated!(context) if privilege == :elevated
-    end
-
-    def require_authenticated!(context)
-      raise ToolPolicyDenied, "privilege requires context[:user]" unless context[:user]
-    end
-
-    def require_elevated!(context)
-      return if context[:role] == :elevated
-
-      raise ToolPolicyDenied, "privilege :elevated requires context[:role] == :elevated"
-    end
-
-    def check_authorization!(kwargs)
-      authorizer = self.class.authorize
-      return unless authorizer
-
-      context = kwargs[:context]
-      raise ToolPolicyDenied unless authorizer.call(context)
     end
 
     def run_tool_guardrails!(kwargs)

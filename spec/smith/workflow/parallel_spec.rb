@@ -596,4 +596,202 @@ RSpec.describe "Smith::Workflow parallel execution" do
     expect(total_token_reserves).to include([:reserve, :total_tokens, 50_000])
     expect(total_token_reserves.count([:reserve, :total_tokens, 24_982])).to eq(2)
   end
+
+  it "enforces agent-only token_limit per parallel branch invocation without a workflow budget" do
+    budget_ledger_class = require_const("Smith::Budget::Ledger")
+
+    agent = with_stubbed_class("SpecParallelAgentOnlyTokenBudgetAgent", agent_class) do
+      register_as :spec_parallel_agent_only_token_budget_agent
+      model "gpt-5-mini"
+      budget token_limit: 10
+    end
+
+    allow(agent).to receive(:chat) do
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_message| nil }
+      chat.define_singleton_method(:complete) do
+        Struct.new(:content, :input_tokens, :output_tokens).new("ok", 7, 5)
+      end
+      chat
+    end
+
+    observed = Queue.new
+    created_ledgers = []
+
+    allow(budget_ledger_class).to receive(:new).and_wrap_original do |original, *args, **kwargs|
+      ledger = original.call(*args, **kwargs)
+      if ledger.limits == { token_limit: 10 }
+        created_ledgers << ledger
+        allow(ledger).to receive(:reserve!).and_wrap_original do |inner, key, amount|
+          observed << [:reserve, ledger.object_id, key, amount]
+          inner.call(key, amount)
+        end
+        allow(ledger).to receive(:reconcile!).and_wrap_original do |inner, key, reserved_amount, actual_amount|
+          observed << [:reconcile, ledger.object_id, key, reserved_amount, actual_amount]
+          inner.call(key, reserved_amount, actual_amount)
+        end
+      end
+      ledger
+    end
+
+    workflow = with_stubbed_class("SpecParallelAgentOnlyTokenBudgetWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :fan_out, from: :idle, to: :done do
+        execute :spec_parallel_agent_only_token_budget_agent, parallel: true, count: 2
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    expect(workflow.ledger).to be_nil
+    expect(created_ledgers.length).to be >= 2
+
+    entries = []
+    entries << observed.pop until observed.empty?
+
+    reserve_entries = entries.select { |entry| entry[0] == :reserve }
+    reconcile_entries = entries.select { |entry| entry[0] == :reconcile }
+    used_ledger_ids = (reserve_entries + reconcile_entries).map { |entry| entry[1] }.uniq
+
+    expect(used_ledger_ids.length).to eq(2)
+    expect(reserve_entries).to contain_exactly(
+      [:reserve, used_ledger_ids[0], :token_limit, 10],
+      [:reserve, used_ledger_ids[1], :token_limit, 10]
+    )
+    expect(reconcile_entries).to contain_exactly(
+      [:reconcile, used_ledger_ids[0], :token_limit, 10, 12],
+      [:reconcile, used_ledger_ids[1], :token_limit, 10, 12]
+    )
+  end
+
+  it "enforces agent-only cost per parallel branch invocation without a workflow budget" do
+    budget_ledger_class = require_const("Smith::Budget::Ledger")
+    original_pricing = Smith.config.pricing
+
+    Smith.configure do |config|
+      config.pricing = {
+        "gpt-5-mini" => {
+          input_cost_per_token: 0.01,
+          output_cost_per_token: 0.02
+        }
+      }
+    end
+
+    agent = with_stubbed_class("SpecParallelAgentOnlyCostBudgetAgent", agent_class) do
+      register_as :spec_parallel_agent_only_cost_budget_agent
+      model "gpt-5-mini"
+      budget cost: 0.20
+    end
+
+    allow(agent).to receive(:chat) do
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_message| nil }
+      chat.define_singleton_method(:complete) do
+        Struct.new(:content, :input_tokens, :output_tokens).new("ok", 7, 5)
+      end
+      chat
+    end
+
+    observed = Queue.new
+    created_ledgers = []
+
+    allow(budget_ledger_class).to receive(:new).and_wrap_original do |original, *args, **kwargs|
+      ledger = original.call(*args, **kwargs)
+      if ledger.limits == { total_cost: 0.20 }
+        created_ledgers << ledger
+        allow(ledger).to receive(:reserve!).and_wrap_original do |inner, key, amount|
+          observed << [:reserve, ledger.object_id, key, amount]
+          inner.call(key, amount)
+        end
+        allow(ledger).to receive(:reconcile!).and_wrap_original do |inner, key, reserved_amount, actual_amount|
+          observed << [:reconcile, ledger.object_id, key, reserved_amount, actual_amount]
+          inner.call(key, reserved_amount, actual_amount)
+        end
+      end
+      ledger
+    end
+
+    workflow = with_stubbed_class("SpecParallelAgentOnlyCostBudgetWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :fan_out, from: :idle, to: :done do
+        execute :spec_parallel_agent_only_cost_budget_agent, parallel: true, count: 2
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    expect(workflow.ledger).to be_nil
+    expect(created_ledgers.length).to be >= 2
+
+    entries = []
+    entries << observed.pop until observed.empty?
+
+    reserve_entries = entries.select { |entry| entry[0] == :reserve }
+    reconcile_entries = entries.select { |entry| entry[0] == :reconcile }
+    used_ledger_ids = (reserve_entries + reconcile_entries).map { |entry| entry[1] }.uniq
+
+    expect(used_ledger_ids.length).to eq(2)
+    expect(reserve_entries).to contain_exactly(
+      [:reserve, used_ledger_ids[0], :total_cost, 0.20],
+      [:reserve, used_ledger_ids[1], :total_cost, 0.20]
+    )
+    expect(reconcile_entries).to contain_exactly(
+      [:reconcile, used_ledger_ids[0], :total_cost, 0.20, 0.17],
+      [:reconcile, used_ledger_ids[1], :total_cost, 0.20, 0.17]
+    )
+  ensure
+    Smith.configure { |config| config.pricing = original_pricing }
+  end
+
+  it "treats agent-only parallel budgets as per-branch ledgers rather than one shared pool" do
+    budget_ledger_class = require_const("Smith::Budget::Ledger")
+
+    agent = with_stubbed_class("SpecParallelPerBranchAgentBudgetAgent", agent_class) do
+      register_as :spec_parallel_per_branch_agent_budget_agent
+      model "gpt-5-mini"
+      budget token_limit: 10
+    end
+
+    allow(agent).to receive(:chat) do
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_message| nil }
+      chat.define_singleton_method(:complete) do
+        Struct.new(:content, :input_tokens, :output_tokens).new("ok", 1, 0)
+      end
+      chat
+    end
+
+    created_ledgers = []
+
+    allow(budget_ledger_class).to receive(:new).and_wrap_original do |original, *args, **kwargs|
+      ledger = original.call(*args, **kwargs)
+      created_ledgers << ledger if ledger.limits == { token_limit: 10 }
+      ledger
+    end
+
+    workflow = with_stubbed_class("SpecParallelPerBranchAgentBudgetWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :fan_out, from: :idle, to: :done do
+        execute :spec_parallel_per_branch_agent_budget_agent, parallel: true, count: 2
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+
+    used_ledgers = created_ledgers.select { |ledger| ledger.consumed[:token_limit] == 1 }
+
+    expect(used_ledgers.length).to eq(2)
+    expect(used_ledgers.map(&:object_id).uniq.length).to eq(2)
+    expect(used_ledgers.map { |ledger| ledger.consumed[:token_limit] }).to eq([1, 1])
+  end
 end

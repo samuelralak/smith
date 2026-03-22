@@ -1355,15 +1355,20 @@ Partially covered:
 - multi-dimension independence is covered
 - estimate-based parallel token reservation/reconcile/release behavior is covered at the workflow boundary
 - serial token reservation/reconcile/release behavior is covered at the workflow boundary
+- agent `wall_clock` deadline narrowing is covered at Smith-owned call boundaries
+- workflow `tool_calls` enforcement at the tool boundary is runtime-real
+- agent `tool_calls` enforcement at the tool boundary is runtime-real
+- agent-only `token_limit` / `cost` enforcement is covered in serial/helper-owned invocation paths
+- agent-only `token_limit` / `cost` enforcement is covered in parallel invocation paths
+- agent-only parallel token/cost budgets are covered as per-branch invocation constraints rather than a shared branch pool
 - post-response Smith-side failure reconciliation from observed usage is covered
 - persisted `budget_consumed` now reflects live ledger state
 - restored workflows rebuild a live ledger and continue budget reservation/reconciliation from restored state
 - provider-timeout optimistic release semantics are not yet covered
-- cooperative wall_clock deadline behavior is covered at Smith-owned call boundaries
 
 Recommended future specs:
 
-- add `spec/smith/budget/runtime_spec.rb`
+- add `spec/smith/budget/runtime_spec.rb` only if a separate budget-focused runtime seam is introduced beyond the currently covered workflow/tool paths
 
 ### Section 4.6 Context Manager
 

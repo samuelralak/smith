@@ -6,6 +6,7 @@ module Smith
       TOKEN_DIMENSIONS = %i[total_tokens token_limit].freeze
       COST_DIMENSIONS = %i[total_cost].freeze
       BUDGET_DIMENSIONS = (TOKEN_DIMENSIONS + COST_DIMENSIONS).freeze
+      AGENT_DIM_MAP = { token_limit: TOKEN_DIMENSIONS, cost: COST_DIMENSIONS }.freeze
 
       private
 
@@ -16,11 +17,13 @@ module Smith
         branch_estimates
       end
 
-      def compute_branch_estimates(ledger, branch_count:)
+      def compute_branch_estimates(ledger, branch_count:, agent_budget: nil)
         return nil unless ledger
 
         ledger.limits.each_with_object({}) do |(dim, _limit), est|
-          est[dim] = estimate_for_dimension(dim, ledger.remaining(dim), branch_count)
+          per_branch = estimate_for_dimension(dim, ledger.remaining(dim), branch_count)
+          cap = agent_cap_for_dimension(dim, agent_budget)
+          est[dim] = cap ? [per_branch, cap].min : per_branch
         end
       end
 
@@ -63,11 +66,13 @@ module Smith
         end
       end
 
-      def reserve_serial_budget(ledger)
+      def reserve_serial_budget(ledger, agent_budget: nil)
         return nil unless ledger
 
         estimates = ledger.limits.each_with_object({}) do |(dim, _limit), est|
-          est[dim] = BUDGET_DIMENSIONS.include?(dim) ? ledger.remaining(dim) : 0
+          remaining = BUDGET_DIMENSIONS.include?(dim) ? ledger.remaining(dim) : 0
+          cap = agent_cap_for_dimension(dim, agent_budget)
+          est[dim] = cap ? [remaining, cap].min : remaining
         end
 
         estimates.each { |dim, amount| ledger.reserve!(dim, amount) }
@@ -84,6 +89,16 @@ module Smith
         return 0 unless BUDGET_DIMENSIONS.include?(dim)
 
         TOKEN_DIMENSIONS.include?(dim) ? [limit / branch_count, 1].max : limit / branch_count
+      end
+
+      def agent_cap_for_dimension(dim, agent_budget)
+        return nil unless agent_budget
+        return agent_budget[dim] if agent_budget.key?(dim)
+
+        AGENT_DIM_MAP.each do |agent_dim, workflow_dims|
+          return agent_budget[agent_dim] if workflow_dims.include?(dim) && agent_budget.key?(agent_dim)
+        end
+        nil
       end
     end
   end

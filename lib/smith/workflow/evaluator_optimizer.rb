@@ -31,22 +31,19 @@ module Smith
       def run_optimization_round(state, round)
         generate_candidate!(state, round)
         evaluation = evaluate_candidate(state)
-        validate_evaluation!(evaluation, state.config)
+        validate_evaluation_structure!(evaluation)
+        validate_evaluation_fields!(evaluation, state.config)
 
         return state.candidate if evaluation[:accept]
 
-        check_stop_conditions!(evaluation, state, round)
-        state.last_score = evaluation[:score]
-        state.feedback = evaluation[:feedback]
-        nil
-      end
-
-      def check_stop_conditions!(evaluation, state, round)
         if evaluation[:converged]
           raise WorkflowError, "optimization converged without acceptance after round #{round + 1}"
         end
 
         check_improvement_threshold!(evaluation, state, round)
+        state.last_score = evaluation[:score]
+        state.feedback = evaluation[:feedback]
+        nil
       end
 
       def generate_candidate!(state, round)
@@ -56,8 +53,10 @@ module Smith
       end
 
       def evaluate_candidate(state)
-        input = prepare_evaluator_input(state.candidate)
-        invoke_with_evaluator_schema(state.evaluator_class, state.config[:evaluator_schema], input)
+        invoke_with_evaluator_schema(
+          state.evaluator_class, state.config[:evaluator_schema],
+          [{ role: :user, content: state.candidate.to_s }]
+        )
       end
 
       def invoke_with_evaluator_schema(evaluator_class, schema, input)
@@ -70,15 +69,22 @@ module Smith
 
       def invoke_agent_with_budget(agent_class, prepared_input)
         Thread.current[:smith_last_agent_result] = nil
-        reserved = reserve_serial_budget(@ledger)
+        with_agent_context(agent_class) do
+          invoke_with_call_ledger(agent_class, prepared_input)
+        end
+      end
+
+      def invoke_with_call_ledger(agent_class, prepared_input)
+        ledger = effective_call_ledger
+        reserved = reserve_serial_budget(ledger, agent_budget: agent_class&.budget)
         begin
           result = invoke_agent(agent_class, prepared_input)
           agent_result = result.is_a?(AgentResult) ? result : nil
-          reconcile_branch_budget(@ledger, reserved, agent_result: agent_result)
+          reconcile_branch_budget(ledger, reserved, agent_result: agent_result)
           reserved = nil
           agent_result ? agent_result.content : result
         ensure
-          settle_budget_on_failure(@ledger, reserved, Thread.current[:smith_last_agent_result]) if reserved
+          settle_budget_on_failure(ledger, reserved, Thread.current[:smith_last_agent_result]) if reserved
           Thread.current[:smith_last_agent_result] = nil
         end
       end
@@ -92,20 +98,11 @@ module Smith
       def prepare_generator_input(prepared_input, round, prior_candidate, feedback)
         return prepared_input if round.zero?
 
-        messages = prepared_input&.dup || []
-        messages << { role: :system, content: "[smith:refinement-round] #{round + 1}" }
-        messages << { role: :assistant, content: prior_candidate.to_s }
-        messages << { role: :user, content: "[smith:evaluator-feedback]\n#{feedback}" }
-        messages
-      end
-
-      def prepare_evaluator_input(candidate)
-        [{ role: :user, content: candidate.to_s }]
-      end
-
-      def validate_evaluation!(evaluation, config)
-        validate_evaluation_structure!(evaluation)
-        validate_evaluation_fields!(evaluation, config)
+        (prepared_input&.dup || []).push(
+          { role: :system, content: "[smith:refinement-round] #{round + 1}" },
+          { role: :assistant, content: prior_candidate.to_s },
+          { role: :user, content: "[smith:evaluator-feedback]\n#{feedback}" }
+        )
       end
 
       def validate_evaluation_structure!(evaluation)
