@@ -670,13 +670,16 @@ Documented contracts covered:
   - `updated_at`
   - `next_transition_name`
   - `session_messages`
+  - `total_cost`
+  - `total_tokens`
 - round-trip via `.from_state`
 - `budget_consumed` is serialized from the live ledger after execution
 - `.from_state` rebuilds a live ledger with the same consumed and remaining budget
 - resumed workflows continue reserving and reconciling budget from restored ledger state
 - persisted `next_transition_name` preserves the selected resume path across restore
+- persisted `total_cost` and `total_tokens` preserve cumulative best-known workflow totals across restore
 - JSON-serializable state payload
-- host-style JSON round-trip restore via `JSON.generate` / `JSON.parse` preserves executable state, selected next transition, persisted context, session history, and restored budget state
+- host-style JSON round-trip restore via `JSON.generate` / `JSON.parse` preserves executable state, selected next transition, persisted context, session history, restored budget state, and persisted cumulative totals
 
 Notes:
 
@@ -703,8 +706,12 @@ Documented contracts covered:
   - `total_cost`
   - `total_tokens`
 - `total_cost` is Smith's best-known computed workflow cost subtotal
+- `total_tokens` is Smith's best-known workflow token subtotal
 - known pricing plus known usage contribute non-zero computed cost to `total_cost`
 - multiple successful agent calls aggregate their known computed costs into `total_cost`
+- stepwise execution via `advance!` followed by `run!` preserves cumulative `total_cost` and `total_tokens`
+- persisted resume via `.from_state` preserves cumulative `total_cost` and `total_tokens`
+- repeated `run!` on an already-terminal workflow leaves cumulative totals stable
 - missing pricing does not fabricate cost
 - malformed pricing entries do not fabricate cost or fail execution
 - missing usage metadata does not fabricate cost
@@ -730,6 +737,11 @@ Notes:
 - It now also covers best-known execution cost behavior:
   - `total_cost` aggregates known model-call cost only when pricing and usage are both trustworthy
   - unknown pricing or unknown usage leaves cost optimistic/partial instead of fabricated
+- It now also covers cumulative total stability across:
+  - uninterrupted runs
+  - stepwise execution followed by `run!`
+  - persisted resume
+  - repeated `run!` on an already-terminal workflow
 - It now also covers best-effort `total_cost` budget reconciliation when computed cost is known.
 - It does not yet assert the full content of `steps` entries.
 

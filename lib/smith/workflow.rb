@@ -58,6 +58,8 @@ module Smith
       @ledger = ledger || build_ledger
       @created_at = created_at || Time.now.utc.iso8601
       @updated_at = @created_at
+      @total_cost = 0.0
+      @total_tokens = 0
     end
 
     def advance!
@@ -74,8 +76,6 @@ module Smith
     end
 
     def run!
-      @cost_accumulator = 0.0
-      @token_accumulator = 0
       steps = []
       until terminal?
         step = advance!
@@ -85,8 +85,8 @@ module Smith
         state: @state,
         output: steps.last&.dig(:output),
         steps: steps,
-        total_cost: @cost_accumulator,
-        total_tokens: @token_accumulator
+        total_cost: @total_cost,
+        total_tokens: @total_tokens
       )
     end
 

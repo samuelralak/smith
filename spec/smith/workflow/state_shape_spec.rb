@@ -12,7 +12,7 @@ RSpec.describe "Smith::Workflow state serialization shape" do
 
     state = workflow.to_state
 
-    expect(state.keys).to eq(%i[class state context budget_consumed step_count execution_namespace created_at updated_at next_transition_name session_messages])
+    expect(state.keys).to eq(%i[class state context budget_consumed step_count execution_namespace created_at updated_at next_transition_name session_messages total_cost total_tokens])
     expect(state[:class]).to eq("SpecStateWorkflow")
     expect(state[:state]).to eq(:idle)
     expect(state[:context]).to eq(branch_count: 6, metadata: { topic: "history" })
@@ -20,6 +20,8 @@ RSpec.describe "Smith::Workflow state serialization shape" do
     expect(state[:step_count]).to be_a(Integer)
     expect(state[:created_at]).to be_a(String)
     expect(state[:updated_at]).to be_a(String)
+    expect(state[:total_cost]).to eq(0.0)
+    expect(state[:total_tokens]).to eq(0)
   end
 
   it "round-trips through from_state without serializing agent instances" do

@@ -102,14 +102,14 @@ module Smith
         if agent_result.usage_known?
           @usage_mutex ||= Mutex.new
           @usage_mutex.synchronize do
-            @token_accumulator = (@token_accumulator || 0) + agent_result.input_tokens + agent_result.output_tokens
+            @total_tokens = (@total_tokens || 0) + agent_result.input_tokens + agent_result.output_tokens
           end
         end
 
         return unless agent_result.cost
 
         @usage_mutex ||= Mutex.new
-        @usage_mutex.synchronize { @cost_accumulator = (@cost_accumulator || 0.0) + agent_result.cost }
+        @usage_mutex.synchronize { @total_cost = (@total_cost || 0.0) + agent_result.cost }
       end
     end
   end

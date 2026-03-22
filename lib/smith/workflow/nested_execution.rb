@@ -37,8 +37,8 @@ module Smith
       def roll_up_child_totals(child_result)
         @usage_mutex ||= Mutex.new
         @usage_mutex.synchronize do
-          @cost_accumulator = (@cost_accumulator || 0.0) + (child_result.total_cost || 0.0)
-          @token_accumulator = (@token_accumulator || 0) + (child_result.total_tokens || 0)
+          @total_cost = (@total_cost || 0.0) + (child_result.total_cost || 0.0)
+          @total_tokens = (@total_tokens || 0) + (child_result.total_tokens || 0)
         end
       end
     end

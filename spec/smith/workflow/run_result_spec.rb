@@ -283,6 +283,164 @@ RSpec.describe "Smith::Workflow run result contract" do
     Smith.configure { |config| config.pricing = original_pricing }
   end
 
+  it "returns cumulative totals when a workflow is stepped once and then finished with run!" do
+    original_pricing = Smith.config.pricing
+
+    Smith.configure do |config|
+      config.pricing = {
+        "gpt-5-mini" => {
+          input_cost_per_token: 0.01,
+          output_cost_per_token: 0.02
+        }
+      }
+    end
+
+    agent = with_stubbed_class("SpecRunResultStepwiseTotalsAgent", agent_class) do
+      register_as :spec_run_result_stepwise_totals_agent
+      model "gpt-5-mini"
+    end
+
+    responses = [
+      Struct.new(:content, :input_tokens, :output_tokens).new("step-one", 3, 2),
+      Struct.new(:content, :input_tokens, :output_tokens).new("step-two", 4, 1)
+    ]
+
+    allow(agent).to receive(:chat) do
+      response = responses.shift
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_message| nil }
+      chat.define_singleton_method(:complete) { response }
+      chat
+    end
+
+    workflow = with_stubbed_class("SpecRunResultStepwiseTotalsWorkflow", workflow_class) do
+      initial_state :idle
+      state :mid
+      state :done
+
+      transition :first, from: :idle, to: :mid do
+        execute :spec_run_result_stepwise_totals_agent
+      end
+
+      transition :second, from: :mid, to: :done do
+        execute :spec_run_result_stepwise_totals_agent
+      end
+    end.new
+
+    workflow.advance!
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    expect(result.total_cost).to eq(0.13)
+    expect(result.total_tokens).to eq(10)
+  ensure
+    Smith.configure { |config| config.pricing = original_pricing }
+  end
+
+  it "preserves cumulative totals across persisted resume" do
+    original_pricing = Smith.config.pricing
+
+    Smith.configure do |config|
+      config.pricing = {
+        "gpt-5-mini" => {
+          input_cost_per_token: 0.01,
+          output_cost_per_token: 0.02
+        }
+      }
+    end
+
+    agent = with_stubbed_class("SpecRunResultResumedTotalsAgent", agent_class) do
+      register_as :spec_run_result_resumed_totals_agent
+      model "gpt-5-mini"
+    end
+
+    responses = [
+      Struct.new(:content, :input_tokens, :output_tokens).new("step-one", 3, 2),
+      Struct.new(:content, :input_tokens, :output_tokens).new("step-two", 4, 1)
+    ]
+
+    allow(agent).to receive(:chat) do
+      response = responses.shift
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_message| nil }
+      chat.define_singleton_method(:complete) { response }
+      chat
+    end
+
+    workflow_class_with_resume = with_stubbed_class("SpecRunResultResumedTotalsWorkflow", workflow_class) do
+      initial_state :idle
+      state :mid
+      state :done
+
+      transition :first, from: :idle, to: :mid do
+        execute :spec_run_result_resumed_totals_agent
+      end
+
+      transition :second, from: :mid, to: :done do
+        execute :spec_run_result_resumed_totals_agent
+      end
+    end
+
+    workflow = workflow_class_with_resume.new
+    workflow.advance!
+
+    restored = workflow_class_with_resume.from_state(workflow.to_state)
+    result = restored.run!
+
+    expect(result.state).to eq(:done)
+    expect(result.total_cost).to eq(0.13)
+    expect(result.total_tokens).to eq(10)
+  ensure
+    Smith.configure { |config| config.pricing = original_pricing }
+  end
+
+  it "keeps cumulative totals stable on repeated run! after the workflow is already terminal" do
+    original_pricing = Smith.config.pricing
+
+    Smith.configure do |config|
+      config.pricing = {
+        "gpt-5-mini" => {
+          input_cost_per_token: 0.01,
+          output_cost_per_token: 0.02
+        }
+      }
+    end
+
+    agent = with_stubbed_class("SpecRunResultStableTerminalTotalsAgent", agent_class) do
+      register_as :spec_run_result_stable_terminal_totals_agent
+      model "gpt-5-mini"
+    end
+
+    allow(agent).to receive(:chat) do
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_message| nil }
+      chat.define_singleton_method(:complete) do
+        Struct.new(:content, :input_tokens, :output_tokens).new("ok", 7, 5)
+      end
+      chat
+    end
+
+    workflow = with_stubbed_class("SpecRunResultStableTerminalTotalsWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_run_result_stable_terminal_totals_agent
+      end
+    end.new
+
+    first = workflow.run!
+    second = workflow.run!
+
+    expect(first.total_cost).to eq(0.17)
+    expect(first.total_tokens).to eq(12)
+    expect(second.total_cost).to eq(0.17)
+    expect(second.total_tokens).to eq(12)
+    expect(second.steps).to eq([])
+  ensure
+    Smith.configure { |config| config.pricing = original_pricing }
+  end
+
   it "does not fabricate cost when pricing is not configured" do
     original_pricing = Smith.config.pricing
     Smith.configure { |config| config.pricing = nil }
