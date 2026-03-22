@@ -380,7 +380,8 @@ Notes:
 - This spec covers presence of the named pattern entry points only.
 - Pipeline runtime behavior is covered in `spec/smith/workflow/pipeline_spec.rb`.
 - Router runtime behavior is covered in `spec/smith/workflow/router_spec.rb`.
-- It does not yet specify evaluator/orchestrator stop conditions.
+- Evaluator-optimizer runtime behavior is covered in `spec/smith/workflow/evaluator_optimizer_spec.rb`.
+- It does not yet specify orchestrator-worker stop/delegation behavior.
 
 ### `spec/smith/workflow/pipeline_spec.rb`
 
@@ -442,6 +443,39 @@ Notes:
 - Router selects transition names, not agents directly. Transitions remain authoritative.
 - Classifier agent uses the normal agent invocation path (budget, deadline, AgentError wrapping, token_usage trace all apply).
 - Fallback is only for low confidence. Malformed output fails the step, never silently falls back.
+
+### `spec/smith/workflow/evaluator_optimizer_spec.rb`
+
+Purpose:
+
+- asserts the Evaluator-optimizer bounded generator/evaluator refinement runtime behavior
+
+Architecture basis:
+
+- Section 5.2, Workflow Execution (Evaluator-optimizer helper)
+- Section 11, Phase 3 Workflow Patterns
+
+Documented contracts covered:
+
+- accepted candidate returns as the step output
+- bounded exhaustion at `max_rounds` fails the step normally
+- `converged: true` without acceptance fails the step normally
+- improvement below the configured `improvement_threshold` fails the step normally
+- evaluator output missing `:accept` fails the step normally
+- non-boolean evaluator `:accept` fails the step normally
+- rejected evaluator output must include `:feedback`
+- optimize declaration requires `generator`
+- optimize declaration requires `evaluator`
+- optimize declaration requires `evaluator_schema`
+- optimize declaration requires positive integer `max_rounds`
+- transition DSL rejects combining `optimize` with `execute`
+- generator and evaluator rounds participate in normal serial budget reservation and reconciliation
+- optimization rounds remain inside one parent workflow step
+
+Notes:
+
+- First-phase success requires an accepted candidate; convergence without acceptance is a bounded failure, not a best-effort success mode.
+- Evaluator-optimizer remains a transition-body helper inside one workflow step; it does not introduce a second workflow runner or per-round persisted resume surface.
 
 ### `spec/smith/workflow/nested_execution_spec.rb`
 

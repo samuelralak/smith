@@ -4,7 +4,7 @@ module Smith
   class Workflow
     class Transition
       attr_reader :name, :from, :to, :agent_name, :agent_opts, :success_transition, :failure_transition,
-                  :router_config, :workflow_class
+                  :router_config, :workflow_class, :optimization_config
 
       def initialize(name, from:, to:, &)
         @name = name
@@ -40,6 +40,20 @@ module Smith
         @workflow_class = klass
       end
 
+      def optimize(generator:, evaluator:, max_rounds:, evaluator_schema:, improvement_threshold: nil)
+        validate_optimize_conflicts!
+        validate_optimize_controls!(generator, evaluator, max_rounds, evaluator_schema)
+
+        @optimization_config = {
+          generator: generator, evaluator: evaluator, max_rounds: max_rounds,
+          evaluator_schema: evaluator_schema, improvement_threshold: improvement_threshold
+        }
+      end
+
+      def optimized?
+        !@optimization_config.nil?
+      end
+
       def nested?
         !@workflow_class.nil?
       end
@@ -50,6 +64,24 @@ module Smith
 
       def parallel?
         agent_opts&.dig(:parallel) == true
+      end
+
+      private
+
+      def validate_optimize_conflicts!
+        raise WorkflowError, "transition cannot declare both optimize and execute" if @agent_name && !@router_config
+        raise WorkflowError, "transition cannot declare both optimize and route" if @router_config
+        raise WorkflowError, "transition cannot declare both optimize and workflow" if @workflow_class
+      end
+
+      def validate_optimize_controls!(generator, evaluator, max_rounds, evaluator_schema)
+        raise WorkflowError, "optimize requires a generator" if generator.nil?
+        raise WorkflowError, "optimize requires an evaluator" if evaluator.nil?
+        raise WorkflowError, "optimize requires an evaluator_schema" if evaluator_schema.nil?
+
+        return if max_rounds.is_a?(Integer) && max_rounds.positive?
+
+        raise WorkflowError, "optimize max_rounds must be a positive integer"
       end
     end
   end
