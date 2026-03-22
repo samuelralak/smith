@@ -41,9 +41,7 @@ Important contracts from the architecture document that are not yet directly spe
 - workflow / agent `tool_calls` enforcement at the tool boundary
 - agent-only `token_limit` / `cost` enforcement in serial/helper-owned invocation paths
 - any sharper distinction between generic call-boundary deadlines and agent-budget-specific `wall_clock` narrowing
-- workflow / agent `tool_calls` enforcement at the tool boundary
-- agent-only `token_limit` / `cost` enforcement in serial/helper-owned invocation paths
-- any sharper distinction between generic call-boundary deadlines and agent-budget-specific `wall_clock` narrowing
+- see Section 4.5 for the narrower remaining budget-specific direct-coverage gaps
 
 ## Implementation-Required Areas
 
