@@ -38,6 +38,12 @@ Current contract coverage exists for:
 Important contracts from the architecture document that are not yet directly specified:
 
 - richer parallel branch merge or provider-style in-flight semantics beyond the current cooperative cancellation and failure/discard surface
+- workflow / agent `tool_calls` enforcement at the tool boundary
+- agent-only `token_limit` / `cost` enforcement in serial/helper-owned invocation paths
+- any sharper distinction between generic call-boundary deadlines and agent-budget-specific `wall_clock` narrowing
+- workflow / agent `tool_calls` enforcement at the tool boundary
+- agent-only `token_limit` / `cost` enforcement in serial/helper-owned invocation paths
+- any sharper distinction between generic call-boundary deadlines and agent-budget-specific `wall_clock` narrowing
 
 ## Implementation-Required Areas
 
