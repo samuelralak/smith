@@ -802,6 +802,9 @@ Notes:
   - remaining-budget-based parallel estimates after prior serial consumption
   - serial reservation/reconcile/release behavior at the workflow boundary
   - reconcile-on-failure when Smith-side `after_completion` raises after a successful provider response
+  - agent-only `token_limit` enforcement without a workflow budget
+  - agent-only `cost` enforcement without a workflow budget
+  - agent-only parallel budgets behaving as per-branch invocation ledgers rather than a shared pool
 - It does not yet assert richer provider-style in-flight completion behavior or provider-timeout optimistic release behavior beyond the current cooperative cancellation and failure/discard surface.
 
 ### `spec/smith/events/contract_spec.rb`
@@ -1355,10 +1358,7 @@ Partially covered:
 - multi-dimension independence is covered
 - estimate-based parallel token reservation/reconcile/release behavior is covered at the workflow boundary
 - serial token reservation/reconcile/release behavior is covered at the workflow boundary
-- agent `wall_clock` deadline narrowing is covered at Smith-owned call boundaries
-- workflow `tool_calls` enforcement at the tool boundary is runtime-real
-- agent `tool_calls` enforcement at the tool boundary is runtime-real
-- agent-only `token_limit` / `cost` enforcement is covered in serial/helper-owned invocation paths
+- cooperative `wall_clock` deadline behavior is covered at Smith-owned call boundaries
 - agent-only `token_limit` / `cost` enforcement is covered in parallel invocation paths
 - agent-only parallel token/cost budgets are covered as per-branch invocation constraints rather than a shared branch pool
 - post-response Smith-side failure reconciliation from observed usage is covered
@@ -1368,7 +1368,10 @@ Partially covered:
 
 Recommended future specs:
 
-- add `spec/smith/budget/runtime_spec.rb` only if a separate budget-focused runtime seam is introduced beyond the currently covered workflow/tool paths
+- add `spec/smith/budget/runtime_spec.rb` to directly lock:
+  - workflow / agent `tool_calls` enforcement at the tool boundary
+  - agent-only `token_limit` / `cost` enforcement in serial/helper-owned invocation paths
+  - any sharper distinction between generic call-boundary deadlines and agent-budget-specific `wall_clock` narrowing
 
 ### Section 4.6 Context Manager
 
@@ -1469,7 +1472,7 @@ Partially covered:
 - `on_success` runtime selection is covered
 - wildcard `:fail` exclusion from normal transition lookup is covered
 - workflow-level then agent-level guardrail participation is covered
-- parallel branch count resolution, prepared-input reuse, workflow-level failure routing, discard-on-failure surface, attached tool-guardrail visibility, and estimate-based parallel token budget enforcement are covered
+- parallel branch count resolution, prepared-input reuse, workflow-level failure routing, discard-on-failure surface, attached tool-guardrail visibility, estimate-based parallel token budget enforcement, and agent-only parallel token/cost enforcement are covered
 - serial token budget settlement and remaining-budget-based parallel estimation are covered
 - cooperative pre-agent-call deadline enforcement is covered
 - `MaxTransitionsExceeded` exception, current-state preservation, and non-resumable repeated/rehydrated behavior are covered
