@@ -40,8 +40,16 @@ module Smith
         @state = transition.to
         @next_transition_name = @router_next_transition || transition.success_transition
         @router_next_transition = nil
+        append_accepted_output(output)
         emit_step_completed(transition, output)
         { transition: transition.name, from: transition.from, to: transition.to, output: output }
+      end
+
+      def append_accepted_output(output)
+        return unless @session_messages
+        return if output.nil?
+
+        @session_messages << { role: :assistant, content: output }
       end
 
       def resolve_router_output(transition, output)
@@ -70,7 +78,7 @@ module Smith
           agent_result = result.is_a?(AgentResult) ? result : nil
           reconcile_branch_budget(@ledger, reserved, agent_result: agent_result)
           reserved = nil
-          agent_result&.content || result
+          agent_result ? agent_result.content : result
         ensure
           settle_budget_on_failure(@ledger, reserved, Thread.current[:smith_last_agent_result]) if reserved
           Thread.current[:smith_last_agent_result] = nil

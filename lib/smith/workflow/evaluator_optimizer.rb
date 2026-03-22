@@ -76,7 +76,7 @@ module Smith
           agent_result = result.is_a?(AgentResult) ? result : nil
           reconcile_branch_budget(@ledger, reserved, agent_result: agent_result)
           reserved = nil
-          agent_result&.content || result
+          agent_result ? agent_result.content : result
         ensure
           settle_budget_on_failure(@ledger, reserved, Thread.current[:smith_last_agent_result]) if reserved
           Thread.current[:smith_last_agent_result] = nil

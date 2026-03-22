@@ -77,7 +77,7 @@ module Smith
       def finalize_branch(transition, index, result, ledger, reserved)
         agent_result = result.is_a?(Workflow::AgentResult) ? result : nil
         reconcile_branch_budget(ledger, reserved, agent_result: agent_result)
-        { branch: index, agent: transition.agent_name, output: agent_result&.content || result }
+        { branch: index, agent: transition.agent_name, output: agent_result ? agent_result.content : result }
       end
 
       def estimate_for_dimension(dim, limit, branch_count)

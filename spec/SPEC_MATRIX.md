@@ -668,10 +668,13 @@ Documented contracts covered:
   - `execution_namespace`
   - `created_at`
   - `updated_at`
+  - `next_transition_name`
+  - `session_messages`
 - round-trip via `.from_state`
 - `budget_consumed` is serialized from the live ledger after execution
 - `.from_state` rebuilds a live ledger with the same consumed and remaining budget
 - resumed workflows continue reserving and reconciling budget from restored ledger state
+- persisted `next_transition_name` preserves the selected resume path across restore
 - JSON-serializable state payload
 
 Notes:
@@ -744,11 +747,13 @@ Documented contracts covered:
 
 - `persist` keys control which workflow context keys are serialized in `to_state`
 - `.from_state` restores only the persisted context keys
+- persisted workflow session history round-trips through `to_state` / `.from_state`
+- injected-state session messages persist as part of stored session history
 
 Notes:
 
-- This spec covers persisted-key filtering only.
-- It does not yet assert inject-state retry replacement or observation masking at chat runtime.
+- This spec covers persisted-key filtering plus persisted session-history round-trip behavior.
+- It does not yet assert broader masking behavior beyond the current stored-history surface.
 
 ### `spec/smith/workflow/parallel_spec.rb`
 
@@ -957,10 +962,13 @@ Documented contracts covered:
 - `inject_state` stores a callable formatter over persisted state
 - subclasses inherit persisted keys by copy without mutating the parent
 - subclasses can override `inject_state` without mutating the parent
+- accepted workflow output is appended to stored session history after successful step completion
+- accepted falsy workflow output is also preserved in stored session history
+- rejected output is not appended when output guardrails fail
 
 Notes:
 
-- This spec covers stored configuration, formatter behavior, prepared-input masking, message persistence, replacement of injected state on repeated preparation, and the prepared-input seam consumed by workflow execution.
+- This spec covers stored configuration, formatter behavior, prepared-input masking, accepted-output session append behavior, message persistence, replacement of injected state on repeated preparation, and the prepared-input seam consumed by workflow execution.
 - It does not yet assert any broader call-path richness beyond the current workflow-driven `.complete` integration.
 
 ### `spec/smith/tools/contract_spec.rb`

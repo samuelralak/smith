@@ -12,7 +12,7 @@ RSpec.describe "Smith::Workflow state serialization shape" do
 
     state = workflow.to_state
 
-    expect(state.keys).to eq(%i[class state context budget_consumed step_count execution_namespace created_at updated_at])
+    expect(state.keys).to eq(%i[class state context budget_consumed step_count execution_namespace created_at updated_at next_transition_name session_messages])
     expect(state[:class]).to eq("SpecStateWorkflow")
     expect(state[:state]).to eq(:idle)
     expect(state[:context]).to eq(branch_count: 6, metadata: { topic: "history" })
@@ -190,5 +190,48 @@ RSpec.describe "Smith::Workflow state serialization shape" do
     entries = []
     entries << observed.pop until observed.empty?
     expect(entries).to include([:reserve, :total_tokens, 8])
+  end
+
+  it "preserves the selected next transition across serialization and resume" do
+    agent_class = require_const("Smith::Agent")
+
+    agent = with_stubbed_class("SpecPersistedNextTransitionAgent", agent_class) do
+      register_as :spec_persisted_next_transition_agent
+      model "gpt-5-mini"
+    end
+
+    fake_chat = Object.new
+    fake_chat.define_singleton_method(:add_message) { |_message| nil }
+    fake_chat.define_singleton_method(:complete) do
+      Struct.new(:content).new("ok")
+    end
+
+    allow(agent).to receive(:chat).and_return(fake_chat)
+
+    workflow_class_with_branch = with_stubbed_class("SpecPersistedNextTransitionWorkflow", workflow_class) do
+      initial_state :idle
+      state :branching
+      state :chosen_done
+      state :alternate_done
+
+      transition :start, from: :idle, to: :branching do
+        execute :spec_persisted_next_transition_agent
+        on_success :chosen
+      end
+
+      transition :alternate, from: :branching, to: :alternate_done
+      transition :chosen, from: :branching, to: :chosen_done
+    end
+
+    workflow = workflow_class_with_branch.new
+    workflow.advance!
+
+    state = workflow.to_state
+    restored = workflow_class_with_branch.from_state(state)
+    result = restored.run!
+
+    expect(state[:next_transition_name]).to eq(:chosen)
+    expect(result.state).to eq(:chosen_done)
+    expect(result.steps.map { |step| step[:transition] }).to eq([:chosen])
   end
 end

@@ -12,7 +12,9 @@ module Smith
           step_count: @step_count,
           execution_namespace: @execution_namespace,
           created_at: @created_at,
-          updated_at: @updated_at
+          updated_at: @updated_at,
+          next_transition_name: @next_transition_name,
+          session_messages: @session_messages || []
         }
       end
 
@@ -26,6 +28,8 @@ module Smith
         @created_at = hash[:created_at]
         @updated_at = hash[:updated_at]
         @ledger = rebuild_ledger(hash[:budget_consumed] || {})
+        @next_transition_name = hash[:next_transition_name]
+        @session_messages = hash[:session_messages] || []
       end
 
       def ledger_consumed
