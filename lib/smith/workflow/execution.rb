@@ -4,6 +4,7 @@ module Smith
   class Workflow
     module Execution
       include Agent::Lifecycle
+      include NestedExecution
 
       private
 
@@ -28,6 +29,8 @@ module Smith
 
         output = if transition.parallel?
                    execute_parallel_step(transition, prepared_input: prepared_input)
+                 elsif transition.nested?
+                   execute_nested_workflow(transition)
                  else
                    execute_serial_step(transition, prepared_input: prepared_input)
                  end
@@ -54,7 +57,6 @@ module Smith
 
       def execute_transition_body(transition, prepared_input: nil)
         @last_prepared_input = prepared_input
-
         return nil unless transition.agent_name
 
         agent_class = Agent::Registry.find(transition.agent_name)
@@ -62,12 +64,6 @@ module Smith
         return nil if agent_class.chat_kwargs[:model].nil?
 
         invoke_agent(agent_class, prepared_input)
-      end
-
-      def invoke_agent(agent_class, prepared_input)
-        check_deadline!
-        response = complete_with_provider(agent_class, prepared_input)
-        snapshot_and_finalize(agent_class, response)
       end
 
       def execute_serial_step(transition, prepared_input: nil)

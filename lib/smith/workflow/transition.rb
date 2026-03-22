@@ -3,7 +3,8 @@
 module Smith
   class Workflow
     class Transition
-      attr_reader :name, :from, :to, :agent_name, :agent_opts, :success_transition, :failure_transition, :router_config
+      attr_reader :name, :from, :to, :agent_name, :agent_opts, :success_transition, :failure_transition,
+                  :router_config, :workflow_class
 
       def initialize(name, from:, to:, &)
         @name = name
@@ -28,6 +29,19 @@ module Smith
       def route(agent_name, routes:, confidence_threshold:, fallback:)
         @agent_name = agent_name
         @router_config = { routes: routes, confidence_threshold: confidence_threshold, fallback: fallback }
+      end
+
+      def workflow(klass)
+        raise WorkflowError, "workflow binding must be a Class" unless klass.is_a?(Class)
+        raise WorkflowError, "workflow binding must be a Smith::Workflow subclass" unless klass < Workflow
+        raise WorkflowError, "transition cannot declare both workflow and execute" if @agent_name && !@router_config
+        raise WorkflowError, "transition cannot declare both workflow and route" if @router_config
+
+        @workflow_class = klass
+      end
+
+      def nested?
+        !@workflow_class.nil?
       end
 
       def routed?

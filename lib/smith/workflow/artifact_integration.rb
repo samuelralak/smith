@@ -8,8 +8,12 @@ module Smith
       private
 
       def with_scoped_artifacts
-        backend = Smith.config.artifact_store || Smith.artifacts
-        Smith.scoped_artifacts = Artifacts::ScopedStore.new(backend: backend, namespace: execution_namespace)
+        if @inherited_scoped_artifacts
+          Smith.scoped_artifacts = @inherited_scoped_artifacts
+        else
+          backend = Smith.config.artifact_store || Smith.artifacts
+          Smith.scoped_artifacts = Artifacts::ScopedStore.new(backend: backend, namespace: execution_namespace)
+        end
         yield
       end
 

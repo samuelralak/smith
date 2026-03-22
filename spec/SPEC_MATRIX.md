@@ -443,6 +443,37 @@ Notes:
 - Classifier agent uses the normal agent invocation path (budget, deadline, AgentError wrapping, token_usage trace all apply).
 - Fallback is only for low confidence. Malformed output fails the step, never silently falls back.
 
+### `spec/smith/workflow/nested_execution_spec.rb`
+
+Purpose:
+
+- asserts the first-phase nested-workflow child-execution behavior
+
+Architecture basis:
+
+- Section 5.2, Workflow Execution (Nested workflow helper)
+- Section 5.3, State Serialization
+- Section 11, Phase 3 Workflow Patterns
+
+Documented contracts covered:
+
+- parent transition can bind to a child workflow class
+- child workflow success returns child final output as parent step output
+- child workflow failure routes parent through normal `on_failure`
+- workflow binding rejects non-class targets
+- workflow binding rejects non-`Smith::Workflow` classes
+- transition DSL rejects combining `workflow` with `execute`
+- transition DSL rejects combining `workflow` with `route`
+- nested execution keeps parent step count parent-scoped
+- nested execution shares the parent budget ledger with the child
+- nested execution inherits the parent wall-clock deadline
+- nested execution inherits the parent artifact scope without nested re-wrapping
+
+Notes:
+
+- This covers the first local child-execution backend, not the future durable child-execution store/backend.
+- Parent-facing semantics remain simple even though the runtime uses a dedicated nested-execution seam.
+
 ### `spec/smith/workflow/serialization_spec.rb`
 
 Purpose:

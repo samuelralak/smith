@@ -48,14 +48,14 @@ module Smith
 
     attr_reader :state, :last_prepared_input, :session_messages, :ledger
 
-    def initialize(context: {})
+    def initialize(context: {}, ledger: nil, created_at: nil)
       @state = self.class.initial_state
       @context = context
       @budget_consumed = {}
       @step_count = 0
       @next_transition_name = nil
-      @ledger = build_ledger
-      @created_at = Time.now.utc.iso8601
+      @ledger = ledger || build_ledger
+      @created_at = created_at || Time.now.utc.iso8601
       @updated_at = @created_at
     end
 

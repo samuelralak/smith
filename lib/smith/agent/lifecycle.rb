@@ -12,6 +12,12 @@ module Smith
         instance.after_completion(result, context)
       end
 
+      def invoke_agent(agent_class, prepared_input)
+        check_deadline!
+        response = complete_with_provider(agent_class, prepared_input)
+        snapshot_and_finalize(agent_class, response)
+      end
+
       def complete_with_provider(agent_class, prepared_input)
         chat = agent_class.chat
         prepared_input&.each { |msg| chat.add_message(msg) }
