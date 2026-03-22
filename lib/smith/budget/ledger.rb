@@ -3,12 +3,12 @@
 module Smith
   module Budget
     class Ledger
-      attr_reader :limits
+      attr_reader :limits, :consumed
 
-      def initialize(limits: {})
+      def initialize(limits: {}, consumed: {})
         @mutex = Mutex.new
         @limits = limits
-        @consumed = Hash.new(0)
+        @consumed = Hash.new(0).merge(consumed)
         @reserved = Hash.new(0)
       end
 

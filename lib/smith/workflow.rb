@@ -53,7 +53,6 @@ module Smith
     def initialize(context: {}, ledger: nil, created_at: nil)
       @state = self.class.initial_state
       @context = context
-      @budget_consumed = {}
       @step_count = 0
       @next_transition_name = nil
       @ledger = ledger || build_ledger

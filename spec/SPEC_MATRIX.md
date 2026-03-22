@@ -665,14 +665,18 @@ Documented contracts covered:
   - `context`
   - `budget_consumed`
   - `step_count`
+  - `execution_namespace`
   - `created_at`
   - `updated_at`
 - round-trip via `.from_state`
+- `budget_consumed` is serialized from the live ledger after execution
+- `.from_state` rebuilds a live ledger with the same consumed and remaining budget
+- resumed workflows continue reserving and reconciling budget from restored ledger state
 - JSON-serializable state payload
 
 Notes:
 
-- This spec checks state shape and round-trip behavior only.
+- This spec now covers state shape, round-trip behavior, and restored budget-ledger equivalence.
 - It does not yet assert non-serialization of every possible Ruby object in nested structures.
 
 ### `spec/smith/workflow/run_result_spec.rb`
@@ -1333,6 +1337,8 @@ Partially covered:
 - estimate-based parallel token reservation/reconcile/release behavior is covered at the workflow boundary
 - serial token reservation/reconcile/release behavior is covered at the workflow boundary
 - post-response Smith-side failure reconciliation from observed usage is covered
+- persisted `budget_consumed` now reflects live ledger state
+- restored workflows rebuild a live ledger and continue budget reservation/reconciliation from restored state
 - provider-timeout optimistic release semantics are not yet covered
 - cooperative wall_clock deadline behavior is covered at Smith-owned call boundaries
 
