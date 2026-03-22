@@ -4,6 +4,8 @@ module Smith
   class Workflow
     module BudgetIntegration
       TOKEN_DIMENSIONS = %i[total_tokens token_limit].freeze
+      COST_DIMENSIONS = %i[total_cost].freeze
+      BUDGET_DIMENSIONS = (TOKEN_DIMENSIONS + COST_DIMENSIONS).freeze
 
       private
 
@@ -25,12 +27,24 @@ module Smith
       def reconcile_branch_budget(ledger, estimates, agent_result: nil)
         return unless ledger && estimates
 
-        actual_tokens = (agent_result&.input_tokens || 0) + (agent_result&.output_tokens || 0)
-        estimates.each { |dim, amt| ledger.reconcile!(dim, amt, actual_for_dimension(dim, actual_tokens)) }
+        actuals = extract_actuals(agent_result)
+        estimates.each do |dim, amt|
+          ledger.reconcile!(dim, amt, actual_for_dimension(dim, actuals[:tokens], actuals[:cost]))
+        end
       end
 
-      def actual_for_dimension(dim, actual_tokens)
-        TOKEN_DIMENSIONS.include?(dim) ? actual_tokens : 0
+      def extract_actuals(agent_result)
+        {
+          tokens: (agent_result&.input_tokens || 0) + (agent_result&.output_tokens || 0),
+          cost: agent_result&.cost || 0
+        }
+      end
+
+      def actual_for_dimension(dim, actual_tokens, actual_cost = 0)
+        return actual_tokens if TOKEN_DIMENSIONS.include?(dim)
+        return actual_cost if COST_DIMENSIONS.include?(dim)
+
+        0
       end
 
       def release_branch_budget(ledger, estimates)
@@ -53,7 +67,7 @@ module Smith
         return nil unless ledger
 
         estimates = ledger.limits.each_with_object({}) do |(dim, _limit), est|
-          est[dim] = TOKEN_DIMENSIONS.include?(dim) ? ledger.remaining(dim) : 0
+          est[dim] = BUDGET_DIMENSIONS.include?(dim) ? ledger.remaining(dim) : 0
         end
 
         estimates.each { |dim, amount| ledger.reserve!(dim, amount) }
@@ -67,9 +81,9 @@ module Smith
       end
 
       def estimate_for_dimension(dim, limit, branch_count)
-        return 0 unless TOKEN_DIMENSIONS.include?(dim)
+        return 0 unless BUDGET_DIMENSIONS.include?(dim)
 
-        [limit / branch_count, 1].max
+        TOKEN_DIMENSIONS.include?(dim) ? [limit / branch_count, 1].max : limit / branch_count
       end
     end
   end

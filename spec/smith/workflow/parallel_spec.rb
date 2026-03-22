@@ -346,15 +346,15 @@ RSpec.describe "Smith::Workflow parallel execution" do
 
     expect(reserve_entries).to contain_exactly(
       [:reserve, :total_tokens, 50],
-      [:reserve, :total_cost, 0],
+      [:reserve, :total_cost, 0.5],
       [:reserve, :total_tokens, 50],
-      [:reserve, :total_cost, 0]
+      [:reserve, :total_cost, 0.5]
     )
     expect(reconcile_entries).to contain_exactly(
       [:reconcile, :total_tokens, 50, 0],
-      [:reconcile, :total_cost, 0, 0],
+      [:reconcile, :total_cost, 0.5, 0],
       [:reconcile, :total_tokens, 50, 0],
-      [:reconcile, :total_cost, 0, 0]
+      [:reconcile, :total_cost, 0.5, 0]
     )
     expect(release_entries).to eq([])
   end

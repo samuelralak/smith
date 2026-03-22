@@ -186,6 +186,227 @@ RSpec.describe "Smith::Workflow run result contract" do
     expect(seen_messages).to eq([])
   end
 
+  it "aggregates best-known computed model-call cost into RunResult.total_cost when pricing is configured" do
+    original_pricing = Smith.config.pricing
+
+    Smith.configure do |config|
+      config.pricing = {
+        "gpt-5-mini" => {
+          input_cost_per_token: 0.01,
+          output_cost_per_token: 0.02
+        }
+      }
+    end
+
+    agent = with_stubbed_class("SpecRunResultCostAgent", agent_class) do
+      register_as :spec_run_result_cost_agent
+      model "gpt-5-mini"
+    end
+
+    allow(agent).to receive(:chat) do
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_message| nil }
+      chat.define_singleton_method(:complete) do
+        Struct.new(:content, :input_tokens, :output_tokens).new("ok", 7, 5)
+      end
+      chat
+    end
+
+    workflow = with_stubbed_class("SpecRunResultCostWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_run_result_cost_agent
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    expect(result.total_cost).to eq(0.17)
+    expect(result.total_tokens).to eq(12)
+  ensure
+    Smith.configure { |config| config.pricing = original_pricing }
+  end
+
+  it "aggregates best-known computed cost across multiple workflow calls" do
+    original_pricing = Smith.config.pricing
+
+    Smith.configure do |config|
+      config.pricing = {
+        "gpt-5-mini" => {
+          input_cost_per_token: 0.01,
+          output_cost_per_token: 0.02
+        }
+      }
+    end
+
+    agent = with_stubbed_class("SpecRunResultMultiCostAgent", agent_class) do
+      register_as :spec_run_result_multi_cost_agent
+      model "gpt-5-mini"
+    end
+
+    responses = [
+      Struct.new(:content, :input_tokens, :output_tokens).new("step-one", 3, 2),
+      Struct.new(:content, :input_tokens, :output_tokens).new("step-two", 4, 1)
+    ]
+
+    allow(agent).to receive(:chat) do
+      response = responses.shift
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_message| nil }
+      chat.define_singleton_method(:complete) { response }
+      chat
+    end
+
+    workflow = with_stubbed_class("SpecRunResultMultiCostWorkflow", workflow_class) do
+      initial_state :idle
+      state :mid
+      state :done
+
+      transition :first, from: :idle, to: :mid do
+        execute :spec_run_result_multi_cost_agent
+      end
+
+      transition :second, from: :mid, to: :done do
+        execute :spec_run_result_multi_cost_agent
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    expect(result.total_cost).to eq(0.13)
+    expect(result.total_tokens).to eq(10)
+  ensure
+    Smith.configure { |config| config.pricing = original_pricing }
+  end
+
+  it "does not fabricate cost when pricing is not configured" do
+    original_pricing = Smith.config.pricing
+    Smith.configure { |config| config.pricing = nil }
+
+    agent = with_stubbed_class("SpecRunResultNoPricingAgent", agent_class) do
+      register_as :spec_run_result_no_pricing_agent
+      model "gpt-5-mini"
+    end
+
+    allow(agent).to receive(:chat) do
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_message| nil }
+      chat.define_singleton_method(:complete) do
+        Struct.new(:content, :input_tokens, :output_tokens).new("ok", 7, 5)
+      end
+      chat
+    end
+
+    workflow = with_stubbed_class("SpecRunResultNoPricingWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_run_result_no_pricing_agent
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    expect(result.total_cost).to eq(0.0)
+    expect(result.total_tokens).to eq(12)
+  ensure
+    Smith.configure { |config| config.pricing = original_pricing }
+  end
+
+  it "does not fabricate cost or fail when pricing entry is malformed" do
+    original_pricing = Smith.config.pricing
+
+    Smith.configure do |config|
+      config.pricing = {
+        "gpt-5-mini" => {
+          input_cost_per_token: nil,
+          output_cost_per_token: 0.02
+        }
+      }
+    end
+
+    agent = with_stubbed_class("SpecRunResultMalformedPricingAgent", agent_class) do
+      register_as :spec_run_result_malformed_pricing_agent
+      model "gpt-5-mini"
+    end
+
+    allow(agent).to receive(:chat) do
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_message| nil }
+      chat.define_singleton_method(:complete) do
+        Struct.new(:content, :input_tokens, :output_tokens).new("ok", 7, 5)
+      end
+      chat
+    end
+
+    workflow = with_stubbed_class("SpecRunResultMalformedPricingWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_run_result_malformed_pricing_agent
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    expect(result.total_cost).to eq(0.0)
+    expect(result.total_tokens).to eq(12)
+  ensure
+    Smith.configure { |config| config.pricing = original_pricing }
+  end
+
+  it "does not fabricate cost when usage metadata is missing" do
+    original_pricing = Smith.config.pricing
+
+    Smith.configure do |config|
+      config.pricing = {
+        "gpt-5-mini" => {
+          input_cost_per_token: 0.01,
+          output_cost_per_token: 0.02
+        }
+      }
+    end
+
+    agent = with_stubbed_class("SpecRunResultMissingUsageAgent", agent_class) do
+      register_as :spec_run_result_missing_usage_agent
+      model "gpt-5-mini"
+    end
+
+    allow(agent).to receive(:chat) do
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_message| nil }
+      chat.define_singleton_method(:complete) do
+        Struct.new(:content, :input_tokens).new("ok", 7)
+      end
+      chat
+    end
+
+    workflow = with_stubbed_class("SpecRunResultMissingUsageWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_run_result_missing_usage_agent
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    expect(result.total_cost).to eq(0.0)
+    expect(result.total_tokens).to eq(0)
+  ensure
+    Smith.configure { |config| config.pricing = original_pricing }
+  end
+
   it "allows after_completion to hand off an artifact ref through workflow output using the configured backend" do
     backend_stores = []
     original_store = Smith.config.artifact_store
@@ -588,6 +809,72 @@ RSpec.describe "Smith::Workflow run result contract" do
       [:reconcile, :total_tokens, 100, 12]
     )
     expect(entries.select { |entry| entry[0] == :release }).to eq([])
+  end
+
+  it "reconciles total_cost budget from known computed call cost" do
+    original_pricing = Smith.config.pricing
+
+    Smith.configure do |config|
+      config.pricing = {
+        "gpt-5-mini" => {
+          input_cost_per_token: 0.01,
+          output_cost_per_token: 0.02
+        }
+      }
+    end
+
+    agent = with_stubbed_class("SpecSerialCostBudgetAgent", agent_class) do
+      register_as :spec_serial_cost_budget_agent
+      model "gpt-5-mini"
+    end
+
+    allow(agent).to receive(:chat) do
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_message| nil }
+      chat.define_singleton_method(:complete) do
+        Struct.new(:content, :input_tokens, :output_tokens).new("ok", 7, 5)
+      end
+      chat
+    end
+
+    workflow = with_stubbed_class("SpecSerialCostBudgetWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      budget total_cost: 1.0
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_serial_cost_budget_agent
+      end
+    end.new
+
+    observed = Queue.new
+    ledger = workflow.ledger
+
+    allow(ledger).to receive(:reserve!).and_wrap_original do |original, key, amount|
+      observed << [:reserve, key, amount]
+      original.call(key, amount)
+    end
+    allow(ledger).to receive(:reconcile!).and_wrap_original do |original, key, reserved_amount, actual_amount|
+      observed << [:reconcile, key, reserved_amount, actual_amount]
+      original.call(key, reserved_amount, actual_amount)
+    end
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    expect(result.total_cost).to eq(0.17)
+
+    entries = []
+    entries << observed.pop until observed.empty?
+
+    expect(entries.select { |entry| entry[0] == :reserve }).to contain_exactly(
+      [:reserve, :total_cost, 1.0]
+    )
+    expect(entries.select { |entry| entry[0] == :reconcile }).to contain_exactly(
+      [:reconcile, :total_cost, 1.0, 0.17]
+    )
+  ensure
+    Smith.configure { |config| config.pricing = original_pricing }
   end
 
   it "wraps provider call failures from chat.complete as AgentError" do

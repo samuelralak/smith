@@ -26,6 +26,9 @@ module Smith
   setting :trace_retention
   setting :trace_tenant_isolation, default: false
 
+  # Pricing (§4.5 — model-call cost computation)
+  setting :pricing, default: nil
+
   # Logger (§7 — Ruby Logger, not Rails.logger)
   setting :logger, default: nil
 
@@ -60,6 +63,9 @@ require_relative "smith/events/step_completed"
 # Budget (depends on Errors)
 require_relative "smith/budget"
 require_relative "smith/budget/ledger"
+
+# Pricing (depends on Smith config)
+require_relative "smith/pricing"
 
 # Trace adapters (no internal deps)
 require_relative "smith/trace"

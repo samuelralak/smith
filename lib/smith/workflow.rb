@@ -18,12 +18,13 @@ module Smith
 
     RunResult = Struct.new(:state, :output, :steps, :total_cost, :total_tokens)
 
-    AgentResult = Struct.new(:content, :input_tokens, :output_tokens) do
+    AgentResult = Struct.new(:content, :input_tokens, :output_tokens, :cost) do
       def self.from_response(response, content)
         new(
           content,
           response.respond_to?(:input_tokens) ? response.input_tokens : nil,
-          response.respond_to?(:output_tokens) ? response.output_tokens : nil
+          response.respond_to?(:output_tokens) ? response.output_tokens : nil,
+          nil
         )
       end
 
@@ -73,6 +74,8 @@ module Smith
     end
 
     def run!
+      @cost_accumulator = 0.0
+      @token_accumulator = 0
       steps = []
       until terminal?
         step = advance!
@@ -82,8 +85,8 @@ module Smith
         state: @state,
         output: steps.last&.dig(:output),
         steps: steps,
-        total_cost: 0.0,
-        total_tokens: 0
+        total_cost: @cost_accumulator,
+        total_tokens: @token_accumulator
       )
     end
 

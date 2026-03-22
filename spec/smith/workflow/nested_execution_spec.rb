@@ -256,6 +256,54 @@ RSpec.describe "Smith::Workflow nested execution" do
     expect(token_reconciles).to all(satisfy { |e| e[3] >= 0 })
   end
 
+  it "rolls child best-known cost and tokens into the parent run result totals" do
+    original_pricing = Smith.config.pricing
+
+    Smith.configure do |config|
+      config.pricing = {
+        "gpt-5-mini" => {
+          input_cost_per_token: 0.01,
+          output_cost_per_token: 0.02
+        }
+      }
+    end
+
+    child_agent = with_stubbed_class("SpecNestedCostAgent", agent_class) do
+      register_as :spec_nested_cost_agent
+      model "gpt-5-mini"
+    end
+    stub_agent(child_agent, "ok")
+
+    child_class = with_stubbed_class("SpecNestedCostChild", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :work, from: :idle, to: :done do
+        execute :spec_nested_cost_agent
+      end
+    end
+
+    parent = with_stubbed_class("SpecNestedCostParent", workflow_class) do
+      initial_state :idle
+      state :researched
+      state :done
+
+      transition :research, from: :idle, to: :researched do
+        workflow child_class
+      end
+
+      transition :finish, from: :researched, to: :done
+    end.new
+
+    result = parent.run!
+
+    expect(result.state).to eq(:done)
+    expect(result.total_cost).to eq(0.11)
+    expect(result.total_tokens).to eq(8)
+  ensure
+    Smith.configure { |config| config.pricing = original_pricing }
+  end
+
   it "inherits the parent wall_clock deadline for child execution" do
     child_agent = with_stubbed_class("SpecNestedDeadlineAgent", agent_class) do
       register_as :spec_nested_deadline_agent

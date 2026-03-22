@@ -23,7 +23,7 @@ Current contract coverage exists for:
 - top-level namespaces and error hierarchy
 - top-level configuration surface, including structural-trace defaults and content-tracing opt-in default
 - agent inheritance, DSL, and registry binding
-- workflow DSL, transition metadata capture, serialization entry points, exact state shape, run-result surface, and persisted-context filtering
+- workflow DSL, transition metadata capture, serialization entry points, exact state shape, run-result surface, best-known execution cost aggregation, and persisted-context filtering
 - workflow pattern namespaces
 - artifact namespace, top-level accessor, configured-store resolution, built-in backend entry points, and named operational methods
 - artifact lifecycle behavior, including opaque refs, per-store isolation, and namespace-prefixed refs
@@ -154,6 +154,24 @@ Why more implementation may be required:
 - Current code now includes adapter-level filtering, runtime trace emission for workflow transitions, tool execution, and token usage, built-in logger/OpenTelemetry adapters, capability-aware sensitivity handling, and field-level structural filtering through `trace_fields`.
 - All three guaranteed built-in trace types (`transition`, `tool_call`, `token_usage`) are now implemented and spec-covered.
 - `cost` remains outside the guaranteed built-in trace surface.
+
+### 8. Cost Tracking Per Execution
+
+Architecture basis:
+
+- Section 4.5, Budget Controller
+- Section 5.2, Workflow Execution
+- Section 11, Phase 4 Integrations
+
+Why more implementation may be required:
+
+- The architecture now defines `RunResult.total_cost` as Smith's best-known computed workflow subtotal, derived only from trustworthy usage metadata plus a trustworthy pricing source for the execution path used.
+- Current code now includes a pricing seam, per-call model-cost computation, best-known subtotal aggregation, nested-workflow subtotal roll-up, and best-effort `total_cost` budget reconciliation when cost is known.
+- Built-in cost tracing remains outside Smith's guaranteed trace taxonomy, and richer provider-specific or non-model fees remain out of scope unless the architecture is extended further.
+
+What the implementation agent needs to add:
+
+- richer provider-specific pricing dimensions or non-model fee accounting only if the architecture is extended further
 
 ## File-to-Document Mapping
 
@@ -502,6 +520,7 @@ Documented contracts covered:
 - nested execution shares the parent budget ledger with the child
 - nested execution inherits the parent wall-clock deadline
 - nested execution inherits the parent artifact scope without nested re-wrapping
+- nested child best-known cost and token totals roll into the parent workflow run result totals
 
 Notes:
 
@@ -626,6 +645,13 @@ Documented contracts covered:
   - `steps`
   - `total_cost`
   - `total_tokens`
+- `total_cost` is Smith's best-known computed workflow cost subtotal
+- known pricing plus known usage contribute non-zero computed cost to `total_cost`
+- multiple successful agent calls aggregate their known computed costs into `total_cost`
+- missing pricing does not fabricate cost
+- malformed pricing entries do not fabricate cost or fail execution
+- missing usage metadata does not fabricate cost
+- known computed cost reconciles against the `total_cost` budget dimension
 - `Smith::MaxTransitionsExceeded`
 - workflow remains in its current state when max transitions are exceeded
 - `run!` returns immediately when already terminal
@@ -644,6 +670,10 @@ Notes:
   - bounded outputs may remain inline
   - unbounded outputs may pass with artifact-ref handoff plus lightweight scalar fields
   - invalid unbounded output shapes route through `on_failure` at the workflow boundary
+- It now also covers best-known execution cost behavior:
+  - `total_cost` aggregates known model-call cost only when pricing and usage are both trustworthy
+  - unknown pricing or unknown usage leaves cost optimistic/partial instead of fabricated
+- It now also covers best-effort `total_cost` budget reconciliation when computed cost is known.
 - It does not yet assert the full content of `steps` entries.
 
 ### `spec/smith/workflow/context_persistence_spec.rb`

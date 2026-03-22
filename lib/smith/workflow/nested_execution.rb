@@ -30,7 +30,16 @@ module Smith
         failed_step = child_result.steps.find { |s| s.key?(:error) }
         raise WorkflowError, "nested workflow failed: #{failed_step[:error]&.message}" if failed_step
 
+        roll_up_child_totals(child_result)
         child_result.output
+      end
+
+      def roll_up_child_totals(child_result)
+        @usage_mutex ||= Mutex.new
+        @usage_mutex.synchronize do
+          @cost_accumulator = (@cost_accumulator || 0.0) + (child_result.total_cost || 0.0)
+          @token_accumulator = (@token_accumulator || 0) + (child_result.total_tokens || 0)
+        end
       end
     end
   end
