@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "json"
+
 RSpec.describe "Smith::Workflow context persistence contract" do
   let(:workflow_class) { require_const("Smith::Workflow") }
   let(:context_class) { require_const("Smith::Context") }
@@ -100,5 +102,53 @@ RSpec.describe "Smith::Workflow context persistence contract" do
       ]
     )
     expect(restored.to_state[:session_messages]).to eq(state[:session_messages])
+  end
+
+  it "restores persisted context and session history after a JSON host round-trip" do
+    agent = with_stubbed_class("SpecJsonPersistedSessionHistoryAgent", agent_class) do
+      register_as :spec_json_persisted_session_history_agent
+      model "gpt-5-mini"
+    end
+
+    fake_chat = Object.new
+    fake_chat.define_singleton_method(:add_message) { |_message| nil }
+    fake_chat.define_singleton_method(:complete) do
+      Struct.new(:content).new({ "status" => "accepted" })
+    end
+
+    allow(agent).to receive(:chat).and_return(fake_chat)
+
+    manager = with_stubbed_class("SpecJsonPersistedSessionHistoryContext", context_class) do
+      persist :current_findings
+      inject_state do |persisted|
+        "summary: #{persisted[:current_findings]}"
+      end
+    end
+
+    workflow_class_with_context = with_stubbed_class("SpecJsonPersistedSessionHistoryWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      context_manager manager
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_json_persisted_session_history_agent
+      end
+    end
+
+    workflow = workflow_class_with_context.new(context: { current_findings: "kept", ignored: "drop" })
+    workflow.instance_variable_set(:@session_messages, [{ role: :user, content: { "topic" => "latest" } }])
+
+    workflow.run!
+    parsed = JSON.parse(JSON.generate(workflow.to_state))
+    restored = workflow_class_with_context.from_state(parsed)
+
+    expect(restored.to_state[:context]).to eq(current_findings: "kept")
+    expect(restored.to_state[:session_messages]).to eq(
+      [
+        { role: "user", content: { "topic" => "latest" } },
+        { role: "system", content: "[smith:injected-state]\nsummary: kept" },
+        { role: "assistant", content: { "status" => "accepted" } }
+      ]
+    )
   end
 end

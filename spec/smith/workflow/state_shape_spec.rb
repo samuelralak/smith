@@ -33,6 +33,32 @@ RSpec.describe "Smith::Workflow state serialization shape" do
     expect(JSON.generate(restored.to_state)).to be_a(String)
   end
 
+  it "restores the documented state semantics after a JSON host round-trip" do
+    workflow = with_stubbed_class("SpecJsonRoundTripWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done
+    end.new(context: { branch_count: 3 })
+
+    workflow.instance_variable_set(:@next_transition_name, :finish)
+    workflow.instance_variable_set(:@session_messages, [{ role: :user, content: { "topic" => "history" } }])
+
+    parsed = JSON.parse(JSON.generate(workflow.to_state))
+    restored = workflow.class.from_state(parsed)
+    restored_state = restored.to_state
+    result = restored.run!
+
+    expect(restored_state[:state]).to eq(:idle)
+    expect(restored_state[:next_transition_name]).to eq(:finish)
+    expect(restored_state[:context]).to eq(branch_count: 3)
+    expect(restored_state[:session_messages]).to eq(
+      [{ role: "user", content: { "topic" => "history" } }]
+    )
+    expect(result.state).to eq(:done)
+    expect(result.steps.map { |step| step[:transition] }).to eq([:finish])
+  end
+
   it "preserves the execution namespace across serialization after workflow execution" do
     agent_class = require_const("Smith::Agent")
 
@@ -135,6 +161,43 @@ RSpec.describe "Smith::Workflow state serialization shape" do
     expect(restored.ledger.remaining(:total_tokens)).to eq(88)
   end
 
+  it "rebuilds the live ledger after a JSON host round-trip" do
+    agent_class = require_const("Smith::Agent")
+
+    agent = with_stubbed_class("SpecJsonBudgetAgent", agent_class) do
+      register_as :spec_json_budget_agent
+      model "gpt-5-mini"
+    end
+
+    fake_chat = Object.new
+    fake_chat.define_singleton_method(:add_message) { |_message| nil }
+    fake_chat.define_singleton_method(:complete) do
+      Struct.new(:content, :input_tokens, :output_tokens).new("ok", 7, 5)
+    end
+
+    allow(agent).to receive(:chat).and_return(fake_chat)
+
+    workflow_class_with_budget = with_stubbed_class("SpecJsonBudgetWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      budget total_tokens: 100
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_json_budget_agent
+      end
+    end
+
+    workflow = workflow_class_with_budget.new
+    workflow.run!
+
+    parsed = JSON.parse(JSON.generate(workflow.to_state))
+    restored = workflow_class_with_budget.from_state(parsed)
+
+    expect(restored.ledger).not_to be_nil
+    expect(restored.ledger.consumed).to eq(total_tokens: 12)
+    expect(restored.ledger.remaining(:total_tokens)).to eq(88)
+  end
+
   it "continues reconciling budget after restore using the restored ledger state" do
     agent_class = require_const("Smith::Agent")
 
@@ -231,6 +294,50 @@ RSpec.describe "Smith::Workflow state serialization shape" do
     result = restored.run!
 
     expect(state[:next_transition_name]).to eq(:chosen)
+    expect(result.state).to eq(:chosen_done)
+    expect(result.steps.map { |step| step[:transition] }).to eq([:chosen])
+  end
+
+  it "preserves the selected next transition across a JSON host round-trip and resume" do
+    agent_class = require_const("Smith::Agent")
+
+    agent = with_stubbed_class("SpecJsonPersistedNextTransitionAgent", agent_class) do
+      register_as :spec_json_persisted_next_transition_agent
+      model "gpt-5-mini"
+    end
+
+    fake_chat = Object.new
+    fake_chat.define_singleton_method(:add_message) { |_message| nil }
+    fake_chat.define_singleton_method(:complete) do
+      Struct.new(:content).new("ok")
+    end
+
+    allow(agent).to receive(:chat).and_return(fake_chat)
+
+    workflow_class_with_branch = with_stubbed_class("SpecJsonPersistedNextTransitionWorkflow", workflow_class) do
+      initial_state :idle
+      state :branching
+      state :chosen_done
+      state :alternate_done
+
+      transition :start, from: :idle, to: :branching do
+        execute :spec_json_persisted_next_transition_agent
+        on_success :chosen
+      end
+
+      transition :alternate, from: :branching, to: :alternate_done
+      transition :chosen, from: :branching, to: :chosen_done
+    end
+
+    workflow = workflow_class_with_branch.new
+    workflow.advance!
+
+    parsed = JSON.parse(JSON.generate(workflow.to_state))
+    restored = workflow_class_with_branch.from_state(parsed)
+    restored_state = restored.to_state
+    result = restored.run!
+
+    expect(restored_state[:next_transition_name]).to eq(:chosen)
     expect(result.state).to eq(:chosen_done)
     expect(result.steps.map { |step| step[:transition] }).to eq([:chosen])
   end

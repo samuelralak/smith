@@ -8,7 +8,10 @@ module Smith
       def self.inject(messages, formatter:, persisted:)
         content = "#{MARKER}\n#{formatter.call(persisted)}"
 
-        existing_index = messages.index { |m| m[:content]&.start_with?(MARKER) }
+        existing_index = messages.index do |message|
+          message_content = message[:content]
+          message_content.is_a?(String) && message_content.start_with?(MARKER)
+        end
 
         if existing_index
           messages.dup.tap { |msgs| msgs[existing_index] = { role: :system, content: content } }

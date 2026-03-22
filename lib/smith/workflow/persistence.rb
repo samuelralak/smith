@@ -21,15 +21,50 @@ module Smith
       private
 
       def restore_state(hash)
-        @state = hash[:state]
-        @context = filter_persisted_context(hash[:context] || {})
-        @step_count = hash[:step_count] || 0
-        @execution_namespace = hash[:execution_namespace]
-        @created_at = hash[:created_at]
-        @updated_at = hash[:updated_at]
-        @ledger = rebuild_ledger(hash[:budget_consumed] || {})
-        @next_transition_name = hash[:next_transition_name]
-        @session_messages = hash[:session_messages] || []
+        normalized = normalize_persisted_state(hash)
+        @state = normalized[:state]
+        @context = filter_persisted_context(normalized[:context] || {})
+        @step_count = normalized[:step_count] || 0
+        @execution_namespace = normalized[:execution_namespace]
+        @created_at = normalized[:created_at]
+        @updated_at = normalized[:updated_at]
+        @ledger = rebuild_ledger(normalized[:budget_consumed] || {})
+        @next_transition_name = normalized[:next_transition_name]
+        @session_messages = normalized[:session_messages] || []
+      end
+
+      def normalize_persisted_state(hash)
+        normalized = hash.transform_keys { |k| k.is_a?(String) ? k.to_sym : k }
+        normalize_symbol_fields!(normalized)
+        normalize_nested_hashes!(normalized)
+        normalize_session_messages!(normalized)
+        normalized
+      end
+
+      def normalize_symbol_fields!(normalized)
+        normalized[:state] = normalized[:state]&.to_sym
+        return unless normalized.key?(:next_transition_name)
+
+        normalized[:next_transition_name] = normalized[:next_transition_name]&.to_sym
+      end
+
+      def normalize_nested_hashes!(normalized)
+        normalized[:context] = symbolize_keys(normalized[:context]) if normalized[:context].is_a?(Hash)
+        return unless normalized[:budget_consumed].is_a?(Hash)
+
+        normalized[:budget_consumed] = symbolize_keys(normalized[:budget_consumed])
+      end
+
+      def normalize_session_messages!(normalized)
+        return unless normalized[:session_messages].is_a?(Array)
+
+        normalized[:session_messages] = normalized[:session_messages].map do |msg|
+          msg.is_a?(Hash) ? symbolize_keys(msg) : msg
+        end
+      end
+
+      def symbolize_keys(hash)
+        hash.transform_keys { |k| k.is_a?(String) ? k.to_sym : k }
       end
 
       def ledger_consumed

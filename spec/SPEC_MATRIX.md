@@ -676,10 +676,11 @@ Documented contracts covered:
 - resumed workflows continue reserving and reconciling budget from restored ledger state
 - persisted `next_transition_name` preserves the selected resume path across restore
 - JSON-serializable state payload
+- host-style JSON round-trip restore via `JSON.generate` / `JSON.parse` preserves executable state, selected next transition, persisted context, session history, and restored budget state
 
 Notes:
 
-- This spec now covers state shape, round-trip behavior, and restored budget-ledger equivalence.
+- This spec now covers state shape, Ruby-hash round-trip behavior, host-style JSON round-trip behavior, and restored budget-ledger equivalence.
 - It does not yet assert non-serialization of every possible Ruby object in nested structures.
 
 ### `spec/smith/workflow/run_result_spec.rb`
@@ -1309,13 +1310,11 @@ Recommended future specs:
 
 Not yet directly specified:
 
-- events fire only for successfully completed steps
 - host progress callbacks are outside Smith’s event contract
-- workflow-driven event emission after state advancement
 
 Recommended future specs:
 
-- extend `spec/smith/events/runtime_spec.rb` with successful-step scope once workflow execution emits events
+- none beyond broader host-callback integration, unless new runtime seams are added
 
 ### Section 4.4 Guardrails
 
