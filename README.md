@@ -9,7 +9,15 @@ Smith gives you a disciplined way to build agent systems that are explicit, insp
 > Expect API changes, contract tightening, and sharp edges.
 > If you want to build on it early, pin a commit and verify behavior against the runtime specs and [`spec/SPEC_MATRIX.md`](./spec/SPEC_MATRIX.md).
 
-## Why Smith
+## Why The Name
+
+Smith is named after Agent Smith from *The Matrix*.
+
+The reference fits the kind of systems this library is built for across Smith's full role in the films: control, enforcement, replication, propagation, coordination, containment pressure, and a system that becomes more dangerous as it becomes more autonomous and harder to constrain. That is closer to real agent software than most friendly assistant demos: multiple actors, repeated delegation, expanding scope, and failure modes that matter once the system has real consequences.
+
+Smith is built for that layer: not just "call a model," but manage agent behavior as a system.
+
+## Why Use Smith
 
 Most agent demos look good until you need one of these:
 
