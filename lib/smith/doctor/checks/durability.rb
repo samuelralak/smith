@@ -9,17 +9,28 @@ module Smith
         PROBE_KEY = "smith_doctor_probe"
 
         def self.run(report)
-          adapter = ::Smith.config.persistence_adapter
-          unless adapter
+          raw_adapter = ::Smith.config.persistence_adapter
+          unless raw_adapter
             report.add(
               name: "durability.adapter",
               status: :warn,
               message: "No persistence adapter configured",
-              detail: "Set config.persistence_adapter to verify host durability"
+              detail: "Set config.persistence_adapter to :rails_cache, :active_record, :redis, :cache_store, or a custom adapter"
             )
             return
           end
 
+          adapter = ::Smith.persistence_adapter
+          add_backend_warning(report, adapter)
+        rescue StandardError => e
+          report.add(
+            name: "durability.adapter",
+            status: :fail,
+            message: "Persistence adapter configuration is invalid",
+            detail: e.message
+          )
+          return
+        else
           check_persist_and_restore(report, adapter)
           check_resume_after_restore(report, adapter)
         end
@@ -74,6 +85,17 @@ module Smith
             state :done
             transition :finish, from: :idle, to: :done
           end
+        end
+
+        def self.add_backend_warning(report, adapter)
+          warning = adapter.respond_to?(:durability_warning) ? adapter.durability_warning : nil
+          return unless warning
+
+          report.add(
+            name: "durability.backend",
+            status: :warn,
+            message: warning
+          )
         end
       end
     end

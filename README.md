@@ -206,6 +206,61 @@ bin/rails generate smith:install
 
 Doctor is offline by default. Live verification and persistence checks are opt-in.
 
+### Built-In Persistence Adapters
+
+For durability verification, Smith supports these first-class adapter modes:
+
+- `:rails_cache` for standard Rails cache integration
+- `:solid_cache` as a Rails-cache alias when your cache backend is Solid Cache
+- `:cache_store` for any cache-like store that responds to `write`, `read`, and `delete`
+- `:redis` for a Redis client
+- `:active_record` for a keyed ActiveRecord model such as `WorkflowState`
+
+`:rails_cache` and `:solid_cache` are only as durable as the configured Rails cache backend.
+If Rails is using `ActiveSupport::Cache::MemoryStore`, Smith can round-trip in-process but that storage will not survive restarts, and doctor will warn accordingly.
+The same warning applies to `:cache_store` if you point it at a process-local memory backend.
+
+Example Rails config:
+
+```ruby
+Smith.configure do |config|
+  config.persistence_adapter = :rails_cache
+  config.persistence_options = { namespace: "smith" }
+end
+```
+
+Example Redis config:
+
+```ruby
+Smith.configure do |config|
+  config.persistence_adapter = :redis
+  config.persistence_options = {
+    redis: Redis.new(url: ENV.fetch("REDIS_URL")),
+    namespace: "smith"
+  }
+end
+```
+
+Example ActiveRecord config:
+
+```ruby
+Smith.configure do |config|
+  config.persistence_adapter = :active_record
+  config.persistence_options = {
+    model: WorkflowState,
+    key_column: :key,
+    payload_column: :payload
+  }
+end
+```
+
+You can still provide a custom adapter object if your host app already has its own persistence API.
+It just needs to implement:
+
+- `store(key, payload)`
+- `fetch(key)`
+- `delete(key)`
+
 ## Quickstart
 
 The setup model is:

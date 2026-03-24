@@ -3,6 +3,31 @@
 Smith.configure do |config|
   config.logger = Rails.logger
 
+  # Host durability verification / persistence adapter options:
+  # config.persistence_adapter = :rails_cache
+  # config.persistence_options = { namespace: "smith" }
+  #
+  # config.persistence_adapter = :solid_cache
+  # config.persistence_options = { namespace: "smith" }
+  #
+  # config.persistence_adapter = :redis
+  # config.persistence_options = {
+  #   redis: Redis.new(url: ENV.fetch("REDIS_URL")),
+  #   namespace: "smith"
+  # }
+  #
+  # config.persistence_adapter = :active_record
+  # config.persistence_options = {
+  #   model: WorkflowState,
+  #   key_column: :key,
+  #   payload_column: :payload
+  # }
+  #
+  # Custom adapters are also supported if they implement:
+  #   store(key, payload)
+  #   fetch(key)
+  #   delete(key)
+
   # Artifact storage for large outputs
   config.artifact_store = Smith::Artifacts::Memory.new
 

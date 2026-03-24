@@ -19,6 +19,8 @@ RSpec.describe "Smith configuration contract" do
       artifact_retention=
       artifact_encryption=
       artifact_tenant_isolation=
+      persistence_adapter=
+      persistence_options=
       trace_adapter=
       trace_transitions=
       trace_tool_calls=
@@ -42,5 +44,78 @@ RSpec.describe "Smith configuration contract" do
     expect(Smith.config.trace_tool_calls).to be(true)
     expect(Smith.config.trace_token_usage).to be(true)
     expect(Smith.config.trace_cost).to be(true)
+  end
+
+  it "exposes symbol-based persistence adapter configuration with options" do
+    original_adapter = Smith.config.persistence_adapter
+    original_options = Smith.config.persistence_options
+
+    Smith.configure do |config|
+      config.persistence_adapter = :cache_store
+      config.persistence_options = {
+        store: instance_double("CacheStore"),
+        namespace: "smith-test"
+      }
+    end
+
+    expect(Smith.config.persistence_adapter).to eq(:cache_store)
+    expect(Smith.config.persistence_options).to include(namespace: "smith-test")
+  ensure
+    Smith.configure do |config|
+      config.persistence_adapter = original_adapter
+      config.persistence_options = original_options
+    end
+  end
+
+  it "caches the resolved persistence adapter until the config changes" do
+    store = instance_double("CacheStore")
+    original_adapter = Smith.config.persistence_adapter
+    original_options = Smith.config.persistence_options
+
+    Smith.configure do |config|
+      config.persistence_adapter = :cache_store
+      config.persistence_options = { store:, namespace: "smith-cache" }
+    end
+
+    first = Smith.persistence_adapter
+    second = Smith.persistence_adapter
+    expect(first).to equal(second)
+
+    Smith.configure do |config|
+      config.persistence_options = { store:, namespace: "smith-cache-2" }
+    end
+
+    third = Smith.persistence_adapter
+    expect(third).not_to equal(first)
+  ensure
+    Smith.configure do |config|
+      config.persistence_adapter = original_adapter
+      config.persistence_options = original_options
+    end
+  end
+
+  it "refreshes the resolved persistence adapter when persistence_options are mutated in place" do
+    original_adapter = Smith.config.persistence_adapter
+    original_options = Smith.config.persistence_options
+    options = {
+      store: instance_double("CacheStore"),
+      namespace: "smith-cache"
+    }
+
+    Smith.configure do |config|
+      config.persistence_adapter = :cache_store
+      config.persistence_options = options
+    end
+
+    first = Smith.persistence_adapter
+    Smith.config.persistence_options[:namespace] = "smith-cache-2"
+    second = Smith.persistence_adapter
+
+    expect(second).not_to equal(first)
+  ensure
+    Smith.configure do |config|
+      config.persistence_adapter = original_adapter
+      config.persistence_options = original_options
+    end
   end
 end

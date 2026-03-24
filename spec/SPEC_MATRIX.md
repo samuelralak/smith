@@ -1570,6 +1570,11 @@ Covered behaviors:
 - warns when no persistence_adapter configured
 - passes persist_restore and resume_after_restore with working adapter
 - fails when adapter returns corrupted data
+- resolves built-in symbol adapters via persistence_options
+- fails cleanly when built-in adapter configuration is invalid
+- fails cleanly when lazy cache-backed adapter resolution raises during backend warning evaluation
+- warns when `:rails_cache` resolves to a process-local memory store
+- warns when `:cache_store` wraps a process-local memory backend
 
 ### `spec/smith/doctor/installer_spec.rb`
 
@@ -1579,6 +1584,7 @@ Covered behaviors:
 - writes config/initializers/smith.rb when Rails detected
 - does not overwrite existing file
 - prints next steps
+- generated install templates include symbol-based persistence adapter examples
 
 ### `spec/smith/doctor/checks/live_spec.rb`
 
@@ -1631,6 +1637,21 @@ Notes:
 - bundled JSON fallback does not satisfy strict DB mode — RubyLLM.models facade is not used
 - verification chain: resolve class → check AR ancestry → check table exists → check records present
 
+### `spec/smith/persistence_adapters_spec.rb`
+
+Covered behaviors:
+
+- nil resolves to no adapter
+- custom adapter objects are passed through unchanged
+- `:cache_store` resolves with provided store and namespace
+- `:rails_cache` resolves through `Rails.cache`
+- `:solid_cache` aliases to Rails-cache-backed resolution
+- `:redis` resolves with provided client and namespace
+- `:active_record` resolves with configured model and columns
+- custom adapter classes can be instantiated with keyword options
+- invalid custom adapter classes fail contract validation
+- unknown adapter symbols fail clearly
+
 Notes:
 
 - Serialization checks verify Smith-internal serialize/restore mechanics
@@ -1639,6 +1660,12 @@ Notes:
 - Live checks inspect RubyLLM.config, not hardcoded env vars
 - CLI is framework-neutral; Rake tasks are Rails convenience wrappers
 - Schema and model registry checks use honest messaging — heuristic results are labeled as such
+- Built-in persistence adapters are configured via `config.persistence_adapter = :symbol` plus `config.persistence_options = {...}`
+- `Smith.persistence_adapter` caches the resolved adapter until persistence config changes
+- `:rails_cache` / `:solid_cache` can warn when the configured backend is only process-local memory
+- in-place `persistence_options` mutation invalidates adapter caching via snapshot-based signatures
+- `:cache_store` shares the same process-local memory warning behavior when the backend is detectable
+- lazy cache-backed backend resolution failures are reported as `durability.adapter` failures instead of escaping the doctor run
 
 ## Recommended Next Spec Additions
 

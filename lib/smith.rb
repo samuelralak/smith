@@ -31,6 +31,7 @@ module Smith
 
   # Persistence adapter for host durability verification (§doctor)
   setting :persistence_adapter, default: nil
+  setting :persistence_options, default: {}.freeze
 
   # RubyLLM model registry mode: nil/:bundled (default) or :database (§doctor)
   setting :ruby_llm_model_registry, default: nil
@@ -53,6 +54,40 @@ module Smith
   def self.scoped_artifacts=(store)
     Thread.current[:smith_scoped_artifacts] = store
   end
+
+  def self.persistence_adapter
+    raw_adapter = config.persistence_adapter
+    raw_options = config.persistence_options || {}
+    signature = persistence_signature(raw_adapter, raw_options)
+
+    if defined?(@_persistence_adapter_signature) && @_persistence_adapter_signature == signature
+      return @_persistence_adapter
+    end
+
+    @_persistence_adapter_signature = signature
+    @_persistence_adapter = PersistenceAdapters.resolve(raw_adapter, **raw_options)
+  end
+
+  def self.persistence_signature(adapter, options)
+    [snapshot_value(adapter), snapshot_value(options)]
+  end
+  private_class_method :persistence_signature
+
+  def self.snapshot_value(value)
+    case value
+    when Hash
+      value.each_with_object({}) do |(key, nested), copy|
+        copy[snapshot_value(key)] = snapshot_value(nested)
+      end.freeze
+    when Array
+      value.map { |nested| snapshot_value(nested) }.freeze
+    when String
+      value.dup.freeze
+    else
+      value
+    end
+  end
+  private_class_method :snapshot_value
 end
 
 # Leaf modules (no internal dependencies)
@@ -84,6 +119,9 @@ require_relative "smith/artifacts"
 require_relative "smith/artifacts/memory"
 require_relative "smith/artifacts/file"
 require_relative "smith/artifacts/scoped_store"
+
+# Host persistence adapters (no internal deps)
+require_relative "smith/persistence_adapters"
 
 # Tool (depends on RubyLLM::Tool)
 require_relative "smith/tool"

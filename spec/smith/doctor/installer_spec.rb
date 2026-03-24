@@ -13,6 +13,7 @@ RSpec.describe Smith::Doctor::Installer do
         expect(File.exist?("config/smith.rb")).to be true
         expect(io.string).to include("create")
         expect(File.read("config/smith.rb")).to include("Smith.configure")
+        expect(File.read("config/smith.rb")).to include("config.persistence_adapter = :cache_store")
       end
     end
   end
@@ -42,6 +43,7 @@ RSpec.describe Smith::Doctor::Installer do
         expect(File.exist?("config/initializers/smith.rb")).to be true
         expect(File.exist?("config/smith.rb")).to be false
         expect(File.read("config/initializers/smith.rb")).to include("Rails.logger")
+        expect(File.read("config/initializers/smith.rb")).to include("config.persistence_adapter = :rails_cache")
       end
     end
   end
