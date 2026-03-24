@@ -32,7 +32,6 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
 
   spec.add_dependency "ruby_llm", "~> 1.13"
-  spec.add_dependency "aasm", "~> 5.5"
   spec.add_dependency "dry-types", "~> 1.7"
   spec.add_dependency "dry-struct", "~> 1.6"
   spec.add_dependency "dry-initializer", "~> 3.1"

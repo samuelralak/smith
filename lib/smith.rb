@@ -29,6 +29,12 @@ module Smith
   # Pricing (§4.5 — model-call cost computation)
   setting :pricing, default: nil
 
+  # Persistence adapter for host durability verification (§doctor)
+  setting :persistence_adapter, default: nil
+
+  # RubyLLM model registry mode: nil/:bundled (default) or :database (§doctor)
+  setting :ruby_llm_model_registry, default: nil
+
   # Logger (§7 — Ruby Logger, not Rails.logger)
   setting :logger, default: nil
 
@@ -119,3 +125,6 @@ require_relative "smith/workflow"
 require_relative "smith/workflow/pipeline"
 require_relative "smith/workflow/router"
 require_relative "smith/workflow/parallel"
+
+# Conditional Rails integration
+require_relative "smith/railtie" if defined?(Rails::Railtie)
