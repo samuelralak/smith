@@ -1,0 +1,19 @@
+# frozen_string_literal: true
+
+Smith.configure do |config|
+  config.logger = Rails.logger
+
+  # Artifact storage for large outputs
+  config.artifact_store = Smith::Artifacts::Memory.new
+
+  # Trace adapter (Smith::Trace::Memory, Smith::Trace::Logger, Smith::Trace::OpenTelemetry)
+  config.trace_adapter = Smith::Trace::Logger
+
+  # Best-known model-call cost tracking (optional)
+  # config.pricing = {
+  #   "gpt-4.1-nano" => {
+  #     input_cost_per_token: 0.0000001,
+  #     output_cost_per_token: 0.0000004
+  #   }
+  # }
+end
