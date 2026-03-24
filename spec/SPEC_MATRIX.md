@@ -1531,6 +1531,115 @@ When adding specs in these areas:
 2. Re-check the surrounding summary tables and roadmap text.
 3. Avoid encoding stronger behavior than the document claims.
 
+## Section 8: Host Installation and Verification
+
+### `spec/smith/doctor/report_spec.rb`
+
+Covered behaviors:
+
+- empty report is passed with exit_code 0
+- report with :pass checks is passed
+- report with one :fail check is failed with exit_code 1
+- :warn without :fail is still passed
+- summary counts all statuses correctly
+- grouped groups by first name segment
+
+### `spec/smith/doctor/checks/baseline_spec.rb`
+
+Covered behaviors:
+
+- all 6 baseline checks pass in test environment
+
+### `spec/smith/doctor/checks/configuration_spec.rb`
+
+Covered behaviors:
+
+- warns when config.logger is nil, passes when set
+- warns when config.pricing is nil, passes when populated
+
+### `spec/smith/doctor/checks/serialization_spec.rb`
+
+Covered behaviors:
+
+- all 4 serialization checks pass (to_state, json_roundtrip, from_state, resume)
+
+### `spec/smith/doctor/checks/durability_spec.rb`
+
+Covered behaviors:
+
+- warns when no persistence_adapter configured
+- passes persist_restore and resume_after_restore with working adapter
+- fails when adapter returns corrupted data
+
+### `spec/smith/doctor/installer_spec.rb`
+
+Covered behaviors:
+
+- writes config/smith.rb for plain Ruby
+- writes config/initializers/smith.rb when Rails detected
+- does not overwrite existing file
+- prints next steps
+
+### `spec/smith/doctor/checks/live_spec.rb`
+
+Covered behaviors:
+
+- provider_config warns (not fails) when no credentials detected
+- model_call attempts call regardless of provider_config status
+- model_call fails gracefully on StandardError
+
+### `spec/smith/doctor_spec.rb`
+
+Covered behaviors:
+
+- default run includes baseline + config checks
+- durability: true includes serialization + durability checks
+- profile: :rails_persistence includes persistence checks
+- live: true includes live checks
+
+### `spec/smith/cli_spec.rb`
+
+Covered behaviors:
+
+- doctor command returns report exit_code
+- version returns 0
+- unknown command returns 1
+- --help returns 0
+
+### `spec/smith/tasks_spec.rb`
+
+Covered behaviors:
+
+- smith:doctor, smith:doctor:live, smith:doctor:durability, smith:install Rake tasks are defined
+
+### `spec/smith/doctor/checks/persistence_spec.rb`
+
+Covered behaviors:
+
+- schema_presence skips when ActiveRecord not defined
+- default/nil registry mode reports bundled fallback (pass)
+- explicit :bundled registry mode passes with bundled messaging
+- explicit :database registry mode fails when registry class is not resolvable
+- explicit :database registry mode fails when registry class exists but is not ActiveRecord-backed
+- explicit :database registry mode passes when the DB-backed registry class exists, table exists, and records are present
+- explicit :database registry mode does not accept bundled JSON fallback as proof
+- RubyLLM persistence surface detection warns when not detected
+
+Notes:
+
+- strict :database mode verifies the DB registry class directly via RubyLLM.config.model_registry_class
+- bundled JSON fallback does not satisfy strict DB mode — RubyLLM.models facade is not used
+- verification chain: resolve class → check AR ancestry → check table exists → check records present
+
+Notes:
+
+- Serialization checks verify Smith-internal serialize/restore mechanics
+- Durability checks verify host persistence adapter round-trip AND resumed execution from restored state
+- Persistence checks are explicitly opt-in via --profile rails_persistence
+- Live checks inspect RubyLLM.config, not hardcoded env vars
+- CLI is framework-neutral; Rake tasks are Rails convenience wrappers
+- Schema and model registry checks use honest messaging — heuristic results are labeled as such
+
 ## Recommended Next Spec Additions
 
 Highest-value next additions, in order:

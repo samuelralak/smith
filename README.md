@@ -167,6 +167,45 @@ Then install:
 bundle install
 ```
 
+## Host Verification
+
+After adding Smith to your bundle, verify the integration.
+
+### Plain Ruby
+
+```bash
+smith doctor              # offline verification
+smith doctor --live       # includes real provider call
+smith doctor --durability # includes persistence round-trip
+smith install             # scaffold config/smith.rb
+```
+
+### Rails
+
+```bash
+bin/rails smith:doctor              # offline verification
+bin/rails smith:doctor:live         # includes real provider call
+bin/rails smith:doctor:durability   # includes persistence round-trip
+bin/rails smith:install             # scaffold config/initializers/smith.rb
+```
+
+Or use the Rails generator:
+
+```bash
+bin/rails generate smith:install
+```
+
+### What Doctor Verifies
+
+- **Baseline** (always): Smith loads, Ruby version, RubyLLM loads, minimal workflow boots
+- **Configuration** (always): logger, artifacts, tracing, pricing — warns if missing
+- **Serialization** (with `--durability`): to_state, JSON round-trip, from_state, resume
+- **Durability** (with `--durability`): host persistence adapter round-trip and resumed execution
+- **Persistence** (with `--profile rails_persistence`): ActiveRecord, DB connection, RubyLLM persistence surface, schema
+- **Live** (with `--live`): real provider call against configured RubyLLM model
+
+Doctor is offline by default. Live verification and persistence checks are opt-in.
+
 ## Quickstart
 
 The setup model is:
