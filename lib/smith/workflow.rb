@@ -6,6 +6,7 @@ module Smith
   class Workflow
     include DSL
     include Persistence
+    include Durability
     include GuardrailIntegration
     include BudgetIntegration
     include EventIntegration
@@ -16,7 +17,39 @@ module Smith
 
     DEFAULT_MAX_TRANSITIONS = 100
 
-    RunResult = Struct.new(:state, :output, :steps, :total_cost, :total_tokens)
+    RunResult = Struct.new(:state, :output, :steps, :total_cost, :total_tokens, :context, :session_messages) do
+      def done?
+        state == :done
+      end
+
+      def failed?
+        state == :failed
+      end
+
+      def terminal_output
+        output
+      end
+
+      def last_error
+        steps.reverse.map { |step| step[:error] }.compact.first
+      end
+
+      def failed_transition
+        failure_detail&.fetch(:transition)
+      end
+
+      def failure_detail
+        failed_step = steps.reverse.find { |step| step[:error] }
+        return nil unless failed_step
+
+        {
+          transition: failed_step[:transition],
+          from: failed_step[:from],
+          to: failed_step[:to],
+          error: failed_step[:error]
+        }
+      end
+    end
 
     AgentResult = Struct.new(:content, :input_tokens, :output_tokens, :cost, :model_used) do
       def self.from_response(response, content, model_used: nil)
@@ -60,6 +93,7 @@ module Smith
       @updated_at = @created_at
       @total_cost = 0.0
       @total_tokens = 0
+      seed_initial_session_messages
     end
 
     def advance!
@@ -81,20 +115,22 @@ module Smith
         step = advance!
         steps << step if step
       end
-      RunResult.new(
-        state: @state,
-        output: steps.last&.dig(:output),
-        steps: steps,
-        total_cost: @total_cost,
-        total_tokens: @total_tokens
-      )
+      build_run_result(steps)
     end
-
-    private
 
     def terminal?
       self.class.transitions_from(@state).empty? && @next_transition_name.nil?
     end
+
+    def done?
+      @state == :done
+    end
+
+    def failed?
+      @state == :failed
+    end
+
+    private
 
     def build_ledger
       config = self.class.budget
@@ -111,6 +147,64 @@ module Smith
       else
         self.class.transitions_from(@state).first
       end
+    end
+
+    def build_run_result(steps)
+      RunResult.new(
+        state: @state,
+        output: steps.reverse.map { |step| step[:output] }.compact.first,
+        steps: steps,
+        total_cost: @total_cost,
+        total_tokens: @total_tokens,
+        context: snapshot_context,
+        session_messages: snapshot_session_messages
+      )
+    end
+
+    def seed_initial_session_messages
+      builder = self.class.seed_messages
+      return unless builder
+
+      seeded = if builder.arity == 1
+        builder.call(@context)
+      else
+        builder.call
+      end
+
+      @session_messages = normalize_seed_messages(seeded)
+    end
+
+    def normalize_seed_messages(seeded)
+      return [] if seeded.nil?
+      return [seeded] if seeded.is_a?(Hash)
+      return seeded.to_a if seeded.respond_to?(:to_a)
+
+      raise WorkflowError, "seed_messages must return a message Hash or an Array of message Hashes"
+    end
+
+    def snapshot_context
+      snapshot_value(@context)
+    end
+
+    def snapshot_session_messages
+      snapshot_value(@session_messages || [])
+    end
+
+    def snapshot_value(value)
+      case value
+      when Hash
+        value.each_with_object({}) do |(key, nested), copy|
+          copy[snapshot_value(key)] = snapshot_value(nested)
+        end
+      when Array
+        value.map { |nested| snapshot_value(nested) }
+      when String
+        value.dup
+      else
+        value.dup
+      end
+    rescue TypeError
+      value
     end
   end
 end

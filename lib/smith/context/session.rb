@@ -12,6 +12,8 @@ module Smith
       end
 
       def inject_state!
+        return unless @context_manager
+
         formatter = @context_manager.inject_state
         return unless formatter
 
@@ -21,6 +23,8 @@ module Smith
       end
 
       def masked_view
+        return @messages unless @context_manager
+
         strategy = @context_manager.session_strategy
         ObservationMasking.apply(@messages, strategy: strategy)
       end

@@ -27,10 +27,11 @@ module Smith
 
       def build_session
         manager = self.class.context_manager
-        return nil unless manager
+        messages = @session_messages ||= []
+        return nil if manager.nil? && messages.empty?
 
         Context::Session.new(
-          messages: @session_messages ||= [],
+          messages: messages,
           context_manager: manager,
           persisted_context: @context
         )

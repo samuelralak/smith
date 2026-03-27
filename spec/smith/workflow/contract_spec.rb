@@ -4,18 +4,28 @@ RSpec.describe "Smith::Workflow contract" do
   let(:workflow_class) { require_const("Smith::Workflow") }
 
   it "exposes the workflow DSL used throughout the architecture" do
-    %i[initial_state state transition budget max_transitions guardrails context_manager].each do |dsl|
+    %i[initial_state state transition budget max_transitions guardrails context_manager seed_messages persistence_key].each do |dsl|
       expect(workflow_class).to respond_to(dsl), "expected Smith::Workflow to implement .#{dsl}"
     end
   end
 
-  it "supports stepwise execution, full-run execution, and serialization hooks" do
+  it "supports stepwise execution, full-run execution, serialization hooks, and durability helpers" do
     workflow = workflow_class.allocate
 
     expect(workflow).to respond_to(:advance!)
     expect(workflow).to respond_to(:run!)
     expect(workflow).to respond_to(:state)
+    expect(workflow).to respond_to(:terminal?)
+    expect(workflow).to respond_to(:done?)
+    expect(workflow).to respond_to(:failed?)
+    expect(workflow).to respond_to(:advance_persisted!)
+    expect(workflow).to respond_to(:persist!)
+    expect(workflow).to respond_to(:clear_persisted!)
+    expect(workflow).to respond_to(:run_persisted!)
     expect(workflow).to respond_to(:to_state)
+    expect(workflow_class).to respond_to(:restore)
+    expect(workflow_class).to respond_to(:restore_or_initialize)
+    expect(workflow_class).to respond_to(:run_persisted!)
     expect(workflow_class).to respond_to(:from_state)
   end
 

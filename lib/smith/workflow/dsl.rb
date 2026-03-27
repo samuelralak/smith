@@ -17,6 +17,8 @@ module Smith
           subclass.instance_variable_set(:@max_transitions_count, @max_transitions_count)
           subclass.instance_variable_set(:@guardrails_class, @guardrails_class)
           subclass.instance_variable_set(:@context_manager_class, @context_manager_class)
+          subclass.instance_variable_set(:@seed_messages_builder, @seed_messages_builder)
+          subclass.instance_variable_set(:@persistence_key_builder, @persistence_key_builder)
         end
 
         def initial_state(name = nil)
@@ -59,6 +61,18 @@ module Smith
           return @context_manager_class if klass.nil?
 
           @context_manager_class = klass
+        end
+
+        def seed_messages(&block)
+          return @seed_messages_builder unless block_given?
+
+          @seed_messages_builder = block
+        end
+
+        def persistence_key(&block)
+          return @persistence_key_builder unless block_given?
+
+          @persistence_key_builder = block
         end
 
         def transitions_from(state)

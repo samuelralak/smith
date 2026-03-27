@@ -7,6 +7,7 @@ module Smith
         {
           class: self.class.name,
           state: @state,
+          persistence_key: @persistence_key,
           context: persisted_context,
           budget_consumed: ledger_consumed,
           step_count: @step_count,
@@ -25,6 +26,7 @@ module Smith
       def restore_state(hash)
         normalized = normalize_persisted_state(hash)
         restore_core_fields(normalized)
+        @persistence_key = normalized[:persistence_key]
         @ledger = rebuild_ledger(normalized[:budget_consumed] || {})
         @next_transition_name = normalized[:next_transition_name]
         @session_messages = normalized[:session_messages] || []

@@ -23,7 +23,7 @@ Current contract coverage exists for:
 - top-level namespaces and error hierarchy
 - top-level configuration surface, including structural-trace defaults and content-tracing opt-in default
 - agent inheritance, DSL, registry binding, and fallback model-chain runtime behavior
-- workflow DSL, transition metadata capture, serialization entry points, exact state shape, run-result surface, best-known execution cost aggregation, and persisted-context filtering
+- workflow DSL, transition metadata capture, serialization entry points, exact state shape, run-result surface, best-known execution cost aggregation, persisted-context filtering, and configured-adapter durability helper surface
 - workflow pattern namespaces
 - artifact namespace, top-level accessor, configured-store resolution, built-in backend entry points, and named operational methods
 - artifact lifecycle behavior, including opaque refs, per-store isolation, and namespace-prefixed refs
@@ -31,7 +31,7 @@ Current contract coverage exists for:
 - guardrail runtime ordering, blocking, and failure-routing surface
 - event bus surface, filtering, scoped subscriptions, typed event schema declaration with runtime correlation values, subscription lifecycle behavior, direct dispatch ordering/rescue semantics, and typed workflow success-only event emission surface
 - budget ledger surface with denied-reservation, lower-actual reconciliation, and multi-dimension behavior
-- context manager DSL, stored runtime configuration, subclass inheritance behavior, and persisted-key serialization contract
+- context manager DSL, stored runtime configuration, subclass inheritance behavior, persisted-key serialization contract, and workflow seed-message initialization surface
 - tool base class, policy DSL, runtime execute-to-perform delegation, capability metadata declaration, built-in tool namespaces, and pre-dispatch approval/authorization failure policy boundary
 - trace adapter namespaces, runtime transition/tool emission surface, and memory-adapter content policy behavior
 
@@ -400,11 +400,23 @@ Documented contracts covered:
   - `.max_transitions`
   - `.guardrails`
   - `.context_manager`
+  - `.seed_messages`
+  - `.persistence_key`
 - instance/class execution surface:
   - `#advance!`
   - `#run!`
+  - `#terminal?`
+  - `#done?`
+  - `#failed?`
+  - `#advance_persisted!`
+  - `#persist!`
+  - `#clear_persisted!`
+  - `#run_persisted!`
   - `#state`
   - `#to_state`
+  - `.restore`
+  - `.restore_or_initialize`
+  - `.run_persisted!`
   - `.from_state`
 - transition block surface:
   - `execute`
@@ -425,6 +437,73 @@ Notes:
 - This spec checks DSL surface and declared transition metadata only.
 - The default `:fail` transition contract is covered here even if the current implementation is still failing that spec.
 - The architecture gives enough support for the DSL shape, but not yet enough detail to assert all transition side effects without over-prescribing implementation.
+
+### `spec/smith/workflow/durability_spec.rb`
+
+Purpose:
+
+- asserts the small configured-adapter durability convenience surface for workflows
+
+Architecture basis:
+
+- Section 4.2, Workflow
+- Section 5.3, State Serialization
+
+Documented contracts covered:
+
+- `.restore(key, adapter:)` restores a workflow from configured host persistence, requires a non-blank explicit key, and treats the lookup key as authoritative over any embedded persisted key
+- `.restore_or_initialize(key:, context:, adapter:)` returns restored state when present or a new workflow when absent, and can derive the key from workflow-declared `persistence_key`
+- `.run_persisted!(key:, context:, adapter:, clear:, on_step:)` restores or initializes, checkpoints through terminal state, supports synchronous per-run step callbacks, and can clear terminal state through a configurable policy
+- `#advance_persisted!(key, adapter:, on_step:)` checkpoints around a single accepted transition for stepwise resume loops
+- `#run_persisted!(key, adapter:, on_step:)` checkpoints before execution and after each accepted step
+- `#persist!(key, adapter:)` writes serialized workflow state through the configured adapter and can derive the key from workflow context
+- `#clear_persisted!(key, adapter:)` clears serialized workflow state through the configured adapter and can derive the key from workflow context
+- derived persistence keys remain stable across restore for instance-level helpers, even when workflow context persistence is filtered
+- durability helpers fail with `Smith::WorkflowError` when no persistence adapter is available
+- durability helpers fail with `Smith::WorkflowError` when no explicit key is passed and no workflow `persistence_key` is available
+- durability helpers fail with `Smith::WorkflowError` when workflow `persistence_key` resolves to nil or blank
+- `on_step:` callback failures are logged and do not abort durable workflow progression
+- `clear: :terminal` clears any terminal workflow state, not only `:done`/`:failed`
+- `#run_persisted!` and `#advance_persisted!` avoid no-op persistence writes when the workflow is already terminal
+- workflow predicates:
+  - `#terminal?`
+  - `#done?`
+  - `#failed?`
+- run-result predicates/helpers:
+  - `#done?`
+  - `#failed?`
+  - `#terminal_output`
+  - `#last_error`
+
+Notes:
+
+- These helpers are convenience wrappers around the configured persistence adapter, not a durable orchestration runtime.
+- Host apps still own persistence backend selection, workflow keys, queue delivery, and terminal domain projection.
+
+### `spec/smith/workflow/seed_messages_spec.rb`
+
+Purpose:
+
+- asserts the workflow-level seed-message DSL for deterministic initial session history
+
+Architecture basis:
+
+- Section 4.2, Workflow
+- Section 4.6, Context Manager
+
+Documented contracts covered:
+
+- `.seed_messages` stores a workflow-local callable used to initialize session history for new workflows
+- seeded messages appear in persisted `session_messages` for newly initialized workflows
+- seeded session messages are passed into normal agent execution
+- seeded messages do not rerun or duplicate on restore
+
+Notes:
+
+- `seed_messages` is a workflow convenience for deterministic starting turns.
+- It complements `Smith::Context`; it does not replace context persistence or injected state.
+- `persistence_key` is a workflow convenience for deterministic durability addressing.
+- It complements host-owned key selection; it does not introduce workflow-server conflict semantics.
 
 ### `spec/smith/workflow/patterns_spec.rb`
 
@@ -666,6 +745,7 @@ Documented contracts covered:
 - exact `to_state` keys:
   - `class`
   - `state`
+  - `persistence_key`
   - `context`
   - `budget_consumed`
   - `step_count`
@@ -677,6 +757,7 @@ Documented contracts covered:
   - `total_cost`
   - `total_tokens`
 - round-trip via `.from_state`
+- resolved durability key round-trips through `.from_state`
 - `budget_consumed` is serialized from the live ledger after execution
 - `.from_state` rebuilds a live ledger with the same consumed and remaining budget
 - resumed workflows continue reserving and reconciling budget from restored ledger state
@@ -709,8 +790,19 @@ Documented contracts covered:
   - `steps`
   - `total_cost`
   - `total_tokens`
+  - `context`
+  - `session_messages`
+  - `terminal_output`
+  - `last_error`
+  - `failed_transition`
+  - `failure_detail`
+  - `done?`
+  - `failed?`
 - `total_cost` is Smith's best-known computed workflow cost subtotal
 - `total_tokens` is Smith's best-known workflow token subtotal
+- `context` and `session_messages` expose final workflow state snapshots for host projection code
+- `context` and `session_messages` are deep snapshots, so host mutation does not leak back into workflow internals
+- `failed_transition` and `failure_detail` expose convenience access to the last failed step
 - known pricing plus known usage contribute non-zero computed cost to `total_cost`
 - multiple successful agent calls aggregate their known computed costs into `total_cost`
 - stepwise execution via `advance!` followed by `run!` preserves cumulative `total_cost` and `total_tokens`

@@ -229,6 +229,23 @@ Smith.configure do |config|
 end
 ```
 
+If the workflow should begin with a deterministic conversation turn, you can seed that session history directly on the workflow:
+
+```ruby
+class SeededReplyWorkflow < Smith::Workflow
+  seed_messages do |ctx|
+    [{ role: :user, content: ctx[:user_message] }]
+  end
+
+  initial_state :idle
+  state :done
+
+  transition :reply, from: :idle, to: :done do
+    execute :reply_agent
+  end
+end
+```
+
 Example Redis config:
 
 ```ruby
@@ -423,6 +440,8 @@ The normal public way to pass input into a workflow is exactly what the quicksta
 
 If you need conversation history rather than just structured workflow input, that history lives in `session_messages` in persisted workflow state and comes back through `.from_state`.
 
+If a workflow should start from a deterministic first turn, use `seed_messages` on the workflow. Seeded messages are only added for newly initialized workflows and do not rerun on restore.
+
 ## Core Concepts
 
 ### `Smith::Agent`
@@ -531,8 +550,19 @@ end
 - `steps`
 - `total_cost`
 - `total_tokens`
+- `context`
+- `session_messages`
 
 Those totals are cumulative best-known workflow totals, including resumed execution and nested roll-up, not just the last `run!` segment.
+
+Convenience helpers:
+
+- `terminal_output`
+- `last_error`
+- `failed_transition`
+- `failure_detail`
+
+`context` and `session_messages` are returned as final-state snapshots for host projection code. Mutating them does not mutate workflow internals.
 
 Typical successful step entry:
 
@@ -1189,6 +1219,64 @@ result = restored.run!
 ```
 
 Important: Smith is resumable, but it is still your app's job to store and retrieve that state.
+
+For the common restore-or-initialize case, Smith also exposes a small configured-adapter one-liner:
+
+```ruby
+result = ReviewWorkflow.run_persisted!(
+  key: "ticket:T-1042",
+  context: {
+    ticket_id: "T-1042",
+    current_findings: "needs escalation"
+  },
+  on_step: ->(step) { puts "checkpointed #{step[:transition]}" },
+  clear: :done
+)
+```
+
+`clear: :done` is the default. Pass `clear: false` to preserve terminal state for host-managed cleanup timing, or `clear: :terminal` to clear any terminal workflow state once the run completes.
+
+`on_step:` is a best-effort host callback. It runs after an accepted step has been checkpointed. Callback failures are logged and ignored; they do not roll back or abort durable workflow progression.
+
+If the persistence key is a deterministic function of workflow context, declare it once on the workflow:
+
+```ruby
+class ReviewWorkflow < Smith::Workflow
+  persistence_key { |ctx| "ticket:#{ctx[:ticket_id]}" }
+end
+
+result = ReviewWorkflow.run_persisted!(
+  context: {
+    ticket_id: "T-1042",
+    current_findings: "needs escalation"
+  }
+)
+```
+
+When a workflow derives its key this way, Smith persists the resolved durability key in workflow state. That keeps instance-level helpers such as `persist!`, `advance_persisted!`, and `clear_persisted!` stable across restore even when the workflow's context manager persists only a filtered subset of context keys.
+
+If you need more explicit control, the lower-level lifecycle is still available:
+
+```ruby
+workflow = ReviewWorkflow.restore_or_initialize(
+  key: "ticket:T-1042",
+  context: {
+    ticket_id: "T-1042",
+    current_findings: "needs escalation"
+  }
+)
+
+step = workflow.advance_persisted!("ticket:T-1042")
+# Host app can broadcast or project progress here.
+emit_progress(step)
+
+result = workflow.run_persisted!("ticket:T-1042")
+workflow.clear_persisted!("ticket:T-1042")
+```
+
+`restore(key, ...)` is intentionally stricter: it requires a non-blank explicit key, and the lookup key remains authoritative for the restored workflow even if stored state contains an embedded `persistence_key`.
+
+These helpers do not make Smith a job system or durable runtime. They only remove repetitive restore/checkpoint boilerplate around the configured persistence adapter while leaving queueing, projection, and recovery policy with the host app.
 
 ## Artifacts
 

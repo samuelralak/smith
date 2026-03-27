@@ -14,9 +14,84 @@ RSpec.describe "Smith::Workflow run result contract" do
 
     result = workflow.run!
 
-    %i[state output steps total_cost total_tokens].each do |method_name|
+    %i[state output steps total_cost total_tokens context session_messages failed_transition failure_detail].each do |method_name|
       expect(result).to respond_to(method_name), "expected run! result to implement ##{method_name}"
     end
+  end
+
+  it "returns final context and session_messages snapshots on the run result" do
+    workflow = with_stubbed_class("SpecRunResultContextWorkflow", workflow_class) do
+      seed_messages do |ctx|
+        [{ role: :user, content: "Research: #{ctx[:topic]}" }]
+      end
+
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done
+    end.new(context: { topic: "ports" })
+
+    result = workflow.run!
+
+    expect(result.context).to eq(topic: "ports")
+    expect(result.session_messages).to eq([{ role: :user, content: "Research: ports" }])
+  end
+
+  it "deep-copies final context and session_messages snapshots on the run result" do
+    workflow = with_stubbed_class("SpecRunResultDeepSnapshotWorkflow", workflow_class) do
+      seed_messages do |_ctx|
+        [{ role: :user, content: { topic: "ports", tags: ["shipping"] } }]
+      end
+
+      initial_state :idle
+      state :done
+    end.new(context: { topic: { name: "ports", regions: ["east"] } })
+
+    result = workflow.run!
+
+    result.context[:topic][:name] = "changed"
+    result.context[:topic][:regions] << "west"
+    result.session_messages.first[:content][:topic] = "changed"
+    result.session_messages.first[:content][:tags] << "logistics"
+
+    expect(workflow.to_state[:context]).to eq(topic: { name: "ports", regions: ["east"] })
+    expect(workflow.to_state[:session_messages]).to eq(
+      [{ role: :user, content: { topic: "ports", tags: ["shipping"] } }]
+    )
+  end
+
+  it "surfaces convenience failure detail on the run result" do
+    agent = with_stubbed_class("SpecRunResultFailureDetailAgent", agent_class) do
+      register_as :spec_run_result_failure_detail_agent
+      model "gpt-5-mini"
+    end
+
+    chat = Object.new
+    chat.define_singleton_method(:add_message) { |_message| nil }
+    chat.define_singleton_method(:complete) { raise StandardError, "boom" }
+
+    allow(agent).to receive(:chat).and_return(chat)
+
+    workflow = with_stubbed_class("SpecRunResultFailureDetailWorkflow", workflow_class) do
+      initial_state :idle
+      state :failed
+
+      transition :finish, from: :idle, to: :failed do
+        execute :spec_run_result_failure_detail_agent
+        on_failure :fail
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.failed?).to eq(true)
+    expect(result.failed_transition).to eq(:finish)
+    expect(result.failure_detail).to include(
+      transition: :finish,
+      from: :idle,
+      to: :failed
+    )
+    expect(result.failure_detail[:error]).to be_a(StandardError)
   end
 
   it "raises MaxTransitionsExceeded and leaves the workflow in its current state" do

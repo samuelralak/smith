@@ -7,14 +7,20 @@ RSpec.describe "Smith::Workflow state serialization shape" do
 
   it "serializes to the documented state hash shape" do
     workflow = with_stubbed_class("SpecStateWorkflow", workflow_class) do
+      persistence_key { |ctx| "workflow:#{ctx[:branch_count]}" }
       initial_state :idle
     end.new(context: { branch_count: 6, metadata: { topic: "history" } })
 
+    workflow.persist!("workflow:6", adapter: Class.new {
+      def store(_key, _payload); end
+    }.new)
+
     state = workflow.to_state
 
-    expect(state.keys).to eq(%i[class state context budget_consumed step_count execution_namespace created_at updated_at next_transition_name session_messages total_cost total_tokens])
+    expect(state.keys).to eq(%i[class state persistence_key context budget_consumed step_count execution_namespace created_at updated_at next_transition_name session_messages total_cost total_tokens])
     expect(state[:class]).to eq("SpecStateWorkflow")
     expect(state[:state]).to eq(:idle)
+    expect(state[:persistence_key]).to eq("workflow:6")
     expect(state[:context]).to eq(branch_count: 6, metadata: { topic: "history" })
     expect(state[:budget_consumed]).to be_a(Hash)
     expect(state[:step_count]).to be_a(Integer)
@@ -26,8 +32,13 @@ RSpec.describe "Smith::Workflow state serialization shape" do
 
   it "round-trips through from_state without serializing agent instances" do
     workflow = with_stubbed_class("SpecRoundTripWorkflow", workflow_class) do
+      persistence_key { |ctx| "workflow:#{ctx[:branch_count]}" }
       initial_state :idle
     end.new(context: { branch_count: 3 })
+
+    workflow.persist!("workflow:3", adapter: Class.new {
+      def store(_key, _payload); end
+    }.new)
 
     restored = workflow.class.from_state(workflow.to_state)
 
