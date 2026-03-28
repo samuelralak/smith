@@ -44,12 +44,14 @@ module Smith
       def setup_branch_context(env, ledger)
         env.setup_thread
         Tool.current_ledger = ledger
+        Tool.current_tool_result_collector = tool_result_collector
         Thread.current[:smith_last_agent_result] = nil
       end
 
       def teardown_branch_context(env)
         Thread.current[:smith_last_agent_result] = nil
         Tool.current_ledger = nil
+        Tool.current_tool_result_collector = nil
         env.teardown_thread
       end
 

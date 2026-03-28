@@ -5,11 +5,13 @@ require "ruby_llm"
 require_relative "tool/capability_builder"
 require_relative "tool/policy"
 require_relative "tool/budget_enforcement"
+require_relative "tool/capture"
 
 module Smith
   class Tool < RubyLLM::Tool
     include Policy
     include BudgetEnforcement
+    include Capture
 
     class << self
       def current_guardrails
@@ -44,6 +46,14 @@ module Smith
         Thread.current[:smith_tool_call_allowance] = value
       end
 
+      def current_tool_result_collector
+        Thread.current[:smith_tool_result_collector]
+      end
+
+      def current_tool_result_collector=(value)
+        Thread.current[:smith_tool_result_collector] = value
+      end
+
       def category(value = nil)
         return @category if value.nil?
 
@@ -69,6 +79,12 @@ module Smith
 
         @before_execute = block
       end
+
+      def capture_result(&block)
+        return @capture_result unless block_given?
+
+        @capture_result = block
+      end
     end
 
     def execute(**kwargs)
@@ -85,6 +101,7 @@ module Smith
       duration = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
 
       emit_tool_trace(kwargs, result, duration)
+      capture_result_if_configured(kwargs, result)
       result
     end
 

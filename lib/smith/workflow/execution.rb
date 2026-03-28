@@ -25,12 +25,14 @@ module Smith
       def setup_step_context
         Tool.current_deadline = wall_clock_deadline
         Tool.current_ledger = @ledger
+        Tool.current_tool_result_collector = tool_result_collector
       end
 
       def teardown_step_context
         Tool.current_guardrails = nil
         Tool.current_deadline = nil
         Tool.current_ledger = nil
+        Tool.current_tool_result_collector = nil
         Smith.scoped_artifacts = nil
       end
 

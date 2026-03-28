@@ -17,7 +17,8 @@ module Smith
           next_transition_name: @next_transition_name,
           session_messages: @session_messages || [],
           total_cost: @total_cost || 0.0,
-          total_tokens: @total_tokens || 0
+          total_tokens: @total_tokens || 0,
+          tool_results: @tool_results || []
         }
       end
 
@@ -32,6 +33,8 @@ module Smith
         @session_messages = normalized[:session_messages] || []
         @total_cost = normalized[:total_cost] || 0.0
         @total_tokens = normalized[:total_tokens] || 0
+        initialize_tool_result_state
+        @tool_results = normalized[:tool_results] || []
       end
 
       def restore_core_fields(normalized)
@@ -48,6 +51,7 @@ module Smith
         normalize_symbol_fields!(normalized)
         normalize_nested_hashes!(normalized)
         normalize_session_messages!(normalized)
+        normalize_tool_results!(normalized)
         normalized
       end
 
@@ -70,6 +74,14 @@ module Smith
 
         normalized[:session_messages] = normalized[:session_messages].map do |msg|
           msg.is_a?(Hash) ? symbolize_keys(msg) : msg
+        end
+      end
+
+      def normalize_tool_results!(normalized)
+        return unless normalized[:tool_results].is_a?(Array)
+
+        normalized[:tool_results] = normalized[:tool_results].map do |entry|
+          entry.is_a?(Hash) ? symbolize_keys(entry) : entry
         end
       end
 

@@ -466,4 +466,59 @@ RSpec.describe "Smith::Workflow durability helpers" do
     expect(result.terminal_output).to eq("done")
     expect(result.last_error).to be_nil
   end
+
+  it "captures tool results after restore with real tool invocation" do
+    tool_class = require_const("Smith::Tool")
+
+    capturing_tool = with_stubbed_class("SpecResumeCaptureTool", tool_class) do
+      capture_result { |_kwargs, result| { data: result.to_s } }
+      def perform(**_kwargs) = "captured-data"
+    end
+
+    agent = with_stubbed_class("SpecResumeCaptureAgent", agent_class) do
+      register_as :spec_resume_capture_agent
+      model "gpt-5-mini"
+    end
+
+    call_count = 0
+    allow(agent).to receive(:chat) do
+      call_count += 1
+      tool_instance = capturing_tool.new
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_| nil }
+      chat.define_singleton_method(:complete) do
+        tool_instance.execute
+        Struct.new(:content).new("step-#{call_count}")
+      end
+      chat
+    end
+
+    klass = with_stubbed_class("SpecResumeCaptureWorkflow", workflow_class) do
+      initial_state :idle
+      state :mid
+      state :done
+
+      transition :first, from: :idle, to: :mid do
+        execute :spec_resume_capture_agent
+        on_success :second
+      end
+
+      transition :second, from: :mid, to: :done do
+        execute :spec_resume_capture_agent
+      end
+    end
+
+    workflow = klass.new
+    workflow.advance!
+    state = JSON.parse(JSON.generate(workflow.to_state))
+
+    restored = klass.from_state(state)
+    result = restored.run!
+
+    expect(result.state).to eq(:done)
+    expect(result.tool_results.length).to eq(2)
+    expect(result.tool_results.first[:tool]).to be_a(String)
+    expect(result.tool_results.first[:captured]).to eq("data" => "captured-data")
+    expect(result.tool_results.last[:captured]).to eq(data: "captured-data")
+  end
 end

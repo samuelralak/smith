@@ -794,4 +794,90 @@ RSpec.describe "Smith::Workflow parallel execution" do
     expect(used_ledgers.map(&:object_id).uniq.length).to eq(2)
     expect(used_ledgers.map { |ledger| ledger.consumed[:token_limit] }).to eq([1, 1])
   end
+
+  it "captures tool results from parallel branches without loss" do
+    tool_class = require_const("Smith::Tool")
+
+    capturing_tool = with_stubbed_class("SpecParallelCaptureTool", tool_class) do
+      capture_result { |kwargs, _result| { branch: kwargs[:branch_id] } }
+      def perform(branch_id:, **) = "result-#{branch_id}"
+    end
+
+    agent = with_stubbed_class("SpecParallelCaptureAgent", agent_class) do
+      register_as :spec_parallel_capture_agent
+      model "gpt-5-mini"
+    end
+
+    branch_index = Concurrent::AtomicFixnum.new(0)
+    allow(agent).to receive(:chat) do
+      idx = branch_index.increment
+      tool_instance = capturing_tool.new
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_| nil }
+      chat.define_singleton_method(:complete) do
+        tool_instance.execute(branch_id: idx)
+        Struct.new(:content).new("branch-#{idx}")
+      end
+      chat
+    end
+
+    workflow = with_stubbed_class("SpecParallelCaptureWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :fan_out, from: :idle, to: :done do
+        execute :spec_parallel_capture_agent, parallel: true, count: 3
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    expect(result.tool_results.length).to eq(3)
+
+    captured_branches = result.tool_results.map { |tr| tr[:captured][:branch] }.sort
+    expect(captured_branches).to eq([1, 2, 3])
+  end
+
+  it "captures all entries from 50 parallel branches without loss" do
+    tool_class = require_const("Smith::Tool")
+
+    capturing_tool = with_stubbed_class("SpecHighBranchCaptureTool", tool_class) do
+      capture_result { |kwargs, _result| { branch: kwargs[:branch_id] } }
+      def perform(branch_id:, **) = "result-#{branch_id}"
+    end
+
+    agent = with_stubbed_class("SpecHighBranchCaptureAgent", agent_class) do
+      register_as :spec_high_branch_capture_agent
+      model "gpt-5-mini"
+    end
+
+    branch_index = Concurrent::AtomicFixnum.new(0)
+    allow(agent).to receive(:chat) do
+      idx = branch_index.increment
+      tool_instance = capturing_tool.new
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_| nil }
+      chat.define_singleton_method(:complete) do
+        tool_instance.execute(branch_id: idx)
+        Struct.new(:content).new("branch-#{idx}")
+      end
+      chat
+    end
+
+    workflow = with_stubbed_class("SpecHighBranchCaptureWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :fan_out, from: :idle, to: :done do
+        execute :spec_high_branch_capture_agent, parallel: true, count: 50
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    expect(result.tool_results.length).to eq(50)
+    expect(result.tool_results.map { |tr| tr[:captured][:branch] }.sort).to eq((1..50).to_a)
+  end
 end

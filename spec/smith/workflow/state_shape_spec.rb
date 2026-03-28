@@ -17,7 +17,7 @@ RSpec.describe "Smith::Workflow state serialization shape" do
 
     state = workflow.to_state
 
-    expect(state.keys).to eq(%i[class state persistence_key context budget_consumed step_count execution_namespace created_at updated_at next_transition_name session_messages total_cost total_tokens])
+    expect(state.keys).to eq(%i[class state persistence_key context budget_consumed step_count execution_namespace created_at updated_at next_transition_name session_messages total_cost total_tokens tool_results])
     expect(state[:class]).to eq("SpecStateWorkflow")
     expect(state[:state]).to eq(:idle)
     expect(state[:persistence_key]).to eq("workflow:6")
@@ -28,6 +28,7 @@ RSpec.describe "Smith::Workflow state serialization shape" do
     expect(state[:updated_at]).to be_a(String)
     expect(state[:total_cost]).to eq(0.0)
     expect(state[:total_tokens]).to eq(0)
+    expect(state[:tool_results]).to eq([])
   end
 
   it "round-trips through from_state without serializing agent instances" do
@@ -70,6 +71,23 @@ RSpec.describe "Smith::Workflow state serialization shape" do
     )
     expect(result.state).to eq(:done)
     expect(result.steps.map { |step| step[:transition] }).to eq([:finish])
+  end
+
+  it "preserves non-empty tool_results across JSON round-trip" do
+    workflow = with_stubbed_class("SpecToolResultsRoundTripWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      transition :finish, from: :idle, to: :done
+    end.new
+
+    workflow.instance_variable_get(:@tool_results) << { tool: "web_search", captured: { urls: ["https://example.com"] } }
+
+    parsed = JSON.parse(JSON.generate(workflow.to_state))
+    restored = workflow.class.from_state(parsed)
+
+    expect(restored.to_state[:tool_results].length).to eq(1)
+    expect(restored.to_state[:tool_results].first[:tool]).to eq("web_search")
+    expect(restored.to_state[:tool_results].first[:captured]).to eq("urls" => ["https://example.com"])
   end
 
   it "preserves the execution namespace across serialization after workflow execution" do

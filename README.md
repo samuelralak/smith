@@ -1076,6 +1076,7 @@ Smith tools extend RubyLLM tools with:
 - deadline enforcement
 - tool-call budgeting
 - tracing
+- result capture (workflow-scoped tool output collection)
 
 Example:
 
@@ -1097,6 +1098,34 @@ class RefundCustomer < Smith::Tool
   end
 end
 ```
+
+### Tool Result Capture
+
+Tools can declare a `capture_result` block to collect structured data during workflow execution. Smith stores captured data on the workflow and exposes it on `RunResult#tool_results`. Smith does not interpret the payload — the host app owns all projection.
+
+```ruby
+class WebSearch < Smith::Tool
+  capture_result do |kwargs, result|
+    { query: kwargs[:query], urls: extract_urls(result) }
+  end
+
+  def perform(query:)
+    # search implementation
+  end
+end
+```
+
+After workflow execution:
+
+```ruby
+result = MyWorkflow.run_persisted!(key: "search:123", context: { topic: "AI" })
+result.tool_results
+# => [{ tool: "web_search", captured: { query: "AI trends", urls: ["https://..."] } }]
+```
+
+Captured tool results survive persistence — they are included in `to_state` and restored via `from_state`.
+
+`tool_results` is designed for compact structured evidence (URLs, metadata, refs). Hosts should avoid storing large raw payloads there. If large tool outputs are needed, use artifacts and capture refs or metadata instead.
 
 You can still use RubyLLM agent tool wiring on your agents:
 

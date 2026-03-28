@@ -1759,6 +1759,65 @@ Notes:
 - `:cache_store` shares the same process-local memory warning behavior when the backend is detectable
 - lazy cache-backed backend resolution failures are reported as `durability.adapter` failures instead of escaping the doctor run
 
+## Section 9: Tool Result Capture
+
+### `spec/smith/tools/contract_spec.rb`
+
+Covered behaviors:
+
+- Smith::Tool responds to capture_result
+
+### `spec/smith/tools/runtime_spec.rb`
+
+Covered behaviors:
+
+- Tool with capture_result block appends { tool:, captured: } to active collector
+- Tool without capture_result does not append to collector
+- Capture block that raises is logged and does not fail tool execution
+- No collector active (outside workflow) — capture silently skipped
+
+### `spec/smith/workflow/run_result_spec.rb`
+
+Covered behaviors:
+
+- RunResult#tool_results returns an array
+- RunResult#tool_results is a deep copy (mutation does not affect workflow state)
+
+### `spec/smith/workflow/state_shape_spec.rb`
+
+Covered behaviors:
+
+- to_state keys include :tool_results
+- state[:tool_results] is [] for a fresh workflow
+- non-empty tool_results survive JSON round-trip and from_state restore
+
+### `spec/smith/workflow/durability_spec.rb`
+
+Covered behaviors:
+
+- restored workflow captures new tool results without crashing (proves mutex recreated on restore)
+
+### `spec/smith/workflow/parallel_spec.rb`
+
+Covered behaviors:
+
+- parallel branches capture tool results without loss
+
+Notes:
+
+- capture_result is a class-level DSL on Smith::Tool, stored as a block
+- The block receives (kwargs, result) and returns a host-defined JSON-safe payload
+- Captured entries are { tool: "name", captured: { ... } }
+- Collector thread-local (Tool.current_tool_result_collector) is a synchronized proc wired through execution and parallel contexts
+- tool_results is persisted via to_state/from_state and restored on durable resume
+- Smith does not interpret captured payloads — host owns all projection
+- Capture is best-effort: failures logged, tool execution unaffected
+- Collector uses a synchronized proc, not raw array mutation, for thread safety beyond MRI
+- Smith normalizes envelope keys (tool, captured) but preserves host payload internals as opaque JSON-safe data
+- tool_results is for compact structured evidence; large raw payloads belong in artifacts
+- observed profiling behavior: handling is linear in entry count with no superlinear collector overhead under parallel append (not a hard guarantee)
+- 1,000 entries and 50 parallel branches are smoke-tested without timing assertions
+
 ## Recommended Next Spec Additions
 
 Highest-value next additions, in order:

@@ -14,9 +14,57 @@ RSpec.describe "Smith::Workflow run result contract" do
 
     result = workflow.run!
 
-    %i[state output steps total_cost total_tokens context session_messages failed_transition failure_detail].each do |method_name|
+    %i[state output steps total_cost total_tokens context session_messages tool_results failed_transition failure_detail].each do |method_name|
       expect(result).to respond_to(method_name), "expected run! result to implement ##{method_name}"
     end
+  end
+
+  it "returns tool_results as an array" do
+    workflow = with_stubbed_class("SpecToolResultsWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :go, from: :idle, to: :done
+    end.new
+
+    result = workflow.run!
+    expect(result.tool_results).to eq([])
+  end
+
+  it "returns a deep copy of tool_results that does not mutate workflow state" do
+    workflow = with_stubbed_class("SpecToolResultsCopyWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :go, from: :idle, to: :done
+    end.new
+
+    result = workflow.run!
+    result.tool_results << { tool: "injected", captured: {} }
+
+    result2 = workflow.run!
+    expect(result2.tool_results).to eq([])
+  end
+
+  it "handles 1000 captured entries without error and preserves exact count" do
+    workflow = with_stubbed_class("SpecLargeToolResultsWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      transition :go, from: :idle, to: :done
+    end.new
+
+    1_000.times do |i|
+      workflow.instance_variable_get(:@tool_results) << {
+        tool: "search", captured: { index: i, url: "https://example.com/#{i}" }
+      }
+    end
+
+    result = workflow.run!
+    expect(result.tool_results.length).to eq(1_000)
+
+    json = JSON.generate(workflow.to_state)
+    restored = workflow.class.from_state(JSON.parse(json))
+    expect(restored.to_state[:tool_results].length).to eq(1_000)
   end
 
   it "returns final context and session_messages snapshots on the run result" do

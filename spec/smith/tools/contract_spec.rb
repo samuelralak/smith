@@ -8,7 +8,7 @@ RSpec.describe "Smith::Tool contract" do
   end
 
   it "provides the documented policy DSL" do
-    %i[category capabilities authorize].each do |dsl|
+    %i[category capabilities authorize capture_result].each do |dsl|
       expect(tool_class).to respond_to(dsl), "expected Smith::Tool to implement .#{dsl}"
     end
   end

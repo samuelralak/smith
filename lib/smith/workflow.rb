@@ -17,7 +17,8 @@ module Smith
 
     DEFAULT_MAX_TRANSITIONS = 100
 
-    RunResult = Struct.new(:state, :output, :steps, :total_cost, :total_tokens, :context, :session_messages) do
+    RunResult = Struct.new(:state, :output, :steps, :total_cost, :total_tokens, :context, :session_messages,
+                           :tool_results) do
       def done?
         state == :done
       end
@@ -93,6 +94,7 @@ module Smith
       @updated_at = @created_at
       @total_cost = 0.0
       @total_tokens = 0
+      initialize_tool_result_state
       seed_initial_session_messages
     end
 
@@ -157,7 +159,8 @@ module Smith
         total_cost: @total_cost,
         total_tokens: @total_tokens,
         context: snapshot_context,
-        session_messages: snapshot_session_messages
+        session_messages: snapshot_session_messages,
+        tool_results: snapshot_tool_results
       )
     end
 
@@ -188,6 +191,19 @@ module Smith
 
     def snapshot_session_messages
       snapshot_value(@session_messages || [])
+    end
+
+    def snapshot_tool_results
+      snapshot_value(@tool_results || [])
+    end
+
+    def tool_result_collector
+      ->(entry) { @tool_results_mutex.synchronize { @tool_results << entry } }
+    end
+
+    def initialize_tool_result_state
+      @tool_results = []
+      @tool_results_mutex = Mutex.new
     end
 
     def snapshot_value(value)

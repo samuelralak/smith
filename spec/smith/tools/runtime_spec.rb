@@ -135,4 +135,82 @@ RSpec.describe "Smith::Tool runtime behavior" do
   ensure
     tool_class.current_deadline = nil
   end
+
+  it "appends captured data to active collector when capture_result is configured" do
+    captured = []
+    collector = ->(entry) { captured << entry }
+    tool_class.current_tool_result_collector = collector
+
+    tool = with_stubbed_class("SpecCaptureTool", tool_class) do
+      capture_result do |_kwargs, result|
+        { url: "https://example.com", content: result.to_s }
+      end
+
+      def perform(**_kwargs)
+        "search results"
+      end
+    end.new
+
+    tool.execute
+    expect(captured.length).to eq(1)
+    expect(captured.first[:tool]).to be_a(String)
+    expect(captured.first[:captured][:url]).to eq("https://example.com")
+  ensure
+    tool_class.current_tool_result_collector = nil
+  end
+
+  it "does not append when capture_result is not configured" do
+    captured = []
+    tool_class.current_tool_result_collector = ->(entry) { captured << entry }
+
+    tool = with_stubbed_class("SpecNoCaptTool", tool_class) do
+      def perform(**_kwargs)
+        "result"
+      end
+    end.new
+
+    tool.execute
+    expect(captured).to be_empty
+  ensure
+    tool_class.current_tool_result_collector = nil
+  end
+
+  it "logs and does not fail tool execution when capture_result raises" do
+    captured = []
+    tool_class.current_tool_result_collector = ->(entry) { captured << entry }
+    logger = instance_double(Logger, warn: nil)
+    original_logger = Smith.config.logger
+    Smith.configure { |c| c.logger = logger }
+
+    tool = with_stubbed_class("SpecBadCapTool", tool_class) do
+      capture_result { |_kwargs, _result| raise "capture boom" }
+
+      def perform(**_kwargs)
+        "success"
+      end
+    end.new
+
+    result = tool.execute
+    expect(result).to eq("success")
+    expect(captured).to be_empty
+    expect(logger).to have_received(:warn).with(/capture_result failed/)
+  ensure
+    tool_class.current_tool_result_collector = nil
+    Smith.configure { |c| c.logger = original_logger }
+  end
+
+  it "skips capture silently when no collector is active" do
+    tool_class.current_tool_result_collector = nil
+
+    tool = with_stubbed_class("SpecNoCollTool", tool_class) do
+      capture_result { |_kwargs, result| { data: result } }
+
+      def perform(**_kwargs)
+        "result"
+      end
+    end.new
+
+    result = tool.execute
+    expect(result).to eq("result")
+  end
 end
