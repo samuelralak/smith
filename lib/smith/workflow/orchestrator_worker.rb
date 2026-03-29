@@ -10,10 +10,7 @@ module Smith
         :config, :prepared_input, :orchestrator_class, :worker_class, :worker_results
       ) do
         def initialize(config, prepared_input)
-          super(config, prepared_input,
-                Agent::Registry.find(config[:orchestrator]),
-                Agent::Registry.find(config[:worker]),
-                nil)
+          super(config, prepared_input, nil, nil, nil)
         end
       end
 
@@ -36,6 +33,18 @@ module Smith
 
       def execute_orchestration_step(transition, prepared_input: nil)
         state = OrchestrationState.new(transition.orchestrator_config, prepared_input)
+        state.orchestrator_class = Agent::Registry.fetch!(
+          state.config[:orchestrator],
+          workflow_class: self.class,
+          transition_name: transition.name,
+          role: :orchestrator
+        )
+        state.worker_class = Agent::Registry.fetch!(
+          state.config[:worker],
+          workflow_class: self.class,
+          transition_name: transition.name,
+          role: :worker
+        )
         run_orchestration_loop(state)
       end
 

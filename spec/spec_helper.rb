@@ -24,5 +24,6 @@ RSpec.configure do |config|
 
   config.after(:each) do
     Smith::Events.reset!
+    Smith::Agent::Registry.clear!
   end
 end

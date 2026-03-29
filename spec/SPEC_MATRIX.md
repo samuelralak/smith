@@ -22,7 +22,7 @@ Current contract coverage exists for:
 
 - top-level namespaces and error hierarchy
 - top-level configuration surface, including structural-trace defaults and content-tracing opt-in default
-- agent inheritance, DSL, registry binding, and fallback model-chain runtime behavior
+- agent inheritance, DSL, registry binding, fail-fast unresolved-agent behavior, and fallback model-chain runtime behavior
 - workflow DSL, transition metadata capture, serialization entry points, exact state shape, run-result surface, best-known execution cost aggregation, persisted-context filtering, and configured-adapter durability helper surface
 - workflow pattern namespaces
 - artifact namespace, top-level accessor, configured-store resolution, built-in backend entry points, and named operational methods
@@ -340,6 +340,7 @@ Documented contracts covered:
 - `Smith::Agent::Registry`
 - `.find`
 - explicit registration via `.register_as`
+- clearing registered bindings via `.clear!`
 
 Notes:
 
@@ -415,9 +416,10 @@ Documented contracts covered:
   - `#state`
   - `#to_state`
   - `.restore`
-  - `.restore_or_initialize`
-  - `.run_persisted!`
-  - `.from_state`
+- `.restore_or_initialize`
+- `.run_persisted!`
+- `.from_state`
+- execute transitions fail loudly when a declared agent symbol is not registered
 - transition block surface:
   - `execute`
   - `on_success`
@@ -585,6 +587,7 @@ Documented contracts covered:
 - confidence outside 0.0..1.0 fails the step normally
 - non-hash classifier output fails the step normally
 - classifier agent failure routes through on_failure
+- router steps fail loudly when the declared classifier agent symbol is not registered
 - router classifier output still passes through normal output guardrails before routing is finalized
 - transitions remain the control-flow authority across a full routed workflow
 
@@ -618,6 +621,7 @@ Documented contracts covered:
 - optimize declaration requires `evaluator`
 - optimize declaration requires `evaluator_schema`
 - optimize declaration requires positive integer `max_rounds`
+- optimizer steps fail loudly when the configured generator or evaluator symbol is not registered
 - transition DSL rejects combining `optimize` with `execute`
 - generator and evaluator rounds participate in normal serial budget reservation and reconciliation
 - optimization rounds remain inside one parent workflow step
@@ -683,6 +687,7 @@ Documented contracts covered:
 - worker outputs are validated against `worker_output_schema`
 - final output is validated against `final_output_schema`
 - worker failures route through normal `on_failure`
+- orchestrator steps fail loudly when the configured orchestrator or worker symbol is not registered
 - worker execution uses a Smith-owned worker execution seam while remaining inside one parent workflow step
 - orchestrator-worker keeps parent step count parent-scoped
 - orchestrate declaration requires:

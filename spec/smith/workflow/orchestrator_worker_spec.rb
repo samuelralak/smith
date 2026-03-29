@@ -164,6 +164,68 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
     expect(result.steps.first[:error].message).to include("exceeds max_workers")
   end
 
+  it "fails loudly when the configured orchestrator agent symbol is not registered" do
+    worker = with_stubbed_class("SpecOwRegisteredWorkerOnly", agent_class) do
+      register_as :spec_ow_registered_worker_only
+      model "gpt-5-mini"
+    end
+
+    stub_agent_sequence(worker, [{ finding: "partial" }])
+
+    workflow = with_stubbed_class("SpecOwMissingOrchestratorWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :research, from: :idle, to: :done do
+        orchestrate orchestrator: :missing_orchestrator_agent, worker: :spec_ow_registered_worker_only,
+                    max_workers: 2, max_delegation_rounds: 2,
+                    task_schema: SpecOwTaskSchema,
+                    worker_output_schema: SpecOwWorkerOutputSchema,
+                    final_output_schema: SpecOwFinalOutputSchema
+        on_failure :fail
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:failed)
+    expect(result.steps.first[:error]).to be_a(workflow_error)
+    expect(result.steps.first[:error].message).to include("unresolved orchestrator :missing_orchestrator_agent")
+    expect(result.steps.first[:error].message).to include("transition :research")
+  end
+
+  it "fails loudly when the configured worker agent symbol is not registered" do
+    orchestrator = with_stubbed_class("SpecOwRegisteredOrchestratorOnly", agent_class) do
+      register_as :spec_ow_registered_orchestrator_only
+      model "gpt-5-mini"
+    end
+
+    stub_agent_sequence(orchestrator, [{ tasks: [{ topic: "follow-up" }] }])
+
+    workflow = with_stubbed_class("SpecOwMissingWorkerWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :research, from: :idle, to: :done do
+        orchestrate orchestrator: :spec_ow_registered_orchestrator_only, worker: :missing_worker_agent,
+                    max_workers: 2, max_delegation_rounds: 2,
+                    task_schema: SpecOwTaskSchema,
+                    worker_output_schema: SpecOwWorkerOutputSchema,
+                    final_output_schema: SpecOwFinalOutputSchema
+        on_failure :fail
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:failed)
+    expect(result.steps.first[:error]).to be_a(workflow_error)
+    expect(result.steps.first[:error].message).to include("unresolved worker :missing_worker_agent")
+    expect(result.steps.first[:error].message).to include("transition :research")
+  end
+
   it "fails when orchestrator emits stop signal" do
     orchestrator = with_stubbed_class("SpecOwOrch5", agent_class) do
       register_as :spec_ow_orch_5

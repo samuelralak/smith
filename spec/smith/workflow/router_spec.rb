@@ -123,6 +123,29 @@ RSpec.describe "Smith::Workflow::Router runtime behavior" do
     expect(step[:error].message).to include("billing")
   end
 
+  it "fails the step loudly when the router agent symbol is not registered" do
+    workflow = with_stubbed_class("SpecRouterMissingRegisteredAgentWorkflow", workflow_class) do
+      initial_state :idle
+      state :triaged
+      state :failed
+
+      transition :classify, from: :idle, to: :triaged do
+        route :missing_router_agent,
+              routes: { refund: :handle_refund },
+              confidence_threshold: 0.75,
+              fallback: :handle_general
+        on_failure :fail
+      end
+    end.new
+
+    step = workflow.advance!
+
+    expect(workflow.state).to eq(:failed)
+    expect(step[:error]).to be_a(workflow_error)
+    expect(step[:error].message).to include("unresolved agent :missing_router_agent")
+    expect(step[:error].message).to include("transition :classify")
+  end
+
   it "fails the step normally when the mapped transition is not declared on the workflow" do
     classifier = with_stubbed_class("SpecRouterUndeclaredMappedTransitionClassifier", agent_class) do
       register_as :spec_router_undeclared_mapped_transition_classifier

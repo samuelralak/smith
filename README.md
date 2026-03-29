@@ -295,6 +295,7 @@ To make a real Smith workflow run, you need:
 - working `RubyLLM` provider setup
 - at least one `Smith::Agent` with a `model`
 - a `register_as` name for any agent a workflow will execute
+- the agent class to be loaded before the workflow step that references it runs
 - a `Smith::Workflow` with at least one transition
 
 Everything else is optional at first:
@@ -327,6 +328,60 @@ The exact keys change by provider, but the layering does not:
 
 - RubyLLM owns provider credentials and default provider behavior
 - Smith owns orchestration on top of that
+
+### Agent Registration And Loading
+
+`register_as` is a class-load side effect.
+
+When Smith executes a transition like:
+
+```ruby
+execute :reply_agent
+```
+
+it resolves `:reply_agent` from `Smith::Agent::Registry`.
+That means the agent class must already have been loaded so its `register_as :reply_agent` line has actually run.
+
+This matters most in environments with autoloading and partial eager loading, such as Rails development mode. If an agent class lives in an autoloaded path but nothing has referenced that constant yet, the registry entry may not exist when the workflow runs.
+
+Smith now fails fast in that situation. Unresolved agent symbols raise `Smith::WorkflowError` instead of silently advancing with `nil`. The same rule applies across:
+
+- `execute`
+- `route`
+- `optimize`
+- `orchestrate`
+
+In host apps, the fix is to make agent loading explicit at boot or reload time. In Rails, that usually means a small initializer or `to_prepare` hook that references or registers the workflow-facing agent classes your app uses.
+
+`Smith::Agent::Registry.clear!` exists mainly for isolated runtimes such as tests. Normal application code should treat the registry as boot-time configuration, not something to reset during request handling.
+
+The clean fix order is:
+
+1. Ensure every workflow-facing agent declares the exact symbol it uses through `register_as`.
+2. Make agent loading explicit in the host app.
+3. Let Smith fail fast if that bootstrap is missing.
+
+In Rails, the preferred fix is a narrow `to_prepare` hook:
+
+```ruby
+# config/initializers/smith_agents.rb
+Rails.application.config.to_prepare do
+  ReplyAgent
+  TriageAgent
+  ResearchOrchestrator
+  ResearchWorker
+end
+```
+
+That keeps development reload behavior intact and makes the dependency explicit.
+
+Setting `config.eager_load = true` can hide the problem by loading more classes at boot, but it is not the preferred fix:
+
+- it couples correctness to a global loading mode
+- it is a worse default for development
+- it does not make the workflow-facing agent set explicit
+
+Production eager loading is still fine. The point is that Smith correctness should not depend on eager loading as the only registration mechanism.
 
 If you skip `Smith.configure`, you still need:
 

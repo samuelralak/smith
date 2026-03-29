@@ -5,6 +5,11 @@ RSpec.describe "Smith::Context runtime contract" do
   let(:workflow_class) { require_const("Smith::Workflow") }
   let(:agent_class) { require_const("Smith::Agent") }
   let(:guardrails_class) { require_const("Smith::Guardrails") }
+  let!(:context_agent) do
+    with_stubbed_class("SpecContextAgent", agent_class) do
+      register_as :spec_context_agent
+    end
+  end
 
   it "returns the declared session strategy configuration" do
     manager = with_stubbed_class("SpecMaskingContext", context_class) do

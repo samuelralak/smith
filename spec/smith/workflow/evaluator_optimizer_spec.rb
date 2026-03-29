@@ -203,6 +203,66 @@ RSpec.describe "Smith::Workflow::EvaluatorOptimizer runtime behavior" do
     expect(result.steps.first[:error].message).to include("missing :accept")
   end
 
+  it "fails loudly when the configured generator agent symbol is not registered" do
+    evaluator = with_stubbed_class("SpecOptEvalRegisteredOnly", agent_class) do
+      register_as :spec_opt_eval_registered_only
+      model "gpt-5-mini"
+    end
+
+    stub_agent(evaluator, { accept: true, feedback: nil, score: 0.95 })
+
+    schema = Class.new
+
+    workflow = with_stubbed_class("SpecOptMissingGeneratorWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :translate, from: :idle, to: :done do
+        optimize generator: :missing_generator_agent, evaluator: :spec_opt_eval_registered_only,
+                 max_rounds: 3, evaluator_schema: schema
+        on_failure :fail
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:failed)
+    expect(result.steps.first[:error]).to be_a(workflow_error)
+    expect(result.steps.first[:error].message).to include("unresolved generator :missing_generator_agent")
+    expect(result.steps.first[:error].message).to include("transition :translate")
+  end
+
+  it "fails loudly when the configured evaluator agent symbol is not registered" do
+    generator = with_stubbed_class("SpecOptGenRegisteredOnly", agent_class) do
+      register_as :spec_opt_gen_registered_only
+      model "gpt-5-mini"
+    end
+
+    stub_agent(generator, "draft")
+
+    schema = Class.new
+
+    workflow = with_stubbed_class("SpecOptMissingEvaluatorWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :translate, from: :idle, to: :done do
+        optimize generator: :spec_opt_gen_registered_only, evaluator: :missing_evaluator_agent,
+                 max_rounds: 3, evaluator_schema: schema
+        on_failure :fail
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:failed)
+    expect(result.steps.first[:error]).to be_a(workflow_error)
+    expect(result.steps.first[:error].message).to include("unresolved evaluator :missing_evaluator_agent")
+    expect(result.steps.first[:error].message).to include("transition :translate")
+  end
+
   it "fails on non-boolean :accept" do
     generator = with_stubbed_class("SpecOptGenBadAccept", agent_class) do
       register_as :spec_opt_gen_bad_accept

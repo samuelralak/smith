@@ -37,7 +37,7 @@ module Smith
       end
 
       def run_guarded_step(transition)
-        agent_class = transition.agent_name ? Agent::Registry.find(transition.agent_name) : nil
+        agent_class = resolve_agent_class(transition)
         run_input_guardrails(agent_class)
         apply_tool_guardrails(agent_class)
         prepared_input = build_session&.prepare!
@@ -78,8 +78,7 @@ module Smith
         @last_prepared_input = prepared_input
         return nil unless transition.agent_name
 
-        agent_class = Agent::Registry.find(transition.agent_name)
-        return nil unless agent_class
+        agent_class = resolve_agent_class(transition)
         return nil if agent_class.chat_kwargs[:model].nil?
 
         invoke_agent(agent_class, prepared_input)
@@ -109,7 +108,12 @@ module Smith
       def resolve_agent_class(transition)
         return nil unless transition.agent_name
 
-        Agent::Registry.find(transition.agent_name)
+        Agent::Registry.fetch!(
+          transition.agent_name,
+          workflow_class: self.class,
+          transition_name: transition.name,
+          role: :agent
+        )
       end
     end
   end

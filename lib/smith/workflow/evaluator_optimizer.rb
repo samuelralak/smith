@@ -7,8 +7,7 @@ module Smith
         :config, :prepared_input, :candidate, :feedback, :last_score, :generator_class, :evaluator_class
       ) do
         def initialize(config, prepared_input)
-          super(config, prepared_input, nil, nil, nil,
-                Agent::Registry.find(config[:generator]), Agent::Registry.find(config[:evaluator]))
+          super(config, prepared_input, nil, nil, nil, nil, nil)
         end
       end
 
@@ -16,6 +15,18 @@ module Smith
 
       def execute_optimization_step(transition, prepared_input: nil)
         state = OptimizationState.new(transition.optimization_config, prepared_input)
+        state.generator_class = Agent::Registry.fetch!(
+          state.config[:generator],
+          workflow_class: self.class,
+          transition_name: transition.name,
+          role: :generator
+        )
+        state.evaluator_class = Agent::Registry.fetch!(
+          state.config[:evaluator],
+          workflow_class: self.class,
+          transition_name: transition.name,
+          role: :evaluator
+        )
         run_optimization_loop(state)
       end
 

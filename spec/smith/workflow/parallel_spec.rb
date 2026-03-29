@@ -7,6 +7,11 @@ RSpec.describe "Smith::Workflow parallel execution" do
   let(:tool_class) { require_const("Smith::Tool") }
   let(:workflow_class) { require_const("Smith::Workflow") }
   let(:workflow_error) { require_const("Smith::WorkflowError") }
+  let!(:parallel_agent) do
+    with_stubbed_class("SpecParallelAgent", agent_class) do
+      register_as :spec_parallel_agent
+    end
+  end
 
   it "returns one branch result per configured branch when a parallel transition succeeds" do
     workflow = with_stubbed_class("SpecParallelWorkflow", workflow_class) do

@@ -109,4 +109,24 @@ RSpec.describe "Smith::Workflow contract" do
     expect(fail_transition.agent_name).to eq(:failure_agent)
     expect(fail_transition.agent_opts).to eq(mode: :cleanup)
   end
+
+  it "fails a step loudly when an execute transition references an unregistered agent symbol" do
+    workflow = with_stubbed_class("SpecUnresolvedAgentWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :start, from: :idle, to: :done do
+        execute :missing_research_agent
+        on_failure :fail
+      end
+    end.new
+
+    step = workflow.advance!
+
+    expect(workflow.state).to eq(:failed)
+    expect(step[:error]).to be_a(require_const("Smith::WorkflowError"))
+    expect(step[:error].message).to include("unresolved agent :missing_research_agent")
+    expect(step[:error].message).to include("transition :start")
+  end
 end
