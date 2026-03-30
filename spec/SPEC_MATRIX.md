@@ -34,7 +34,7 @@ Current contract coverage exists for:
 - context manager DSL, stored runtime configuration, subclass inheritance behavior, persisted-key serialization contract, and workflow seed-message initialization surface
 - tool base class, policy DSL, runtime execute-to-perform delegation, capability metadata declaration, built-in tool namespaces, and pre-dispatch approval/authorization failure policy boundary
 - trace adapter namespaces, runtime transition/tool emission surface, and memory-adapter content policy behavior
-- deterministic step primitives (`compute`/`run`): DSL contract, mutual-exclusivity conflict validation (bidirectional for all execution modes), constrained step-object surface, runtime execution (read accessors, write_context with read-after-write coherence via read_context, route_to with loud failure on unresolved named transitions, fail! with metadata), persistence round-trip, trace lifecycle (started/success/routed/failed), guardrail boundary enforcement, and mixed agent+deterministic workflow integration
+- deterministic step primitives (`compute`/`run`): DSL contract, mutual-exclusivity conflict validation (bidirectional for all execution modes), constrained step-object surface, runtime execution (read accessors, write_context with read-after-write coherence via read_context, write_outcome with first-class run-result accessors, route_to with loud failure on unresolved named transitions, fail! with metadata), persistence round-trip, trace lifecycle (started/success/routed/failed plus emitted outcome kind), guardrail boundary enforcement, and mixed agent+deterministic workflow integration
 - named transition validation: unresolved named transitions (from route_to, on_success, or any stored next-transition path) fail loudly with WorkflowError
 
 Important contracts from the architecture document that are not yet directly specified:
@@ -763,6 +763,8 @@ Documented contracts covered:
   - `session_messages`
   - `total_cost`
   - `total_tokens`
+  - `tool_results`
+  - `outcome`
 - round-trip via `.from_state`
 - resolved durability key round-trips through `.from_state`
 - `budget_consumed` is serialized from the live ledger after execution
@@ -807,8 +809,8 @@ Documented contracts covered:
   - `failed?`
 - `total_cost` is Smith's best-known computed workflow cost subtotal
 - `total_tokens` is Smith's best-known workflow token subtotal
-- `context` and `session_messages` expose final workflow state snapshots for host projection code
-- `context` and `session_messages` are deep snapshots, so host mutation does not leak back into workflow internals
+- `context`, `session_messages`, `tool_results`, and `outcome` expose final workflow state snapshots for host handling code
+- `context`, `session_messages`, `tool_results`, and `outcome` are deep snapshots, so host mutation does not leak back into workflow internals
 - `failed_transition` and `failure_detail` expose convenience access to the last failed step
 - known pricing plus known usage contribute non-zero computed cost to `total_cost`
 - multiple successful agent calls aggregate their known computed costs into `total_cost`

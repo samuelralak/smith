@@ -18,7 +18,7 @@ module Smith
     DEFAULT_MAX_TRANSITIONS = 100
 
     RunResult = Struct.new(:state, :output, :steps, :total_cost, :total_tokens, :context, :session_messages,
-                           :tool_results) do
+                           :tool_results, :outcome) do
       def done?
         state == :done
       end
@@ -29,6 +29,14 @@ module Smith
 
       def terminal_output
         output
+      end
+
+      def outcome_kind
+        outcome&.dig(:kind)
+      end
+
+      def outcome_payload
+        outcome&.dig(:payload)
       end
 
       def last_error
@@ -94,6 +102,7 @@ module Smith
       @updated_at = @created_at
       @total_cost = 0.0
       @total_tokens = 0
+      @outcome = nil
       initialize_tool_result_state
       seed_initial_session_messages
     end
@@ -111,6 +120,7 @@ module Smith
       step_result
     rescue UnresolvedTransitionError => e
       origin_state = @state
+      @outcome = nil
       raise unless route_to_fail_state!
 
       { transition: e.requested_name, from: origin_state, to: @state, error: e }
@@ -174,7 +184,8 @@ module Smith
         total_tokens: @total_tokens,
         context: snapshot_context,
         session_messages: snapshot_session_messages,
-        tool_results: snapshot_tool_results
+        tool_results: snapshot_tool_results,
+        outcome: snapshot_outcome
       )
     end
 
@@ -209,6 +220,10 @@ module Smith
 
     def snapshot_tool_results
       snapshot_value(@tool_results || [])
+    end
+
+    def snapshot_outcome
+      snapshot_value(@outcome)
     end
 
     def tool_result_collector

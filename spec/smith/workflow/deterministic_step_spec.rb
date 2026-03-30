@@ -344,6 +344,64 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
       expect(result.context[:data]).to eq("second")
     end
 
+    it "writes a workflow outcome via write_outcome" do
+      klass = with_stubbed_class("SpecWriteOutcomeWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+
+        transition :prepare, from: :idle, to: :done do
+          run do |step|
+            step.write_outcome(kind: :artifact_ready, payload: { title: "Test artifact" })
+          end
+        end
+      end
+
+      result = klass.new.run!
+
+      expect(result.outcome).to eq(kind: :artifact_ready, payload: { title: "Test artifact" })
+      expect(result.outcome_kind).to eq(:artifact_ready)
+      expect(result.outcome_payload).to eq(title: "Test artifact")
+    end
+
+    it "rejects non-Symbol kinds in write_outcome" do
+      klass = with_stubbed_class("SpecWriteOutcomeBadKindWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+        state :failed
+
+        transition :prepare, from: :idle, to: :done do
+          run { |step| step.write_outcome(kind: "artifact_ready", payload: { title: "Test artifact" }) }
+          on_failure :fail
+        end
+      end
+
+      result = klass.new.run!
+
+      expect(result.state).to eq(:failed)
+      expect(result.last_error.message).to include("write_outcome kind must be a Symbol")
+    end
+
+    it "raises on double write_outcome" do
+      klass = with_stubbed_class("SpecDoubleOutcomeWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+        state :failed
+
+        transition :prepare, from: :idle, to: :done do
+          run do |step|
+            step.write_outcome(kind: :artifact_ready, payload: { title: "First" })
+            step.write_outcome(kind: :artifact_ready, payload: { title: "Second" })
+          end
+          on_failure :fail
+        end
+      end
+
+      result = klass.new.run!
+
+      expect(result.state).to eq(:failed)
+      expect(result.last_error.message).to include("write_outcome already called")
+    end
+
     it "discards the block return value" do
       klass = with_stubbed_class("SpecDiscardReturnWorkflow", workflow_class) do
         initial_state :idle
@@ -706,6 +764,34 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
       expect(observed_context[:topic]).to eq("mutated")
       expect(result.context[:topic]).to eq("original")
     end
+
+    it "clears a previously written outcome when a later step fails" do
+      klass = with_stubbed_class("SpecOutcomeClearedOnFailureWorkflow", workflow_class) do
+        initial_state :idle
+        state :prepared
+        state :done
+        state :failed
+
+        transition :prepare, from: :idle, to: :prepared do
+          run do |step|
+            step.write_outcome(kind: :artifact_ready, payload: { title: "Prepared artifact" })
+          end
+          on_success :explode
+        end
+
+        transition :explode, from: :prepared, to: :done do
+          compute { |_step| raise "boom" }
+          on_failure :fail
+        end
+      end
+
+      result = klass.new.run!
+
+      expect(result.state).to eq(:failed)
+      expect(result.outcome).to be_nil
+      expect(result.outcome_kind).to be_nil
+      expect(result.outcome_payload).to be_nil
+    end
   end
 
   # ---------------------------------------------------------------------------
@@ -796,6 +882,59 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
       # JSON round-trip turns nested hash keys into strings — this is existing Smith behavior
       expect(restored.to_state[:context]).to eq(data: { "key" => "value" })
     end
+
+    it "outcome written by run survives to_state/from_state round-trip" do
+      klass = with_stubbed_class("SpecDetPersistOutcomeWorkflow", workflow_class) do
+        initial_state :idle
+        state :prepared
+        state :done
+
+        transition :prepare, from: :idle, to: :prepared do
+          run do |step|
+            step.write_outcome(kind: :artifact_ready, payload: { title: "Test artifact", insights: [{ text: "Insight" }] })
+            step.route_to(:finish)
+          end
+        end
+
+        transition :finish, from: :prepared, to: :done do
+          compute { |_step| }
+        end
+      end
+
+      workflow = klass.new
+      workflow.advance!
+
+      restored = klass.from_state(workflow.to_state)
+
+      expect(restored.to_state[:outcome]).to eq(
+        kind: :artifact_ready,
+        payload: { title: "Test artifact", insights: [{ text: "Insight" }] }
+      )
+      expect(restored.to_state[:next_transition_name]).to eq(:finish)
+    end
+
+    it "outcome survives a JSON round-trip" do
+      klass = with_stubbed_class("SpecDetJsonOutcomeWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+
+        transition :prepare, from: :idle, to: :done do
+          run do |step|
+            step.write_outcome(kind: :artifact_ready, payload: { title: "Test artifact", insights: [{ text: "Insight" }] })
+          end
+        end
+      end
+
+      workflow = klass.new
+      workflow.run!
+
+      restored = klass.from_state(JSON.parse(JSON.generate(workflow.to_state)))
+
+      expect(restored.to_state[:outcome]).to eq(
+        kind: :artifact_ready,
+        payload: { title: "Test artifact", insights: [{ text: "Insight" }] }
+      )
+    end
   end
 
   # ---------------------------------------------------------------------------
@@ -862,6 +1001,27 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
 
       expect(routed).not_to be_nil
       expect(routed[:data][:routed_to]).to eq(:finish)
+    end
+
+    it "emits outcome kind when write_outcome is called" do
+      klass = with_stubbed_class("SpecTraceOutcomeWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+
+        transition :prepare, from: :idle, to: :done do
+          run do |step|
+            step.write_outcome(kind: :artifact_ready, payload: { title: "Test artifact" })
+          end
+        end
+      end
+
+      klass.new.run!
+
+      det_traces = trace_adapter.traces.select { |t| t[:type] == :deterministic_step }
+      success = det_traces.find { |t| t[:data][:result] == :success }
+
+      expect(success).not_to be_nil
+      expect(success[:data][:outcome_kind]).to eq(:artifact_ready)
     end
 
     it "emits failed trace on step.fail!" do

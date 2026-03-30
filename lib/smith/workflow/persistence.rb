@@ -18,7 +18,8 @@ module Smith
           session_messages: @session_messages || [],
           total_cost: @total_cost || 0.0,
           total_tokens: @total_tokens || 0,
-          tool_results: @tool_results || []
+          tool_results: @tool_results || [],
+          outcome: snapshot_outcome
         }
       end
 
@@ -33,6 +34,7 @@ module Smith
         @session_messages = normalized[:session_messages] || []
         @total_cost = normalized[:total_cost] || 0.0
         @total_tokens = normalized[:total_tokens] || 0
+        @outcome = normalized[:outcome]
         initialize_tool_result_state
         @tool_results = normalized[:tool_results] || []
       end
@@ -52,11 +54,17 @@ module Smith
         normalize_nested_hashes!(normalized)
         normalize_session_messages!(normalized)
         normalize_tool_results!(normalized)
+        normalized[:outcome] = symbolize_value(normalized[:outcome]) if normalized[:outcome].is_a?(Hash)
         normalized
       end
 
       def normalize_symbol_fields!(normalized)
         normalized[:state] = normalized[:state]&.to_sym
+        if normalized[:outcome].is_a?(Hash) && normalized[:outcome].key?(:kind)
+          normalized[:outcome][:kind] = normalized[:outcome][:kind]&.to_sym
+        elsif normalized[:outcome].is_a?(Hash) && normalized[:outcome].key?("kind")
+          normalized[:outcome]["kind"] = normalized[:outcome]["kind"]&.to_sym
+        end
         return unless normalized.key?(:next_transition_name)
 
         normalized[:next_transition_name] = normalized[:next_transition_name]&.to_sym
@@ -87,6 +95,20 @@ module Smith
 
       def symbolize_keys(hash)
         hash.transform_keys { |k| k.is_a?(String) ? k.to_sym : k }
+      end
+
+      def symbolize_value(value)
+        case value
+        when Hash
+          value.each_with_object({}) do |(key, nested), copy|
+            normalized_key = key.is_a?(String) ? key.to_sym : key
+            copy[normalized_key] = symbolize_value(nested)
+          end
+        when Array
+          value.map { |nested| symbolize_value(nested) }
+        else
+          value
+        end
       end
 
       def ledger_consumed

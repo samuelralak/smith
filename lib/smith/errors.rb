@@ -7,7 +7,14 @@ module Smith
   class DeadlineExceeded < Error; end
   class MaxTransitionsExceeded < Error; end
   class GuardrailFailed < Error; end
-  class ToolGuardrailFailed < Error; end
+  class ToolGuardrailFailed < Error
+    attr_reader :retryable
+
+    def initialize(message, retryable: nil)
+      @retryable = retryable
+      super(message)
+    end
+  end
   class ToolPolicyDenied < Error; end
   class AgentError < Error; end
   class WorkflowError < Error; end

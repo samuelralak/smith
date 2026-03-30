@@ -17,6 +17,7 @@ module Smith
         output = with_scoped_artifacts { run_guarded_step(transition) }
         complete_step(transition, output)
       rescue StandardError => e
+        @outcome = nil
         handle_step_failure(transition, e)
         { transition: transition.name, from: transition.from, to: transition.to, error: e }
       ensure

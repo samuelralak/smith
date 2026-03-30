@@ -25,7 +25,18 @@ module Smith
         rescue Smith::Error
           raise
         rescue StandardError => e
-          raise error_class, e.message
+          raise build_guardrail_error(error_class, e)
+        end
+
+        def build_guardrail_error(error_class, error)
+          return error_class.new(error.message, retryable: retryable_tool_guardrail?(error.message)) if error_class == ToolGuardrailFailed
+
+          error_class.new(error.message)
+        end
+
+        def retryable_tool_guardrail?(message)
+          text = message.to_s.downcase
+          text.include?("rate limit") || text.include?("malformed args")
         end
       end
     end

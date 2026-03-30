@@ -607,6 +607,10 @@ end
 - `total_tokens`
 - `context`
 - `session_messages`
+- `tool_results`
+- `outcome`
+- `outcome_kind`
+- `outcome_payload`
 
 Those totals are cumulative best-known workflow totals, including resumed execution and nested roll-up, not just the last `run!` segment.
 
@@ -617,7 +621,7 @@ Convenience helpers:
 - `failed_transition`
 - `failure_detail`
 
-`context` and `session_messages` are returned as final-state snapshots for host projection code. Mutating them does not mutate workflow internals.
+`context`, `session_messages`, `tool_results`, and `outcome` are returned as final-state snapshots for host handling code. Mutating them does not mutate workflow internals.
 
 Typical successful step entry:
 
@@ -1118,7 +1122,7 @@ transition :verify_research, from: :gathered, to: :verified do
     end
 
     unless step.last_output
-      step.write_context(:terminal_outcome, { kind: :terminal_failure })
+      step.write_outcome(kind: :terminal_failure, payload: { message: "no usable research output" })
       step.route_to(:finish_terminal_failure)
     end
 
@@ -1149,8 +1153,9 @@ The yielded step object exposes a narrow, read-heavy surface:
 | Read | Write / Control |
 |---|---|
 | `step.context` | `step.write_context(key, value)` |
+| `step.read_context(key)` | `step.write_outcome(kind:, payload:)` |
 | `step.last_output` / `step.output` | `step.route_to(:transition_name)` |
-| `step.read_context(key)` | `step.fail!(msg, retryable:, kind:, details:)` |
+|  | `step.fail!(msg, retryable:, kind:, details:)` |
 | `step.tool_results` | |
 | `step.session_messages` | |
 | `step.current_state` | |
@@ -1160,11 +1165,12 @@ The yielded step object exposes a narrow, read-heavy surface:
 
 - **Routing**: `step.route_to` overrides `on_success`. If neither is set, normal state-based resolution applies. Named transitions that do not exist fail loudly with `WorkflowError`.
 - **Failure**: `step.fail!` raises `Smith::DeterministicStepFailure` (extends `WorkflowError`) with `retryable`, `kind`, and `details` metadata. Routes through `on_failure` like any other step failure.
+- **Outcome**: `step.write_outcome(kind:, payload:)` stores a workflow-owned terminal payload without smuggling it through context. The payload is persisted with the workflow and surfaced on `RunResult.outcome`, `RunResult.outcome_kind`, and `RunResult.outcome_payload`.
 - **Context reads**: `step.context` returns an isolated snapshot of the workflow context at step start. Mutating that snapshot does not mutate workflow state. `step.read_context(key)` returns a merged view — pending `write_context` values override the snapshot. Use `read_context` when you need read-after-write coherence within the same step.
 - **No output**: Deterministic steps produce no session message output. `last_output` continues to mean the last agent output.
 - **No budget**: No tokens or cost consumed.
-- **Persistence**: Context writes survive `to_state`/`from_state`. The block itself (a Proc) lives on the class-level Transition and is never serialized.
-- **Trace**: Emits `:deterministic_step` traces for start, success/routed, and failure.
+- **Persistence**: Context writes and written outcomes survive `to_state`/`from_state`. The block itself (a Proc) lives on the class-level Transition and is never serialized.
+- **Trace**: Emits `:deterministic_step` traces for start, success/routed, and failure. When a step writes an outcome, the trace includes `outcome_kind`.
 - **Mutual exclusivity**: `compute` and `run` cannot be combined with `execute`, `route`, `workflow`, `optimize`, or `orchestrate`. A transition declares exactly one primary execution body.
 
 ## Fallback Models

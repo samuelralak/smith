@@ -11,8 +11,12 @@ module Smith
         emit_deterministic_trace(transition, result: :started)
         transition.deterministic_block.call(step)
         apply_deterministic_writes!(step)
-        emit_deterministic_trace(transition, result: step.routed_to ? :routed : :success,
-                                 routed_to: step.routed_to)
+        emit_deterministic_trace(
+          transition,
+          result: step.routed_to ? :routed : :success,
+          routed_to: step.routed_to,
+          outcome_kind: step.outcome&.dig(:kind)
+        )
         nil
       rescue StandardError => e
         emit_deterministic_trace(transition, result: :failed, error: e.message)
@@ -32,13 +36,15 @@ module Smith
       def apply_deterministic_writes!(step)
         @context.merge!(step.context_writes)
         @router_next_transition = step.routed_to if step.routed_to
+        @outcome = snapshot_value(step.outcome) if step.outcome
       end
 
-      def emit_deterministic_trace(transition, result:, routed_to: nil, error: nil)
+      def emit_deterministic_trace(transition, result:, routed_to: nil, error: nil, outcome_kind: nil)
         data = { transition: transition.name, from: transition.from, to: transition.to,
                  kind: transition.deterministic_kind, result: result }
         data[:routed_to] = routed_to if routed_to
         data[:error] = error if error
+        data[:outcome_kind] = outcome_kind if outcome_kind
         Smith::Trace.record(type: :deterministic_step, data: data)
       end
     end
