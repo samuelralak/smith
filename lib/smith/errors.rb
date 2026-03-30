@@ -11,5 +11,28 @@ module Smith
   class ToolPolicyDenied < Error; end
   class AgentError < Error; end
   class WorkflowError < Error; end
+
+  class DeterministicStepFailure < WorkflowError
+    attr_reader :retryable, :kind, :details
+
+    def initialize(message, retryable: nil, kind: nil, details: nil)
+      @retryable = retryable
+      @kind = kind
+      @details = details
+      super(message)
+    end
+  end
+
+  class UnresolvedTransitionError < WorkflowError
+    attr_reader :requested_name, :workflow_class, :origin_state
+
+    def initialize(requested_name, workflow_class, origin_state)
+      @requested_name = requested_name
+      @workflow_class = workflow_class
+      @origin_state = origin_state
+      super("unresolved transition :#{requested_name} in #{workflow_class} from state :#{origin_state}")
+    end
+  end
+
   class SerializationError < Error; end
 end

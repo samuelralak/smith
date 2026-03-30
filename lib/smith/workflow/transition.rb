@@ -4,7 +4,8 @@ module Smith
   class Workflow
     class Transition
       attr_reader :name, :from, :to, :agent_name, :agent_opts, :success_transition, :failure_transition,
-                  :router_config, :workflow_class, :optimization_config, :orchestrator_config
+                  :router_config, :workflow_class, :optimization_config, :orchestrator_config,
+                  :deterministic_block, :deterministic_kind
 
       def initialize(name, from:, to:, &)
         @name = name
@@ -14,6 +15,8 @@ module Smith
       end
 
       def execute(agent_name, **opts)
+        raise WorkflowError, "transition cannot declare both execute and compute/run" if @deterministic_block
+
         @agent_name = agent_name
         @agent_opts = opts
       end
@@ -27,6 +30,8 @@ module Smith
       end
 
       def route(agent_name, routes:, confidence_threshold:, fallback:)
+        raise WorkflowError, "transition cannot declare both route and compute/run" if @deterministic_block
+
         @agent_name = agent_name
         @router_config = { routes: routes, confidence_threshold: confidence_threshold, fallback: fallback }
       end
@@ -36,6 +41,7 @@ module Smith
         raise WorkflowError, "workflow binding must be a Smith::Workflow subclass" unless klass < Workflow
         raise WorkflowError, "transition cannot declare both workflow and execute" if @agent_name && !@router_config
         raise WorkflowError, "transition cannot declare both workflow and route" if @router_config
+        raise WorkflowError, "transition cannot declare both workflow and compute/run" if @deterministic_block
 
         @workflow_class = klass
       end
@@ -54,6 +60,20 @@ module Smith
         validate_orchestrate_conflicts!
         validate_orchestrate_controls!(opts)
         @orchestrator_config = opts
+      end
+
+      %i[compute run].each do |method_name|
+        define_method(method_name) do |&block|
+          validate_deterministic_conflicts!
+          raise WorkflowError, "#{method_name} requires a block" unless block
+
+          @deterministic_block = block
+          @deterministic_kind = method_name
+        end
+      end
+
+      def deterministic?
+        !@deterministic_block.nil?
       end
 
       def orchestrated?
@@ -78,10 +98,20 @@ module Smith
 
       private
 
+      def validate_deterministic_conflicts!
+        raise WorkflowError, "transition cannot declare both compute/run and execute" if @agent_name && !@router_config
+        raise WorkflowError, "transition cannot declare both compute/run and route" if @router_config
+        raise WorkflowError, "transition cannot declare both compute/run and workflow" if @workflow_class
+        raise WorkflowError, "transition cannot declare both compute/run and optimize" if @optimization_config
+        raise WorkflowError, "transition cannot declare both compute/run and orchestrate" if @orchestrator_config
+        raise WorkflowError, "transition cannot declare both compute and run" if @deterministic_block
+      end
+
       def validate_optimize_conflicts!
         raise WorkflowError, "transition cannot declare both optimize and execute" if @agent_name && !@router_config
         raise WorkflowError, "transition cannot declare both optimize and route" if @router_config
         raise WorkflowError, "transition cannot declare both optimize and workflow" if @workflow_class
+        raise WorkflowError, "transition cannot declare both optimize and compute/run" if @deterministic_block
       end
 
       def validate_orchestrate_conflicts!
@@ -89,6 +119,7 @@ module Smith
         raise WorkflowError, "transition cannot declare both orchestrate and route" if @router_config
         raise WorkflowError, "transition cannot declare both orchestrate and workflow" if @workflow_class
         raise WorkflowError, "transition cannot declare both orchestrate and optimize" if @optimization_config
+        raise WorkflowError, "transition cannot declare both orchestrate and compute/run" if @deterministic_block
       end
 
       def validate_orchestrate_controls!(opts)

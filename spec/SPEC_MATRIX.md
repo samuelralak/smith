@@ -34,6 +34,8 @@ Current contract coverage exists for:
 - context manager DSL, stored runtime configuration, subclass inheritance behavior, persisted-key serialization contract, and workflow seed-message initialization surface
 - tool base class, policy DSL, runtime execute-to-perform delegation, capability metadata declaration, built-in tool namespaces, and pre-dispatch approval/authorization failure policy boundary
 - trace adapter namespaces, runtime transition/tool emission surface, and memory-adapter content policy behavior
+- deterministic step primitives (`compute`/`run`): DSL contract, mutual-exclusivity conflict validation (bidirectional for all execution modes), constrained step-object surface, runtime execution (read accessors, write_context with read-after-write coherence via read_context, route_to with loud failure on unresolved named transitions, fail! with metadata), persistence round-trip, trace lifecycle (started/success/routed/failed), guardrail boundary enforcement, and mixed agent+deterministic workflow integration
+- named transition validation: unresolved named transitions (from route_to, on_success, or any stored next-transition path) fail loudly with WorkflowError
 
 Important contracts from the architecture document that are not yet directly specified:
 

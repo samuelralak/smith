@@ -109,6 +109,11 @@ module Smith
       @step_count += 1
       @updated_at = Time.now.utc.iso8601
       step_result
+    rescue UnresolvedTransitionError => e
+      origin_state = @state
+      raise unless route_to_fail_state!
+
+      { transition: e.requested_name, from: origin_state, to: @state, error: e }
     end
 
     def run!
@@ -141,11 +146,20 @@ module Smith
       Budget::Ledger.new(limits: config)
     end
 
+    def route_to_fail_state!
+      fail_transition = self.class.find_transition(:fail)
+      return false unless fail_transition
+
+      @state = fail_transition.to
+      true
+    end
+
     def resolve_transition
       if @next_transition_name
         name = @next_transition_name
         @next_transition_name = nil
-        self.class.find_transition(name)
+        self.class.find_transition(name) ||
+          raise(UnresolvedTransitionError.new(name, self.class, @state))
       else
         self.class.transitions_from(@state).first
       end

@@ -8,6 +8,7 @@ module Smith
       include EvaluatorOptimizer
       include OrchestratorWorker
       include ParallelExecution
+      include DeterministicExecution
 
       private
 
@@ -37,6 +38,8 @@ module Smith
       end
 
       def run_guarded_step(transition)
+        return dispatch_step(transition) if transition.deterministic?
+
         agent_class = resolve_agent_class(transition)
         run_input_guardrails(agent_class)
         apply_tool_guardrails(agent_class)

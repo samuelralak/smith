@@ -1100,6 +1100,73 @@ Notes:
 - worker execution automatically applies `worker_output_schema`
 - the orchestrator still benefits from `output_schema` so its decision shape is pushed down to the provider layer too
 
+## Deterministic Steps
+
+Not every workflow step needs an agent. Sometimes you need small, deterministic logic inside the graph: verification, routing, normalization, or failure classification. Smith provides two transition primitives for this: `compute` and `run`.
+
+Both yield a constrained step object — not the full workflow — and execute synchronously with no agent call, no budget consumption, and no session message output.
+
+### `compute` — Verification and Routing
+
+Use `compute` for steps that check prior output and decide what happens next.
+
+```ruby
+transition :verify_research, from: :gathered, to: :verified do
+  compute do |step|
+    if step.tool_results.any? { |t| t[:captured]&.dig(:retryable) }
+      step.fail!("research temporarily unavailable", retryable: true)
+    end
+
+    unless step.last_output
+      step.write_context(:terminal_outcome, { kind: :terminal_failure })
+      step.route_to(:finish_terminal_failure)
+    end
+
+    step.route_to(:structure)
+  end
+
+  on_failure :fail
+end
+```
+
+### `run` — Normalization and Context Shaping
+
+Use `run` for steps that transform or prepare workflow-local state.
+
+```ruby
+transition :normalize, from: :gathered, to: :prepared do
+  run do |step|
+    step.write_context(:normalized, step.last_output&.upcase)
+    step.route_to(:structure)
+  end
+end
+```
+
+### Step Object API
+
+The yielded step object exposes a narrow, read-heavy surface:
+
+| Read | Write / Control |
+|---|---|
+| `step.context` | `step.write_context(key, value)` |
+| `step.last_output` / `step.output` | `step.route_to(:transition_name)` |
+| `step.read_context(key)` | `step.fail!(msg, retryable:, kind:, details:)` |
+| `step.tool_results` | |
+| `step.session_messages` | |
+| `step.current_state` | |
+| `step.transition_name` | |
+
+### Behavior
+
+- **Routing**: `step.route_to` overrides `on_success`. If neither is set, normal state-based resolution applies. Named transitions that do not exist fail loudly with `WorkflowError`.
+- **Failure**: `step.fail!` raises `Smith::DeterministicStepFailure` (extends `WorkflowError`) with `retryable`, `kind`, and `details` metadata. Routes through `on_failure` like any other step failure.
+- **Context reads**: `step.context` returns an isolated snapshot of the workflow context at step start. Mutating that snapshot does not mutate workflow state. `step.read_context(key)` returns a merged view — pending `write_context` values override the snapshot. Use `read_context` when you need read-after-write coherence within the same step.
+- **No output**: Deterministic steps produce no session message output. `last_output` continues to mean the last agent output.
+- **No budget**: No tokens or cost consumed.
+- **Persistence**: Context writes survive `to_state`/`from_state`. The block itself (a Proc) lives on the class-level Transition and is never serialized.
+- **Trace**: Emits `:deterministic_step` traces for start, success/routed, and failure.
+- **Mutual exclusivity**: `compute` and `run` cannot be combined with `execute`, `route`, `workflow`, `optimize`, or `orchestrate`. A transition declares exactly one primary execution body.
+
 ## Fallback Models
 
 Fallback chains are declared on the agent and stay inside one logical invocation.

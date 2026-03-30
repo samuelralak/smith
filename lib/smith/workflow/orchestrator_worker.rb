@@ -27,6 +27,7 @@ module Smith
         elsif transition.nested? then execute_nested_workflow(transition)
         elsif transition.optimized? then execute_optimization_step(transition, prepared_input: prepared_input)
         elsif transition.orchestrated? then execute_orchestration_step(transition, prepared_input: prepared_input)
+        elsif transition.deterministic? then execute_deterministic_step(transition)
         else execute_serial_step(transition, prepared_input: prepared_input)
         end
       end
