@@ -77,7 +77,24 @@ module Smith
         accumulate_usage(agent_result)
 
         agent_result.content = run_after_completion(agent_class, agent_result.content, @context)
+        raise_blank_output!(agent_class, agent_result)
         agent_result
+      end
+
+      def raise_blank_output!(agent_class, agent_result)
+        return unless blank_agent_output?(agent_result.content)
+
+        raise Smith::BlankAgentOutputError.new(
+          agent_name: agent_class.register_as,
+          model_used: agent_result.model_used
+        )
+      end
+
+      def blank_agent_output?(content)
+        return true if content.nil?
+        return content.strip.empty? if content.is_a?(String)
+
+        false
       end
 
       def emit_token_usage(agent_result)

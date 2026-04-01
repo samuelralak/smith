@@ -36,6 +36,7 @@ Current contract coverage exists for:
 - trace adapter namespaces, runtime transition/tool emission surface, and memory-adapter content policy behavior
 - deterministic step primitives (`compute`/`run`): DSL contract, mutual-exclusivity conflict validation (bidirectional for all execution modes), constrained step-object surface, runtime execution (read accessors, write_context with read-after-write coherence via read_context, write_outcome with first-class run-result accessors, route_to with loud failure on unresolved named transitions, fail! with metadata), persistence round-trip, trace lifecycle (started/success/routed/failed plus emitted outcome kind), guardrail boundary enforcement, and mixed agent+deterministic workflow integration
 - named transition validation: unresolved named transitions (from route_to, on_success, or any stored next-transition path) fail loudly with WorkflowError
+- blank or nil agent completions fail loudly as AgentError-derived runtime failures instead of being accepted as successful step output
 
 Important contracts from the architecture document that are not yet directly specified:
 

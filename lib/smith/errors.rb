@@ -17,6 +17,21 @@ module Smith
   end
   class ToolPolicyDenied < Error; end
   class AgentError < Error; end
+  class BlankAgentOutputError < AgentError
+    attr_reader :agent_name, :model_used
+
+    def initialize(agent_name:, model_used:)
+      @agent_name = agent_name
+      @model_used = model_used
+
+      detail = +"agent"
+      detail << " :#{agent_name}" if agent_name
+      detail << " returned blank output"
+      detail << " from model #{model_used}" if model_used
+
+      super(detail)
+    end
+  end
   class WorkflowError < Error; end
 
   class DeterministicStepFailure < WorkflowError

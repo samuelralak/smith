@@ -645,6 +645,9 @@ Typical failed step entry:
 }
 ```
 
+Blank or nil agent completions are treated as agent-boundary failures, not successful step output.
+Smith will fail the step with `Smith::BlankAgentOutputError` instead of accepting an empty assistant turn.
+
 ### `advance!`
 
 Use `advance!` when you want stepwise execution instead of running the workflow to completion in one call.

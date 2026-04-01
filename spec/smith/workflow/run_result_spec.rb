@@ -1196,6 +1196,109 @@ RSpec.describe "Smith::Workflow run result contract" do
     expect(error.cause.message).to eq("provider exploded")
   end
 
+  it "treats blank provider completions as AgentError instead of successful step output" do
+    blank_agent_error = require_const("Smith::BlankAgentOutputError")
+
+    agent = with_stubbed_class("SpecBlankAgentOutputAgent", agent_class) do
+      register_as :spec_blank_agent_output_agent
+      model "gpt-5-mini"
+    end
+
+    fake_chat = Object.new
+    fake_chat.define_singleton_method(:add_message) { |_message| nil }
+    fake_chat.define_singleton_method(:complete) do
+      Struct.new(:content, :input_tokens, :output_tokens).new("", 12, 0)
+    end
+
+    allow(agent).to receive(:chat).and_return(fake_chat)
+
+    workflow = with_stubbed_class("SpecBlankAgentOutputWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_blank_agent_output_agent
+        on_failure :fail
+      end
+    end.new
+
+    result = workflow.run!
+    error = result.steps.first[:error]
+
+    expect(result.state).to eq(:failed)
+    expect(error).to be_a(blank_agent_error)
+    expect(error.message).to include("blank output")
+    expect(error.agent_name).to eq(:spec_blank_agent_output_agent)
+    expect(error.model_used).to eq("gpt-5-mini")
+    expect(workflow.session_messages).to eq([])
+  end
+
+  it "treats nil provider completions as AgentError instead of successful step output" do
+    blank_agent_error = require_const("Smith::BlankAgentOutputError")
+
+    agent = with_stubbed_class("SpecNilAgentOutputAgent", agent_class) do
+      register_as :spec_nil_agent_output_agent
+      model "gpt-5-mini"
+    end
+
+    fake_chat = Object.new
+    fake_chat.define_singleton_method(:add_message) { |_message| nil }
+    fake_chat.define_singleton_method(:complete) do
+      Struct.new(:content, :input_tokens, :output_tokens).new(nil, 10, 0)
+    end
+
+    allow(agent).to receive(:chat).and_return(fake_chat)
+
+    workflow = with_stubbed_class("SpecNilAgentOutputWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_nil_agent_output_agent
+        on_failure :fail
+      end
+    end.new
+
+    result = workflow.run!
+    error = result.steps.first[:error]
+
+    expect(result.state).to eq(:failed)
+    expect(error).to be_a(blank_agent_error)
+    expect(workflow.session_messages).to eq([])
+  end
+
+  it "still allows falsy but non-blank provider completions like false" do
+    agent = with_stubbed_class("SpecFalseAgentOutputAgent", agent_class) do
+      register_as :spec_false_agent_output_agent
+      model "gpt-5-mini"
+    end
+
+    fake_chat = Object.new
+    fake_chat.define_singleton_method(:add_message) { |_message| nil }
+    fake_chat.define_singleton_method(:complete) do
+      Struct.new(:content, :input_tokens, :output_tokens).new(false, 3, 1)
+    end
+
+    allow(agent).to receive(:chat).and_return(fake_chat)
+
+    workflow = with_stubbed_class("SpecFalseAgentOutputWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_false_agent_output_agent
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    expect(result.output).to eq(false)
+    expect(workflow.session_messages).to eq([{ role: :assistant, content: false }])
+  end
+
   it "does not wrap after_completion failures as AgentError after a successful provider response" do
     agent_error = require_const("Smith::AgentError")
     workflow_error = require_const("Smith::WorkflowError")
