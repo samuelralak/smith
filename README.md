@@ -353,15 +353,28 @@ Smith now fails fast in that situation. Unresolved agent symbols raise `Smith::W
 
 In host apps, the fix is to make agent loading explicit at boot or reload time. In Rails, that usually means a small initializer or `to_prepare` hook that references or registers the workflow-facing agent classes your app uses.
 
-`Smith::Agent::Registry.clear!` exists mainly for isolated runtimes such as tests. Normal application code should treat the registry as boot-time configuration, not something to reset during request handling.
+`register_as` is **reload-safe**. Under the hood it delegates to `Smith::Agent::Registry.ensure_registered`, which handles:
+
+- **First boot:** registers the agent normally.
+- **Rails reload (stale same-name class):** detects the old class object by matching `.name`, replaces it atomically.
+- **Same object re-registration:** no-op.
+- **True collision (different class name):** raises `Smith::AgentRegistryError`.
+
+Host apps should **not** call `Smith::Agent::Registry.clear!` during normal runtime. `clear!` exists for test isolation only.
+
+Host apps should **not** access `Smith::Agent::Registry._container` directly. All registry operations go through the public API: `find`, `fetch!`, `register`, `delete`, `ensure_registered`, `clear!`.
+
+Registry collisions with different class names fail loudly with `Smith::AgentRegistryError`. This catches real misconfiguration (two different agents registered under the same key).
+
+**Post-`clear!` re-registration in tests:** if a test calls `clear!` while agent constants are already loaded, referencing the constant does not re-run `register_as` (class body does not re-execute). Tests must explicitly re-register via `Smith::Agent::Registry.ensure_registered(klass.register_as, klass)`.
 
 The clean fix order is:
 
 1. Ensure every workflow-facing agent declares the exact symbol it uses through `register_as`.
-2. Make agent loading explicit in the host app.
+2. Make agent loading explicit in the host app via `to_prepare`.
 3. Let Smith fail fast if that bootstrap is missing.
 
-In Rails, the preferred fix is a narrow `to_prepare` hook:
+In Rails, the preferred fix is a narrow `to_prepare` hook that references agent classes directly:
 
 ```ruby
 # config/initializers/smith_agents.rb
@@ -373,7 +386,7 @@ Rails.application.config.to_prepare do
 end
 ```
 
-That keeps development reload behavior intact and makes the dependency explicit.
+That keeps development reload behavior intact and makes the dependency explicit. No app-level registry module is needed — Smith's `ensure_registered` handles reload safety.
 
 Setting `config.eager_load = true` can hide the problem by loading more classes at boot, but it is not the preferred fix:
 

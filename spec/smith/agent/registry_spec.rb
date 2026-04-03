@@ -166,5 +166,46 @@ RSpec.describe "Smith::Agent registry contract" do
       registry.register(:block_value) { "lazy_result" }
       expect(registry.find(:block_value)).to eq("lazy_result")
     end
+
+    it "preserves options forwarding" do
+      registry.register(:memoized_value, "static", call: false)
+      expect(registry.find(:memoized_value)).to eq("static")
+    end
+  end
+
+  describe "nested block resolution (re-entrant safety)" do
+    it "resolves block-backed entries that re-enter the registry without deadlock" do
+      registry.register(:inner, "ok")
+      registry.register(:outer) { registry.find(:inner) }
+
+      expect(registry.find(:outer)).to eq("ok")
+    end
+
+    it "fetch! resolves block-backed entries that re-enter the registry" do
+      registry.register(:inner_fetch, "fetched")
+      registry.register(:outer_fetch) { registry.fetch!(:inner_fetch) }
+
+      expect(registry.find(:outer_fetch)).to eq("fetched")
+    end
+  end
+
+  describe "mixed collision (agent vs non-agent)" do
+    it "ensure_registered raises AgentRegistryError when key holds a plain value" do
+      registry.register(:mixed_key, "plain_value")
+      klass = make_agent("Test::MixedAgent")
+
+      expect {
+        registry.ensure_registered(:mixed_key, klass)
+      }.to raise_error(Smith::AgentRegistryError, /collision/)
+    end
+
+    it "overridden register raises AgentRegistryError when key holds a plain value" do
+      registry.register(:mixed_register, "plain_value")
+      klass = make_agent("Test::MixedRegisterAgent")
+
+      expect {
+        registry.register(:mixed_register, klass)
+      }.to raise_error(Smith::AgentRegistryError, /collision/)
+    end
   end
 end

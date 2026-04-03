@@ -341,9 +341,20 @@ Architecture basis:
 Documented contracts covered:
 
 - `Smith::Agent::Registry`
-- `.find`
-- explicit registration via `.register_as`
-- clearing registered bindings via `.clear!`
+- `.find` — resolves registered agents by name
+- `.fetch!` — resolves or raises `WorkflowError` with context
+- `.delete` — per-key deletion with key normalization
+- `.clear!` — full registry reset for test isolation
+- `.ensure_registered` — reload-safe registration:
+  - missing → register
+  - same object → no-op
+  - same `.name` (stale reload) → atomic replace
+  - different `.name` → raise `AgentRegistryError`
+  - validates input is a `Smith::Agent` subclass
+- `.register` (overridden) — routes agent classes through `ensure_registered`, preserves generic `Dry::Container` semantics (block, options) for non-agent values
+- `.register_as` — reload-safe (delegates to `ensure_registered`)
+- `registry_monitor` — re-entrant `Monitor` synchronizes all operations (reads and writes share the same lock; safe for block-backed entries that re-enter the registry)
+- collision semantics — agent-vs-agent different name, agent-vs-non-agent, anonymous class collisions all raise `AgentRegistryError`
 
 Notes:
 
