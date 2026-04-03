@@ -500,4 +500,77 @@ RSpec.describe "Smith::Workflow::EvaluatorOptimizer runtime behavior" do
     )
     expect(entries.select { |entry| entry[0] == :release }).to eq([])
   end
+
+  it "keeps refinement-round metadata in turn-local user content instead of adding another system message" do
+    generator = with_stubbed_class("SpecOptGenPromptShape", agent_class) do
+      register_as :spec_opt_gen_prompt_shape
+      model "gpt-5-mini"
+
+      instructions { "generator instructions" }
+    end
+    evaluator = with_stubbed_class("SpecOptEvalPromptShape", agent_class) do
+      register_as :spec_opt_eval_prompt_shape
+      model "gpt-5-mini"
+    end
+
+    generator_messages = Queue.new
+    allow(generator).to receive(:chat) do
+      chat = Object.new
+      messages = [Struct.new(:role, :content).new(:system, "generator instructions")]
+
+      chat.define_singleton_method(:messages) { messages }
+      chat.define_singleton_method(:with_instructions) do |instructions|
+        messages[0] = Struct.new(:role, :content).new(:system, instructions)
+        self
+      end
+      chat.define_singleton_method(:add_message) do |message|
+        messages << Struct.new(:role, :content).new(message[:role], message[:content])
+      end
+      chat.define_singleton_method(:with_schema) { |_s| self }
+      chat.define_singleton_method(:complete) do
+        generator_messages << messages.map { |msg| { role: msg.role, content: msg.content } }
+        result = generator_messages.size == 1 ? "draft1" : "draft2"
+        Struct.new(:content, :input_tokens, :output_tokens).new(result, 5, 3)
+      end
+      chat
+    end
+
+    stub_agent_sequence(evaluator, [
+                          { accept: false, feedback: "tighten the structure", score: 0.5 },
+                          { accept: true, feedback: nil, score: 0.95 }
+                        ])
+
+    schema = Class.new
+
+    workflow = with_stubbed_class("SpecOptPromptShapeWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :translate, from: :idle, to: :done do
+        optimize generator: :spec_opt_gen_prompt_shape, evaluator: :spec_opt_eval_prompt_shape,
+                 max_rounds: 3, evaluator_schema: schema
+        on_failure :fail
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+
+    calls = []
+    calls << generator_messages.pop until generator_messages.empty?
+
+    expect(calls.length).to eq(2)
+    expect(calls.last).to eq(
+      [
+        { role: :system, content: "generator instructions" },
+        { role: :assistant, content: "draft1" },
+        {
+          role: :user,
+          content: "[smith:refinement-round] 2\n[smith:evaluator-feedback]\ntighten the structure"
+        }
+      ]
+    )
+  end
 end

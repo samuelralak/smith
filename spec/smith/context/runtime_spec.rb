@@ -113,6 +113,73 @@ RSpec.describe "Smith::Context runtime contract" do
     )
   end
 
+  it "merges injected state into the existing agent instruction system message before provider call" do
+    manager = with_stubbed_class("SpecMergedInstructionContext", context_class) do
+      session_strategy :observation_masking, window: 1
+
+      inject_state do |persisted|
+        "summary: #{persisted[:current_findings]}"
+      end
+    end
+
+    agent = with_stubbed_class("SpecMergedInstructionAgent", agent_class) do
+      register_as :spec_merged_instruction_agent
+      model "gpt-5-mini"
+
+      instructions do |_context|
+        "agent instructions"
+      end
+    end
+
+    message_class = Struct.new(:role, :content)
+    chat_messages = [message_class.new(:system, "agent instructions")]
+
+    fake_chat = Object.new
+    fake_chat.define_singleton_method(:messages) { chat_messages }
+    fake_chat.define_singleton_method(:with_instructions) do |instructions|
+      system_messages, other_messages = chat_messages.partition { |msg| msg.role == :system }
+
+      if system_messages.empty?
+        chat_messages.replace([message_class.new(:system, instructions)] + other_messages)
+      else
+        system_messages.first.content = instructions
+        chat_messages.replace([system_messages.first] + other_messages)
+      end
+
+      self
+    end
+    fake_chat.define_singleton_method(:add_message) do |message|
+      chat_messages << message_class.new(message[:role], message[:content])
+    end
+    fake_chat.define_singleton_method(:complete) do
+      Struct.new(:content).new("done")
+    end
+
+    allow(agent).to receive(:chat).and_return(fake_chat)
+
+    workflow = with_stubbed_class("SpecMergedInstructionWorkflow", workflow_class) do
+      context_manager manager
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done do
+        execute :spec_merged_instruction_agent
+      end
+    end.new(context: { current_findings: "stable" })
+
+    workflow.instance_variable_set(:@session_messages, [{ role: :user, content: "latest" }])
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    expect(chat_messages.map { |msg| [msg.role, msg.content] }).to eq(
+      [
+        [:system, "agent instructions\n\n[smith:injected-state]\nsummary: stable"],
+        [:user, "latest"]
+      ]
+    )
+  end
+
   it "replaces prior injected state instead of duplicating it on repeated preparation" do
     manager = with_stubbed_class("SpecReplacingInjectionContext", context_class) do
       inject_state do |persisted|

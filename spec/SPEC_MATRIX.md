@@ -639,6 +639,8 @@ Documented contracts covered:
 - transition DSL rejects combining `optimize` with `execute`
 - generator and evaluator rounds participate in normal serial budget reservation and reconciliation
 - optimization rounds remain inside one parent workflow step
+- the single stable instruction layer remains `system`
+- refinement-round metadata and evaluator feedback remain turn-local `user` content, while the prior candidate is passed as `assistant`
 
 Notes:
 
@@ -704,6 +706,8 @@ Documented contracts covered:
 - orchestrator steps fail loudly when the configured orchestrator or worker symbol is not registered
 - worker execution uses a Smith-owned worker execution seam while remaining inside one parent workflow step
 - orchestrator-worker keeps parent step count parent-scoped
+- the single stable instruction layer remains `system`
+- orchestration-round metadata and worker results remain turn-local `user` content instead of introducing extra system messages
 - orchestrate declaration requires:
   - `orchestrator`
   - `worker`
@@ -1095,6 +1099,8 @@ Documented contracts covered:
 - `inject_state` stores a callable formatter over persisted state
 - subclasses inherit persisted keys by copy without mutating the parent
 - subclasses can override `inject_state` without mutating the parent
+- injected state merges into the existing agent-instruction system message before provider call
+- workflow-prepared input preserves a single control-plane `system` message and leaves turn-local metadata in normal conversational roles
 - accepted workflow output is appended to stored session history after successful step completion
 - accepted falsy workflow output is also preserved in stored session history
 - rejected output is not appended when output guardrails fail

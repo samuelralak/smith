@@ -47,9 +47,57 @@ module Smith
 
       def attempt_model(agent_class, prepared_input, model_id)
         chat = agent_class.chat(model: model_id)
-        prepared_input&.each { |msg| chat.add_message(msg) }
+        add_prepared_input(chat, prepared_input)
         chat = chat.with_schema(agent_class.output_schema) if agent_class.output_schema
         chat.complete
+      end
+
+      def add_prepared_input(chat, prepared_input)
+        return unless prepared_input
+
+        system_messages, other_messages = prepared_input.partition do |message|
+          message_role(message) == :system
+        end
+
+        merge_system_messages!(chat, system_messages) if system_messages.any?
+        other_messages.each { |message| chat.add_message(message) }
+      end
+
+      def merge_system_messages!(chat, prepared_system_messages)
+        return prepared_system_messages.each { |message| chat.add_message(message) } unless chat.respond_to?(:messages)
+
+        existing_system_contents = chat.messages.filter_map do |message|
+          message.content if message_role(message) == :system
+        end
+        prepared_system_contents = prepared_system_messages.filter_map do |message|
+          message_content(message)
+        end
+
+        combined_contents = existing_system_contents + prepared_system_contents
+        return if combined_contents.empty?
+        return prepared_system_messages.each { |message| chat.add_message(message) } unless combined_contents.all?(String)
+
+        if chat.respond_to?(:with_instructions)
+          chat.with_instructions(combined_contents.join("\n\n"))
+        else
+          prepared_system_messages.each { |message| chat.add_message(message) }
+        end
+      end
+
+      def message_role(message)
+        if message.respond_to?(:role)
+          message.role&.to_sym
+        else
+          message[:role]&.to_sym
+        end
+      end
+
+      def message_content(message)
+        if message.respond_to?(:content)
+          message.content
+        else
+          message[:content]
+        end
       end
 
       def fallback_eligible?(error)

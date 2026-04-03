@@ -110,9 +110,11 @@ module Smith
         return prepared_input if round.zero?
 
         (prepared_input&.dup || []).push(
-          { role: :system, content: "[smith:refinement-round] #{round + 1}" },
           { role: :assistant, content: prior_candidate.to_s },
-          { role: :user, content: "[smith:evaluator-feedback]\n#{feedback}" }
+          {
+            role: :user,
+            content: "[smith:refinement-round] #{round + 1}\n[smith:evaluator-feedback]\n#{feedback}"
+          }
         )
       end
 

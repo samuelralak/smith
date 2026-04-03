@@ -388,6 +388,28 @@ end
 
 That keeps development reload behavior intact and makes the dependency explicit. No app-level registry module is needed — Smith's `ensure_registered` handles reload safety.
 
+### Prompt Roles And Multi-Round Input
+
+Smith standardizes prompt roles across providers at the workflow handoff:
+
+- **`system`:** stable control-plane framing for the whole agent invocation
+- **`assistant`:** prior model output from an earlier round
+- **`user`:** the current task input plus turn-local workflow metadata
+
+Smith keeps exactly one control-plane `system` message per agent invocation. Agent `instructions` and injected context state are merged into that single message before the provider call.
+
+This matters for both provider compatibility and prompt semantics:
+
+- Anthropic accepts a single top-level system prompt
+- OpenAI-style providers treat `system`/`developer` as high-authority instructions
+- turn-local workflow markers should stay adjacent to the current round, not be hoisted into the global instruction layer
+
+In practice that means:
+
+- injected state like `[smith:injected-state]` belongs in the single `system` message
+- refinement feedback and orchestration worker results belong in `user` content for the current round
+- prior candidates or prior orchestrator outputs stay in `assistant` when Smith is continuing a multi-round exchange
+
 Setting `config.eager_load = true` can hide the problem by loading more classes at boot, but it is not the preferred fix:
 
 - it couples correctness to a global loading mode

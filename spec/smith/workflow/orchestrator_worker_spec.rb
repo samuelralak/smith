@@ -475,6 +475,79 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
     end.to raise_error(workflow_error, /max_delegation_rounds must be a positive integer/)
   end
 
+  it "keeps orchestration-round metadata in turn-local user content instead of adding another system message" do
+    orchestrator = with_stubbed_class("SpecOwOrchPromptShape", agent_class) do
+      register_as :spec_ow_orch_prompt_shape
+      model "gpt-5-mini"
+
+      instructions { "orchestrator instructions" }
+    end
+    worker = with_stubbed_class("SpecOwWorkPromptShape", agent_class) do
+      register_as :spec_ow_work_prompt_shape
+      model "gpt-5-mini"
+    end
+
+    orchestrator_messages = Queue.new
+    allow(orchestrator).to receive(:chat) do
+      chat = Object.new
+      messages = [Struct.new(:role, :content).new(:system, "orchestrator instructions")]
+
+      chat.define_singleton_method(:messages) { messages }
+      chat.define_singleton_method(:with_instructions) do |instructions|
+        messages[0] = Struct.new(:role, :content).new(:system, instructions)
+        self
+      end
+      chat.define_singleton_method(:add_message) do |message|
+        messages << Struct.new(:role, :content).new(message[:role], message[:content])
+      end
+      chat.define_singleton_method(:with_schema) { |_s| self }
+      chat.define_singleton_method(:complete) do
+        orchestrator_messages << messages.map { |msg| { role: msg.role, content: msg.content } }
+        result = orchestrator_messages.size == 1 ? { tasks: [{ task_id: "t1", input: "research pricing" }] } :
+                                                   { final: { summary: "done" } }
+        Struct.new(:content, :input_tokens, :output_tokens).new(result, 5, 3)
+      end
+      chat
+    end
+
+    stub_agent_sequence(worker, [{ finding: "pricing is competitive" }])
+
+    workflow = with_stubbed_class("SpecOwPromptShapeWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :research, from: :idle, to: :done do
+        orchestrate orchestrator: :spec_ow_orch_prompt_shape, worker: :spec_ow_work_prompt_shape,
+                    max_workers: 4, max_delegation_rounds: 3,
+                    task_schema: SpecOwTaskSchema,
+                    worker_output_schema: SpecOwWorkerOutputSchema,
+                    final_output_schema: SpecOwFinalOutputSchema
+        on_failure :fail
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+
+    calls = []
+    calls << orchestrator_messages.pop until orchestrator_messages.empty?
+
+    expect(calls.length).to eq(2)
+    expect(calls.last.first).to eq(role: :system, content: "orchestrator instructions")
+    expect(calls.last.last[:role]).to eq(:user)
+
+    prefix = "[smith:orchestration-round] 2\n[smith:worker-results]\n"
+    expect(calls.last.last[:content]).to start_with(prefix)
+
+    payload = JSON.parse(calls.last.last[:content].delete_prefix(prefix))
+    expect(payload.length).to eq(1)
+    expect(payload.first.fetch("execution_id")).to be_a(String)
+    expect(payload.first.fetch("task")).to eq("task_id" => "t1", "input" => "research pricing")
+    expect(payload.first.fetch("output")).to eq("finding" => "pricing is competitive")
+  end
+
   it "rejects combining orchestrate with execute" do
     expect do
       with_stubbed_class("SpecOwDualExecute", workflow_class) do

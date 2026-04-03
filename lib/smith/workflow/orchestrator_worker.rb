@@ -99,8 +99,10 @@ module Smith
         return prepared_input if round.zero?
 
         (prepared_input&.dup || []).push(
-          { role: :system, content: "[smith:orchestration-round] #{round + 1}" },
-          { role: :user, content: "[smith:worker-results]\n#{worker_results.to_json}" }
+          {
+            role: :user,
+            content: "[smith:orchestration-round] #{round + 1}\n[smith:worker-results]\n#{worker_results.to_json}"
+          }
         )
       end
 
