@@ -7,26 +7,107 @@ module Smith
     module Registry
       extend Dry::Container::Mixin
 
+      def self.normalize_key(name)
+        name.to_s
+      end
+
       def self.find(name)
-        key = name.to_sym
-        key?(key) ? resolve(key) : nil
+        registry_mutex.synchronize do
+          key = normalize_key(name)
+          key?(key) ? resolve(key) : nil
+        end
+      end
+
+      # Override Dry::Container::Mixin#register to route agent classes
+      # through ensure_registered while preserving full generic container
+      # semantics (block, options) for non-agent registrations.
+      def self.register(key, contents = nil, options = {}, &block)
+        if block_given? || !(contents.is_a?(Class) && contents <= Smith::Agent)
+          registry_mutex.synchronize { super(key, contents, options, &block) }
+        else
+          ensure_registered(key, contents)
+        end
+      end
+
+      def self.delete(name)
+        registry_mutex.synchronize do
+          _container.delete(normalize_key(name))
+        end
       end
 
       def self.clear!
-        @_container&.clear
+        registry_mutex.synchronize do
+          @_container&.clear
+        end
+      end
+
+      def self.ensure_registered(name, klass)
+        validate_agent_class!(klass)
+        key = normalize_key(name)
+
+        registry_mutex.synchronize do
+          existing = key?(key) ? resolve(key) : nil
+
+          if existing.nil?
+            register_unchecked!(key, klass)
+          elsif existing.equal?(klass)
+            # same object — no-op
+          elsif stale_reload_binding?(existing, klass)
+            # same class name, different object — Rails reload case
+            _container.delete(key)
+            register_unchecked!(key, klass)
+          else
+            raise Smith::AgentRegistryError,
+                  "agent registry collision for key #{key.inspect}: " \
+                  "already registered to #{existing.name || existing.inspect}, " \
+                  "cannot replace with #{klass.name || klass.inspect}"
+          end
+
+          klass
+        end
       end
 
       def self.fetch!(name, workflow_class: nil, transition_name: nil, role: :agent)
-        key = name.to_sym
-        return resolve(key) if key?(key)
+        registry_mutex.synchronize do
+          key = normalize_key(name)
+          return resolve(key) if key?(key)
 
-        details = []
-        details << "workflow #{workflow_class}" if workflow_class
-        details << "transition :#{transition_name}" if transition_name
-        suffix = details.empty? ? "" : " for #{details.join(', ')}"
+          details = []
+          details << "workflow #{workflow_class}" if workflow_class
+          details << "transition :#{transition_name}" if transition_name
+          suffix = details.empty? ? "" : " for #{details.join(', ')}"
 
-        raise Smith::WorkflowError, "unresolved #{role} :#{key}#{suffix}"
+          raise Smith::WorkflowError, "unresolved #{role} :#{key}#{suffix}"
+        end
       end
+
+      def self.registry_mutex
+        @_registry_mutex ||= Mutex.new
+      end
+
+      def self.validate_agent_class!(klass)
+        return if klass.is_a?(Class) && klass <= Smith::Agent
+
+        raise Smith::AgentRegistryError,
+              "expected a Smith::Agent subclass, got #{klass.inspect}"
+      end
+
+      # Private raw registration that bypasses ensure_registered.
+      # Used internally to avoid recursion/deadlock.
+      # Caller MUST already hold registry_mutex.
+      def self.register_unchecked!(key, klass)
+        config.registry.call(_container, key, klass, {})
+      end
+      private_class_method :register_unchecked!
+
+      def self.stale_reload_binding?(existing, klass)
+        existing_name = existing.respond_to?(:name) ? existing.name : nil
+        klass_name = klass.name
+        existing_name && !existing_name.empty? &&
+          klass_name && !klass_name.empty? &&
+          existing_name == klass_name
+      end
+      private_class_method :stale_reload_binding?
     end
   end
 end

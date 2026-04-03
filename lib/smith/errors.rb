@@ -57,4 +57,5 @@ module Smith
   end
 
   class SerializationError < Error; end
+  class AgentRegistryError < Error; end
 end

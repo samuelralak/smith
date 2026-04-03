@@ -52,7 +52,7 @@ module Smith
         return @registered_name if name.nil?
 
         @registered_name = name
-        Registry.register(name.to_sym, self)
+        Registry.ensure_registered(name.to_sym, self)
       end
     end
   end
