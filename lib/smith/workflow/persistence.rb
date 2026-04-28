@@ -19,7 +19,14 @@ module Smith
           total_cost: @total_cost || 0.0,
           total_tokens: @total_tokens || 0,
           tool_results: @tool_results || [],
-          outcome: snapshot_outcome
+          outcome: snapshot_outcome,
+          # New durable fields for hadithi billing. All wrapped in
+          # snapshot_value so non-JSON-safe runtime values (e.g.
+          # custom Hash details on DeterministicStepFailure) get the
+          # same deep-copy treatment as context/session_messages/etc.
+          usage_entries: snapshot_value((@usage_entries || []).map(&:to_h)),
+          last_output: snapshot_value(@last_output),
+          last_failed_step: snapshot_value(@last_failed_step)
         }
       end
 
@@ -37,6 +44,60 @@ module Smith
         @outcome = normalized[:outcome]
         initialize_tool_result_state
         @tool_results = normalized[:tool_results] || []
+        # Mirror the eager inits from `Workflow#initialize`. `from_state`
+        # uses `allocate` and bypasses `initialize`, so any restored
+        # workflow that later records usage would `nil.synchronize` or
+        # `nil.map` without these. Backward-compat: pre-patch states
+        # have no `usage_entries`/`last_output`/`last_failed_step` keys
+        # and restore to the empty defaults.
+        @usage_mutex = Mutex.new
+        @usage_entries = restore_usage_entries(normalized)
+        @last_output = restore_last_output(normalized)
+        @last_failed_step = restore_last_failed_step(normalized)
+      end
+
+      def restore_usage_entries(normalized)
+        raw = normalized[:usage_entries]
+        return [] if raw.nil? || !raw.is_a?(Array)
+
+        raw.map { |h| Workflow::UsageEntry.from_h(h) }
+      end
+
+      # Use key-presence checks (NOT `||`) so a deliberately persisted
+      # `false` step output round-trips correctly. Smith's existing
+      # `RunResult#output` derivation uses `compact.first`, which only
+      # drops `nil` — `false` is a valid non-nil output.
+      def restore_last_output(normalized)
+        if normalized.key?(:last_output)
+          normalized[:last_output]
+        elsif normalized.key?("last_output")
+          normalized["last_output"]
+        end
+      end
+
+      # Symbolize ONLY the top-level keys of last_failed_step + the
+      # known value-symbols (`transition`, `from`, `to`, `error_kind`).
+      # `error_family` stays a String (the family_fallback compares
+      # against String literals). `error_details` is left exactly as
+      # JSON.parse returned it — documented as JSON-normalized
+      # semantics on round-trip (Hash keys become strings, symbol
+      # values become strings).
+      def restore_last_failed_step(normalized)
+        raw = normalized[:last_failed_step]
+        return nil unless raw.is_a?(Hash)
+
+        h = raw.transform_keys { |k| k.is_a?(String) ? k.to_sym : k }
+        {
+          transition: h[:transition]&.to_sym,
+          from: h[:from]&.to_sym,
+          to: h[:to]&.to_sym,
+          error_class: h[:error_class],
+          error_family: h[:error_family],
+          error_message: h[:error_message],
+          error_retryable: h[:error_retryable],
+          error_kind: h[:error_kind]&.to_sym,
+          error_details: h[:error_details]
+        }
       end
 
       def restore_core_fields(normalized)
@@ -54,6 +115,7 @@ module Smith
         normalize_nested_hashes!(normalized)
         normalize_session_messages!(normalized)
         normalize_tool_results!(normalized)
+        normalize_usage_entries!(normalized)
         normalized[:outcome] = symbolize_value(normalized[:outcome]) if normalized[:outcome].is_a?(Hash)
         normalized
       end
@@ -89,6 +151,14 @@ module Smith
         return unless normalized[:tool_results].is_a?(Array)
 
         normalized[:tool_results] = normalized[:tool_results].map do |entry|
+          entry.is_a?(Hash) ? symbolize_keys(entry) : entry
+        end
+      end
+
+      def normalize_usage_entries!(normalized)
+        return unless normalized[:usage_entries].is_a?(Array)
+
+        normalized[:usage_entries] = normalized[:usage_entries].map do |entry|
           entry.is_a?(Hash) ? symbolize_keys(entry) : entry
         end
       end

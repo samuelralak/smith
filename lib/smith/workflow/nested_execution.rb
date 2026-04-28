@@ -26,19 +26,42 @@ module Smith
         child
       end
 
+      # Roll up child totals AND usage_entries BEFORE the failed-step
+      # check raises. Previously the rollup only fired on child success
+      # — billable agent work inside a failed child was silently
+      # dropped from the parent's totals/entries. The drift guard at
+      # the hadithi boundary wouldn't catch it (parent rollups + entries
+      # consistently undercount the same way; sum invariant still holds
+      # incorrectly). Roll up first, then re-raise, so the parent's
+      # terminal state reflects the child's billable work even when the
+      # child failed.
       def handle_child_result(child_result)
+        roll_up_child_totals(child_result)
+
         failed_step = child_result.steps.find { |s| s.key?(:error) }
         raise WorkflowError, "nested workflow failed: #{failed_step[:error]&.message}" if failed_step
 
-        roll_up_child_totals(child_result)
         child_result.output
       end
 
+      # `@usage_mutex` is eagerly initialized in `Workflow#initialize`
+      # AND `Workflow#restore_state`, so it's always present. Single
+      # synchronize block updates totals + entries together, matching
+      # the lifecycle.rb `record_usage` pattern.
+      #
+      # Defensive deep-copy via `from_h(snapshot_value(entry.to_h))`:
+      # `Struct#dup` is shallow (shares mutable string fields like
+      # `usage_id`/`model`), and aliasing child entries into multiple
+      # parents could let later mutations corrupt earlier parents.
       def roll_up_child_totals(child_result)
-        @usage_mutex ||= Mutex.new
+        child_entries = (child_result.usage_entries || []).map do |entry|
+          Workflow::UsageEntry.from_h(snapshot_value(entry.to_h))
+        end
+
         @usage_mutex.synchronize do
           @total_cost = (@total_cost || 0.0) + (child_result.total_cost || 0.0)
           @total_tokens = (@total_tokens || 0) + (child_result.total_tokens || 0)
+          @usage_entries.concat(child_entries)
         end
       end
     end

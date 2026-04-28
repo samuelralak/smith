@@ -19,22 +19,27 @@ module Smith
 
       def invoke_agent(agent_class, prepared_input)
         check_deadline!
-        response = complete_with_provider(agent_class, prepared_input)
-        snapshot_and_finalize(agent_class, response)
+        response, model_used = complete_with_provider(agent_class, prepared_input)
+        snapshot_and_finalize(agent_class, response, model_used)
       end
 
+      # Returns [response, model_used] as local data — no shared mutable
+      # state. Previously this method set `@last_attempt_model` on the
+      # workflow instance and `snapshot_and_finalize` read it back; under
+      # parallel fan-out, two branches sharing the workflow could race
+      # and attribute the wrong model to the wrong response. Local data
+      # eliminates the race entirely.
       def complete_with_provider(agent_class, prepared_input)
         models = build_model_chain(agent_class)
-        @last_attempt_model = nil
 
         models.each_with_index do |model_id, index|
           check_deadline! if index.positive?
-          @last_attempt_model = model_id
-          return attempt_model(agent_class, prepared_input, model_id)
+          response = attempt_model(agent_class, prepared_input, model_id)
+          return [response, model_id]
         rescue Smith::Error
           raise
         rescue StandardError => e
-          account_failed_attempt(e, model_id)
+          account_failed_attempt(e, model_id, agent_class)
           raise Smith::AgentError, e.message unless fallback_eligible?(e) && index < models.length - 1
         end
       end
@@ -106,7 +111,12 @@ module Smith
           error.is_a?(Faraday::ConnectionFailed)
       end
 
-      def account_failed_attempt(error, model_id)
+      # `agent_class` is now a parameter (was previously implicit via
+      # `@last_attempt_model`-only path). The caller (`complete_with_provider`)
+      # has the local already, so no shared mutable state is needed.
+      # Records the failed attempt's tokens via the unified `record_usage`
+      # helper, marking the entry as `:failed_attempt`.
+      def account_failed_attempt(error, model_id, agent_class)
         return unless error.respond_to?(:input_tokens) && error.respond_to?(:output_tokens)
 
         input = error.input_tokens
@@ -114,15 +124,16 @@ module Smith
         return unless input.is_a?(Integer) && output.is_a?(Integer)
 
         cost = Smith::Pricing.compute_cost(model: model_id, input_tokens: input, output_tokens: output)
-        accumulate_usage(Workflow::AgentResult.new(nil, input, output, cost, model_id))
+        agent_result = Workflow::AgentResult.new(nil, input, output, cost, model_id)
+        record_usage(agent_class, agent_result, :failed_attempt, model_id)
       end
 
-      def snapshot_and_finalize(agent_class, response)
-        agent_result = Workflow::AgentResult.from_response(response, response&.content, model_used: @last_attempt_model)
+      def snapshot_and_finalize(agent_class, response, model_used)
+        agent_result = Workflow::AgentResult.from_response(response, response&.content, model_used: model_used)
         Thread.current[:smith_last_agent_result] = agent_result
         emit_token_usage(agent_result)
         compute_agent_cost(agent_result)
-        accumulate_usage(agent_result)
+        record_usage(agent_class, agent_result, :completed_attempt, agent_result.model_used)
 
         agent_result.content = run_after_completion(agent_class, agent_result.content, @context)
         raise_blank_output!(agent_class, agent_result)
@@ -163,18 +174,37 @@ module Smith
         )
       end
 
-      def accumulate_usage(agent_result)
-        if agent_result.usage_known?
-          @usage_mutex ||= Mutex.new
-          @usage_mutex.synchronize do
-            @total_tokens = (@total_tokens || 0) + agent_result.input_tokens + agent_result.output_tokens
-          end
+      # Single critical section: all three of `@total_tokens`,
+      # `@total_cost`, and `@usage_entries` update under one mutex
+      # acquisition. Replaces the prior `accumulate_usage` which took
+      # the mutex twice (once for tokens, once for cost) — under
+      # parallel fan-out two branches could interleave between those
+      # blocks, leaving totals momentarily inconsistent. Adding the
+      # entry append in a third pass would have widened the window;
+      # one pass closes it entirely.
+      #
+      # `@usage_mutex` is eagerly initialized in `Workflow#initialize`
+      # AND `Workflow#restore_state` (since `from_state` allocates
+      # without `initialize`), so it's always present here.
+      def record_usage(agent_class, agent_result, attempt_kind, model_id)
+        return unless agent_result.usage_known?
+
+        entry = Workflow::UsageEntry.new(
+          SecureRandom.uuid,
+          agent_class.register_as,
+          model_id,
+          agent_result.input_tokens,
+          agent_result.output_tokens,
+          agent_result.cost,
+          attempt_kind,
+          Time.now.utc.iso8601
+        )
+
+        @usage_mutex.synchronize do
+          @total_tokens = (@total_tokens || 0) + agent_result.input_tokens + agent_result.output_tokens
+          @total_cost   = (@total_cost   || 0.0) + (agent_result.cost || 0.0)
+          @usage_entries << entry
         end
-
-        return unless agent_result.cost
-
-        @usage_mutex ||= Mutex.new
-        @usage_mutex.synchronize { @total_cost = (@total_cost || 0.0) + agent_result.cost }
       end
     end
   end

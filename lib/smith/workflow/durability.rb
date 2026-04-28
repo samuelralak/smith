@@ -24,6 +24,61 @@ module Smith
           restore(resolved_persistence_key(key:, context:), adapter:) || new(context:, **kwargs)
         end
 
+        # Peek without instantiating: returns true if persisted state
+        # exists for the resolved key, false otherwise. Reuses the
+        # existing private helpers (`resolved_persistence_key`,
+        # `fetch_persisted_payload`) so it doesn't expand the adapter
+        # contract — `Smith::PersistenceAdapter` requires only
+        # `store/fetch/delete`, and this peek piggybacks on `fetch`.
+        # Custom adapters work without changes.
+        #
+        # Hadithi uses this to skip the credits guard at execution time
+        # when persisted state already exists for a workflow key (a
+        # prior attempt's billable work is durable in Redis, OR an
+        # in-flight workflow is being resumed — either way, no NEW
+        # credit authorization is needed).
+        def persisted_state_exists?(key: nil, context: {}, adapter: Smith.persistence_adapter)
+          resolved_key = resolved_persistence_key(key:, context:)
+          !fetch_persisted_payload(resolved_key, adapter:).nil?
+        end
+
+        # Stricter peek: returns true only when persisted state contains
+        # billable work that needs to be preserved (at least one
+        # `usage_entries` entry).
+        #
+        # `persisted_state_exists?` answers "is there any state?" — but
+        # that includes the bare initial-state record Smith writes at
+        # the top of `run_persisted!` BEFORE the first `advance!`. A
+        # worker that dies between that initial `persist!` and the
+        # first model call leaves a Redis key with no billable work.
+        # If the credits guard's bypass keys on `persisted_state_exists?`
+        # alone, a zero-balance user's retry on that abandoned init
+        # state silently runs the first model call (the guard is
+        # skipped because state exists, but the state has nothing to
+        # bill — it's just the workflow's starting state).
+        #
+        # `restorable_billing_state?` returns true only when there's
+        # actual `usage_entries` to bill on idempotent replay. Terminal
+        # state with zero entries is also `false` because there's
+        # nothing to preserve — `run_persisted!` is a no-op on
+        # terminal anyway, so guard outcome doesn't matter for
+        # correctness in that case.
+        #
+        # This calls `restore` (full deserialize) rather than just
+        # `fetch`, so it's heavier than `persisted_state_exists?`. Use
+        # this when you specifically want the billing-aware semantics;
+        # use `persisted_state_exists?` when you only need a key-
+        # presence check.
+        def restorable_billing_state?(key: nil, context: {}, adapter: Smith.persistence_adapter)
+          resolved_key = resolved_persistence_key(key:, context:)
+          payload = fetch_persisted_payload(resolved_key, adapter:)
+          return false if payload.nil?
+
+          workflow = from_state(JSON.parse(payload))
+          entries = workflow.instance_variable_get(:@usage_entries) || []
+          entries.any?
+        end
+
         def run_persisted!(key: nil, context: {}, adapter: Smith.persistence_adapter, clear: :done, on_step: nil, **kwargs)
           clear_policy = normalize_clear_policy(clear)
           resolved_key = resolved_persistence_key(key:, context:)
