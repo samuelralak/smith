@@ -108,6 +108,9 @@ require_relative "smith/budget/ledger"
 # Pricing (depends on Smith config)
 require_relative "smith/pricing"
 
+# RubyLLM registry extensions (depends on RubyLLM)
+require_relative "smith/ruby_llm_models"
+
 # Trace adapters (no internal deps)
 require_relative "smith/trace"
 require_relative "smith/trace/memory"
