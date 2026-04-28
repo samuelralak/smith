@@ -2,7 +2,7 @@
 
 This matrix maps the current RSpec contract suite to the authoritative architecture document:
 
-- Architecture: `/home/samuelralak/Projects/Cadence/AGENT_GEM_ARCHITECTURE.md`
+- Architecture: `/Users/samuelralak/Projects/Cadence/AGENT_GEM_ARCHITECTURE.md`
 
 Rule for future spec changes:
 
@@ -24,6 +24,12 @@ Current contract coverage exists for:
 - top-level configuration surface, including structural-trace defaults and content-tracing opt-in default
 - agent inheritance, DSL, registry binding, fail-fast unresolved-agent behavior, and fallback model-chain runtime behavior
 - workflow DSL, transition metadata capture, serialization entry points, exact state shape, run-result surface, best-known execution cost aggregation, persisted-context filtering, and configured-adapter durability helper surface
+- per-agent-call billing facts: `Workflow::UsageEntry` struct shape, JSON-safe to_h/from_h round-trip with symbol coercion, `RunResult#usage_entries` field with deep-copy on population, lifecycle recording from completed AND failed-but-billable attempts via a single mutex critical section, and parallel-fan-out attribution via local-arg `model_used` (no `@last_attempt_model` ivar)
+- nested-workflow billing rollup: child `total_cost` + `total_tokens` + `usage_entries` rolled up into parent BEFORE the failed-step check raises (preserves failed-child billable work on the parent), with deep-copied entries via `from_h(snapshot_value(...))` so child and parent are fully independent
+- terminal-restore correctness for `RunResult#output` / `#last_error` / `#failure_detail`: persisted `@last_output` and class-aware `@last_failed_step` snapshot drive synthesis when steps are empty on terminal-restore, with backward compat for pre-patch state and value-symbol coercion that matches fresh-run shape
+- billing-aware durability peek API: `Workflow.persisted_state_exists?` (fast key-presence check) and `Workflow.restorable_billing_state?` (only true when restored state has at least one `usage_entries` entry — distinguishes Smith's bare initial-state persist from preserved billable work)
+- tiered model pricing in `Smith::Pricing.compute_cost`: flat shape unchanged, tiered shape with `tiers: [{max_input_tokens, input_cost_per_token, output_cost_per_token}, ...]` walked in order, nil `max_input_tokens` as unbounded, both string and symbol keys
+- runtime model-registry extension via `Smith::RubyLLMModels.install!` (Opus 4.7 registration) and Anthropic provider compat shim prepended on `RubyLLM::Providers::Anthropic` (rewrites adaptive-thinking payload + drops temperature for Opus 4.7; non-4.7 models pass through unchanged)
 - workflow pattern namespaces
 - artifact namespace, top-level accessor, configured-store resolution, built-in backend entry points, and named operational methods
 - artifact lifecycle behavior, including opaque refs, per-store isolation, and namespace-prefixed refs
@@ -199,6 +205,25 @@ What the implementation agent needs to add:
 
 ## File-to-Document Mapping
 
+### `spec/smith_spec.rb`
+
+Purpose:
+
+- asserts that `Smith` loads (version constant present) and the top-level `Smith::Error` class anchors the documented error hierarchy
+
+Architecture basis:
+
+- Section 5.6, Error Hierarchy
+
+Documented contracts covered:
+
+- `Smith::VERSION` is defined
+- `Smith::Error < StandardError`
+
+Notes:
+
+- Trivial smoke spec; the full namespace + error taxonomy assertions live in `spec/smith/architecture_spec.rb`.
+
 ### `spec/smith/architecture_spec.rb`
 
 Purpose:
@@ -286,6 +311,60 @@ Notes:
 
 - This spec checks the documented configuration surface, structural-trace defaults, and opt-in content-tracing default.
 - It does not yet assert runtime adapter behavior beyond configuration values.
+
+### `spec/smith/pricing_spec.rb`
+
+Purpose:
+
+- asserts the cost-computation contract for `Smith::Pricing.compute_cost(model:, input_tokens:, output_tokens:)`, including the long-context tiered-pricing shape (e.g., Gemini 2.5 Pro's 200K input cliff)
+
+Architecture basis:
+
+- Section 4.8, Observability (cost tracking — best-known computation, no fabrication on missing pricing)
+
+Documented contracts covered:
+
+- returns `nil` when no pricing config is set (`Smith.config.pricing` is nil)
+- returns `nil` when the model is not in the catalog (catalog miss)
+- flat shape (`{input_cost_per_token, output_cost_per_token}`): computes `input * input_rate + output * output_rate`
+- flat shape: returns `nil` when rates are not Numeric (defensive — malformed catalog entry is treated as unknown rather than fabricated as 0)
+- tiered shape (`{tiers: [{max_input_tokens, input_cost_per_token, output_cost_per_token}, ...]}`):
+  - picks the first tier whose `max_input_tokens` covers the call's `input_tokens` (≤ inclusive; exact-at-threshold uses the lower-priced tier)
+  - `nil` `max_input_tokens` is treated as the unbounded ceiling (last-tier fallthrough)
+  - one-token-over-threshold falls into the next tier (verifies the boundary is correct, not off-by-one)
+- both flat and tiered shapes accept either symbol or string keys (JSON round-trip safety from host-persisted pricing config)
+
+Notes:
+
+- This spec covers the cost-rate lookup contract. RunResult-level cost aggregation behavior (best-known totals, missing-pricing optimism) lives in `spec/smith/workflow/run_result_spec.rb`.
+
+### `spec/smith/ruby_llm_models_spec.rb`
+
+Purpose:
+
+- asserts the runtime model-registry extension and the Anthropic provider compat shim that Smith installs at gem load to support models RubyLLM's bundled `models.json` does not yet ship and request-payload shapes the bundled provider does not yet generate
+
+Architecture basis:
+
+- Section 5.1, Agent Invocation (provider integration)
+- Section 4.8, Observability (model identity for cost tracking)
+
+Documented contracts covered:
+
+- `Smith::RubyLLMModels.install!` registers `claude-opus-4-7` into `RubyLLM.models` so `RubyLLM.chat(model: "claude-opus-4-7")` resolves without `RubyLLM::ModelNotFoundError`
+- registered Opus 4.7 carries the documented metadata: provider `anthropic`, family `claude-opus`, 1M context window, 128K max output, expected pricing
+- repeated `install!` is idempotent — calling it more than once does not duplicate the model entry in the registry
+- `Smith::RubyLLMAnthropicOpus47Compat` is prepended onto `RubyLLM::Providers::Anthropic` (the provider class) — the provider includes `Anthropic::Chat`, so `render_payload` is dispatched as an instance method via the class's ancestor chain. Prepending here intercepts the production dispatch path; prepending on `Chat.singleton_class` only intercepts the `Chat.render_payload(...)` module-method form which the runtime never takes.
+- the compat shim rewrites the request payload for `claude-opus-4-7` (and only for that model — Sonnet 4.5 / Opus 4.6 / etc. pass through unchanged):
+  - `payload[:thinking] = { type: "adaptive" }` (replaces RubyLLM's `{ type: "enabled", budget_tokens: N }` which Anthropic rejects on 4.7 with `"thinking.type.enabled" is not supported for this model`)
+  - `payload[:output_config][:effort] = adaptive_effort(thinking)` (uses `thinking.effort` if set; defaults to `"high"`)
+  - `payload.delete(:temperature)` (Opus 4.7 adaptive does not accept temperature)
+- structured-output (`schema:`) coexists with adaptive thinking — the shim merges `output_config[:effort]` into the schema-built `output_config` rather than overwriting
+
+Notes:
+
+- The `anthropic_payload` helper drives the test through a `RubyLLM::Providers::Anthropic` provider INSTANCE — this is load-bearing. A previous incarnation of the helper called `Chat.render_payload(...)` directly and exercised only the module-method dispatch path, so the spec passed while production silently bypassed the shim. Driving through the provider instance asserts the shim fires on the same dispatch path the host runtime takes.
+- The compat module is a temporary shim against a specific RubyLLM 1.14.x gap. When upstream RubyLLM ships native Opus 4.7 support, `install!` becomes idempotent against the upstream entry, and the payload-rewrite shim can be retired by removing the prepend (the shim's logic short-circuits on `model.id == OPUS_4_7_MODEL_ID` so it's safe to leave in place during the transition).
 
 ### `spec/smith/agent/contract_spec.rb`
 
@@ -673,6 +752,9 @@ Documented contracts covered:
 - nested execution inherits the parent wall-clock deadline
 - nested execution inherits the parent artifact scope without nested re-wrapping
 - nested child best-known cost and token totals roll into the parent workflow run result totals
+- nested child rollup runs BEFORE the failed-step check raises — a child that performed billable agent work and then failed still rolls its `total_cost`, `total_tokens`, AND `usage_entries` up to the parent (closes the silent-loss-of-failed-child-billing window)
+- rolled-up `usage_entries` are deep-copied via `UsageEntry.from_h(snapshot_value(entry.to_h))` so child and parent entry instances are fully independent (`Struct#dup` would alias mutable string fields like `usage_id` / `model`)
+- both `:completed_attempt` and `:failed_attempt` entries from the child preserve their attempt_kind through rollup
 
 Notes:
 
@@ -781,6 +863,9 @@ Documented contracts covered:
   - `total_tokens`
   - `tool_results`
   - `outcome`
+  - `usage_entries` (array of `Workflow::UsageEntry` per-call billing facts; `to_h`-serialized for JSON safety)
+  - `last_output` (last non-nil step output; terminal-restore fallback for `RunResult#output` when restored steps are empty)
+  - `last_failed_step` (class-aware error snapshot; transition + from + to + error_class + error_family + error_message + error_retryable + error_kind + error_details — used for `RunResult#last_error` / `#failure_detail` synthesis on terminal-restore)
 - round-trip via `.from_state`
 - resolved durability key round-trips through `.from_state`
 - `budget_consumed` is serialized from the live ledger after execution
@@ -817,6 +902,7 @@ Documented contracts covered:
   - `total_tokens`
   - `context`
   - `session_messages`
+  - `usage_entries`
   - `terminal_output`
   - `last_error`
   - `failed_transition`
@@ -827,6 +913,10 @@ Documented contracts covered:
 - `total_tokens` is Smith's best-known workflow token subtotal
 - `context`, `session_messages`, `tool_results`, and `outcome` expose final workflow state snapshots for host handling code
 - `context`, `session_messages`, `tool_results`, and `outcome` are deep snapshots, so host mutation does not leak back into workflow internals
+- `usage_entries` exposes the per-agent-call billing facts list (one `Workflow::UsageEntry` per agent provider call: `usage_id`, `agent_name`, `model`, `input_tokens`, `output_tokens`, `cost`, `attempt_kind` ∈ `{:completed_attempt, :failed_attempt}`, `recorded_at`) — deep-copied on RunResult population so host mutation does not leak back into `@usage_entries`
+- `usage_entries` populated by completed agent attempts AND by failed-but-billable fallback attempts (the latter when the provider call returned token usage before failing)
+- `last_error` and `failure_detail` synthesize from the persisted `@last_failed_step` snapshot when steps is empty on terminal-restore (preserves classification + retryable flag + kind/details for `Smith::DeterministicStepFailure` / `Smith::ToolGuardrailFailed` across persist→restore→retry)
+- `output` falls back to the persisted `@last_output` only on terminal-restore with empty steps (a fresh-run workflow that produced nil output is NOT shadowed by stale `@last_output`)
 - `failed_transition` and `failure_detail` expose convenience access to the last failed step
 - known pricing plus known usage contribute non-zero computed cost to `total_cost`
 - multiple successful agent calls aggregate their known computed costs into `total_cost`
@@ -865,6 +955,73 @@ Notes:
   - repeated `run!` on an already-terminal workflow
 - It now also covers best-effort `total_cost` budget reconciliation when computed cost is known.
 - It does not yet assert the full content of `steps` entries.
+
+### `spec/smith/workflow/usage_tracking_spec.rb`
+
+Purpose:
+
+- asserts the durable shape of per-agent-call billing facts and the terminal-restore-correctness fields on `Workflow` state, plus the two host-facing peek APIs that hosts use to drive billing-aware credit guards
+
+Architecture basis:
+
+- Section 4.2, Workflow
+- Section 5.3, State Serialization
+- Section 4.8, Observability (cost tracking)
+
+Documented contracts covered:
+
+- `Workflow::UsageEntry` struct shape (8 fields: `usage_id`, `agent_name`, `model`, `input_tokens`, `output_tokens`, `cost`, `attempt_kind`, `recorded_at`)
+- `UsageEntry#to_h` round-trips through `UsageEntry.from_h` preserving every field
+- `UsageEntry.from_h` coerces stringified `agent_name` and `attempt_kind` back to symbols (host JSON round-trip safety)
+- `RunResult.new(...)` accepts keyword arguments (regression: plain Struct without `keyword_init: true` would route the kwarg hash into the first positional field — `state` — and leave everything else nil)
+- fresh-run RunResult exposes `usage_entries` as part of the documented surface (defaults to `[]` for a no-agent workflow)
+- persisted state predating this slice (no `usage_entries` key) restores `@usage_entries = []` without raising — backward compatibility for in-flight workflows persisted before the slice
+- `@usage_mutex = Mutex.new` is eagerly initialized on `restore_state` (load-bearing — `Workflow.from_state` uses `allocate` and bypasses `initialize`; without the eager mirror a restored non-terminal workflow would `NoMethodError on nil:NilClass` when usage recording runs)
+- `@last_output` survives a `true`-string value through to_state / from_state
+- `@last_output` preserves a `false` value (regression: `||`-based restore would drop `false`; key-presence check restores it)
+- terminal-failed restore synthesizes `RunResult#last_error` from `@last_failed_step` and preserves `Smith::DeterministicStepFailure#retryable` / `#kind` (with `error_details` JSON-normalized — Hash keys + symbol values become strings)
+- custom `Smith::DeterministicStepFailure` subclass with a non-message constructor reconstructs as the parent `DeterministicStepFailure` via the `RETRYABLE_BEARING_FAMILIES` family fallback (preserves retryable + kind even when `const_get` cannot construct the subclass with the snapshot kwargs)
+- `error_class` that cannot be resolved (`NameError`) falls back via `error_family` (e.g., `agent_error` → `Smith::AgentError.new(message)`) so hadithi `is_a?` classification round-trips
+- a workflow that handled a failure and reached `:done` does NOT synthesize a stale error on terminal-restore (`build_run_result` synthesis is gated on `failed? && @last_failed_step`; successful subsequent steps clear the snapshot)
+- `.persisted_state_exists?(key:, context:, adapter:)` peek: returns `false` when no state has been persisted; returns `true` after `persist!`; returns `false` again after `clear_persisted!`. Uses the existing private `resolved_persistence_key` + `fetch_persisted_payload` helpers — no `Smith::PersistenceAdapter` contract change
+- `.restorable_billing_state?(key:, context:, adapter:)` peek (billing-aware): returns `false` for absent state, `false` for bare initial-state persistence (the record Smith writes at the top of `run_persisted!` BEFORE the first `advance!` — zero `usage_entries`), `true` once at least one `UsageEntry` has been recorded (preserved billable work), `false` again after `clear_persisted!`
+- the bare initial-state regression case is the load-bearing one: a worker that dies between Smith's initial `persist!` and the first `advance!` leaves a Redis key with no billable work, and a host's credits-guard bypass keyed on `persisted_state_exists?` alone would silently let that abandoned-init-state replay run a model call against a zero-balance user. `restorable_billing_state?` returns false on that state so the guard runs.
+
+Notes:
+
+- This spec covers the durable contract surface only — recording itself (the `record_usage` call site contract) is covered in `spec/smith/workflow/usage_recording_spec.rb`.
+- The two peek APIs are layered: `persisted_state_exists?` is a fast key-presence check; `restorable_billing_state?` is heavier (full deserialize) but answers the billing-aware question hosts actually need at credits-guard time.
+
+### `spec/smith/workflow/usage_recording_spec.rb`
+
+Purpose:
+
+- asserts the contract between the lifecycle's `record_usage` helper and the workflow's `@usage_entries` / `@total_tokens` / `@total_cost` state, including parallel-fan-out attribution and nested-workflow rollup
+
+Architecture basis:
+
+- Section 4.2, Workflow
+- Section 5.1, Agent Invocation
+- Section 4.8, Observability (cost tracking)
+
+Documented contracts covered:
+
+- `record_usage` from the completed-attempt site (`snapshot_and_finalize`) appends a `:completed_attempt` `UsageEntry` carrying every per-call fact (`usage_id` / `agent_name` / `model` / token counts / `cost` / `recorded_at`)
+- `record_usage` from the failed-attempt site (`account_failed_attempt`) appends a `:failed_attempt` `UsageEntry` when the provider call resolved with token usage before failing (failed-but-billable fallback path)
+- `record_usage` is a no-op when `agent_result.usage_known?` is false — no entry, no token/cost change
+- `record_usage` updates `@total_tokens`, `@total_cost`, and `@usage_entries` in lockstep inside ONE `@usage_mutex.synchronize` block (regression: prior two-block pattern allowed parallel-fan-out interleave between tokens and cost)
+- sum invariant `total_tokens == sum(usage_entries.input_tokens + output_tokens)` and `total_cost ≈ sum(usage_entries.compact.cost)` (float-tolerant) holds across multiple recordings
+- under concurrent recording from many threads with different model ids, every entry attributes the right `model` (regression guard for the local-arg `model_used` fix that replaced the prior `@last_attempt_model` ivar — the ivar version raced under fan-out and could attribute branch A's success to branch B's last-set model)
+- under concurrent recording, the rollup invariant (`@total_tokens` + `@total_cost` + `@usage_entries.size`) is preserved — no lost updates, no double-counting
+- nested-workflow rollup via `roll_up_child_totals`:
+  - rolls up child `usage_entries` into the parent
+  - deep-copies child entries (parent and child entries are different `UsageEntry` instances; Struct fields like `model` are different String objects via `snapshot_value`'s recursive duplication)
+  - preserves `attempt_kind` on rollup so a child's `:failed_attempt` entry stays `:failed_attempt` on the parent
+
+Notes:
+
+- Drives `record_usage` directly via `send(:record_usage, ...)` and `roll_up_child_totals` via `send(...)` rather than mocking a full provider call. The helper contracts are the units under test, not the chat plumbing.
+- The parallel-attribution test creates a fake agent class that responds to `register_as`; it does not require a real `Smith::Agent` subclass.
 
 ### `spec/smith/workflow/context_persistence_spec.rb`
 
@@ -927,6 +1084,40 @@ Notes:
   - agent-only `cost` enforcement without a workflow budget
   - agent-only parallel budgets behaving as per-branch invocation ledgers rather than a shared pool
 - It does not yet assert richer provider-style in-flight completion behavior or provider-timeout optimistic release behavior beyond the current cooperative cancellation and failure/discard surface.
+
+### `spec/smith/workflow/deterministic_step_spec.rb`
+
+Purpose:
+
+- asserts the deterministic step primitives (`compute` / `run`) — DSL contract, conflict validation against agent-bearing transition modes, runtime step-object surface, persistence round-trip, trace lifecycle, guardrail-boundary integration, and mixed agent + deterministic workflow behavior
+
+Architecture basis:
+
+- Section 5.2, Workflow Execution (Deterministic step primitives)
+- Section 5.3, State Serialization (deterministic step persistence round-trip)
+- Section 4.4, Guardrails (deterministic-step guardrail boundary)
+- Section 4.8, Observability (deterministic-step trace lifecycle)
+
+Documented contracts covered:
+
+- `compute` DSL declares a workflow-resolved deterministic step bound to a workflow instance method or registered helper
+- `run` DSL declares a host-resolved deterministic step bound to a registered host helper
+- mutual-exclusivity validation rejects combining `compute` / `run` with any of: `execute`, `route`, `workflow`, `optimize`, `orchestrate`. Validation is bidirectional (declaring agent first then `compute`, or `compute` first then agent, both fail at DSL definition time)
+- step-object runtime surface (constrained, host-facing): `read`, `read_context`, `write_context`, `write_outcome`, `route_to`, `fail!`, `tool_results` exposed as the documented step API; non-listed accessors are NOT part of the contract
+- `read_context` reads the current context including any `write_context` writes made earlier in the same step (read-after-write coherence within a single step body)
+- `write_outcome` records first-class run-result accessors (`outcome`, `outcome_kind`, `outcome_payload`) as part of the step's success path
+- `route_to` chooses a named transition from the available next-transitions; an unresolved name fails loudly with `Smith::WorkflowError`
+- `fail!` accepts a message and optional metadata payload; the failure routes through `on_failure`
+- persistence round-trip: deterministic step state survives `to_state` / `from_state` and resumes correctly mid-workflow
+- trace lifecycle emits `started` / `success` (with the emitted outcome kind) / `routed` / `failed` events at the deterministic-step boundary
+- guardrail boundary enforcement applies workflow-level input/output guardrails around deterministic step execution
+- mixed-mode workflows: a workflow can interleave deterministic steps with agent-driven steps, sharing context, session messages, tool results, and budget ledger across both kinds
+
+Notes:
+
+- The deterministic step primitives are the host's escape hatch for non-LLM logic that must run inside the workflow lifecycle (deterministic decisions, host-policy gates, structured transformations on agent output).
+- `compute` is workflow-resolved (instance method on the `Workflow` subclass); `run` is host-resolved (registered host helper). Both share the same constrained step-object surface so step bodies are interchangeable.
+- This is one of Smith's largest spec files (~1150 lines, ~50 examples) — covers DSL declaration, runtime semantics, persistence, trace, guardrails, and mixed-mode integration in one place.
 
 ### `spec/smith/events/contract_spec.rb`
 
@@ -1282,6 +1473,30 @@ Notes:
 - This spec covers layer ordering as declared.
 - It does not yet assert runtime execution ordering across workflow-level and agent-level guardrails.
 
+### `spec/smith/guardrails/runtime_spec.rb`
+
+Purpose:
+
+- asserts the runtime execution behavior of the guardrail pipeline at the workflow boundary — input blocking, output blocking, success-event suppression on guardrail failure, and cooperative-deadline failure routing
+
+Architecture basis:
+
+- Section 4.4, Guardrails (synchronous blocking, on_failure routing)
+- Section 5.4, Guardrail Attachment
+
+Documented contracts covered:
+
+- input guardrail failure blocks step execution (the agent's `execute` body is NOT invoked) and routes the workflow through `on_failure`
+- output guardrail failure runs AFTER the agent body and then routes through `on_failure`; the recorded order is `executed → output_guardrail`
+- guardrail failures surface as `Smith::GuardrailFailed` on the failed step's `:error` payload
+- a guardrail failure that routes the workflow to `:failed` does NOT emit a success event (the typed event bus only fires on successful steps)
+- cooperative `wall_clock: 0` deadline expiry BEFORE the agent call routes through `on_failure` with a `Smith::DeadlineExceeded` error carrying the documented message `"wall_clock deadline exceeded"`; `chat.complete` is never invoked when the deadline has already expired
+
+Notes:
+
+- Covers runtime semantics of the guardrail pipeline; declarative attachment ordering is asserted in `spec/smith/guardrails/order_spec.rb`.
+- Cooperative deadline coverage here is the workflow-level seam; per-budget cooperative cancellation is asserted in the budget specs.
+
 ### `spec/smith/guardrails/builtins_spec.rb`
 
 Purpose:
@@ -1459,16 +1674,16 @@ Recommended future specs:
 Partially covered:
 
 - input guardrails run before model/tool execution at runtime
-- output guardrails run after model completion at runtime
-- input and output guardrail failures route workflow execution through `on_failure`
+- output guardrails run after model completion at runtime (with the executed-then-output-guardrail order asserted explicitly via an observation list)
+- input and output guardrail failures route workflow execution through `on_failure`, surfacing `Smith::GuardrailFailed` on the failed step's `:error` payload
+- guardrail-induced workflow failures do NOT emit a success event (the typed event bus only fires on successful steps)
 - tool guardrail ordering at invocation time
-- cooperative pre-agent-call deadline failure routing is covered
+- cooperative pre-agent-call deadline failure routing is covered (carries `Smith::DeadlineExceeded` with the documented `"wall_clock deadline exceeded"` message; `chat.complete` is never invoked when the deadline has already expired)
 - tool-boundary retriable guardrail failure semantics are covered at the workflow boundary
 - no async output validation leakage
 
 Recommended future specs:
 
-- `spec/smith/guardrails/runtime_spec.rb`
 - extend `spec/smith/guardrails/order_spec.rb` only if additional stable seams are added
 
 ### Section 4.5 Budget Controller
@@ -1599,6 +1814,12 @@ Partially covered:
 - serial token budget settlement and remaining-budget-based parallel estimation are covered
 - cooperative pre-agent-call deadline enforcement is covered
 - `MaxTransitionsExceeded` exception, current-state preservation, and non-resumable repeated/rehydrated behavior are covered
+- deterministic step primitives (`compute` / `run`) DSL contract, mutual-exclusivity validation against agent-bearing modes (bidirectional for `execute`/`route`/`workflow`/`optimize`/`orchestrate`/`run`), constrained step-object surface (`read`/`read_context`/`write_context`/`write_outcome`/`route_to`/`fail!`/`tool_results`), persistence round-trip, trace lifecycle (`started`/`success`/`routed`/`failed` + emitted outcome kind), and guardrail-boundary enforcement are covered
+- mixed agent + deterministic workflow integration (interleaved deterministic and agent-driven steps share context, session messages, tool results, and budget ledger) is covered
+- per-agent-call billing facts (`Workflow::UsageEntry`) populated from completed AND failed-but-billable attempts, with single-mutex critical section keeping `@total_tokens` / `@total_cost` / `@usage_entries` updates atomic, are covered
+- nested-workflow `total_cost` / `total_tokens` / `usage_entries` rollup happens BEFORE the failed-step check raises (preserving failed-child billable work on the parent) is covered
+- terminal-restore correctness for `RunResult#output` (last-non-nil step output fallback gated on `steps.empty?`) and `RunResult#last_error` / `#failure_detail` (synthesized from class-aware `@last_failed_step` snapshot when steps is empty) is covered
+- billing-aware durability peeks `Workflow.persisted_state_exists?` (fast key-presence) and `Workflow.restorable_billing_state?` (true only when restored state has `usage_entries.any?`) are covered
 
 Recommended future specs:
 
@@ -1609,7 +1830,11 @@ Recommended future specs:
 Partially covered:
 
 - entry points are covered
-- exact documented hash shape is covered
+- exact documented hash shape is covered (now including `usage_entries`, `last_output`, and `last_failed_step` keys; backward-compat fallbacks for pre-patch persisted state restore cleanly)
+- typed `Workflow::UsageEntry` rebuild via `from_h` on restore is covered (host JSON round-trip safety with stringified-symbol coercion on `agent_name` / `attempt_kind`)
+- terminal-restore correctness for `RunResult#output` / `#last_error` / `#failure_detail` via persisted `@last_output` / `@last_failed_step` snapshots is covered
+- class-aware error reconstruction on `@last_failed_step` restore (`KNOWN_RECONSTRUCTORS` for known classes, `RETRYABLE_BEARING_FAMILIES` short-circuit for unknown subclasses of `DeterministicStepFailure`/`ToolGuardrailFailed`, `family_fallback` for unknown subclasses of other Smith error classes, `RuntimeError` for the `other` family) is covered
+- eager `@usage_mutex = Mutex.new` mirror in `restore_state` (load-bearing — `from_state` uses `allocate` and bypasses `initialize`) is covered
 - non-serialization guarantees are only partially covered
 
 Recommended future specs:
@@ -1787,6 +2012,8 @@ Notes:
 - lazy cache-backed backend resolution failures are reported as `durability.adapter` failures instead of escaping the doctor run
 
 ## Section 9: Tool Result Capture
+
+> **Cross-cutting feature index.** This section is a per-feature view of how `tool_results` capture is exercised across multiple specs — distinct from the file-by-file mapping above. The same files appear here when they contribute to this feature; the bullets below list ONLY the capture-related behaviors, not the full file's coverage. Refer to each file's primary section earlier in this document for the complete contract list.
 
 ### `spec/smith/tools/contract_spec.rb`
 

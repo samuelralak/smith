@@ -646,8 +646,11 @@ end
 - `outcome`
 - `outcome_kind`
 - `outcome_payload`
+- `usage_entries`
 
 Those totals are cumulative best-known workflow totals, including resumed execution and nested roll-up, not just the last `run!` segment.
+
+`usage_entries` is the per-agent-call billing-facts list — one `Smith::Workflow::UsageEntry` per agent provider call, each carrying `usage_id`, `agent_name`, `model`, `input_tokens`, `output_tokens`, `cost`, `attempt_kind` (`:completed_attempt` or `:failed_attempt`), and `recorded_at`. Hosts persist these idempotently (the `usage_id` is the natural unique key) and use them to compute per-row charges. The collection is deep-copied on RunResult population — host mutation does not leak back into workflow state.
 
 Convenience helpers:
 
