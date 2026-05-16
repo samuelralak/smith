@@ -45,16 +45,67 @@ module Smith
       end
 
       def build_model_chain(agent_class)
-        primary = agent_class.chat_kwargs[:model]
+        primary = if agent_class.respond_to?(:model_block) && agent_class.model_block
+          resolve_dynamic_model(agent_class)
+        else
+          agent_class.chat_kwargs[:model]
+        end
         fallbacks = agent_class.fallback_models || []
         [primary, *fallbacks].compact
       end
 
+      # Evaluates a block-form `model` declaration with the workflow's
+      # @context (Hash, defaults to {} when uninitialized). The block
+      # must return a non-empty string model id; any other value
+      # surfaces as Smith::AgentError so the workflow's failure handler
+      # treats it as a step failure rather than a silent miss.
+      def resolve_dynamic_model(agent_class)
+        result = agent_class.model_block.call(@context || {})
+        return result if result.is_a?(String) && !result.empty?
+
+        raise Smith::AgentError,
+              "model block for #{agent_class} must return a non-empty string; got #{result.inspect}"
+      end
+
       def attempt_model(agent_class, prepared_input, model_id)
-        chat = agent_class.chat(model: model_id)
+        chat = agent_class.chat(model: model_id, **bridge_workflow_inputs(agent_class))
         add_prepared_input(chat, prepared_input)
         chat = chat.with_schema(agent_class.output_schema) if agent_class.output_schema
         chat.complete
+      end
+
+      # Bridges declared agent `inputs` from the workflow's @context Hash
+      # to the agent invocation kwargs, so block-form RubyLLM DSLs (tools,
+      # instructions, params, headers, schema) can access workflow-context
+      # data via bare method calls on `self` inside the block (RubyLLM
+      # invokes these via `runtime.instance_exec(&block)`, exposing each
+      # declared input as a singleton method on the runtime object).
+      # Smith's own `model` block-form already receives @context directly
+      # via `block.call(@context)`; this bridge gives runtime_context the
+      # same surface for the RubyLLM-owned blocks.
+      #
+      # Bridges ONLY user-declared inputs — reserved names
+      # (Smith::Agent::RESERVED_INPUT_NAMES: model_id, provider,
+      # endpoint_mode) are auto-injected by Smith::Agent.chat from the
+      # resolved profile, NOT from @context. The slice prevents the bridge
+      # from accidentally passing through stale or wrong values that
+      # happen to live in @context under those keys.
+      #
+      # Contract: declared inputs are ALWAYS passed (with nil when absent
+      # from @context). The declaration is the contract — `inputs :form_kind`
+      # promises that `form_kind` will be a callable singleton method on
+      # the runtime regardless of whether @context happens to have a value.
+      # This eliminates `respond_to?` defensiveness in agent blocks and
+      # mirrors the silent-nil semantics agent authors get from `ctx[:k]`
+      # in the model block. Non-Hash @context short-circuits.
+      def bridge_workflow_inputs(agent_class)
+        return {} unless @context.is_a?(Hash)
+
+        declared = agent_class.inputs || []
+        user_declared = declared - Smith::Agent::RESERVED_INPUT_NAMES
+        user_declared.each_with_object({}) do |name, kwargs|
+          kwargs[name] = @context[name]
+        end
       end
 
       def add_prepared_input(chat, prepared_input)
@@ -124,7 +175,9 @@ module Smith
         return unless input.is_a?(Integer) && output.is_a?(Integer)
 
         cost = Smith::Pricing.compute_cost(model: model_id, input_tokens: input, output_tokens: output)
-        agent_result = Workflow::AgentResult.new(nil, input, output, cost, model_id)
+        agent_result = Workflow::AgentResult.new(
+          content: nil, input_tokens: input, output_tokens: output, cost: cost, model_used: model_id
+        )
         record_usage(agent_class, agent_result, :failed_attempt, model_id)
       end
 
@@ -190,14 +243,14 @@ module Smith
         return unless agent_result.usage_known?
 
         entry = Workflow::UsageEntry.new(
-          SecureRandom.uuid,
-          agent_class.register_as,
-          model_id,
-          agent_result.input_tokens,
-          agent_result.output_tokens,
-          agent_result.cost,
-          attempt_kind,
-          Time.now.utc.iso8601
+          usage_id: SecureRandom.uuid,
+          agent_name: agent_class.register_as,
+          model: model_id,
+          input_tokens: agent_result.input_tokens,
+          output_tokens: agent_result.output_tokens,
+          cost: agent_result.cost,
+          attempt_kind: attempt_kind,
+          recorded_at: Time.now.utc.iso8601
         )
 
         @usage_mutex.synchronize do

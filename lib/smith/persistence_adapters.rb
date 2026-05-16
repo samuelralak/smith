@@ -1,14 +1,29 @@
 # frozen_string_literal: true
 
+require "monitor"
 require_relative "persistence_adapters/cache_store"
 require_relative "persistence_adapters/rails_cache"
 require_relative "persistence_adapters/redis_store"
 require_relative "persistence_adapters/active_record_store"
+require_relative "persistence_adapters/memory"
+require_relative "persistence_adapters/retry"
 
 module Smith
   module PersistenceAdapters
     SolidCache = RailsCache
+
+    # REQUIRED_METHODS is the immutable adapter contract: any object
+    # responding to these is a valid Smith persistence adapter. This
+    # contract is preserved across the Phase B persistence hardening
+    # work; new optional capabilities (store_versioned, TTL kwarg) are
+    # additive and queried via respond_to?.
     REQUIRED_METHODS = %i[store fetch delete].freeze
+
+    # OPTIONAL_METHODS: capabilities adapters MAY implement. Callers
+    # check support via `supports?(adapter, capability)` and fall back
+    # gracefully (e.g., Workflow#persist! warns once and uses plain
+    # `store` when `store_versioned` is missing).
+    OPTIONAL_METHODS = %i[store_versioned].freeze
 
     def self.resolve(adapter, **options)
       return nil if adapter.nil?
@@ -20,17 +35,19 @@ module Smith
       end
 
       built_in = case adapter.to_sym
-      when :cache_store
-        CacheStore.new(**options)
-      when :rails_cache, :solid_cache
-        RailsCache.new(**options)
-      when :redis
-        RedisStore.new(**options)
-      when :active_record
-        ActiveRecordStore.new(**options)
-      else
-        raise ArgumentError, "Unknown persistence adapter #{adapter.inspect}"
-      end
+                 when :cache_store
+                   CacheStore.new(**options)
+                 when :rails_cache, :solid_cache
+                   RailsCache.new(**options)
+                 when :redis
+                   RedisStore.new(**options)
+                 when :active_record
+                   ActiveRecordStore.new(**options)
+                 when :memory
+                   Memory.new
+                 else
+                   raise ArgumentError, "Unknown persistence adapter #{adapter.inspect}"
+                 end
 
       validate!(built_in)
     end
@@ -44,6 +61,34 @@ module Smith
 
       missing = REQUIRED_METHODS.reject { |method_name| adapter.respond_to?(method_name) }
       raise ArgumentError, "Persistence adapter must implement #{missing.join(', ')}"
+    end
+
+    # Capability introspection used by Workflow#persist! to decide
+    # whether the adapter supports optimistic locking via store_versioned.
+    def self.supports?(adapter, capability)
+      adapter.respond_to?(capability)
+    end
+
+    # Tracks which adapter CLASSES have already warned about missing
+    # store_versioned capability. One warning per adapter class per
+    # Smith boot (not per workflow instance, not per persist call).
+    @_warned_classes = Set.new
+    @_warned_monitor = Monitor.new
+
+    def self.warn_missing_versioning(adapter)
+      klass = adapter.class
+      @_warned_monitor.synchronize do
+        return if @_warned_classes.include?(klass)
+
+        @_warned_classes << klass
+      end
+
+      Smith.config.logger&.warn(
+        "#{klass.name} does not implement store_versioned; " \
+        "optimistic locking is disabled for this adapter. " \
+        "Switch to RedisStore, ActiveRecordStore (with lock_version column), " \
+        "or the Memory adapter for race protection."
+      )
     end
   end
 end

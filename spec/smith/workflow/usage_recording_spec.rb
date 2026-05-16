@@ -31,7 +31,9 @@ RSpec.describe "Smith::Workflow usage recording contract" do
   end
 
   def agent_result(input:, output:, cost:, content: "ok", model_used: "claude-opus-4-7")
-    Smith::Workflow::AgentResult.new(content, input, output, cost, model_used)
+    Smith::Workflow::AgentResult.new(
+      content: content, input_tokens: input, output_tokens: output, cost: cost, model_used: model_used
+    )
   end
 
   describe "completed-attempt entries" do
@@ -82,7 +84,9 @@ RSpec.describe "Smith::Workflow usage recording contract" do
 
   describe "no-op when usage is unknown" do
     it "skips recording entirely when input/output tokens are nil (provider didn't report)" do
-      result = Smith::Workflow::AgentResult.new("content", nil, nil, nil, "model")
+      result = Smith::Workflow::AgentResult.new(
+        content: "content", input_tokens: nil, output_tokens: nil, cost: nil, model_used: "model"
+      )
 
       workflow.send(:record_usage, agent_class, result, :completed_attempt, "model")
 
@@ -183,7 +187,14 @@ RSpec.describe "Smith::Workflow usage recording contract" do
 
     def child_entry(usage_id:, model:, attempt_kind: :completed_attempt, input: 100, output: 50, cost: 0.001)
       Smith::Workflow::UsageEntry.new(
-        usage_id, :child_agent, model, input, output, cost, attempt_kind, "2026-04-27T12:00:00Z"
+        usage_id: usage_id,
+        agent_name: :child_agent,
+        model: model,
+        input_tokens: input,
+        output_tokens: output,
+        cost: cost,
+        attempt_kind: attempt_kind,
+        recorded_at: "2026-04-27T12:00:00Z"
       )
     end
 

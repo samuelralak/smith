@@ -278,6 +278,76 @@ It just needs to implement:
 - `fetch(key)`
 - `delete(key)`
 
+Adapters MAY additionally implement the optional `store_versioned(key, payload, expected_version:, ttl:)` capability for optimistic locking. See "Persistence Hardening" below.
+
+### Persistence Hardening
+
+Beyond the basic store/fetch/delete contract, Smith ships several opt-in persistence features. All defaults preserve the pre-hardening behavior; hosts opt in per workflow class or globally.
+
+**In-process Memory adapter for tests.** When `Smith.config.persistence_adapter` is nil and `Smith.config.test_mode = true`, Smith auto-selects `Smith::PersistenceAdapters::Memory`, a Monitor-synchronized in-process Hash adapter. Lets spec suites avoid wiring Redis or Rails.cache:
+
+```ruby
+# spec/rails_helper.rb
+Smith.configure { |c| c.test_mode = true }
+```
+
+**TTL on persisted state.** Set globally via `Smith.config.persistence_ttl = 30.days.to_i`, or per workflow class via the `persistence_ttl` DSL:
+
+```ruby
+class DraftWorkflow < Smith::Workflow
+  persistence_ttl 7.days.to_i  # overrides Smith.config.persistence_ttl
+end
+```
+
+Adapters that natively support TTL (RedisStore via `ex:`, CacheStore via `expires_in:`, Memory via stamped expiry) honor it. ActiveRecordStore TTL is deferred (would need an `expires_at` column + sweeper job).
+
+**Retry on transient I/O failures.** All shipped I/O-bound adapters wrap `store/fetch/delete/store_versioned` in `Smith::PersistenceAdapters::Retry.with_retries` with backend-specific transient-error lists. Exhausted retries raise `Smith::PersistenceIOError` with `#operation` and `#cause` fields. Tune via `Smith.config.persistence_retry_policy`:
+
+```ruby
+Smith.config.persistence_retry_policy = { attempts: 5, base_delay: 0.2, max_delay: 2.0 }
+```
+
+**Optimistic locking via `store_versioned`.** RedisStore (WATCH/MULTI/EXEC), Memory (Monitor), and ActiveRecordStore (Rails `lock_version` column) implement the optional `store_versioned(key, payload, expected_version:)` capability. `Workflow#persist!` queries `Smith::PersistenceAdapters.supports?(adapter, :store_versioned)` and forwards a monotonic `@persistence_version` to the adapter. Stale writers raise `Smith::PersistenceVersionConflict`, which host code can rescue, restore, and retry. CacheStore/RailsCache fall back to plain `store` with a one-time per-adapter-class warning.
+
+ActiveRecordStore optimistic locking requires the AR model to have a `lock_version` integer column:
+
+```ruby
+add_column :workflow_states, :lock_version, :integer, default: 0
+```
+
+**Schema versioning + migrations.** Workflow classes can stamp a schema version and register forward-migration blocks. Restore walks registered migrations one step at a time; unbridged gaps raise `Smith::PersistenceSchemaMismatch`:
+
+```ruby
+class DraftWorkflow < Smith::Workflow
+  persistence_schema_version 2
+
+  migrate_from 1 do |payload|
+    payload[:schema_version] = 2
+    payload[:context] = (payload[:context] || {}).merge(introduced_in_v2: nil)
+    payload
+  end
+end
+```
+
+**Seed-message drift validation.** When the seed builder is deterministic (system instructions, static templates), opt into validation. `:strict` raises `Smith::SeedMismatch` on drift; `:warn` logs. Default `:off` because many real seed builders are non-deterministic (timestamps, UUIDs, request-scoped data):
+
+```ruby
+class StableSeedWorkflow < Smith::Workflow
+  seed_validation :strict
+  seed_messages { [{ role: :system, content: "You are a careful assistant." }] }
+end
+```
+
+**Step-in-progress idempotency marker.** For workflows where re-running a step on resume could double-execute non-idempotent side effects, opt into `:strict` mode. Smith stamps a marker before each advance and clears it after; restore raises `Smith::StepInProgressOnRestore` if the marker is set (a previous worker crashed mid-step):
+
+```ruby
+class PaymentWorkflow < Smith::Workflow
+  idempotency_mode :strict
+end
+```
+
+Default `:lax` skips marker stamping (no write amplification) and assumes step re-runs are safe.
+
 ## Quickstart
 
 The setup model is:
@@ -1268,6 +1338,25 @@ class RefundCustomer < Smith::Tool
 end
 ```
 
+### Tool Compatibility (provider-aware tool selection)
+
+Tools can declare which provider/endpoint combinations they tolerate. `Smith::Models::Normalizer` consults this metadata at chat construction and drops incompatible tools rather than letting the provider reject the request. Tools without a declaration are universally compatible (preserves existing behavior).
+
+```ruby
+class WebSearch < Smith::Tool
+  # Allowlist form: specific providers, plus an OpenAI endpoint constraint.
+  compatible_with :anthropic, :gemini, openai: :responses
+
+  def perform(query:)
+    # ...
+  end
+end
+```
+
+When `Smith.config.openai_api_mode = :auto` (the default) AND the tool requires `/v1/responses`, the normalizer instead sets `@params[:openai_api_mode] = :responses` so the routing prepend can dispatch via the Responses endpoint. When `:off`, the tool is dropped gracefully.
+
+The compatibility spec is inherited by subclasses; subclasses can override by calling `compatible_with` again. The spec is consulted only by the Normalizer, so tools without a declaration retain their pre-refactor behavior.
+
 ### Tool Result Capture
 
 Tools can declare a `capture_result` block to collect structured data during workflow execution. Smith stores captured data on the workflow and exposes it on `RunResult#tool_results`. Smith does not interpret the payload — the host app owns all projection.
@@ -1719,6 +1808,14 @@ end
 | `trace_tenant_isolation` | Trace multi-tenant isolation flag | Enable in multi-tenant systems |
 | `pricing` | Best-known model-call cost catalog | Add once you care about `total_cost` |
 | `logger` | Smith's runtime logger | Usually the first setting to add |
+| `persistence_adapter` | Adapter for durable workflow state | `:redis`, `:rails_cache`, `:active_record`, `:memory`, or a custom object |
+| `persistence_options` | Per-adapter options (client, namespace, model, columns) | See "Built-In Persistence Adapters" |
+| `persistence_ttl` | Global TTL for persisted state (Integer/Float seconds; nil = no expiry) | Set when long-tail abandoned workflows accumulate in storage |
+| `persistence_retry_policy` | Exponential-backoff policy for transient adapter I/O failures | Defaults to `{ attempts: 3, base_delay: 0.1, max_delay: 1.0 }` |
+| `test_mode` | Auto-select `:memory` adapter when `persistence_adapter` is nil | Enable in `spec_helper.rb` to skip Redis/cache wiring in tests |
+| `openai_api_mode` | `:auto` routes (gpt-5 family + tools + thinking) via `/v1/responses` using Smith's vendored Responses adapter (sync only; streaming over `/v1/responses` is not yet supported); `:off` drops incompatible tools instead | Leave `:auto` (default) unless you need streaming with the (gpt-5 + tools + thinking) combo, in which case set `:off` for graceful tool-dropping |
+| `trace_normalizer` | Emit `:normalizer_decision` trace events from `Smith::Models::Normalizer` | Useful when debugging cross-provider request shaping |
+| `ruby_llm_model_registry` | `:database` to require an AR-backed RubyLLM model registry; `:bundled` for the JSON fallback | Leave at default unless you've migrated to DB-backed |
 
 ### Recommended First Additions
 

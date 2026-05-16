@@ -164,8 +164,15 @@ module Smith
         persist!(resolved_key, adapter:)
 
         until terminal?
+          if strict_idempotency?
+            mark_step_in_progress!
+            persist!(resolved_key, adapter:)
+          end
+
           step = advance!
           steps << step if step
+
+          clear_step_in_progress!
           persist!(resolved_key, adapter:)
           invoke_on_step_callback(step, on_step) if step
         end
@@ -177,8 +184,10 @@ module Smith
         return if terminal?
 
         resolved_key = resolve_persistence_key!(key)
+        mark_step_in_progress! if strict_idempotency?
         persist!(resolved_key, adapter:)
         step = advance!
+        clear_step_in_progress!
         persist!(resolved_key, adapter:) if step
         invoke_on_step_callback(step, on_step) if step
         step
@@ -186,7 +195,17 @@ module Smith
 
       def persist!(key = nil, adapter: Smith.persistence_adapter)
         resolved_key = resolve_persistence_key!(key)
-        persistence_adapter!(adapter).store(resolved_key, JSON.generate(to_state))
+        store = persistence_adapter!(adapter)
+        previous_version = @persistence_version || 0
+        next_version = previous_version + 1
+        payload = JSON.generate(to_state.merge(persistence_version: next_version))
+
+        dispatch_store!(store, resolved_key, payload, previous_version: previous_version)
+
+        # Increment ONLY after successful store. On PersistenceVersionConflict
+        # (raised by store_versioned), @persistence_version stays at the
+        # previous value so callers can rescue + restore + retry cleanly.
+        @persistence_version = next_version
         self
       end
 
@@ -196,7 +215,46 @@ module Smith
         self
       end
 
+      def mark_step_in_progress!
+        @step_in_progress = true
+      end
+
+      def clear_step_in_progress!
+        @step_in_progress = false
+      end
+
       private
+
+      def strict_idempotency?
+        self.class.idempotency_mode == :strict
+      end
+
+      # Forwards the persist payload to the adapter, splatting `ttl:`
+      # only when a TTL is resolved. The empty-Hash splat is a no-op so
+      # external duck-typed adapters that don't accept a `ttl:` kwarg
+      # keep working; they only break if the host opts into TTL.
+      def dispatch_store!(store, key, payload, previous_version:)
+        kwargs = ttl_kwarg(effective_persistence_ttl)
+
+        if Smith::PersistenceAdapters.supports?(store, :store_versioned)
+          store.store_versioned(key, payload, expected_version: previous_version, **kwargs)
+        else
+          Smith::PersistenceAdapters.warn_missing_versioning(store)
+          store.store(key, payload, **kwargs)
+        end
+      end
+
+      # Resolves the effective TTL once per persist, with the class-level
+      # DSL override taking precedence over Smith.config.persistence_ttl.
+      # Returns nil when neither is set, which collapses ttl_kwarg to an
+      # empty Hash and preserves the pre-TTL adapter call shape.
+      def effective_persistence_ttl
+        self.class.persistence_ttl || Smith.config.persistence_ttl
+      end
+
+      def ttl_kwarg(ttl)
+        ttl ? { ttl: ttl } : {}
+      end
 
       def persistence_adapter!(adapter)
         return adapter if adapter

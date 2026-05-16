@@ -31,7 +31,7 @@ Gem::Specification.new do |spec|
   spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
   spec.require_paths = ["lib"]
 
-  spec.add_dependency "ruby_llm", "~> 1.13"
+  spec.add_dependency "ruby_llm", "~> 1.15"
   spec.add_dependency "dry-types", "~> 1.7"
   spec.add_dependency "dry-struct", "~> 1.6"
   spec.add_dependency "dry-initializer", "~> 3.1"

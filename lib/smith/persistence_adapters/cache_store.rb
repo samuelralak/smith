@@ -3,21 +3,43 @@
 module Smith
   module PersistenceAdapters
     class CacheStore
+      # Cache backends vary widely; the transient list is intentionally
+      # broad. Hosts using a specific backend can subclass and tighten.
+      # NOTE: NO store_versioned implementation — cache backends don't
+      # have uniform CAS semantics. Workflow#persist! checks via
+      # respond_to? and falls back to non-versioned store + warning.
+      TRANSIENT_ERRORS = [
+        Errno::ECONNREFUSED,
+        Errno::ETIMEDOUT,
+        Errno::EPIPE,
+        IOError
+      ].freeze
+
       def initialize(store:, namespace: "smith")
         @store_source = store
         @namespace = namespace
       end
 
-      def store(key, payload)
-        backend.write(namespaced(key), payload)
+      def store(key, payload, ttl: Smith.config.persistence_ttl)
+        Retry.with_retries(operation: :store, transient: TRANSIENT_ERRORS) do
+          if ttl
+            backend.write(namespaced(key), payload, expires_in: ttl)
+          else
+            backend.write(namespaced(key), payload)
+          end
+        end
       end
 
       def fetch(key)
-        backend.read(namespaced(key))
+        Retry.with_retries(operation: :fetch, transient: TRANSIENT_ERRORS) do
+          backend.read(namespaced(key))
+        end
       end
 
       def delete(key)
-        backend.delete(namespaced(key))
+        Retry.with_retries(operation: :delete, transient: TRANSIENT_ERRORS) do
+          backend.delete(namespaced(key))
+        end
       end
 
       def backend_name

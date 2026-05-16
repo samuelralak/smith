@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "digest"
+require "json"
 require "securerandom"
 require "time"
 
@@ -67,14 +69,23 @@ module Smith
       end
     end
 
-    AgentResult = Struct.new(:content, :input_tokens, :output_tokens, :cost, :model_used) do
+    # keyword_init: true so adding new fields in future schema versions
+    # remains backward-compatible: `from_response` and `from_h` can fill
+    # extra fields without breaking existing call sites that pass the
+    # historical positional args. Reading old persisted records into a
+    # newer Struct shape: from_h slices to current members (unknown keys
+    # silently dropped; missing keys default to nil).
+    AgentResult = Struct.new(
+      :content, :input_tokens, :output_tokens, :cost, :model_used,
+      keyword_init: true
+    ) do
       def self.from_response(response, content, model_used: nil)
         new(
-          content,
-          response.respond_to?(:input_tokens) ? response.input_tokens : nil,
-          response.respond_to?(:output_tokens) ? response.output_tokens : nil,
-          nil,
-          model_used
+          content: content,
+          input_tokens: response.respond_to?(:input_tokens) ? response.input_tokens : nil,
+          output_tokens: response.respond_to?(:output_tokens) ? response.output_tokens : nil,
+          cost: nil,
+          model_used: model_used
         )
       end
 
@@ -88,6 +99,12 @@ module Smith
     # uses it as the idempotency anchor on `usage_events.smith_usage_id`.
     # Includes `to_h`/`from_h` for JSON serialization (plain Struct
     # JSON-encodes to `"#<struct ...>"` — useless).
+    #
+    # keyword_init: true gives forward/backward compatibility:
+    # - Adding a new field: old persisted hashes restore cleanly (new
+    #   field defaults to nil).
+    # - Reading new persisted hashes with an older Smith version: from_h
+    #   slices to known members (unknown keys silently dropped).
     UsageEntry = Struct.new(
       :usage_id,
       :agent_name,
@@ -96,24 +113,17 @@ module Smith
       :output_tokens,
       :cost,
       :attempt_kind,
-      :recorded_at
+      :recorded_at,
+      keyword_init: true
     ) do
-      def to_h
-        members.zip(values).to_h
-      end
-
       def self.from_h(hash)
         sym = hash.transform_keys(&:to_sym)
-        new(
-          sym[:usage_id],
-          sym[:agent_name]&.to_sym,
-          sym[:model],
-          sym[:input_tokens],
-          sym[:output_tokens],
-          sym[:cost],
-          sym[:attempt_kind]&.to_sym,
-          sym[:recorded_at]
-        )
+        filtered = sym.slice(*members)
+        # Symbolize :agent_name and :attempt_kind for backward compat
+        # with callers that consume the field as Symbol.
+        filtered[:agent_name] = filtered[:agent_name].to_sym if filtered[:agent_name].is_a?(String)
+        filtered[:attempt_kind] = filtered[:attempt_kind].to_sym if filtered[:attempt_kind].is_a?(String)
+        new(**filtered)
       end
     end
 
@@ -156,7 +166,11 @@ module Smith
     RETRYABLE_BEARING_FAMILIES = %w[deterministic_step_failure tool_guardrail_failed].freeze
     private_constant :RETRYABLE_BEARING_FAMILIES
 
-    BranchEnv = Struct.new(:prepared_input, :guardrail_sources, :scoped_store, :branch_estimates, :deadline) do
+    # keyword_init: true for forward/backward compat (see UsageEntry).
+    BranchEnv = Struct.new(
+      :prepared_input, :guardrail_sources, :scoped_store, :branch_estimates, :deadline,
+      keyword_init: true
+    ) do
       def setup_thread
         Smith::Tool.current_guardrails = guardrail_sources
         Smith::Tool.current_deadline = deadline
@@ -193,6 +207,22 @@ module Smith
       @usage_mutex = Mutex.new
       @last_output = nil
       @last_failed_step = nil
+      # Optimistic-locking version. Incremented on each persist!; restored
+      # from the persisted payload. Adapters that support store_versioned
+      # raise Smith::PersistenceVersionConflict when expected_version
+      # doesn't match the stored payload's version (i.e., a concurrent
+      # write occurred between this process's restore and persist).
+      @persistence_version = 0
+      # Digest of the seed_messages produced at construction time.
+      # Compared on restore against the live builder's output when
+      # seed_validation is :warn or :strict; nil when no seed builder
+      # ran or its output was empty.
+      @seed_digest = nil
+      # Idempotency marker stamped between persist-before-advance and
+      # persist-after-advance under idempotency_mode :strict; restored
+      # workflows with the marker set raise
+      # Smith::StepInProgressOnRestore. Lax mode leaves it false.
+      @step_in_progress = false
       initialize_tool_result_state
       seed_initial_session_messages
     end
@@ -408,16 +438,33 @@ module Smith
     end
 
     def seed_initial_session_messages
+      messages = compute_seed_messages
+      return if messages.nil?
+
+      @session_messages = messages
+      @seed_digest = compute_seed_digest(messages)
+    end
+
+    # Fresh evaluation of the seed builder against the workflow's
+    # current @context. Returns nil when no builder is defined so
+    # callers (initialize, validate_seed_digest!) can distinguish
+    # "no builder" from "builder returned empty".
+    def compute_seed_messages
       builder = self.class.seed_messages
-      return unless builder
+      return nil unless builder
 
-      seeded = if builder.arity == 1
-        builder.call(@context)
-      else
-        builder.call
-      end
+      seeded = builder.arity == 1 ? builder.call(@context) : builder.call
+      normalize_seed_messages(seeded)
+    end
 
-      @session_messages = normalize_seed_messages(seeded)
+    def compute_seed_digest(messages)
+      return nil if messages.nil? || messages.empty?
+
+      Digest::SHA256.hexdigest(JSON.generate(messages))
+    rescue JSON::GeneratorError, Encoding::UndefinedConversionError, Encoding::InvalidByteSequenceError => e
+      raise WorkflowError,
+            "seed_messages content must be valid UTF-8 (Smith hashes via JSON.generate " \
+            "for drift detection): #{e.message}"
     end
 
     def normalize_seed_messages(seeded)

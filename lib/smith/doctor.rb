@@ -12,6 +12,9 @@ require_relative "doctor/checks/persistence_registry"
 require_relative "doctor/checks/serialization"
 require_relative "doctor/checks/durability"
 require_relative "doctor/checks/live"
+require_relative "doctor/checks/models_registry"
+require_relative "doctor/checks/openai_api_mode"
+require_relative "doctor/checks/persistence_capabilities"
 
 module Smith
   module Doctor
@@ -20,8 +23,11 @@ module Smith
 
       Checks::Baseline.run(report)
       Checks::Configuration.run(report)
+      Checks::ModelsRegistry.run(report)
+      Checks::OpenaiApiMode.run(report)
       Checks::Rails.run(report) if detect_rails?
       Checks::Persistence.run(report) if persistence_profile?(profile)
+      Checks::PersistenceCapabilities.run(report) if persistence_profile?(profile)
       if durability || durability_profile?(profile)
         Checks::Serialization.run(report)
         Checks::Durability.run(report)

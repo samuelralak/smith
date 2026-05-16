@@ -338,33 +338,219 @@ Notes:
 
 - This spec covers the cost-rate lookup contract. RunResult-level cost aggregation behavior (best-known totals, missing-pricing optimism) lives in `spec/smith/workflow/run_result_spec.rb`.
 
-### `spec/smith/ruby_llm_models_spec.rb`
+### `spec/smith/models_spec.rb`
 
 Purpose:
 
-- asserts the runtime model-registry extension and the Anthropic provider compat shim that Smith installs at gem load to support models RubyLLM's bundled `models.json` does not yet ship and request-payload shapes the bundled provider does not yet generate
+- pins the `Smith::Models` registry contract: stale-reload-safe registration via Dry::Container, application-side `Profile` overrides, and `find_or_infer` graceful fallback to library-shipped pattern rules when no explicit profile exists
+
+Architecture basis:
+
+- Section 5.1, Agent Invocation (model identity + capability profile resolution)
+- Decision #1 (Replace Anthropic monkey-patch with normalizer; Models holds capabilities only, not pricing)
+
+Documented contracts covered:
+
+- `Smith::Models.register(profile)` adds a Profile; re-registering the same Profile is idempotent
+- `Smith::Models.register` with a different Profile for the same model_id raises `Smith::Models::CollisionError`
+- `Smith::Models.register` with a same-name but different Profile instance (Rails autoreload swap) replaces silently via `stale_reload_binding?` (mirrors `Smith::Agent::Registry`'s pattern)
+- `Smith::Models.find(model_id)` returns nil for unregistered ids
+- `Smith::Models.find_or_infer(model_id)` consults the explicit registry first, then `Smith::Models::Inference.profile_for`, then a safe default
+- `Smith::Models.guess_provider(model_id)` matches prefix patterns: claude → :anthropic, gpt/oN → :openai, gemini → :gemini, else → :unknown
+- `Smith::Models.all` returns registered Profiles sorted by model_id
+- `Smith::Models.clear!` resets the registry (test isolation)
+
+Notes:
+
+- Smith ships ZERO hardcoded model_ids at the registry level. Library-level capability knowledge lives in `Smith::Models::Inference` as PROVIDER-FAMILY pattern rules. Explicit `register(...)` calls are reserved for application-side overrides (custom finetunes, non-standard provider gateways).
+
+### `spec/smith/models/inference_spec.rb`
+
+Purpose:
+
+- pins the pattern-based `Smith::Models::Inference` rules that describe how each PROVIDER FAMILY shapes its API payload, without coupling Smith to specific model_ids
+
+Architecture basis:
+
+- Section 5.1, Agent Invocation (per-provider request normalization)
+- Decision #2 (Normalizer hook point + library-shipped pattern rules over per-model registrations)
+
+Documented contracts covered:
+
+- Anthropic Opus 4.7+ rule matches via version-aware predicate (Opus 4-N where N ≥ 7); profile is `:adaptive` thinking, accepts_temperature false, tools_with_thinking_native true
+- Anthropic Opus/Sonnet/Haiku 4.0-4.6 rule matches; profile is `:budget_tokens` thinking, accepts_temperature true
+- Claude 3.7 (extended thinking via budget_tokens) rule matches via prefix
+- Claude 3.5 / 3.0 / 2.x fallback rule matches; no thinking, accepts_temperature true
+- OpenAI gpt-5 family + o-series rule matches; profile is `:reasoning_effort` thinking, accepts_temperature false, tools_with_thinking_route `:responses`
+- OpenAI gpt-4.x rule matches; no thinking, accepts_temperature true
+- Gemini 2.5+ rule matches via version-aware predicate; profile is `:budget_tokens`, accepts_temperature true
+- Gemini 1.x / 2.0 rule matches; no thinking
+- `Inference.prepend_rule(rule)` allows hosts to inject custom matchers ahead of library defaults
+- `Inference.with_rules(*overrides) { ... }` provides block-form rule substitution; restores defaults after the block (even if it raises)
+- `Inference.reset!` restores default rules
+
+Notes:
+
+- Rule order matters: more specific patterns first. The library-shipped `default_rules` set is frozen at module load.
+
+### `spec/smith/models/normalizer_spec.rb`
+
+Purpose:
+
+- pins `Smith::Models::Normalizer.apply!`'s per-attempt request-shape translation: drops temperature where the resolved Profile forbids it, translates Anthropic Opus 4.7+ adaptive thinking into the documented payload shape, routes (gpt-5 + tools + thinking) via `openai_api_mode: :responses` when supported, drops incompatible tools otherwise
 
 Architecture basis:
 
 - Section 5.1, Agent Invocation (provider integration)
-- Section 4.8, Observability (model identity for cost tracking)
+- Decision #1 (Replace monkey-patch with normalizer at chat-construction)
+- Decision #9 (Observability: normalizer emits `:normalizer_decision` trace events)
 
 Documented contracts covered:
 
-- `Smith::RubyLLMModels.install!` registers `claude-opus-4-7` into `RubyLLM.models` so `RubyLLM.chat(model: "claude-opus-4-7")` resolves without `RubyLLM::ModelNotFoundError`
-- registered Opus 4.7 carries the documented metadata: provider `anthropic`, family `claude-opus`, 1M context window, 128K max output, expected pricing
-- repeated `install!` is idempotent — calling it more than once does not duplicate the model entry in the registry
-- `Smith::RubyLLMAnthropicOpus47Compat` is prepended onto `RubyLLM::Providers::Anthropic` (the provider class) — the provider includes `Anthropic::Chat`, so `render_payload` is dispatched as an instance method via the class's ancestor chain. Prepending here intercepts the production dispatch path; prepending on `Chat.singleton_class` only intercepts the `Chat.render_payload(...)` module-method form which the runtime never takes.
-- the compat shim rewrites the request payload for `claude-opus-4-7` (and only for that model — Sonnet 4.5 / Opus 4.6 / etc. pass through unchanged):
-  - `payload[:thinking] = { type: "adaptive" }` (replaces RubyLLM's `{ type: "enabled", budget_tokens: N }` which Anthropic rejects on 4.7 with `"thinking.type.enabled" is not supported for this model`)
-  - `payload[:output_config][:effort] = adaptive_effort(thinking)` (uses `thinking.effort` if set; defaults to `"high"`)
-  - `payload.delete(:temperature)` (Opus 4.7 adaptive does not accept temperature)
-- structured-output (`schema:`) coexists with adaptive thinking — the shim merges `output_config[:effort]` into the schema-built `output_config` rather than overwriting
+- Opus 4.7 profile: nulls `@temperature`, sets `@params[:thinking] = { type: "adaptive" }` + `output_config[:effort]`; nulls `@thinking` so RubyLLM doesn't ALSO emit the legacy budget_tokens shape
+- Opus 4.7 profile preserves prior `with_params` calls (read-merge-write, no replacement)
+- gpt-5.5 profile with `openai_api_mode = :auto`: injects `@params[:openai_api_mode] = :responses`, preserves tools (they run via /v1/responses)
+- gpt-5.5 profile with `openai_api_mode = :off`: drops tools per `Tool::Compatibility` (graceful degradation)
+- Gemini 2.5+ profile preserves `@thinking` (provider renderer emits budget_tokens natively) and `@temperature`
+- unknown model passes through `find_or_infer`; safe-default profile leaves `@thinking` + `@temperature` unchanged
+- `Smith::Trace.record(type: :normalizer_decision, ...)` fires per mutation; gated by `Smith.config.trace_normalizer`
+- five Decision kinds: `:temperature_dropped`, `:thinking_dropped`, `:thinking_translated_to_adaptive`, `:routed_via_responses`, `:tool_dropped`
 
 Notes:
 
-- The `anthropic_payload` helper drives the test through a `RubyLLM::Providers::Anthropic` provider INSTANCE — this is load-bearing. A previous incarnation of the helper called `Chat.render_payload(...)` directly and exercised only the module-method dispatch path, so the spec passed while production silently bypassed the shim. Driving through the provider instance asserts the shim fires on the same dispatch path the host runtime takes.
-- The compat module is a temporary shim against a specific RubyLLM 1.14.x gap. When upstream RubyLLM ships native Opus 4.7 support, `install!` becomes idempotent against the upstream entry, and the payload-rewrite shim can be retired by removing the prepend (the shim's logic short-circuits on `model.id == OPUS_4_7_MODEL_ID` so it's safe to leave in place during the transition).
+- The normalizer is constructed fresh inside `Smith::Agent.chat` per chat construction; never crosses threads, never cached. The decision kind vocabulary is closed; adding a new kind requires updating the trace adapter `CONFIG_MAP` entries.
+
+### `spec/smith/tool/compatibility_spec.rb`
+
+Purpose:
+
+- pins the `Smith::Tool::Compatibility` DSL and its consumer protocol: tool classes declare which (provider, endpoint) combinations they tolerate, and the Normalizer drops incompatible tools at chat construction
+
+Architecture basis:
+
+- Section 6, Tool Governance (provider-aware tool selection)
+- Decision #8 (`Tool.compatible_with(...)` DSL + `Smith::Tool.inherited` dups spec)
+
+Documented contracts covered:
+
+- `Tool.compatible_with :anthropic, :gemini` parses an allowlist of providers; openai is excluded
+- `Tool.compatible_with :anthropic, openai: :responses` allows OpenAI only on the `:responses` endpoint
+- `Tool.compatible_with except: { openai: :chat_completions }` parses a denylist; openai chat-completions is excluded, other (provider, endpoint) pairs pass
+- `Tool.inherited` hook dups `@compatible_with_spec` from parent so subclass tool classes inherit compatibility metadata
+- `Compatibility.allows?(spec, profile)` returns true when spec is nil (no DSL declaration on the tool class means universally compatible)
+- `Smith::Tools::Think` declares compatibility with `:anthropic`, `:gemini`, and `openai` on `:responses` only
+
+Notes:
+
+- Tool drop is budget-safe: Smith charges tool budget at `execute` time, NOT at attach time. Normalizer-dropped tools are never charged, so no orphaned budget reservation.
+
+### `spec/smith/agent/dynamic_model_spec.rb`
+
+Purpose:
+
+- asserts the block-form `model` DSL extension that resolves an agent's model id at chat-construction time using the workflow's `@context`
+
+Architecture basis:
+
+- Section 5.1, Agent Invocation (Dynamic model selection via block-form `model`)
+- Section 12, Resolved Design Decisions (Decision #34 — `model` DSL forms)
+
+Documented contracts covered:
+
+- static-form `model "id"` stores into `@chat_kwargs[:model]` and leaves `@model_block` nil — pre-existing behavior preserved as a regression pin
+- static-form drives a registered workflow-execute transition with the declared model id (regression — confirms the new DSL surface does not affect the existing single-model path)
+- block-form `model { |ctx| ... }` stores the block as `@model_block` and leaves `@chat_kwargs[:model]` nil — block storage is the source of truth, not a Proc-in-chat_kwargs
+- passing both a string id and a block to `model` raises `ArgumentError` with the message `"can take a string id OR a block, not both"` — the two forms are mutually exclusive within a single declaration
+- redeclaring static after block clears `@model_block` (and clears any prior `@chat_kwargs[:model]` when redeclaring block after static) — single source of truth per declaration
+- block-form is evaluated at chat-construction time using the workflow's `@context` — the workflow constructor's `context: { ... }` Hash flows into the block as the sole positional argument
+- the workflow's default empty context (a Hash) is supplied to the block so blocks can read keys without `NoMethodError` — `@context || {}` fallback in `resolve_dynamic_model`
+- block-form composes with `fallback_models` — `build_model_chain` returns `[resolved_block_result, *fallback_models]` in declared order, same path as the static-form `[chat_kwargs[:model], *fallback_models]`
+- block returning `nil` raises `Smith::AgentError` with the message `"must return a non-empty string"` — surfaces as a step failure through the workflow's `on_failure` transition rather than a silent miss
+- block returning empty string raises `Smith::AgentError`
+- block returning non-string (e.g., Symbol) raises `Smith::AgentError`
+- subclasses inherit the parent's `@model_block` — added to `Smith::Agent.inherited` alongside the existing `@budget_config`, `@guardrails_class`, `@output_schema_class`, `@data_volume`, `@fallback_models_list` copies
+- subclasses can redeclare with a static model, clearing the inherited block — preserves the override semantics of the existing class-level DSLs
+
+Notes:
+
+- The block-form is **workflow-execution-path scoped**. Direct `agent_class.chat()`, `create()`, `create!()` calls outside Smith's workflow lifecycle do NOT currently resolve the block — they pass `chat_kwargs[:model]` (which is nil for block-form agents) directly to RubyLLM. AR-backed agents (those using `chat_model SomeModel` for chat-record persistence) should use static-form `model "id"` until block resolution is extended through `with_rails_chat_record`. This limitation is reflected in the resolution path: `Smith::Agent::Lifecycle#resolve_dynamic_model` is invoked from `build_model_chain`, which is only reached via `complete_with_provider` from workflow execution.
+- The block receives the workflow's `@context` (a Hash). This is the same `@context` available to `run_after_completion`, NOT the `runtime_context` passed to `instructions do |ctx|` blocks (which is RubyLLM's runtime context — a richer object with `.chat` / `.inputs` accessors). The two context shapes are intentionally different: model resolution is a workflow-level concern (driven by workflow seed_messages / context_manager), instructions are an agent-level concern (driven by RubyLLM's input partitioning).
+- Parallel branches resolving block-form models all share the workflow's `@context` (Smith does not clone context per branch). Since the block is class-level and stateless, all branches resolve to the same model id consistently. Hosts that mutate `@context` mid-execution would observe non-deterministic resolution; Smith does not protect against this.
+- Resolution happens per-attempt within the fallback chain, but the block is invoked only once for the chain (not once per attempted fallback) — fallbacks themselves remain static via `fallback_models`. This matches the architectural decision that fallback is a transient-failure-recovery mechanism, not a per-call routing primitive.
+- Coverage gaps deferred (no specs in this file): block raising an exception during evaluation (propagates as Smith::AgentError via the rescue in `complete_with_provider`); block returning a non-Symbol non-String non-nil value (Hash / Integer / Array — same `is_a?(String)` check rejects all); deeply nested inheritance (subclass-of-subclass-of-subclass — single-level coverage assumed sufficient given the inheritance hook is straightforward `instance_variable_set`).
+
+### `spec/smith/agent/inputs_bridge_spec.rb`
+
+Purpose:
+
+- asserts the workflow-input bridge that Smith's lifecycle uses to flow declared agent `inputs` from the workflow's `@context` Hash to the agent invocation, enabling RubyLLM block-form DSLs (tools, instructions, params, headers, schema) to evaluate against workflow-context data via `runtime_context.<input_name>`
+
+Architecture basis:
+
+- Section 5.1, Agent Invocation (Workflow-input bridge for declared `inputs`)
+- Section 12, Resolved Design Decisions (Decision #35 — workflow-input bridge)
+
+Documented contracts covered:
+
+- declared inputs from `@context` flow to `agent_class.chat` kwargs at `Smith::Agent::Lifecycle#attempt_model` time — the workflow `@context[:form_kind]` arrives as `chat(form_kind: "article")`, and RubyLLM's input partitioning then surfaces it on `runtime_context.form_kind` for block-form RubyLLM DSLs
+- the bridge is a no-op for agents without declared `inputs` — only `model:` is passed to chat, so static-form agents see no behavioral change
+- inputs declared but absent from `@context` are skipped — they are not passed as `nil` (cleaner runtime_context shape; absent input means absent attribute, not present-but-nil)
+
+Notes:
+
+- The bridge complements block-form `model` (which receives `@context` directly as a Hash via `Smith::Agent::Lifecycle#resolve_dynamic_model`). `model` is a workflow-level concern (resolved before chat construction); the RubyLLM blocks are agent-level concerns (resolved during chat configuration). The bridge is the seam — it keeps both context shapes intentional: `@context` Hash for `model`, runtime_context object for everything else.
+- Non-Hash `@context` short-circuits the bridge to an empty-kwargs result (host context_managers that emit non-Hash structures still work without breaking the bridge).
+- The bridge respects RubyLLM's existing input contract: `agent_class.inputs` is the declared list (RubyLLM's `inputs(*names)` setter / getter); the bridge only iterates that list, never additional `@context` keys. This prevents accidentally leaking workflow-internal context (budget, persistence keys, intermediate compute outputs) into the chat kwargs.
+- The same spec covers the RESERVED_INPUT_NAMES merge + collision contract: `Smith::Agent.inputs` no-arg getter returns reserved ∪ user (frozen, deduplicated); setter validates user names against `RESERVED_INPUT_NAMES` and raises `Smith::AgentError` on collision; the bridge slices to USER-DECLARED inputs only so stale `@context[:model_id]` / `[:provider]` / `[:endpoint_mode]` values cannot override the profile-resolved values that `Smith::Agent.chat` injects from `Smith::Models::Profile`.
+
+### `spec/smith/agent/cross_provider_fallback_spec.rb`
+
+Purpose:
+
+- pins the cross-provider fallback contract: when primary Claude fails with a transient error, fallback gpt-5.5 runs with a fresh, model-aware chat config because `Smith::Models::Normalizer` fires per attempt
+
+Architecture basis:
+
+- Section 5.1, Agent Invocation (fallback chain)
+- Section 9, Fallback Model Chains
+- Decision #1 (Normalizer at `Smith::Agent.chat`; covers workflow + direct paths)
+
+Documented contracts covered:
+
+- Opus 4.7 primary attempt: adaptive thinking translation, temperature nulled
+- gpt-5.5 fallback attempt: `@thinking` preserved (provider renderer emits `reasoning_effort` natively), `@temperature` nulled
+- reserved runtime inputs (`:model_id`, `:provider`, `:endpoint_mode`) injected per attempt from the resolved Profile
+- Anthropic path retains Think tool (native tools + thinking)
+- gpt-5.5 path with `openai_api_mode = :off` drops Think tool (graceful degradation per `Tool::Compatibility`)
+- gpt-5.5 path with `openai_api_mode = :auto` sets `@params[:openai_api_mode] = :responses` for routing
+
+Notes:
+
+- Pre-refactor, this scenario was broken: same chat config went to both providers; gpt-5 + tools + reasoning_effort failed with non-transient `BadRequestError`; fallback chain never recovered. This spec pins the fix.
+
+### `spec/smith/agent/direct_chat_normalization_spec.rb`
+
+Purpose:
+
+- pins the direct-call normalization contract: `Smith::Agent.chat()` fires the Normalizer outside the workflow lifecycle, covering direct callers like hadithi-xl's `Drafts::Workflows::Support::InvokeCleaner.chat`
+
+Architecture basis:
+
+- Section 5.1, Agent Invocation (provider integration outside workflow execution)
+- Decision #2 (Normalizer at `Smith::Agent.chat()` not `Lifecycle#attempt_model`)
+
+Documented contracts covered:
+
+- Opus 4.7 direct chat: adaptive thinking translation, temperature nulled
+- adaptive translation persists after `add_message` (no undo from downstream chat operations)
+- explicit `model:` kwarg overrides class-level `chat_kwargs[:model]`
+- Gemini 2.5+ direct chat preserves `@thinking` + `@temperature` (budget_tokens shape)
+- agent with no `model` declared and no `model:` kwarg skips normalization (profile is nil)
+- `:normalizer_decision` trace events fire from direct chat construction
+
+Notes:
+
+- This is the reason Smith hooks the normalizer at `Smith::Agent.chat()` rather than at `Lifecycle#attempt_model`. The workflow-only hook point would miss every direct caller.
 
 ### `spec/smith/agent/contract_spec.rb`
 
@@ -880,6 +1066,124 @@ Notes:
 
 - This spec now covers state shape, Ruby-hash round-trip behavior, host-style JSON round-trip behavior, and restored budget-ledger equivalence.
 - It does not yet assert non-serialization of every possible Ruby object in nested structures.
+
+### `spec/smith/workflow/optimistic_locking_spec.rb`
+
+Purpose:
+
+- pins the optimistic-locking contract: when an adapter supports `store_versioned`, two concurrent processes restoring the same key and racing on persist see the second writer's `persist!` fail with `Smith::PersistenceVersionConflict`
+
+Architecture basis:
+
+- Section 5.3, State Serialization (concurrency control on persisted state)
+- Decision #12 (Extend adapter contract additively with `store_versioned`; default fallback to plain `store` with a one-time warning)
+
+Documented contracts covered:
+
+- `Workflow#persist!` increments `@persistence_version` on each successful store (initial 0 → 1 → 2 …)
+- the persisted JSON payload carries `persistence_version` so any versioned adapter can read it on the next `store_versioned`
+- two restored copies racing on `persist!`: the second raises `Smith::PersistenceVersionConflict` with key + expected/actual fields; the failing workflow's `@persistence_version` stays at the pre-failure value so callers can rescue → restore → retry without state corruption
+- `restore` populates `@persistence_version` from the persisted payload (legacy payloads with no key restore to 0 for backward compatibility)
+- adapters lacking `store_versioned` fall back to plain `store` + one-time per-adapter-class warning via `Smith::PersistenceAdapters.warn_missing_versioning`; the workflow still increments `@persistence_version` so the in-memory accounting stays consistent
+
+### `spec/smith/workflow/schema_versioning_spec.rb`
+
+Purpose:
+
+- pins the `persistence_schema_version` + `migrate_from` contract: stored payloads carry `:schema_version`; restore dispatches through registered migrations one step at a time; unbridged gaps raise `Smith::PersistenceSchemaMismatch` with actionable diagnostics
+
+Architecture basis:
+
+- Section 5.3, State Serialization (forward-compatible persisted state)
+
+Documented contracts covered:
+
+- `Workflow.persistence_schema_version` defaults to 1; setter rejects non-positive Integer
+- `to_state` carries `:schema_version` equal to the workflow class's current `persistence_schema_version`
+- restore with stored == current passes through unchanged
+- restore with stored > current (downgrade) raises `Smith::PersistenceSchemaMismatch` with stored + current fields
+- restore with stored < current and a registered `migrate_from(stored) { |payload| ... }` block applies the block, advances the cursor, continues until current is reached
+- chained migrations: stored v1 → v2 → v3 walks via two registered blocks
+- unbridged gap (missing `migrate_from`) at any step raises `PersistenceSchemaMismatch`
+- defensive cursor advancement: if a migration block forgets to set `:schema_version`, Smith advances it itself so the loop terminates
+- pre-versioning payloads (no `:schema_version` key) are treated as v1 for backward compatibility
+- JSON-parsed string-keyed payloads are accepted (top-level symbolize precedes migration dispatch)
+- `Workflow.inherited` propagates `@persistence_schema_version` + `@migrations` to subclasses
+- DSL validation: rejects `migrate_from` without a block, rejects non-Integer versions
+
+### `spec/smith/workflow/seed_drift_spec.rb`
+
+Purpose:
+
+- pins the `seed_validation` contract: persisted state carries a SHA256 digest of the `seed_messages` produced at construction; restore detects when the seed builder has been changed in code since persist; opt-in `:strict` raises or `:warn` logs
+
+Architecture basis:
+
+- Section 5.3, State Serialization (deterministic state replay)
+- Section 4.6, Context Manager (seed messages source of truth)
+
+Documented contracts covered:
+
+- `Workflow.seed_validation` defaults to `:off`; setter rejects modes outside `:strict | :warn | :off`
+- `to_state[:seed_digest]` is a 64-char SHA256 hex when a seed builder is declared; nil when no builder
+- identical builder + identical context produce identical digests; different content produces different digests
+- `:off` mode: drift never raises, never logs
+- `:strict` mode: drift raises `Smith::SeedMismatch` with `#workflow #stored_digest #current_digest`
+- `:strict` mode with no drift: passes through silently
+- `:strict` mode with legacy payload (no `:seed_digest` key) or explicit nil digest: skipped (backward compatibility)
+- `:warn` mode: drift logs via `Smith.config.logger&.warn`; never raises; silent on no drift
+- validation re-evaluates the seed builder against the RESTORED `@context` so context-dependent seeds drift relative to the original construction context
+- `seed_digest` round-trips through JSON.generate / JSON.parse
+- `Workflow.inherited` propagates the seed_validation mode
+
+Notes:
+
+- Default `:off` reflects the reality that many seed builders are non-deterministic (timestamps, UUIDs, request-scoped data) and would surface false drift on every restore. Hosts opt in to `:strict` only when their builder is deterministic.
+
+### `spec/smith/workflow/step_in_progress_spec.rb`
+
+Purpose:
+
+- pins the `idempotency_mode` contract: under `:strict`, `run_persisted!` / `advance_persisted!` stamp a `step_in_progress` marker before each advance and clear it after; restore raises `Smith::StepInProgressOnRestore` when the marker is still set (a previous worker crashed mid-step)
+
+Architecture basis:
+
+- Section 5.3, State Serialization (idempotent resume after worker crash)
+
+Documented contracts covered:
+
+- `Workflow.idempotency_mode` defaults to `:lax`; setter rejects modes outside `:strict | :lax`
+- `to_state[:step_in_progress]` is false on a fresh workflow
+- `:lax` mode: restore never raises, even with marker set; `advance_persisted!` does NOT stamp the marker (write-amplification-free)
+- `:strict` mode: restore with marker true raises `Smith::StepInProgressOnRestore` with `#persistence_key`
+- `:strict` mode: restore with marker false (clean step boundary) passes through
+- `:strict` mode: pre-advance persist captures `step_in_progress: true` (simulates mid-step worker crash via spy); successful advance clears the marker before post-advance persist
+- non-StandardError escape (e.g., SystemExit / SignalException simulation): marker stays set, restore raises
+- legacy payload (no `:step_in_progress` key) treated as false (backward compatibility)
+- `Workflow.inherited` propagates the idempotency_mode
+
+### `spec/smith/workflow/persistence_ttl_spec.rb`
+
+Purpose:
+
+- pins the per-workflow `persistence_ttl` DSL contract: workflow classes override `Smith.config.persistence_ttl`; `Workflow#persist!` resolves class DSL > global config > nil and forwards `ttl:` to adapters only when non-nil (bare-adapter backward compatibility)
+
+Architecture basis:
+
+- Section 5.3, State Serialization (TTL on persisted state)
+
+Documented contracts covered:
+
+- `Workflow.persistence_ttl` defaults to nil; accepts positive Integer or Float; rejects 0, negative, non-Numeric
+- class-level DSL propagates through inheritance; child class can override parent
+- `Workflow#persist!` forwards class-level TTL to versioned adapter (`store_versioned(..., ttl:)`)
+- `Workflow#persist!` forwards class-level TTL to non-versioned adapter (`store(..., ttl:)`)
+- falls back to `Smith.config.persistence_ttl` when class DSL is nil
+- class-level DSL wins over `Smith.config.persistence_ttl` when both set
+- omits the `ttl:` kwarg entirely when both are nil (empty-Hash splat `**{}` is a Ruby no-op)
+- bare external adapters with `store(key, payload)` (no `ttl:` kwarg, no `**kwargs`) keep working when TTL is nil; they only break if a host opts into TTL with an incompatible adapter
+- TTL is resolved fresh on each `persist!` (host can mutate config between persists)
+- end-to-end with Memory adapter: per-workflow TTL expires entries; global config TTL also expires when class DSL is unset
 
 ### `spec/smith/workflow/run_result_spec.rb`
 
@@ -1981,6 +2285,18 @@ Notes:
 - bundled JSON fallback does not satisfy strict DB mode — RubyLLM.models facade is not used
 - verification chain: resolve class → check AR ancestry → check table exists → check records present
 
+### `spec/smith/doctor/checks/persistence_capabilities_spec.rb`
+
+Covered behaviors:
+
+- warns (`persistence.capabilities`, status `:warn`) when `Smith.persistence_adapter` returns nil (no adapter configured and `test_mode` false)
+- passes when the configured adapter supports all `OPTIONAL_METHODS` (currently `%i[store_versioned]`); `Memory` and `RedisStore` qualify
+- warns with actionable detail when the adapter is missing optional capabilities, naming the missing capabilities and recommending RedisStore / ActiveRecordStore / Memory
+
+Notes:
+
+- The check is wired into the `:rails_persistence` profile; the default `:auto` profile skips it. Hosts running under other profiles rely on the runtime one-time `Smith::PersistenceAdapters.warn_missing_versioning` to surface adapter capability gaps at first persist.
+
 ### `spec/smith/persistence_adapters_spec.rb`
 
 Covered behaviors:
@@ -1992,9 +2308,12 @@ Covered behaviors:
 - `:solid_cache` aliases to Rails-cache-backed resolution
 - `:redis` resolves with provided client and namespace
 - `:active_record` resolves with configured model and columns
+- `:memory` resolves to `Smith::PersistenceAdapters::Memory` (in-process Hash adapter, test-friendly)
 - custom adapter classes can be instantiated with keyword options
 - invalid custom adapter classes fail contract validation
 - unknown adapter symbols fail clearly
+- `Smith::PersistenceAdapters::OPTIONAL_METHODS = %i[store_versioned]` introspected via `supports?(adapter, capability)`
+- `warn_missing_versioning(adapter)` issues a one-time per-adapter-class warning when an adapter does not implement `store_versioned`; subsequent calls are no-ops within the same Smith boot (Monitor-synchronized via class-level Set)
 
 Notes:
 
@@ -2010,6 +2329,56 @@ Notes:
 - in-place `persistence_options` mutation invalidates adapter caching via snapshot-based signatures
 - `:cache_store` shares the same process-local memory warning behavior when the backend is detectable
 - lazy cache-backed backend resolution failures are reported as `durability.adapter` failures instead of escaping the doctor run
+- `Smith.config.test_mode = true` auto-selects the Memory adapter when `persistence_adapter` is nil, letting spec suites skip wiring Redis/Rails.cache in `spec_helper.rb`
+
+### `spec/smith/persistence_adapters/memory_spec.rb`
+
+Purpose:
+
+- pins the in-process Memory adapter contract: REQUIRED_METHODS compliance, TTL via stamped expiry, optional `store_versioned` via Monitor-synchronized version compare, thread-safety, and `Smith.persistence_adapter` test_mode auto-detect
+
+Architecture basis:
+
+- Section 5.3, State Serialization (test-friendly in-process adapter)
+
+Documented contracts covered:
+
+- responds to `store`, `fetch`, `delete` (REQUIRED_METHODS); passes `adapter_like?` validation
+- `store(k, v)` then `fetch(k)` returns v; `fetch(missing)` returns nil; `delete(k)` removes
+- TTL: entries written with `ttl: N` expire N seconds after write; `Smith.config.persistence_ttl` is the default; nil TTL means no expiry
+- `respond_to?(:store_versioned)` is true; `Smith::PersistenceAdapters.supports?(adapter, :store_versioned)` reports true
+- `store_versioned(k, v, expected_version: 0)` works on first write; subsequent writes require matching `expected_version`
+- `store_versioned` raises `Smith::PersistenceVersionConflict` (with key/expected/actual fields) when expected_version is stale
+- thread safety: concurrent writes serialize via Monitor; reads observe coherent state (no torn writes / nil races)
+- `Smith::PersistenceAdapters.resolve(:memory)` returns a Memory instance
+- `Smith.persistence_adapter` auto-detects: returns Memory when persistence_adapter nil + `test_mode` true; returns nil when persistence_adapter nil + test_mode false
+
+Notes:
+
+- `clear!` is exposed for test isolation; not part of the REQUIRED_METHODS contract.
+
+### `spec/smith/persistence_adapters/retry_spec.rb`
+
+Purpose:
+
+- pins the generic `Smith::PersistenceAdapters::Retry.with_retries` wrapper: exponential backoff up to `policy.attempts`, distinct per-adapter transient-error lists, and `Smith::PersistenceIOError` on exhaustion
+
+Architecture basis:
+
+- Section 5.3, State Serialization (resilient persistence I/O)
+
+Documented contracts covered:
+
+- success on the first attempt returns the block result without retrying
+- transient failure on attempt 1 succeeds on retry; block executed N times where N = attempts to first success
+- exhaustion after `policy.attempts` raises `Smith::PersistenceIOError` with `#operation` and `#cause` fields
+- non-transient errors raise immediately, no retry attempts
+- each adapter passes its own `transient:` array: an adapter passing only Redis errors does NOT retry on Errno::EPIPE if not in its list
+- `Smith.config.persistence_retry_policy` is the default policy when no policy kwarg is passed
+
+Notes:
+
+- Backoff is exponential capped by `policy.max_delay`: delay = min(base * 2^attempt, max_delay).
 
 ## Section 9: Tool Result Capture
 

@@ -83,7 +83,10 @@ module Smith
         return nil unless transition.agent_name
 
         agent_class = resolve_agent_class(transition)
-        return nil if agent_class.chat_kwargs[:model].nil?
+        # Accepts either static `model "id"` (chat_kwargs[:model]) OR
+        # block-form `model { |ctx| ... }` (model_block). The block-form
+        # path resolves the actual id in build_model_chain at attempt time.
+        return nil unless agent_class.model_configured?
 
         invoke_agent(agent_class, prepared_input)
       end

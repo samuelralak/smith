@@ -26,14 +26,35 @@ module Smith
           # same deep-copy treatment as context/session_messages/etc.
           usage_entries: snapshot_value((@usage_entries || []).map(&:to_h)),
           last_output: snapshot_value(@last_output),
-          last_failed_step: snapshot_value(@last_failed_step)
+          last_failed_step: snapshot_value(@last_failed_step),
+          # Optimistic-locking version. Adapters that support
+          # store_versioned use this to detect concurrent writes; adapters
+          # that don't (CacheStore, RailsCache) ignore it.
+          persistence_version: @persistence_version || 0,
+          # Schema version of the workflow class that wrote this payload.
+          # Restore dispatches through migrate_from blocks when the
+          # stored value lags the workflow's current
+          # persistence_schema_version.
+          schema_version: self.class.persistence_schema_version,
+          # SHA256 digest of the seed_messages produced at this
+          # workflow's construction. Stays stable across persist/restore
+          # cycles so seed_validation can detect when the seed builder
+          # has changed in code since this workflow was persisted.
+          seed_digest: @seed_digest,
+          # Step-in-progress idempotency marker. Set true between
+          # persist-before-advance and persist-after-advance when the
+          # workflow class opts into idempotency_mode :strict. Restore
+          # raises Smith::StepInProgressOnRestore if true under strict
+          # mode. Lax mode leaves this false and never raises.
+          step_in_progress: @step_in_progress || false
         }
       end
 
       private
 
       def restore_state(hash)
-        normalized = normalize_persisted_state(hash)
+        migrated = migrate_if_needed(hash)
+        normalized = normalize_persisted_state(migrated)
         restore_core_fields(normalized)
         @persistence_key = normalized[:persistence_key]
         @ledger = rebuild_ledger(normalized[:budget_consumed] || {})
@@ -54,6 +75,54 @@ module Smith
         @usage_entries = restore_usage_entries(normalized)
         @last_output = restore_last_output(normalized)
         @last_failed_step = restore_last_failed_step(normalized)
+        # Restore the optimistic-locking version from the persisted payload.
+        # Backward-compat: pre-versioning payloads have no key, restore to 0
+        # so the first persist! after restore expects version 0 (matches
+        # the original store from the legacy adapter contract).
+        @persistence_version = normalized[:persistence_version] || 0
+        # Preserve the seed digest from the persisted payload so it
+        # round-trips on subsequent persists. validate_seed_digest!
+        # compares this against a fresh evaluation of the seed builder
+        # only when the workflow class opts into validation.
+        @seed_digest = normalized[:seed_digest]
+        validate_seed_digest!(normalized) if self.class.seed_validation != :off
+        # Restore the step-in-progress marker so a subsequent persist
+        # round-trips it. validate_step_in_progress! enforces strict
+        # mode by raising if the marker is set on restore.
+        @step_in_progress = normalized[:step_in_progress] || false
+        validate_step_in_progress!(normalized) if self.class.idempotency_mode == :strict
+      end
+
+      def validate_step_in_progress!(normalized)
+        return unless normalized[:step_in_progress] == true
+
+        raise Smith::StepInProgressOnRestore.new(
+          workflow: self.class.name,
+          persistence_key: normalized[:persistence_key]
+        )
+      end
+
+      def validate_seed_digest!(normalized)
+        stored_digest = normalized[:seed_digest]
+        return if stored_digest.nil?
+
+        current_messages = compute_seed_messages
+        current_digest = compute_seed_digest(current_messages)
+        return if current_digest == stored_digest
+
+        case self.class.seed_validation
+        when :strict
+          raise Smith::SeedMismatch.new(
+            workflow: self.class.name,
+            stored_digest: stored_digest,
+            current_digest: current_digest
+          )
+        when :warn
+          Smith.config.logger&.warn(
+            "Smith::Workflow seed_messages drift for #{self.class.name}: " \
+            "stored digest #{stored_digest.inspect}, current digest #{current_digest.inspect}"
+          )
+        end
       end
 
       def restore_usage_entries(normalized)
@@ -107,6 +176,46 @@ module Smith
         @execution_namespace = normalized[:execution_namespace]
         @created_at = normalized[:created_at]
         @updated_at = normalized[:updated_at]
+      end
+
+      # Bridges stored schema_version to the workflow class's current
+      # persistence_schema_version by walking registered migrate_from
+      # blocks one step at a time. Returns the (possibly migrated)
+      # payload with symbol top-level keys, ready for the rest of the
+      # normalize pipeline. Pre-versioning payloads are treated as v1
+      # for backward compatibility with state written before Smith
+      # carried :schema_version.
+      def migrate_if_needed(hash)
+        payload = hash.transform_keys { |k| k.is_a?(String) ? k.to_sym : k }
+        current = self.class.persistence_schema_version
+        stored = payload[:schema_version] || 1
+
+        return payload if stored == current
+
+        if stored > current
+          raise Smith::PersistenceSchemaMismatch.new(
+            workflow: self.class.name, stored: stored, current: current
+          )
+        end
+
+        cursor = stored
+        while cursor < current
+          migration = self.class.migrations[cursor]
+          unless migration
+            raise Smith::PersistenceSchemaMismatch.new(
+              workflow: self.class.name, stored: cursor, current: current
+            )
+          end
+
+          payload = migration.call(payload)
+          payload = payload.transform_keys { |k| k.is_a?(String) ? k.to_sym : k }
+          cursor += 1
+          # Defensive: advance :schema_version if the migration block
+          # forgot to set it, so the loop terminates.
+          payload[:schema_version] = cursor if (payload[:schema_version] || 0) < cursor
+        end
+
+        payload
       end
 
       def normalize_persisted_state(hash)

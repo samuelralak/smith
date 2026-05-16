@@ -8,14 +8,14 @@ RSpec.describe "Smith::Workflow usage tracking" do
   describe "Workflow::UsageEntry struct" do
     it "round-trips through to_h / from_h preserving all fields" do
       original = Smith::Workflow::UsageEntry.new(
-        "abc-123",
-        :writer_agent,
-        "claude-opus-4-7",
-        100,
-        50,
-        0.00375,
-        :completed_attempt,
-        "2026-04-27T12:34:56Z"
+        usage_id: "abc-123",
+        agent_name: :writer_agent,
+        model: "claude-opus-4-7",
+        input_tokens: 100,
+        output_tokens: 50,
+        cost: 0.00375,
+        attempt_kind: :completed_attempt,
+        recorded_at: "2026-04-27T12:34:56Z"
       )
 
       restored = Smith::Workflow::UsageEntry.from_h(original.to_h)
@@ -396,9 +396,14 @@ RSpec.describe "Smith::Workflow usage tracking" do
 
       original = workflow_klass.new
       entry = Smith::Workflow::UsageEntry.new(
-        "abc-123", :writer_agent, "claude-opus-4-7",
-        100, 50, 0.00175, :completed_attempt,
-        "2026-04-27T12:00:00Z"
+        usage_id: "abc-123",
+        agent_name: :writer_agent,
+        model: "claude-opus-4-7",
+        input_tokens: 100,
+        output_tokens: 50,
+        cost: 0.00175,
+        attempt_kind: :completed_attempt,
+        recorded_at: "2026-04-27T12:00:00Z"
       )
       original.instance_variable_get(:@usage_entries) << entry
       original.persist!("workflow:billing-entries", adapter: adapter)
@@ -414,8 +419,14 @@ RSpec.describe "Smith::Workflow usage tracking" do
 
       original = workflow_klass.new
       original.instance_variable_get(:@usage_entries) << Smith::Workflow::UsageEntry.new(
-        "abc-123", :writer_agent, "model", 100, 50, 0.001,
-        :completed_attempt, "2026-04-27T12:00:00Z"
+        usage_id: "abc-123",
+        agent_name: :writer_agent,
+        model: "model",
+        input_tokens: 100,
+        output_tokens: 50,
+        cost: 0.001,
+        attempt_kind: :completed_attempt,
+        recorded_at: "2026-04-27T12:00:00Z"
       )
       original.persist!("workflow:billing-cleared", adapter: adapter)
       expect(workflow_klass.restorable_billing_state?(context: {}, adapter: adapter)).to eq(true)

@@ -10,7 +10,11 @@ module Smith
         agent_class = resolve_agent_class(transition)
         estimates = compute_branch_estimates(@ledger, branch_count: count, agent_budget: agent_class&.budget)
         env = BranchEnv.new(
-          prepared_input, Tool.current_guardrails, propagate_scoped_artifacts, estimates, wall_clock_deadline
+          prepared_input: prepared_input,
+          guardrail_sources: Tool.current_guardrails,
+          scoped_store: propagate_scoped_artifacts,
+          branch_estimates: estimates,
+          deadline: wall_clock_deadline
         )
         ledger = @ledger
         branches = Array.new(count) do |i|

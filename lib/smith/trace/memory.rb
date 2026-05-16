@@ -7,7 +7,8 @@ module Smith
         transition: :trace_transitions,
         tool_call: :trace_tool_calls,
         token_usage: :trace_token_usage,
-        cost: :trace_cost
+        cost: :trace_cost,
+        normalizer_decision: :trace_normalizer
       }.freeze
 
       CONTENT_KEYS = %i[content prompt response args result].freeze

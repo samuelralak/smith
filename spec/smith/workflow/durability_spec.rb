@@ -130,6 +130,11 @@ RSpec.describe "Smith::Workflow durability helpers" do
     logger = instance_double("Logger")
     original_logger = Smith.config.logger
     allow(logger).to receive(:error)
+    # The new Smith::PersistenceAdapters.warn_missing_versioning fires
+    # once per Smith boot when persist! detects an adapter without
+    # store_versioned. Allow :warn so this spec focuses on the :error
+    # contract it pins (callback failure logging), not the new warning.
+    allow(logger).to receive(:warn)
     Smith.configure { |config| config.logger = logger }
 
     result = klass.new.run_persisted!("wf:on-step-failure", adapter:, on_step: ->(_step) { raise "boom" })
