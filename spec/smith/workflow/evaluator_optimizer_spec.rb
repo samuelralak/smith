@@ -573,4 +573,109 @@ RSpec.describe "Smith::Workflow::EvaluatorOptimizer runtime behavior" do
       ]
     )
   end
+
+  describe "evaluator output normalization (real RubyLLM schema responses use String keys)" do
+    it "accepts a String-keyed Hash from a schema-bound evaluator and treats accept: true correctly" do
+      generator = with_stubbed_class("SpecOptGenStringKeysAccept", agent_class) do
+        register_as :spec_opt_gen_string_keys_accept
+        model "gpt-5-mini"
+      end
+      evaluator = with_stubbed_class("SpecOptEvalStringKeysAccept", agent_class) do
+        register_as :spec_opt_eval_string_keys_accept
+        model "gpt-5-mini"
+      end
+
+      stub_agent(generator, "string-keys draft")
+      stub_agent(evaluator, { "accept" => true, "feedback" => nil, "score" => 0.91 })
+
+      schema = Class.new
+
+      workflow = with_stubbed_class("SpecOptStringKeysAcceptWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+        state :failed
+
+        transition :translate, from: :idle, to: :done do
+          optimize generator: :spec_opt_gen_string_keys_accept,
+                   evaluator: :spec_opt_eval_string_keys_accept,
+                   max_rounds: 3, evaluator_schema: schema
+          on_failure :fail
+        end
+      end.new
+
+      result = workflow.run!
+
+      expect(result.state).to eq(:done)
+      expect(result.output).to eq("string-keys draft")
+    end
+
+    it "accepts a JSON string from an evaluator that bypasses schema parsing" do
+      generator = with_stubbed_class("SpecOptGenJsonString", agent_class) do
+        register_as :spec_opt_gen_json_string
+        model "gpt-5-mini"
+      end
+      evaluator = with_stubbed_class("SpecOptEvalJsonString", agent_class) do
+        register_as :spec_opt_eval_json_string
+        model "gpt-5-mini"
+      end
+
+      stub_agent(generator, "json-string draft")
+      stub_agent(evaluator, '{"accept": true, "feedback": null, "score": 0.88}')
+
+      schema = Class.new
+
+      workflow = with_stubbed_class("SpecOptJsonStringWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+        state :failed
+
+        transition :translate, from: :idle, to: :done do
+          optimize generator: :spec_opt_gen_json_string,
+                   evaluator: :spec_opt_eval_json_string,
+                   max_rounds: 3, evaluator_schema: schema
+          on_failure :fail
+        end
+      end.new
+
+      result = workflow.run!
+
+      expect(result.state).to eq(:done)
+      expect(result.output).to eq("json-string draft")
+    end
+
+    it "still raises a descriptive WorkflowError when a String evaluation isn't valid JSON" do
+      generator = with_stubbed_class("SpecOptGenBadString", agent_class) do
+        register_as :spec_opt_gen_bad_string
+        model "gpt-5-mini"
+      end
+      evaluator = with_stubbed_class("SpecOptEvalBadString", agent_class) do
+        register_as :spec_opt_eval_bad_string
+        model "gpt-5-mini"
+      end
+
+      stub_agent(generator, "draft")
+      stub_agent(evaluator, "not-json-just-prose")
+
+      schema = Class.new
+
+      workflow = with_stubbed_class("SpecOptBadStringWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+        state :failed
+
+        transition :translate, from: :idle, to: :done do
+          optimize generator: :spec_opt_gen_bad_string,
+                   evaluator: :spec_opt_eval_bad_string,
+                   max_rounds: 2, evaluator_schema: schema
+          on_failure :fail
+        end
+      end.new
+
+      result = workflow.run!
+
+      expect(result.state).to eq(:failed)
+      expect(result.steps.first[:error]).to be_a(workflow_error)
+      expect(result.steps.first[:error].message).to match(/Hash/)
+    end
+  end
 end

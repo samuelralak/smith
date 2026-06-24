@@ -41,7 +41,7 @@ module Smith
 
       def run_optimization_round(state, round)
         generate_candidate!(state, round)
-        evaluation = evaluate_candidate(state)
+        evaluation = normalize_evaluation(evaluate_candidate(state))
         validate_evaluation_structure!(evaluation)
         validate_evaluation_fields!(evaluation, state.config)
 
@@ -55,6 +55,43 @@ module Smith
         state.last_score = evaluation[:score]
         state.feedback = evaluation[:feedback]
         nil
+      end
+
+      # Real RubyLLM schema-bound responses come back as Hash with String
+      # keys. The validate_evaluation_* helpers below expect symbol keys
+      # (test stubs use symbol keys, masking the gap). String input also
+      # arrives when an evaluator stubs raw JSON. Normalize to a uniform
+      # symbol-keyed Hash so the validators stay clean and the rest of
+      # the loop can use `evaluation[:accept]` semantics without caring
+      # which provider returned the payload.
+      #
+      # Pure-Ruby deep-symbolize: Smith doesn't depend on ActiveSupport,
+      # so `deep_symbolize_keys` isn't available. The recursion mirrors
+      # what `Hash#transform_keys` plus a nested-Hash walk would do.
+      def normalize_evaluation(evaluation)
+        case evaluation
+        when Hash
+          deep_symbolize_evaluation(evaluation)
+        when String
+          parsed = (JSON.parse(evaluation, symbolize_names: true) rescue nil)
+          parsed.is_a?(Hash) ? parsed : evaluation
+        else
+          evaluation
+        end
+      end
+
+      def deep_symbolize_evaluation(value)
+        case value
+        when Hash
+          value.each_with_object({}) do |(key, nested), out|
+            sym_key = key.is_a?(String) ? key.to_sym : key
+            out[sym_key] = deep_symbolize_evaluation(nested)
+          end
+        when Array
+          value.map { |item| deep_symbolize_evaluation(item) }
+        else
+          value
+        end
       end
 
       def generate_candidate!(state, round)
