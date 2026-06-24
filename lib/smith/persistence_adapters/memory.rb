@@ -17,6 +17,7 @@ module Smith
     class Memory
       def initialize
         @store = {}
+        @heartbeats = {}
         @monitor = Monitor.new
       end
 
@@ -41,7 +42,30 @@ module Smith
       end
 
       def delete(key)
-        @monitor.synchronize { @store.delete(key) }
+        @monitor.synchronize do
+          @store.delete(key)
+          @heartbeats.delete(key)
+        end
+      end
+
+      def record_heartbeat(key, ttl: Smith.config.persistence_ttl)
+        @monitor.synchronize do
+          @heartbeats[key] = { at: Time.now.utc, expires_at: ttl ? Time.now.utc + ttl : nil }
+        end
+      end
+
+      def last_heartbeat(key)
+        @monitor.synchronize do
+          entry = @heartbeats[key]
+          next nil if entry.nil?
+
+          if entry[:expires_at] && entry[:expires_at] < Time.now.utc
+            @heartbeats.delete(key)
+            next nil
+          end
+
+          entry[:at]
+        end
       end
 
       # Optimistic locking via Monitor-synchronized version compare.

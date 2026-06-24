@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "time"
+
 module Smith
   module PersistenceAdapters
     class RedisStore
@@ -45,7 +47,29 @@ module Smith
 
       def delete(key)
         Retry.with_retries(operation: :delete, transient: self.class.transient_errors) do
-          client.del(namespaced(key))
+          client.del(namespaced(key), namespaced_heartbeat(key))
+        end
+      end
+
+      def record_heartbeat(key, ttl: Smith.config.persistence_ttl)
+        Retry.with_retries(operation: :record_heartbeat, transient: self.class.transient_errors) do
+          iso = Time.now.utc.iso8601
+          if ttl
+            client.set(namespaced_heartbeat(key), iso, ex: ttl)
+          else
+            client.set(namespaced_heartbeat(key), iso)
+          end
+        end
+      end
+
+      def last_heartbeat(key)
+        Retry.with_retries(operation: :last_heartbeat, transient: self.class.transient_errors) do
+          raw = client.get(namespaced_heartbeat(key))
+          next nil if raw.nil?
+
+          Time.parse(raw).utc
+        rescue ArgumentError
+          nil
         end
       end
 
@@ -96,6 +120,10 @@ module Smith
 
       def namespaced(key)
         [@namespace, key].compact.join(":")
+      end
+
+      def namespaced_heartbeat(key)
+        [@namespace, "heartbeat", key].compact.join(":")
       end
 
       def parse_version(payload)

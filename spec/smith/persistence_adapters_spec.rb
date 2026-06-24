@@ -55,7 +55,7 @@ RSpec.describe Smith::PersistenceAdapters do
       redis = instance_double("Redis")
       expect(redis).to receive(:set).with("smith-redis:probe", "payload")
       expect(redis).to receive(:get).with("smith-redis:probe").and_return("payload")
-      expect(redis).to receive(:del).with("smith-redis:probe")
+      expect(redis).to receive(:del).with("smith-redis:probe", "smith-redis:heartbeat:probe")
 
       adapter = described_class.resolve(:redis, redis:, namespace: "smith-redis")
 

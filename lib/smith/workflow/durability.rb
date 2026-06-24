@@ -79,6 +79,52 @@ module Smith
           entries.any?
         end
 
+        def stuck_for?(persistence_key:, threshold:, since: nil, adapter: Smith.persistence_adapter)
+          raise WorkflowError, "persistence_adapter is not configured" if adapter.nil?
+          raise ArgumentError, "persistence_key must not be blank" if persistence_key.nil? || (persistence_key.respond_to?(:strip) && persistence_key.strip.empty?)
+          raise ArgumentError, "threshold must respond to :to_i" unless threshold.respond_to?(:to_i)
+
+          if since && !since.respond_to?(:to_time)
+            raise ArgumentError, "since must respond to :to_time or be nil"
+          end
+
+          threshold_seconds = threshold.to_i
+          now = Time.now.utc
+
+          if Smith::PersistenceAdapters.supports?(adapter, :last_heartbeat)
+            hb = adapter.last_heartbeat(persistence_key)
+            if hb
+              age = (now - hb.to_time.utc).to_f
+              return false if age < threshold_seconds
+            end
+          end
+
+          payload = adapter.fetch(persistence_key)
+          return stuck_for_no_payload?(since, now, threshold_seconds) if payload.nil?
+
+          if !Smith::PersistenceAdapters.supports?(adapter, :last_heartbeat)
+            Smith::PersistenceAdapters.warn_missing_heartbeat(adapter)
+            fallback_age = age_from_payload_updated_at(payload, now)
+            return false if fallback_age.nil? || fallback_age < threshold_seconds
+          end
+
+          !terminal_in_payload?(payload)
+        end
+
+        def heartbeat_age(persistence_key:, adapter: Smith.persistence_adapter)
+          raise WorkflowError, "persistence_adapter is not configured" if adapter.nil?
+
+          if Smith::PersistenceAdapters.supports?(adapter, :last_heartbeat)
+            hb = adapter.last_heartbeat(persistence_key)
+            return [Time.now.utc - hb.to_time.utc, 0.0].max.to_f if hb
+          end
+
+          payload = adapter.fetch(persistence_key)
+          return nil if payload.nil?
+
+          age_from_payload_updated_at(payload, Time.now.utc)
+        end
+
         def run_persisted!(key: nil, context: {}, adapter: Smith.persistence_adapter, clear: :done, on_step: nil, **kwargs)
           clear_policy = normalize_clear_policy(clear)
           resolved_key = resolved_persistence_key(key:, context:)
@@ -93,6 +139,37 @@ module Smith
 
         def fetch_persisted_payload(key, adapter:)
           persistence_adapter!(adapter).fetch(key)
+        end
+
+        def stuck_for_no_payload?(since, now, threshold_seconds)
+          return false if since.nil?
+
+          age = (now - since.to_time.utc).to_f
+          age.clamp(0.0, Float::INFINITY) >= threshold_seconds
+        end
+
+        def age_from_payload_updated_at(payload, now)
+          parsed = JSON.parse(payload)
+          updated_at = parsed["updated_at"] || parsed[:updated_at]
+          return nil if updated_at.nil?
+
+          (now - Time.parse(updated_at.to_s).utc).to_f
+        rescue JSON::ParserError, ArgumentError
+          nil
+        end
+
+        def terminal_in_payload?(payload)
+          parsed = JSON.parse(payload)
+          state_name = parsed["state"] || parsed[:state]
+          class_name = parsed["class"] || parsed[:class]
+          next_transition = parsed["next_transition_name"] || parsed[:next_transition_name]
+
+          return false unless state_name && class_name
+
+          klass = Object.const_get(class_name)
+          klass.transitions_from(state_name.to_sym).empty? && next_transition.nil?
+        rescue JSON::ParserError, NameError, NoMethodError
+          false
         end
 
         def persistence_adapter!(adapter)
@@ -242,6 +319,8 @@ module Smith
           Smith::PersistenceAdapters.warn_missing_versioning(store)
           store.store(key, payload, **kwargs)
         end
+
+        store.record_heartbeat(key, **kwargs) if Smith::PersistenceAdapters.supports?(store, :record_heartbeat)
       end
 
       # Resolves the effective TTL once per persist, with the class-level

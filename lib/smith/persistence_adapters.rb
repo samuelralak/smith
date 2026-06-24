@@ -23,7 +23,7 @@ module Smith
     # check support via `supports?(adapter, capability)` and fall back
     # gracefully (e.g., Workflow#persist! warns once and uses plain
     # `store` when `store_versioned` is missing).
-    OPTIONAL_METHODS = %i[store_versioned].freeze
+    OPTIONAL_METHODS = %i[store_versioned record_heartbeat last_heartbeat].freeze
 
     def self.resolve(adapter, **options)
       return nil if adapter.nil?
@@ -88,6 +88,24 @@ module Smith
         "optimistic locking is disabled for this adapter. " \
         "Switch to RedisStore, ActiveRecordStore (with lock_version column), " \
         "or the Memory adapter for race protection."
+      )
+    end
+
+    @_warned_heartbeat_classes = Set.new
+    @_warned_heartbeat_monitor = Monitor.new
+
+    def self.warn_missing_heartbeat(adapter)
+      klass = adapter.class
+      @_warned_heartbeat_monitor.synchronize do
+        return if @_warned_heartbeat_classes.include?(klass)
+
+        @_warned_heartbeat_classes << klass
+      end
+
+      Smith.config.logger&.warn(
+        "#{klass.name} does not implement record_heartbeat/last_heartbeat; " \
+        "Smith::Workflow.stuck_for? falls back to payload['updated_at'] parsing. " \
+        "For accurate liveness probes, switch to RedisStore or Memory."
       )
     end
   end
