@@ -8,6 +8,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 No unreleased changes.
 
+## [0.4.0] - 2026-06-24
+
+Two more host-ergonomic primitives that close the deferred-from-0.3.0 backlog: `Workflow.stuck_for?` for liveness probing and `Context.persist :auto` for write-tracked context persistence. Both are purely additive.
+
+### Added
+
+- `Smith::Workflow.stuck_for?(persistence_key:, threshold:, since: nil, adapter:)` — answers whether a workflow attempt is genuinely stuck. Path A (payload present): returns `true` when the workflow is NOT terminal and the heartbeat age (or fallback `payload['updated_at']` age) exceeds `threshold`. Path B (no payload + caller-supplied `since:`): returns `true` when `since` is older than `threshold`, handling the pre-persist gap window where consumers mark a status to `:processing` before Smith records any state. Terminal detection uses the real state-graph rule (`class.transitions_from(state).empty? && next_transition_name.nil?`).
+- `Smith::Workflow.heartbeat_age(persistence_key:, adapter:)` — bare age accessor returning seconds since last heartbeat, or `nil` when no payload/heartbeat exists. Intended for dashboards.
+- `Smith::PersistenceAdapter#record_heartbeat(key, ttl:)` and `#last_heartbeat(key)` — new optional adapter methods. Both join `OPTIONAL_METHODS`; `REQUIRED_METHODS` stays `%i[store fetch delete]`. v1 ships heartbeat write+read on `Memory` and `RedisStore`. `Workflow#persist!` calls `record_heartbeat` after a successful `store`/`store_versioned`; adapters that don't implement the methods fall through to `payload['updated_at']` parsing with a one-time warning per adapter class.
+- `Smith::Context.persist :auto` — declarative mode where the workflow's persisted context is computed from the keys actually written via `DeterministicStep#write_context`. Backward-compat preserved: `persist :a, :b` continues to mean explicit allow-list. `persist :auto, also: [:user_message]` declares the input seed list (initial-context keys must be enumerated here to round-trip). The workflow records each `write_context` key into `@persisted_keys` (a `Set`, protected by a Mutex for parallel safety) and slices through it on `:auto`-mode `persisted_context`.
+- `Smith::Workflow#persisted_keys` — frozen read-only accessor for the recorded auto-tracked keys.
+- New top-level `to_state` field `:persisted_keys` (sorted Array of Symbols). Round-trips through restore. Pre-`:auto` payloads with no key list seed `@persisted_keys` from the keys present in the stored context Hash, treating that as lossless migration.
+
+### Changed
+
+- `Smith::Context.persist` signature gains an `also:` keyword. Passing `also:` without `:auto` raises `Smith::WorkflowError`. Passing `:auto` with additional positional args also raises.
+- `Smith::Workflow#persist!` now calls `record_heartbeat` on adapters that support it. Failed `store_versioned` (PersistenceVersionConflict) does NOT bump the heartbeat.
+- `Smith::PersistenceAdapters::RedisStore#delete` now deletes both the payload key and the heartbeat sidecar key in a single `DEL` call.
+- `Smith::Workflow.to_state` includes the new `:persisted_keys` field unconditionally (forward-compatible payload shape for explicit-mode workflows too).
+
+### Test coverage
+
+- Default suite: 857 examples, 0 failures (+22 stuck_for/heartbeat, +19 persist :auto).
+- `SMITH_AR_SPECS=1` suite: 872 examples, 0 failures.
+
 ## [0.3.0] - 2026-06-24
 
 Two host-ergonomic primitives that absorb boilerplate consumer Execution wrappers were reinventing. Both are purely additive — existing workflows continue to work without changes.
