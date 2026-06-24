@@ -1,113 +1,43 @@
 # Smith
 
-Workflow-first multi-agent orchestration for Ruby.
-
-Smith gives you a disciplined way to build agent systems that are explicit, inspectable, and operationally sane. Instead of hiding orchestration inside prompts, it lets you model the work as a workflow with named states, named transitions, budgets, guardrails, tool policy, persistence hooks, artifacts, tracing, and composable multi-agent patterns.
+Workflow-first multi-agent orchestration for Ruby. Smith sits on top of `RubyLLM` and adds explicit state machines, typed contracts, budgets, guardrails, persistence, tools, and tracing for production agent systems.
 
 > [!WARNING]
-> `smith` is not published yet and is still under active development.
-> Expect API changes, contract tightening, and sharp edges.
-> If you want to build on it early, pin a commit and verify behavior against the runtime specs and [`spec/SPEC_MATRIX.md`](./spec/SPEC_MATRIX.md).
+> Smith is pre-1.0. Expect contract tightening between minor versions. Pin to an exact version in production.
 
-## Why The Name
-
-Smith is named after Agent Smith from *The Matrix*.
-
-The reference fits the kind of systems this library is built for across Smith's full role in the films: control, enforcement, replication, propagation, coordination, containment pressure, and a system that becomes more dangerous as it becomes more autonomous and harder to constrain. That is closer to real agent software than most friendly assistant demos: multiple actors, repeated delegation, expanding scope, and failure modes that matter once the system has real consequences.
-
-Smith is built for that layer: not just "call a model," but manage agent behavior as a system.
-
-## Why Use Smith
-
-Most agent demos look good until you need one of these:
-
-- explicit control flow instead of "the prompt told the model what to do"
-- repeatable failure behavior
-- tool authorization and guardrails
-- budget and deadline enforcement
-- parallel fan-out with controlled accounting
-- nested workflows and reusable subflows
-- evaluator-optimizer and orchestrator-worker loops
-- persistence and resume at workflow boundaries
-- artifacts for large outputs
-- tracing and best-known token/cost accounting
-
-Smith is built for that layer.
-
-It is especially useful when you want to:
-
-- turn one-off prompting into a real application workflow
-- keep orchestration in Ruby instead of burying everything in model text
-- compose multiple agents without losing control of budgets, deadlines, and failure semantics
-- let host apps own storage, queues, retries, and long-lived durability
-
-## What Smith Is
-
-- A Ruby library for workflow-first agent orchestration
-- Built on top of `RubyLLM`, not a replacement for it
-- In-process and host-controlled
-- Good for application-level orchestration where you want explicit state and explicit control
-
-## What Smith Is Not
-
-- Not a hosted runtime
-- Not a durable workflow engine by itself
-- Not a job queue
-- Not a billing-grade cost system
-- Not a replacement for your app's persistence, retries, or deployment platform
-
-Your application still owns:
-
-- persistence
-- job execution
-- retries at the host/process level
-- tenant isolation policy
-- provider credentials and provider-level configuration
-
-## What You Can Build
-
-With the current surface you can build:
-
-- a single guarded agent behind a workflow boundary
-- sequential multi-step flows
-- classifier routers
-- bounded parallel fan-out
-- reusable subflows through nested workflows
-- generator/evaluator loops
-- orchestrator/worker systems
-- workflows that store big outputs as artifact refs
-- resumable flows using `to_state` / `.from_state`
-
-## Value In One Minute
-
-Here is the practical shift Smith gives you.
-
-Without Smith, a typical app ends up with:
-
-- a prompt string
-- an LLM call
-- some ad hoc branching around the response
-- unclear failure handling
-- no workflow state
-
-With Smith, the same job becomes an explicit workflow with real structure:
+## Installation
 
 ```ruby
-class ReplyContext < Smith::Context
-  persist :user_message
+# Gemfile
+gem "smith-agents", "~> 0.2.0"
+```
 
-  inject_state do |persisted|
-    "User message: #{persisted[:user_message]}"
-  end
+```bash
+bundle install
+```
+
+The Ruby module namespace stays `Smith::`; only the gem name is namespaced (the `smith` name on RubyGems was already taken).
+
+## Quickstart
+
+```ruby
+require "ruby_llm"
+require "smith"
+
+RubyLLM.configure do |config|
+  config.openai_api_key = ENV.fetch("OPENAI_API_KEY")
 end
 
 class ReplyAgent < Smith::Agent
   register_as :reply_agent
   model "gpt-4.1-nano"
 
-  instructions do |_context|
-    "Write a concise, professional reply."
-  end
+  instructions { "Write a concise, professional reply." }
+end
+
+class ReplyContext < Smith::Context
+  persist :user_message
+  inject_state { |p| "User message: #{p[:user_message]}" }
 end
 
 class ReplyWorkflow < Smith::Workflow
@@ -122,388 +52,49 @@ class ReplyWorkflow < Smith::Workflow
   end
 end
 
-result = ReplyWorkflow.new(
-  context: { user_message: "I was charged twice for the same invoice." }
-).run!
-
-result.state
-# => :done
-
-result.output
-# => final assistant output
-
-result.steps
-# => [{ transition: :reply, from: :idle, to: :done, output: ... }]
+result = ReplyWorkflow.new(context: { user_message: "Charged twice." }).run!
+result.state    # => :done
+result.output   # => assistant reply
+result.steps    # => [{ transition: :reply, from: :idle, to: :done, output: ... }]
 ```
 
-That buys you immediately:
-
-- explicit workflow state
-- explicit success and failure routing
-- a step log you can inspect
-- a clean place to add budgets, tools, guardrails, tracing, persistence, and artifacts later
-
-## Installation
-
-`smith` is not on RubyGems yet.
-
-Use a local path:
-
-```ruby
-# Gemfile
-gem "smith", path: "../smith"
-```
-
-Or a git source from your own remote:
-
-```ruby
-# Gemfile
-gem "smith", git: "ssh://git@your-git-host/your-org/smith.git"
-```
-
-Then install:
-
-```bash
-bundle install
-```
-
-## Host Verification
-
-After adding Smith to your bundle, verify the integration.
-
-### Plain Ruby
-
-```bash
-smith doctor              # offline verification
-smith doctor --live       # includes real provider call
-smith doctor --durability # includes persistence round-trip
-smith install             # scaffold config/smith.rb
-```
-
-### Rails
-
-```bash
-bin/rails smith:doctor              # offline verification
-bin/rails smith:doctor:live         # includes real provider call
-bin/rails smith:doctor:durability   # includes persistence round-trip
-bin/rails smith:install             # scaffold config/initializers/smith.rb
-```
-
-Or use the Rails generator:
-
-```bash
-bin/rails generate smith:install
-```
-
-### What Doctor Verifies
-
-- **Baseline** (always): Smith loads, Ruby version, RubyLLM loads, minimal workflow boots
-- **Configuration** (always): logger, artifacts, tracing, pricing — warns if missing
-- **Serialization** (with `--durability`): to_state, JSON round-trip, from_state, resume
-- **Durability** (with `--durability`): host persistence adapter round-trip and resumed execution
-- **Persistence** (with `--profile rails_persistence`): ActiveRecord, DB connection, RubyLLM persistence surface, schema
-- **Live** (with `--live`): real provider call against configured RubyLLM model
-
-Doctor is offline by default. Live verification and persistence checks are opt-in.
-
-### Built-In Persistence Adapters
-
-For durability verification, Smith supports these first-class adapter modes:
-
-- `:rails_cache` for standard Rails cache integration
-- `:solid_cache` as a Rails-cache alias when your cache backend is Solid Cache
-- `:cache_store` for any cache-like store that responds to `write`, `read`, and `delete`
-- `:redis` for a Redis client
-- `:active_record` for a keyed ActiveRecord model such as `WorkflowState`
-
-`:rails_cache` and `:solid_cache` are only as durable as the configured Rails cache backend.
-If Rails is using `ActiveSupport::Cache::MemoryStore`, Smith can round-trip in-process but that storage will not survive restarts, and doctor will warn accordingly.
-The same warning applies to `:cache_store` if you point it at a process-local memory backend.
-
-Example Rails config:
-
-```ruby
-Smith.configure do |config|
-  config.persistence_adapter = :rails_cache
-  config.persistence_options = { namespace: "smith" }
-end
-```
-
-If the workflow should begin with a deterministic conversation turn, you can seed that session history directly on the workflow:
-
-```ruby
-class SeededReplyWorkflow < Smith::Workflow
-  seed_messages do |ctx|
-    [{ role: :user, content: ctx[:user_message] }]
-  end
-
-  initial_state :idle
-  state :done
-
-  transition :reply, from: :idle, to: :done do
-    execute :reply_agent
-  end
-end
-```
-
-Example Redis config:
-
-```ruby
-Smith.configure do |config|
-  config.persistence_adapter = :redis
-  config.persistence_options = {
-    redis: Redis.new(url: ENV.fetch("REDIS_URL")),
-    namespace: "smith"
-  }
-end
-```
-
-Example ActiveRecord config:
-
-```ruby
-Smith.configure do |config|
-  config.persistence_adapter = :active_record
-  config.persistence_options = {
-    model: WorkflowState,
-    key_column: :key,
-    payload_column: :payload
-  }
-end
-```
-
-You can still provide a custom adapter object if your host app already has its own persistence API.
-It just needs to implement:
-
-- `store(key, payload)`
-- `fetch(key)`
-- `delete(key)`
-
-Adapters MAY additionally implement the optional `store_versioned(key, payload, expected_version:, ttl:)` capability for optimistic locking. See "Persistence Hardening" below.
-
-### Persistence Hardening
-
-Beyond the basic store/fetch/delete contract, Smith ships several opt-in persistence features. All defaults preserve the pre-hardening behavior; hosts opt in per workflow class or globally.
-
-**In-process Memory adapter for tests.** When `Smith.config.persistence_adapter` is nil and `Smith.config.test_mode = true`, Smith auto-selects `Smith::PersistenceAdapters::Memory`, a Monitor-synchronized in-process Hash adapter. Lets spec suites avoid wiring Redis or Rails.cache:
-
-```ruby
-# spec/rails_helper.rb
-Smith.configure { |c| c.test_mode = true }
-```
-
-**TTL on persisted state.** Set globally via `Smith.config.persistence_ttl = 30.days.to_i`, or per workflow class via the `persistence_ttl` DSL:
-
-```ruby
-class DraftWorkflow < Smith::Workflow
-  persistence_ttl 7.days.to_i  # overrides Smith.config.persistence_ttl
-end
-```
-
-Adapters that natively support TTL (RedisStore via `ex:`, CacheStore via `expires_in:`, Memory via stamped expiry) honor it. ActiveRecordStore TTL is deferred (would need an `expires_at` column + sweeper job).
-
-**Retry on transient I/O failures.** All shipped I/O-bound adapters wrap `store/fetch/delete/store_versioned` in `Smith::PersistenceAdapters::Retry.with_retries` with backend-specific transient-error lists. Exhausted retries raise `Smith::PersistenceIOError` with `#operation` and `#cause` fields. Tune via `Smith.config.persistence_retry_policy`:
-
-```ruby
-Smith.config.persistence_retry_policy = { attempts: 5, base_delay: 0.2, max_delay: 2.0 }
-```
-
-**Optimistic locking via `store_versioned`.** RedisStore (WATCH/MULTI/EXEC), Memory (Monitor), and ActiveRecordStore (Rails `lock_version` column) implement the optional `store_versioned(key, payload, expected_version:)` capability. `Workflow#persist!` queries `Smith::PersistenceAdapters.supports?(adapter, :store_versioned)` and forwards a monotonic `@persistence_version` to the adapter. Stale writers raise `Smith::PersistenceVersionConflict`, which host code can rescue, restore, and retry. CacheStore/RailsCache fall back to plain `store` with a one-time per-adapter-class warning.
-
-ActiveRecordStore optimistic locking requires the AR model to have a `lock_version` integer column:
-
-```ruby
-add_column :workflow_states, :lock_version, :integer, default: 0
-```
-
-**Schema versioning + migrations.** Workflow classes can stamp a schema version and register forward-migration blocks. Restore walks registered migrations one step at a time; unbridged gaps raise `Smith::PersistenceSchemaMismatch`:
-
-```ruby
-class DraftWorkflow < Smith::Workflow
-  persistence_schema_version 2
-
-  migrate_from 1 do |payload|
-    payload[:schema_version] = 2
-    payload[:context] = (payload[:context] || {}).merge(introduced_in_v2: nil)
-    payload
-  end
-end
-```
-
-**Seed-message drift validation.** When the seed builder is deterministic (system instructions, static templates), opt into validation. `:strict` raises `Smith::SeedMismatch` on drift; `:warn` logs. Default `:off` because many real seed builders are non-deterministic (timestamps, UUIDs, request-scoped data):
-
-```ruby
-class StableSeedWorkflow < Smith::Workflow
-  seed_validation :strict
-  seed_messages { [{ role: :system, content: "You are a careful assistant." }] }
-end
-```
-
-**Step-in-progress idempotency marker.** For workflows where re-running a step on resume could double-execute non-idempotent side effects, opt into `:strict` mode. Smith stamps a marker before each advance and clears it after; restore raises `Smith::StepInProgressOnRestore` if the marker is set (a previous worker crashed mid-step):
-
-```ruby
-class PaymentWorkflow < Smith::Workflow
-  idempotency_mode :strict
-end
-```
-
-Default `:lax` skips marker stamping (no write amplification) and assumes step re-runs are safe.
-
-## Quickstart
-
-The setup model is:
-
-1. configure your provider through `RubyLLM`
-2. optionally configure Smith runtime services
-3. define an agent
-4. define a workflow
-5. run it
-
-### What Is Actually Required
-
-To make a real Smith workflow run, you need:
-
-- working `RubyLLM` provider setup
-- at least one `Smith::Agent` with a `model`
-- a `register_as` name for any agent a workflow will execute
-- the agent class to be loaded before the workflow step that references it runs
-- a `Smith::Workflow` with at least one transition
-
-Everything else is optional at first:
-
-- `Smith.configure`
-- budgets
-- guardrails
-- context management
-- tracing
-- artifacts
-- pricing
-
-### 1. Configure RubyLLM
-
-Smith depends on `RubyLLM`.
-It does not replace provider setup.
-
-Minimal OpenAI example:
-
-```ruby
-require "ruby_llm"
-
-RubyLLM.configure do |config|
-  config.openai_api_key = ENV.fetch("OPENAI_API_KEY")
-  config.default_model = "gpt-4.1-nano"
-end
-```
-
-The exact keys change by provider, but the layering does not:
-
-- RubyLLM owns provider credentials and default provider behavior
-- Smith owns orchestration on top of that
-
-### Agent Registration And Loading
-
-`register_as` is a class-load side effect.
-
-When Smith executes a transition like:
-
-```ruby
-execute :reply_agent
-```
-
-it resolves `:reply_agent` from `Smith::Agent::Registry`.
-That means the agent class must already have been loaded so its `register_as :reply_agent` line has actually run.
-
-This matters most in environments with autoloading and partial eager loading, such as Rails development mode. If an agent class lives in an autoloaded path but nothing has referenced that constant yet, the registry entry may not exist when the workflow runs.
-
-Smith now fails fast in that situation. Unresolved agent symbols raise `Smith::WorkflowError` instead of silently advancing with `nil`. The same rule applies across:
-
-- `execute`
-- `route`
-- `optimize`
-- `orchestrate`
-
-In host apps, the fix is to make agent loading explicit at boot or reload time. In Rails, that usually means a small initializer or `to_prepare` hook that references or registers the workflow-facing agent classes your app uses.
-
-`register_as` is **reload-safe**. Under the hood it delegates to `Smith::Agent::Registry.ensure_registered`, which handles:
-
-- **First boot:** registers the agent normally.
-- **Rails reload (stale same-name class):** detects the old class object by matching `.name`, replaces it atomically.
-- **Same object re-registration:** no-op.
-- **True collision (different class name):** raises `Smith::AgentRegistryError`.
-
-Host apps should **not** call `Smith::Agent::Registry.clear!` during normal runtime. `clear!` exists for test isolation only.
-
-Host apps should **not** access `Smith::Agent::Registry._container` directly. All registry operations go through the public API: `find`, `fetch!`, `register`, `delete`, `ensure_registered`, `clear!`.
-
-Registry collisions with different class names fail loudly with `Smith::AgentRegistryError`. This catches real misconfiguration (two different agents registered under the same key).
-
-**Post-`clear!` re-registration in tests:** if a test calls `clear!` while agent constants are already loaded, referencing the constant does not re-run `register_as` (class body does not re-execute). Tests must explicitly re-register via `Smith::Agent::Registry.ensure_registered(klass.register_as, klass)`.
-
-The clean fix order is:
-
-1. Ensure every workflow-facing agent declares the exact symbol it uses through `register_as`.
-2. Make agent loading explicit in the host app via `to_prepare`.
-3. Let Smith fail fast if that bootstrap is missing.
-
-In Rails, the preferred fix is a narrow `to_prepare` hook that references agent classes directly:
+## Core Concepts
+
+| Concept | Purpose |
+|---|---|
+| `Smith::Agent` | A `RubyLLM` agent plus model, instructions, output schema, tools, budget, and fallback models. Identifies itself to the workflow via `register_as :name`. |
+| `Smith::Workflow` | A state machine of named transitions. Each transition calls an agent, runs deterministic code, routes, or composes a nested workflow. |
+| `Smith::Context` | Declares which workflow context keys persist across restore, and how those keys become agent-visible input via `inject_state`. |
+| `Smith::Tool` | A `RubyLLM` tool plus provider-compatibility metadata and guardrail hooks. |
+| Persistence adapters | Host-owned storage. Smith ships `Memory`, `RedisStore`, `CacheStore`, `RailsCache`, `ActiveRecordStore`. |
+| Trace adapters | Host-owned observability. Smith ships `Memory`, `Logger`, `OpenTelemetry`. |
+
+Agents register at class load. In Rails, register workflow-facing agents in a `to_prepare` hook so autoload doesn't drop them:
 
 ```ruby
 # config/initializers/smith_agents.rb
 Rails.application.config.to_prepare do
   ReplyAgent
   TriageAgent
-  ResearchOrchestrator
-  ResearchWorker
 end
 ```
 
-That keeps development reload behavior intact and makes the dependency explicit. No app-level registry module is needed — Smith's `ensure_registered` handles reload safety.
+## Patterns
 
-### Prompt Roles And Multi-Round Input
+| Pattern | DSL | Use case |
+|---|---|---|
+| Single execute | `execute :agent` | One agent call per transition. |
+| Pipeline | sequential transitions | Multi-step workflow with explicit success/failure routing. |
+| Router | `route :classifier, routes: {...}` | Branch on a classifier agent's output. |
+| Parallel fan-out | `execute :agent, parallel: true` | Concurrent agent calls under one ledger. |
+| Nested workflow | `workflow OtherWorkflow` | Reuse a subflow as one transition. |
+| Evaluator-Optimizer | `optimize generator:, evaluator:, ...` | Generate-then-critique refinement loops. |
+| Orchestrator-Worker | `orchestrate orchestrator:, worker:, ...` | Dynamic task fan-out with delegation rounds. |
+| Deterministic | `compute { |step| ... }` | Pure Ruby step inside the state machine. |
 
-Smith standardizes prompt roles across providers at the workflow handoff:
+The full pattern guide with working examples for each lives in [`docs/PATTERNS.md`](docs/PATTERNS.md).
 
-- **`system`:** stable control-plane framing for the whole agent invocation
-- **`assistant`:** prior model output from an earlier round
-- **`user`:** the current task input plus turn-local workflow metadata
-
-Smith keeps exactly one control-plane `system` message per agent invocation. Agent `instructions` and injected context state are merged into that single message before the provider call.
-
-This matters for both provider compatibility and prompt semantics:
-
-- Anthropic accepts a single top-level system prompt
-- OpenAI-style providers treat `system`/`developer` as high-authority instructions
-- turn-local workflow markers should stay adjacent to the current round, not be hoisted into the global instruction layer
-
-In practice that means:
-
-- injected state like `[smith:injected-state]` belongs in the single `system` message
-- refinement feedback and orchestration worker results belong in `user` content for the current round
-- prior candidates or prior orchestrator outputs stay in `assistant` when Smith is continuing a multi-round exchange
-
-Setting `config.eager_load = true` can hide the problem by loading more classes at boot, but it is not the preferred fix:
-
-- it couples correctness to a global loading mode
-- it is a worse default for development
-- it does not make the workflow-facing agent set explicit
-
-Production eager loading is still fine. The point is that Smith correctness should not depend on eager loading as the only registration mechanism.
-
-If you skip `Smith.configure`, you still need:
-
-```ruby
-require "smith"
-```
-
-### 2. Optionally Configure Smith
-
-`Smith.configure` is global runtime config for orchestration concerns:
-
-- artifacts
-- tracing
-- pricing
-- logging
-
-Minimal example:
+## Configuration
 
 ```ruby
 require "logger"
@@ -514,1347 +105,122 @@ Smith.configure do |config|
   config.trace_adapter = Smith::Trace::Memory.new
   config.artifact_store = Smith::Artifacts::Memory.new
 
+  # Persistence
+  config.persistence_adapter = :rails_cache
+  config.persistence_options = { namespace: "smith" }
+  config.persistence_ttl = 1.day.to_i
+  config.persistence_retry_policy = { attempts: 3, base_delay: 0.1, max_delay: 1.0 }
+
+  # OpenAI /v1/responses routing for gpt-5 + tools + thinking. :auto (default) or :off.
+  config.openai_api_mode = :auto
+
   config.pricing = {
-    "gpt-4.1-nano" => {
-      input_cost_per_token: 0.0000001,
-      output_cost_per_token: 0.0000004
-    }
+    "gpt-4.1-nano" => { input_cost_per_token: 1.0e-7, output_cost_per_token: 4.0e-7 }
   }
 end
 ```
 
-You do not need all of that to get started.
-For a first run, `Smith.configure` can be omitted entirely.
+All settings are optional for a first run. See [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) for the full reference.
 
-### 3. Define An Agent
-
-```ruby
-class SupportReplyAgent < Smith::Agent
-  register_as :support_reply_agent
-  model "gpt-4.1-nano"
-
-  instructions do |_context|
-    "Write a concise, calm support reply with a concrete next step."
-  end
-end
-```
-
-### 4. Define A Workflow
+## Persistence and Resume
 
 ```ruby
-class SupportReplyContext < Smith::Context
-  persist :ticket_id, :user_message
-
-  inject_state do |persisted|
-    <<~TEXT
-      Ticket: #{persisted[:ticket_id]}
-      User message: #{persisted[:user_message]}
-    TEXT
-  end
-end
-
-class SupportReplyWorkflow < Smith::Workflow
-  context_manager SupportReplyContext
-  initial_state :idle
-  state :done
-  state :failed
-
-  transition :reply, from: :idle, to: :done do
-    execute :support_reply_agent
-    on_failure :fail
-  end
-end
-```
-
-### 5. Run It
-
-```ruby
-result = SupportReplyWorkflow.new(
-  context: {
-    ticket_id: "T-1042",
-    user_message: "I was charged twice for the same invoice."
-  }
-).run!
-
-result.state
-# => :done
-
-result.output
-# => final workflow output
-```
-
-The immediate value is not just "call a model". It is that the call now happens inside:
-
-- an explicit workflow state machine
-- a step log
-- a standard failure path
-- a result object with cumulative best-known totals
-
-### Passing Input
-
-The normal public way to pass input into a workflow is exactly what the quickstart does:
-
-1. pass data through `context:`
-2. declare which keys matter with `persist`
-3. turn those keys into agent-visible input with `inject_state`
-
-If you need conversation history rather than just structured workflow input, that history lives in `session_messages` in persisted workflow state and comes back through `.from_state`.
-
-If a workflow should start from a deterministic first turn, use `seed_messages` on the workflow. Seeded messages are only added for newly initialized workflows and do not rerun on restore.
-
-## Core Concepts
-
-### `Smith::Agent`
-
-Use `Smith::Agent` when you want RubyLLM agents plus Smith-specific operational controls.
-
-Smith adds:
-
-- `budget`
-- `guardrails`
-- `output_schema`
-- `data_volume`
-- `fallback_models`
-- `register_as`
-
-It still keeps the RubyLLM agent surface, so you can continue using things like:
-
-- `model`
-- `tools`
-- `instructions`
-- `temperature`
-- `thinking`
-
-Example:
-
-```ruby
-class ResearchSummarySchema
-  # Replace this with your real RubyLLM schema object/class.
-  # The intended shape here is something like:
-  # { summary: "...", sources: ["..."] }
-end
-
-class ResearchAgent < Smith::Agent
-  register_as :research_agent
-
-  model "gpt-4.1-nano"
-  temperature 0.2
-
-  budget token_limit: 20_000, cost: 0.75, wall_clock: 20, tool_calls: 5
-  fallback_models "gpt-4.1-mini"
-  output_schema ResearchSummarySchema
-
-  instructions do |_context|
-    "Research the topic and return a concise, factual answer."
-  end
-end
-```
-
-Notes:
-
-- `output_schema` is passed through to RubyLLM schema support for providers that support structured outputs.
-- `thinking` is inherited from RubyLLM and forwards reasoning/thinking controls to providers that support them.
-- use `thinking` with reasoning-capable models, for example:
-
-```ruby
-class DeepReasoningAgent < Smith::Agent
-  register_as :deep_reasoning_agent
-  model "o4-mini"
-  thinking effort: :medium, budget: 2_048
-end
-```
-
-### `Smith::Workflow`
-
-Use `Smith::Workflow` to define the actual orchestration graph.
-
-It gives you:
-
-- states
-- transitions
-- workflow budgets
-- max transition bounds
-- workflow-level guardrails
-- context management
-- stepwise execution
-- persistence and resume
-
-Example:
-
-```ruby
-class ResearchWorkflow < Smith::Workflow
-  initial_state :idle
-  state :researching
-  state :done
-  state :failed
-
-  budget total_tokens: 150_000, total_cost: 2.50, wall_clock: 300, tool_calls: 20
-  max_transitions 12
-
-  transition :start, from: :idle, to: :researching do
-    execute :research_agent
-    on_success :finish
-    on_failure :fail
-  end
-
-  transition :finish, from: :researching, to: :done
-end
-```
-
-### `RunResult`
-
-`workflow.run!` returns a result object with:
-
-- `state`
-- `output`
-- `steps`
-- `total_cost`
-- `total_tokens`
-- `context`
-- `session_messages`
-- `tool_results`
-- `outcome`
-- `outcome_kind`
-- `outcome_payload`
-- `usage_entries`
-
-Those totals are cumulative best-known workflow totals, including resumed execution and nested roll-up, not just the last `run!` segment.
-
-`usage_entries` is the per-agent-call billing-facts list — one `Smith::Workflow::UsageEntry` per agent provider call, each carrying `usage_id`, `agent_name`, `model`, `input_tokens`, `output_tokens`, `cost`, `attempt_kind` (`:completed_attempt` or `:failed_attempt`), and `recorded_at`. Hosts persist these idempotently (the `usage_id` is the natural unique key) and use them to compute per-row charges. The collection is deep-copied on RunResult population — host mutation does not leak back into workflow state.
-
-Convenience helpers:
-
-- `terminal_output`
-- `last_error`
-- `failed_transition`
-- `failure_detail`
-
-`context`, `session_messages`, `tool_results`, and `outcome` are returned as final-state snapshots for host handling code. Mutating them does not mutate workflow internals.
-
-Typical successful step entry:
-
-```ruby
-{
-  transition: :reply,
-  from: :idle,
-  to: :done,
-  output: { "status" => "ok" }
-}
-```
-
-Typical failed step entry:
-
-```ruby
-{
-  transition: :reply,
-  from: :idle,
-  to: :done,
-  error: #<Smith::AgentError ...>
-}
-```
-
-Blank or nil agent completions are treated as agent-boundary failures, not successful step output.
-Smith will fail the step with `Smith::BlankAgentOutputError` instead of accepting an empty assistant turn.
-
-### `advance!`
-
-Use `advance!` when you want stepwise execution instead of running the workflow to completion in one call.
-
-```ruby
-workflow = ResearchWorkflow.new
-
-first_step = workflow.advance!
-workflow.state
-# => :researching
-
-result = workflow.run!
-workflow.state
-# => :done
-```
-
-This shows the mixed mode clearly:
-
-- `advance!` executes one step
-- `run!` then continues from the current workflow state
-- in this example, `run!` performs the remaining work and finishes the workflow
-
-This is useful when your host app wants to inspect or persist state between step boundaries.
-
-## Pattern Guide
-
-Use this as the quick selection rule:
-
-| If you need... | Use... |
-| --- | --- |
-| One guarded model call behind a workflow boundary | A single `transition` with `execute` |
-| Fixed sequential stages | `pipeline` |
-| Classification-based branching | `route` |
-| Fan-out across N parallel calls | `execute ..., parallel: true, count: N` |
-| Reusable subflows | `workflow ChildWorkflow` |
-| Iterative improve-and-judge loops | `optimize` |
-| An orchestrator delegating structured tasks to workers | `orchestrate` |
-
-The rest of this README walks through those in increasing complexity.
-
-## Example 1: Single-Step Workflow
-
-Use this when you want one agent call with real workflow semantics around it.
-
-```ruby
-class TicketReplyAgent < Smith::Agent
-  register_as :ticket_reply_agent
-  model "gpt-4.1-nano"
-
-  instructions do |_context|
-    "Draft a support reply that is concise, calm, and actionable."
-  end
-end
-
-class TicketReplyWorkflow < Smith::Workflow
-  initial_state :idle
-  state :done
-  state :failed
-
-  transition :reply, from: :idle, to: :done do
-    execute :ticket_reply_agent
-    on_failure :fail
-  end
-end
-
-result = TicketReplyWorkflow.new.run!
-```
-
-Why this is useful even when it looks small:
-
-- you get a named transition
-- failures route consistently
-- the step is visible in `result.steps`
-- you can later add budgets, guardrails, persistence, context, or tracing without rewriting the shape
-
-## Example 2: Multi-Step Workflow With Explicit Success Paths
-
-Use this when you want sequential work, but each stage still needs its own step boundary and failure semantics.
-
-```ruby
-class IntakeAgent < Smith::Agent
-  register_as :intake_agent
-  model "gpt-4.1-nano"
-end
-
-class DraftAgent < Smith::Agent
-  register_as :draft_agent
-  model "gpt-4.1-nano"
-end
-
-class ReviewWorkflow < Smith::Workflow
-  initial_state :idle
-  state :triaged
-  state :drafted
-  state :done
-  state :failed
-
-  transition :intake, from: :idle, to: :triaged do
-    execute :intake_agent
-    on_success :draft
-    on_failure :fail
-  end
-
-  transition :draft, from: :triaged, to: :drafted do
-    execute :draft_agent
-    on_success :finish
-    on_failure :fail
-  end
-
-  transition :finish, from: :drafted, to: :done
-end
-```
-
-Value:
-
-- no hidden control flow
-- no prompt-level "now do step 2"
-- if step 1 or step 2 fails, the failure is a real workflow event, not an accidental provider exception leaking through
-
-## Example 3: Pipeline
-
-Use `pipeline` when the flow is mechanically sequential and you do not want to hand-write each transition.
-
-```ruby
-class ResearchAgent < Smith::Agent
-  register_as :research_agent
-  model "gpt-4.1-nano"
-end
-
-class OutlineAgent < Smith::Agent
-  register_as :outline_agent
-  model "gpt-4.1-nano"
-end
-
-class DraftAgent < Smith::Agent
-  register_as :draft_agent
-  model "gpt-4.1-nano"
-end
-
-class ArticleWorkflow < Smith::Workflow
-  initial_state :idle
-  state :drafted
-  state :failed
-
-  pipeline :draft_article, from: :idle, to: :drafted do
-    stage :research, execute: :research_agent
-    stage :outline, execute: :outline_agent
-    stage :draft, execute: :draft_agent
-    on_failure :fail
-  end
-end
-```
-
-Why pipeline matters:
-
-- you still get real step boundaries
-- each stage is still visible in the step log
-- the last stage output becomes the workflow result
-- the generated transitions are explicit and stable, rather than hidden in a loop
-
-Note: `on_failure` inside the `pipeline` block applies to the generated pipeline transitions as a whole.
-It is not a separate per-stage custom failure policy surface.
-
-## Example 4: Router
-
-Use `route` when a classifier decides which specialist transition should run next.
-
-The classifier output must be a hash that includes:
-
-- `:route`
-- `:confidence`
-
-Example:
-
-```ruby
-class RouteDecisionSchema
-  # Replace this with your real RubyLLM schema object/class.
-  # Intended shape:
-  # { route: :refund, confidence: 0.91 }
-end
-
-class TriageAgent < Smith::Agent
-  register_as :triage_agent
-  model "gpt-4.1-nano"
-  output_schema RouteDecisionSchema
-
-  instructions do |_context|
-    <<~TEXT
-      Return a Hash with:
-      - :route => one of the declared route keys
-      - :confidence => a float between 0.0 and 1.0
-    TEXT
-  end
-end
-
-class RefundAgent < Smith::Agent
-  register_as :refund_agent
-  model "gpt-4.1-nano"
-end
-
-class GeneralSupportAgent < Smith::Agent
-  register_as :general_support_agent
-  model "gpt-4.1-nano"
-end
-
-class SupportRouterWorkflow < Smith::Workflow
-  initial_state :idle
-  state :triaged
-  state :refund_handled
-  state :general_handled
-  state :failed
-
-  transition :classify, from: :idle, to: :triaged do
-    route :triage_agent,
-          routes: {
-            refund: :handle_refund,
-            support: :handle_general
-          },
-          confidence_threshold: 0.75,
-          fallback: :handle_general
-    on_failure :fail
-  end
-
-  transition :handle_refund, from: :triaged, to: :refund_handled do
-    execute :refund_agent
-    on_failure :fail
-  end
-
-  transition :handle_general, from: :triaged, to: :general_handled do
-    execute :general_support_agent
-    on_failure :fail
-  end
-end
-```
-
-Why this is better than "classifier prompt + if/else outside":
-
-- route resolution is part of the workflow contract
-- confidence thresholds are explicit
-- invalid router outputs fail as workflow errors
-- the chosen next transition is persisted and restored across resume
-
-In practice, router outputs should be treated as structured outputs, not free-form prose.
-
-## Example 5: Parallel Fan-Out
-
-Use parallel execution when the same kind of work must be done across multiple branches.
-
-```ruby
-class FindingAgent < Smith::Agent
-  register_as :finding_agent
-  model "gpt-4.1-nano"
-  budget token_limit: 8_000, cost: 0.20, wall_clock: 15
-end
-
-class ParallelResearchWorkflow < Smith::Workflow
-  initial_state :idle
-  state :done
-  state :failed
-
-  budget total_tokens: 60_000, total_cost: 1.50, wall_clock: 90
-
-  transition :fan_out, from: :idle, to: :done do
-    execute :finding_agent, parallel: true, count: 4
-    on_failure :fail
-  end
-end
-```
-
-Why this is valuable:
-
-- Smith treats each branch as a real invocation
-- workflow budgets remain cumulative outer limits
-- agent budgets still narrow each branch call
-- branch failures discard step output and route through normal failure handling
-- prepared input is reused consistently across branches
-
-## Example 6: Nested Workflows
-
-Use nested workflows when one part of the system deserves to be a reusable subflow with its own states and transitions.
-
-```ruby
-class ChildResearchAgent < Smith::Agent
-  register_as :child_research_agent
-  model "gpt-4.1-nano"
-end
-
-class ResearchSubflow < Smith::Workflow
-  initial_state :idle
-  state :done
-
-  transition :research, from: :idle, to: :done do
-    execute :child_research_agent
-  end
-end
-
-class ParentWorkflow < Smith::Workflow
-  initial_state :idle
-  state :researched
-  state :done
-  state :failed
-
-  transition :run_research, from: :idle, to: :researched do
-    workflow ResearchSubflow
-    on_failure :fail
-  end
-
-  transition :finish, from: :researched, to: :done
-end
-```
-
-What you get:
-
-- the child workflow's final output becomes the parent step output
-- parent step count stays parent-scoped
-- parent and child share the outer budget ledger
-- nested best-known token/cost totals roll up into the parent result
-- artifact scope is preserved across nesting
-
-## Example 7: Evaluator-Optimizer
-
-Use `optimize` when one agent generates candidates and another agent evaluates whether the result is acceptable.
-
-The evaluator output is expected to carry a contract like:
-
-- `accept: true/false`
-- `feedback: ...` when rejecting
-- optional `score`
-- optional `converged`
-
-Example:
-
-```ruby
-class TranslationEvaluationSchema
-  # Replace this with your real RubyLLM schema object/class.
-  # Intended shape:
-  # { accept: true/false, feedback: "...", score: 0.93 }
-end
-
-class TranslationGenerator < Smith::Agent
-  register_as :translation_generator
-  model "gpt-4.1-nano"
-end
-
-class TranslationEvaluator < Smith::Agent
-  register_as :translation_evaluator
-  model "gpt-4.1-nano"
-  output_schema TranslationEvaluationSchema
-end
-
-class TranslationWorkflow < Smith::Workflow
-  initial_state :idle
-  state :done
-  state :failed
-
-  transition :translate, from: :idle, to: :done do
-    optimize generator: :translation_generator,
-             evaluator: :translation_evaluator,
-             max_rounds: 3,
-             evaluator_schema: TranslationEvaluationSchema,
-             improvement_threshold: 0.05
-    on_failure :fail
-  end
-end
-```
-
-Why this matters:
-
-- the loop is explicit, bounded, and observable
-- acceptance criteria are structured
-- exhaustion, malformed evaluator output, and convergence without acceptance fail normally
-- costs and token usage from the full loop roll into the workflow totals
-
-## Example 8: Orchestrator-Worker
-
-Use `orchestrate` when you need an orchestrator that can emit structured tasks for workers and later decide when the system is done.
-
-The orchestrator can emit one of:
-
-- `tasks: [...]`
-- `final: {...}`
-- `stop: "...reason..."`
-
-Example schemas:
-
-```ruby
-class ResearchTaskSchema
-  def self.required_keys = %i[task_id input]
-end
-
-class WorkerOutputSchema
-  def self.required_keys = %i[finding]
-end
-
-class FinalOutputSchema
-  def self.required_keys = %i[summary]
-end
-
-class OrchestratorDecisionSchema
-  # Replace this with your real RubyLLM schema object/class.
-  # Intended shape:
-  # { tasks: [...] } or { final: {...} } or { stop: "..." }
-end
-```
-
-Example workflow:
-
-```ruby
-class ResearchOrchestrator < Smith::Agent
-  register_as :research_orchestrator
-  model "gpt-4.1-nano"
-  output_schema OrchestratorDecisionSchema
-
-  instructions do |_context|
-    <<~TEXT
-      Return exactly one of:
-      - { tasks: [{ task_id:, input: }] }
-      - { final: { summary: ... } }
-      - { stop: "reason" }
-    TEXT
-  end
-end
-
-class ResearchWorker < Smith::Agent
-  register_as :research_worker
-  model "gpt-4.1-nano"
-end
-
-class ResearchProgramWorkflow < Smith::Workflow
-  initial_state :idle
-  state :done
-  state :failed
-
-  transition :research, from: :idle, to: :done do
-    orchestrate orchestrator: :research_orchestrator,
-                worker: :research_worker,
-                max_workers: 4,
-                max_delegation_rounds: 3,
-                task_schema: ResearchTaskSchema,
-                worker_output_schema: WorkerOutputSchema,
-                final_output_schema: FinalOutputSchema
-    on_failure :fail
-  end
-end
-```
-
-Why this is valuable:
-
-- delegation is explicit and bounded
-- tasks and outputs are structured
-- worker fan-out is controlled
-- exhaustion and malformed orchestrator output fail as first-class workflow failures
-
-Notes:
-
-- the workflow helper validates `task_schema`, `worker_output_schema`, and `final_output_schema`
-- worker execution automatically applies `worker_output_schema`
-- the orchestrator still benefits from `output_schema` so its decision shape is pushed down to the provider layer too
-
-## Deterministic Steps
-
-Not every workflow step needs an agent. Sometimes you need small, deterministic logic inside the graph: verification, routing, normalization, or failure classification. Smith provides two transition primitives for this: `compute` and `run`.
-
-Both yield a constrained step object — not the full workflow — and execute synchronously with no agent call, no budget consumption, and no session message output.
-
-### `compute` — Verification and Routing
-
-Use `compute` for steps that check prior output and decide what happens next.
-
-```ruby
-transition :verify_research, from: :gathered, to: :verified do
-  compute do |step|
-    if step.tool_results.any? { |t| t[:captured]&.dig(:retryable) }
-      step.fail!("research temporarily unavailable", retryable: true)
-    end
-
-    unless step.last_output
-      step.write_outcome(kind: :terminal_failure, payload: { message: "no usable research output" })
-      step.route_to(:finish_terminal_failure)
-    end
-
-    step.route_to(:structure)
-  end
-
-  on_failure :fail
-end
-```
-
-### `run` — Normalization and Context Shaping
-
-Use `run` for steps that transform or prepare workflow-local state.
-
-```ruby
-transition :normalize, from: :gathered, to: :prepared do
-  run do |step|
-    step.write_context(:normalized, step.last_output&.upcase)
-    step.route_to(:structure)
-  end
-end
-```
-
-### Step Object API
-
-The yielded step object exposes a narrow, read-heavy surface:
-
-| Read | Write / Control |
-|---|---|
-| `step.context` | `step.write_context(key, value)` |
-| `step.read_context(key)` | `step.write_outcome(kind:, payload:)` |
-| `step.last_output` / `step.output` | `step.route_to(:transition_name)` |
-|  | `step.fail!(msg, retryable:, kind:, details:)` |
-| `step.tool_results` | |
-| `step.session_messages` | |
-| `step.current_state` | |
-| `step.transition_name` | |
-
-### Behavior
-
-- **Routing**: `step.route_to` overrides `on_success`. If neither is set, normal state-based resolution applies. Named transitions that do not exist fail loudly with `WorkflowError`.
-- **Failure**: `step.fail!` raises `Smith::DeterministicStepFailure` (extends `WorkflowError`) with `retryable`, `kind`, and `details` metadata. Routes through `on_failure` like any other step failure.
-- **Outcome**: `step.write_outcome(kind:, payload:)` stores a workflow-owned terminal payload without smuggling it through context. The payload is persisted with the workflow and surfaced on `RunResult.outcome`, `RunResult.outcome_kind`, and `RunResult.outcome_payload`.
-- **Context reads**: `step.context` returns an isolated snapshot of the workflow context at step start. Mutating that snapshot does not mutate workflow state. `step.read_context(key)` returns a merged view — pending `write_context` values override the snapshot. Use `read_context` when you need read-after-write coherence within the same step.
-- **No output**: Deterministic steps produce no session message output. `last_output` continues to mean the last agent output.
-- **No budget**: No tokens or cost consumed.
-- **Persistence**: Context writes and written outcomes survive `to_state`/`from_state`. The block itself (a Proc) lives on the class-level Transition and is never serialized.
-- **Trace**: Emits `:deterministic_step` traces for start, success/routed, and failure. When a step writes an outcome, the trace includes `outcome_kind`.
-- **Mutual exclusivity**: `compute` and `run` cannot be combined with `execute`, `route`, `workflow`, `optimize`, or `orchestrate`. A transition declares exactly one primary execution body.
-
-## Fallback Models
-
-Fallback chains are declared on the agent and stay inside one logical invocation.
-
-```ruby
-class CriticalAgent < Smith::Agent
-  register_as :critical_agent
-  model "gpt-4.1"
-  fallback_models "gpt-4.1-mini", "gpt-4.1-nano"
-end
-```
-
-Current behavior:
-
-- the primary model is tried first
-- fallback moves through the declared chain
-- only transient upstream failures trigger fallback
-- guardrail, policy, schema, budget, deadline, and workflow failures do not
-- best-known token and cost accounting accumulates across attempts
-- the successful attempt is priced against the model that actually handled it
-
-## Tools
-
-Smith tools extend RubyLLM tools with:
-
-- privilege enforcement
-- custom authorization
-- tool guardrails
-- deadline enforcement
-- tool-call budgeting
-- tracing
-- result capture (workflow-scoped tool output collection)
-
-Example:
-
-```ruby
-class RefundCustomer < Smith::Tool
-  category :action
-
-  capabilities do
-    privilege :elevated
-  end
-
-  authorize do |context|
-    context[:account_id] && context[:role] == :elevated
-  end
-
-  def perform(context:, charge_id:, reason:)
-    # call your billing system here
-    { refunded: true, charge_id: charge_id, reason: reason }
-  end
-end
-```
-
-### Tool Compatibility (provider-aware tool selection)
-
-Tools can declare which provider/endpoint combinations they tolerate. `Smith::Models::Normalizer` consults this metadata at chat construction and drops incompatible tools rather than letting the provider reject the request. Tools without a declaration are universally compatible (preserves existing behavior).
-
-```ruby
-class WebSearch < Smith::Tool
-  # Allowlist form: specific providers, plus an OpenAI endpoint constraint.
-  compatible_with :anthropic, :gemini, openai: :responses
-
-  def perform(query:)
-    # ...
-  end
-end
-```
-
-When `Smith.config.openai_api_mode = :auto` (the default) AND the tool requires `/v1/responses`, the normalizer instead sets `@params[:openai_api_mode] = :responses` so the routing prepend can dispatch via the Responses endpoint. When `:off`, the tool is dropped gracefully.
-
-The compatibility spec is inherited by subclasses; subclasses can override by calling `compatible_with` again. The spec is consulted only by the Normalizer, so tools without a declaration retain their pre-refactor behavior.
-
-### Tool Result Capture
-
-Tools can declare a `capture_result` block to collect structured data during workflow execution. Smith stores captured data on the workflow and exposes it on `RunResult#tool_results`. Smith does not interpret the payload — the host app owns all projection.
-
-```ruby
-class WebSearch < Smith::Tool
-  capture_result do |kwargs, result|
-    { query: kwargs[:query], urls: extract_urls(result) }
-  end
-
-  def perform(query:)
-    # search implementation
-  end
-end
-```
-
-After workflow execution:
-
-```ruby
-result = MyWorkflow.run_persisted!(key: "search:123", context: { topic: "AI" })
-result.tool_results
-# => [{ tool: "web_search", captured: { query: "AI trends", urls: ["https://..."] } }]
-```
-
-Captured tool results survive persistence — they are included in `to_state` and restored via `from_state`.
-
-`tool_results` is designed for compact structured evidence (URLs, metadata, refs). Hosts should avoid storing large raw payloads there. If large tool outputs are needed, use artifacts and capture refs or metadata instead.
-
-You can still use RubyLLM agent tool wiring on your agents:
-
-```ruby
-class RefundAgent < Smith::Agent
-  register_as :refund_agent
-  model "gpt-4.1-nano"
-  tools RefundCustomer
-end
-```
-
-## Guardrails
-
-Guardrails can be attached at either the workflow level or the agent level.
-
-Workflow guardrails run before agent guardrails for inputs, and before agent guardrails for outputs as well.
-
-Example:
-
-```ruby
-class SupportGuardrails < Smith::Guardrails
-  def require_input(payload)
-    raise "missing input" if payload.nil?
-  end
-
-  def sanitize_output(payload)
-    raise "empty response" if payload.nil?
-  end
-
-  def require_ticket(kwargs)
-    raise "ticket_id required" unless kwargs.dig(:context, :ticket_id)
-  end
-
-  input :require_input
-  output :sanitize_output
-  tool :require_ticket, on: [:refund_customer]
-end
-```
-
-Attach them like this:
-
-```ruby
-class GuardedAgent < Smith::Agent
-  register_as :guarded_agent
-  model "gpt-4.1-nano"
-  guardrails SupportGuardrails
-end
-
-class GuardedWorkflow < Smith::Workflow
-  guardrails SupportGuardrails
-  initial_state :idle
-  state :done
-
-  transition :finish, from: :idle, to: :done do
-    execute :guarded_agent
-  end
-end
-```
-
-## Context, Session History, and Resume
-
-Use `Smith::Context` when you want:
-
-- persisted workflow context keys
-- observation masking over session history
-- injected state summaries
-
-Example:
-
-```ruby
-class ReviewContext < Smith::Context
-  persist :ticket_id, :current_findings, :source_urls
-
-  session_strategy :observation_masking, window: 6
-
-  inject_state do |persisted|
-    <<~TEXT
-      Ticket: #{persisted[:ticket_id]}
-      Findings: #{persisted[:current_findings]}
-      Sources: #{Array(persisted[:source_urls]).join(", ")}
-    TEXT
-  end
-end
-
-class ReviewWorkflow < Smith::Workflow
-  context_manager ReviewContext
-  initial_state :idle
-  state :done
-
-  transition :review, from: :idle, to: :done do
-    execute :review_agent
-  end
-end
-```
-
-What Smith does for you:
-
-- prepares masked session input at step boundaries
-- injects a state summary message into that prepared input
-- persists declared workflow context keys
-- persists accepted session history
-- preserves chosen next transitions across persistence
-- supports JSON host round-trips through `to_state` and `.from_state`
-
-Example host-controlled persistence:
-
-```ruby
-workflow = ReviewWorkflow.new(context: {
-  ticket_id: "T-1042",
-  current_findings: "needs escalation",
-  source_urls: ["https://example.test/refund-policy"]
-})
-
-payload = JSON.generate(workflow.to_state)
-
-# Store payload wherever your app wants.
-
-restored = ReviewWorkflow.from_state(JSON.parse(payload))
-result = restored.run!
-```
-
-Important: Smith is resumable, but it is still your app's job to store and retrieve that state.
-
-For the common restore-or-initialize case, Smith also exposes a small configured-adapter one-liner:
-
-```ruby
-result = ReviewWorkflow.run_persisted!(
+# Persist after every advance
+result = ReplyWorkflow.run_persisted!(
+  context: { user_message: "..." },
+  adapter: Smith.persistence_adapter
+)
+
+# Resume later
+result = ReplyWorkflow.run_persisted!(
   key: "ticket:T-1042",
-  context: {
-    ticket_id: "T-1042",
-    current_findings: "needs escalation"
-  },
-  on_step: ->(step) { puts "checkpointed #{step[:transition]}" },
-  clear: :done
+  adapter: Smith.persistence_adapter
 )
 ```
 
-`clear: :done` is the default. Pass `clear: false` to preserve terminal state for host-managed cleanup timing, or `clear: :terminal` to clear any terminal workflow state once the run completes.
+Built-in adapters (all support TTL where the backend allows; `Redis`, `ActiveRecord`, `Memory` also support optimistic locking via `store_versioned`):
 
-`on_step:` is a best-effort host callback. It runs after an accepted step has been checkpointed. Callback failures are logged and ignored; they do not roll back or abort durable workflow progression.
+- `:memory` — in-process Hash, intended for tests and `test_mode = true`
+- `:redis` — Redis client; uses WATCH/MULTI/EXEC for CAS
+- `:rails_cache`, `:solid_cache` — Rails cache backends
+- `:cache_store` — any object responding to `write/read/delete`
+- `:active_record` — keyed ActiveRecord model with `lock_version` column for CAS
 
-If the persistence key is a deterministic function of workflow context, declare it once on the workflow:
+See [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md) for schema versioning, seed-drift validation, and the `idempotency_mode :strict` step-in-progress contract.
 
-```ruby
-class ReviewWorkflow < Smith::Workflow
-  persistence_key { |ctx| "ticket:#{ctx[:ticket_id]}" }
-end
+## Tools and Guardrails
 
-result = ReviewWorkflow.run_persisted!(
-  context: {
-    ticket_id: "T-1042",
-    current_findings: "needs escalation"
-  }
-)
-```
-
-When a workflow derives its key this way, Smith persists the resolved durability key in workflow state. That keeps instance-level helpers such as `persist!`, `advance_persisted!`, and `clear_persisted!` stable across restore even when the workflow's context manager persists only a filtered subset of context keys.
-
-If you need more explicit control, the lower-level lifecycle is still available:
+Smith ships `Tools::WebSearch`, `Tools::UrlFetcher`, and `Tools::Think`. Tools declare provider compatibility via `compatible_with`; Smith's normalizer routes or drops them per-attempt.
 
 ```ruby
-workflow = ReviewWorkflow.restore_or_initialize(
-  key: "ticket:T-1042",
-  context: {
-    ticket_id: "T-1042",
-    current_findings: "needs escalation"
-  }
-)
-
-step = workflow.advance_persisted!("ticket:T-1042")
-# Host app can broadcast or project progress here.
-emit_progress(step)
-
-result = workflow.run_persisted!("ticket:T-1042")
-workflow.clear_persisted!("ticket:T-1042")
-```
-
-`restore(key, ...)` is intentionally stricter: it requires a non-blank explicit key, and the lookup key remains authoritative for the restored workflow even if stored state contains an embedded `persistence_key`.
-
-These helpers do not make Smith a job system or durable runtime. They only remove repetitive restore/checkpoint boilerplate around the configured persistence adapter while leaving queueing, projection, and recovery policy with the host app.
-
-## Artifacts
-
-Use artifacts when outputs are too large to keep inline.
-
-Smith exposes:
-
-- `Smith.artifacts.store`
-- `Smith.artifacts.fetch`
-- `Smith.artifacts.expired`
-
-The common pattern is to hand off the heavy payload in `after_completion`.
-
-```ruby
-class LargeReportAgent < Smith::Agent
-  register_as :large_report_agent
-  model "gpt-4.1-nano"
-  data_volume :unbounded
-
-  def after_completion(result, _context)
-    ref = Smith.artifacts.store(
-      result[:full_report],
-      content_type: "application/json"
-    )
-
-    {
-      report_ref: ref,
-      summary: result[:summary]
-    }
-  end
+class SearchAgent < Smith::Agent
+  register_as :search_agent
+  model "claude-opus-4-7"
+  tools Smith::Tools::WebSearch, Smith::Tools::UrlFetcher
 end
 ```
 
-Configure a backend:
+Guardrails run as input/output gates around agent calls. See [`docs/TOOLS_AND_GUARDRAILS.md`](docs/TOOLS_AND_GUARDRAILS.md).
 
-```ruby
-Smith.configure do |config|
-  config.artifact_store = Smith::Artifacts::Memory.new
-  config.artifact_retention = 3600
-end
-```
-
-Why this matters:
-
-- large payloads can move out of the inline workflow result
-- refs are execution-scoped
-- nested workflows inherit artifact scope correctly
-
-## Budgets, Deadlines, and Cost Tracking
-
-Smith supports two budget layers.
-
-Workflow budgets are cumulative outer limits:
+## Budgets and Deadlines
 
 ```ruby
 class BudgetedWorkflow < Smith::Workflow
-  budget total_tokens: 100_000, total_cost: 3.00, wall_clock: 300, tool_calls: 20
+  budget total_tokens: 10_000, total_cost: 0.50, wall_clock_ms: 30_000
 end
 ```
 
-Agent budgets are per-invocation narrowing constraints:
+Budgets reserve serially at each step and reconcile after the agent call. Parallel branches reserve scoped envelopes that release back to the parent ledger. The `Workflow::RunResult` carries `total_tokens`, `total_cost`, and per-call `usage_entries`.
+
+## Doctor
+
+After adding Smith, verify the integration:
+
+```bash
+# Plain Ruby
+smith doctor              # offline checks
+smith doctor --live       # live provider call
+smith doctor --durability # persistence round-trip
+smith install             # scaffold config/smith.rb
+
+# Rails
+bin/rails smith:doctor
+bin/rails smith:doctor:live
+bin/rails smith:doctor:durability
+bin/rails generate smith:install
+```
+
+Doctor verifies: Smith loads, RubyLLM loads, minimal workflow boots, configuration is non-empty, serialization round-trips, persistence adapter works, and (with `--live`) a real provider call succeeds.
+
+## Capability-aware request shaping
+
+Smith ships a per-attempt normalizer that translates the request payload to whatever the resolved model's provider family expects:
+
+- Anthropic Opus 4.7+ adaptive thinking via `output_config[:effort]`
+- Anthropic 4.0–4.6 budget_tokens
+- OpenAI gpt-5 family reasoning_effort with `/v1/responses` routing when tools + thinking are combined
+- Gemini 2.5+ budget_tokens
+
+Override the inferred profile per-app via `Smith::Models.register(Profile.new(...))`. Hosts pin to specific model_ids by registering profiles; Smith never hardcodes model_ids in the library.
+
+## Errors and retry
 
 ```ruby
-class BudgetedAgent < Smith::Agent
-  budget token_limit: 12_000, cost: 0.40, wall_clock: 20, tool_calls: 4
-end
+Smith::Errors.retryable?(error)
+# AgentError, DeadlineExceeded => true (always)
+# DeterministicStepFailure, ToolGuardrailFailed => honors error.retryable
+# everything else => false
+
+Smith::Errors.retryable_classes
+# => [Smith::AgentError, Smith::DeadlineExceeded]  (for ActiveJob retry_on)
 ```
 
-The naming is intentionally asymmetric:
-
-- workflow budget dimensions are cumulative totals:
-  - `total_tokens`
-  - `total_cost`
-- agent budget dimensions are per-invocation caps:
-  - `token_limit`
-  - `cost`
-
-Shortcut:
-
-- workflow budget means "how much can the whole workflow consume?"
-- agent budget means "how much can this one invocation consume?"
-
-Current budget model:
-
-- workflow budgets are cumulative workflow truth
-- agent budgets narrow individual invocations
-- parallel branches honor per-branch agent budgets
-- tool calls participate in budget enforcement
-- denied tool calls do not leak exact `tool_calls` budget
-
-Cost tracking is deliberately best-known:
-
-- Smith computes model-call cost when pricing is configured
-- unknown pricing does not fabricate cost
-- unknown usage does not fabricate cost or tokens
-- `RunResult.total_cost` and `total_tokens` are cumulative best-known totals
-- totals include resumed execution, nested roll-up, and fallback attempts where usage is known
-
-Example pricing configuration:
-
-```ruby
-Smith.configure do |config|
-  config.pricing = {
-    "gpt-4.1-nano" => {
-      input_cost_per_token: 0.0000001,
-      output_cost_per_token: 0.0000004
-    }
-  }
-end
-```
-
-## Tracing
-
-Smith can emit structural traces for:
-
-- transitions
-- tool calls
-- token usage
-- cost
-
-Example:
-
-```ruby
-Smith.configure do |config|
-  config.trace_adapter = Smith::Trace::Logger
-  config.trace_transitions = true
-  config.trace_tool_calls = true
-  config.trace_token_usage = true
-  config.trace_cost = true
-  config.trace_content = false
-end
-```
-
-Built-in adapters include:
-
-- `Smith::Trace::Memory`
-- `Smith::Trace::Logger`
-- `Smith::Trace::OpenTelemetry`
-
-The default posture is structural tracing with content omitted unless you opt in.
-
-## Configuration
-
-There are three different configuration scopes.
-
-### 1. Global runtime configuration: `Smith.configure`
-
-Use this for shared runtime services:
-
-- artifact backend
-- tracing
-- pricing catalog
-- logger
-
-### 2. Agent configuration: `Smith::Agent`
-
-Use agent classes for invocation behavior:
-
-- `model`
-- `tools`
-- `instructions`
-- `temperature`
-- `thinking`
-- `budget`
-- `guardrails`
-- `output_schema`
-- `data_volume`
-- `fallback_models`
-- `register_as`
-
-### 3. Workflow configuration: `Smith::Workflow`
-
-Use workflow classes for orchestration behavior:
-
-- `initial_state`
-- `state`
-- `transition`
-- `pipeline`
-- `budget`
-- `max_transitions`
-- `guardrails`
-- `context_manager`
-
-### If You Are Unsure Where Something Goes
-
-- "Which model should this agent use?" -> agent class
-- "How do I store artifacts or emit traces?" -> `Smith.configure`
-- "What happens after this step succeeds or fails?" -> workflow class
-- "How many tokens/cost/tool calls can this one invocation use?" -> agent budget
-- "How much total budget can the whole workflow consume?" -> workflow budget
-- "Which provider credentials should the app use?" -> RubyLLM, not Smith
-
-### Full `Smith.configure` Example
-
-```ruby
-Smith.configure do |config|
-  config.artifact_store = Smith::Artifacts::Memory.new
-  config.artifact_retention = 3600
-  config.artifact_encryption = :none
-  config.artifact_tenant_isolation = false
-
-  config.trace_adapter = Smith::Trace::Logger
-  config.trace_transitions = true
-  config.trace_tool_calls = true
-  config.trace_token_usage = true
-  config.trace_cost = true
-  config.trace_fields = {
-    transition: %i[transition from to],
-    tool_call: %i[tool duration]
-  }
-  config.trace_content = false
-  config.trace_retention = 86_400
-  config.trace_tenant_isolation = false
-
-  config.pricing = {
-    "gpt-4.1-nano" => {
-      input_cost_per_token: 0.0000001,
-      output_cost_per_token: 0.0000004
-    }
-  }
-
-  config.logger = Logger.new($stdout)
-end
-```
-
-### What Each `Smith.configure` Setting Is For
-
-| Setting | What it controls | Typical first use |
-| --- | --- | --- |
-| `artifact_store` | Where large handoff payloads are stored | Start with `Smith::Artifacts::Memory.new` |
-| `artifact_retention` | Default retention window for artifact expiry checks | Set once you have a cleanup policy |
-| `artifact_encryption` | Metadata-level encryption policy flag | Leave at default until you wire a real backend |
-| `artifact_tenant_isolation` | Require namespaced artifact writes | Enable in multi-tenant systems |
-| `trace_adapter` | Where structural traces go | Use `Smith::Trace::Memory` or `Smith::Trace::Logger` first |
-| `trace_transitions` | Emit transition traces | Usually leave on |
-| `trace_tool_calls` | Emit tool call traces | Usually leave on |
-| `trace_token_usage` | Emit usage traces | Useful for budget visibility |
-| `trace_cost` | Emit cost traces | Useful once pricing is configured |
-| `trace_fields` | Allowlist structural trace fields | Use when you want tighter trace output |
-| `trace_content` | Whether content appears in traces | Leave `false` first |
-| `trace_retention` | Trace retention policy hook | Useful when traces leave memory |
-| `trace_tenant_isolation` | Trace multi-tenant isolation flag | Enable in multi-tenant systems |
-| `pricing` | Best-known model-call cost catalog | Add once you care about `total_cost` |
-| `logger` | Smith's runtime logger | Usually the first setting to add |
-| `persistence_adapter` | Adapter for durable workflow state | `:redis`, `:rails_cache`, `:active_record`, `:memory`, or a custom object |
-| `persistence_options` | Per-adapter options (client, namespace, model, columns) | See "Built-In Persistence Adapters" |
-| `persistence_ttl` | Global TTL for persisted state (Integer/Float seconds; nil = no expiry) | Set when long-tail abandoned workflows accumulate in storage |
-| `persistence_retry_policy` | Exponential-backoff policy for transient adapter I/O failures | Defaults to `{ attempts: 3, base_delay: 0.1, max_delay: 1.0 }` |
-| `test_mode` | Auto-select `:memory` adapter when `persistence_adapter` is nil | Enable in `spec_helper.rb` to skip Redis/cache wiring in tests |
-| `openai_api_mode` | `:auto` routes (gpt-5 family + tools + thinking) via `/v1/responses` using Smith's vendored Responses adapter (sync only; streaming over `/v1/responses` is not yet supported); `:off` drops incompatible tools instead | Leave `:auto` (default) unless you need streaming with the (gpt-5 + tools + thinking) combo, in which case set `:off` for graceful tool-dropping |
-| `trace_normalizer` | Emit `:normalizer_decision` trace events from `Smith::Models::Normalizer` | Useful when debugging cross-provider request shaping |
-| `ruby_llm_model_registry` | `:database` to require an AR-backed RubyLLM model registry; `:bundled` for the JSON fallback | Leave at default unless you've migrated to DB-backed |
-
-### Recommended First Additions
-
-Add settings in this order:
-
-1. `config.logger`
-2. `config.trace_adapter`
-3. `config.artifact_store`
-4. `config.pricing`
-
-Do not start by configuring every advanced switch at once.
-
-## Development Notes
-
-If you are evaluating Smith seriously before release:
-
-- treat this README as a guide, not a frozen contract
-- pin the exact commit you depend on
-- check [`spec/SPEC_MATRIX.md`](./spec/SPEC_MATRIX.md) for what is directly covered
-- verify the specific runtime seam you care about in the specs
-
-The project is already useful for exploring workflow-first agent design, but the public surface is still settling.
-
-## Running The Project Locally
+## Development
 
 ```bash
 bundle install
 bundle exec rspec
+bundle exec rubocop
 ```
 
-## Summary
-
-Smith is for Ruby teams that want agent systems with:
-
-- explicit orchestration
-- composable multi-agent patterns
-- real budgets and guardrails
-- resumable workflow state
-- artifacts and tracing
-- enough structure to build serious applications without pretending prompts are control flow
-
-If that is the layer you need, Smith is the interesting part of the stack.
+770 examples, MIT licensed. See [`CHANGELOG.md`](CHANGELOG.md) for the 0.2.0 surface and [`UPSTREAM_PROPOSAL.md`](UPSTREAM_PROPOSAL.md) for the vendored Responses adapter retirement path.

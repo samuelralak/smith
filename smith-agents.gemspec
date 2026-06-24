@@ -3,7 +3,7 @@
 require_relative "lib/smith/version"
 
 Gem::Specification.new do |spec|
-  spec.name = "smith"
+  spec.name = "smith-agents"
   spec.version = Smith::VERSION
   spec.authors = ["Samuel Ralak"]
   spec.email = ["thesamuelralak@gmail.com"]
