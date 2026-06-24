@@ -8,6 +8,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 No unreleased changes.
 
+## [0.3.0] - 2026-06-24
+
+Two host-ergonomic primitives that absorb boilerplate consumer Execution wrappers were reinventing. Both are purely additive — existing workflows continue to work without changes.
+
+### Added
+
+- `Smith::Workflow::ExecutionFrame` — absorbs the five-flag bookkeeping pattern (`claimed`, `result_obtained`, `recorded`, `intentional_retry`, `finalize_succeeded`) duplicated across host Execution wrappers. The host yields its per-attempt work into `ExecutionFrame.run`, records lifecycle milestones via `mark_*!` setters, and the frame's ensure invokes `on_clear` (when the canonical clear decision says so) and `always_ensure` (whenever claimed, independent of the clear decision; covers the advisory-lock-release case). `workflow:` accepts a Smith::Workflow instance OR a callable that resolves lazily at ensure-time. `OrderingError` and `AlreadyRun` inherit from `Smith::Error`, not `Smith::WorkflowError`, so host `rescue Smith::WorkflowError` blocks cannot silently downgrade ordering bugs. Logger fallback chain: explicit `logger:` kwarg, then `Smith.config.logger`, then a last-resort `Logger.new($stderr)`.
+- `Smith::Workflow::Claim.atomic` — AASM-aware claim helper. Wraps `record.public_send(transition_via)` inside `transaction_owner.transaction` (default: `model_class`). Inside the transaction: `lock.find(id)`, case-on-status, invoke the AASM event when status is in `from_statuses`. Returns the reloaded record on success, `nil` when status is in `terminal_statuses`, raises `Smith::Workflow::Claim::UnexpectedStatus` when status is outside `from_statuses ∪ terminal_statuses` (default `:raise`; opt into `:ignore` or `:log` via `on_unexpected_status:`). Raises `ArgumentError` when `transition_via:` is nil AND the model responds to `.aasm`, preventing silent AASM-callback drops.
+- `Smith::Workflow::Claim.cas` — single-statement CAS via `update_all` with `where(status: from_statuses)`. Returns the reloaded record or `nil` if rowcount is zero. Stamps `updated_at` via the injected `now:` lambda. Does NOT invoke AASM events; intended for non-AASM CAS sites.
+- Both `Claim` strategies load lazily — `lib/smith/workflow/claim.rb` does NOT const-reference `::ActiveRecord` at module load. Both raise `Smith::Workflow::Claim::AdapterUnavailable` when invoked without AR present, so Smith stays gem-load-time decoupled from AR.
+
+### Changed
+
+- `activerecord ~> 8.0` and `sqlite3 ~> 2.0` added as development/test dependencies (NOT runtime). The Claim spec harness in `spec/support/active_record_harness.rb` is ENV-gated behind `SMITH_AR_SPECS=1`; when unset, `:ar`-tagged examples are excluded so the default suite never loads AR.
+
+### Test coverage
+
+- Default suite: 816 examples, 0 failures (existing + ExecutionFrame + Claim load-hygiene).
+- `SMITH_AR_SPECS=1` suite: 831 examples, 0 failures (adds 15 `:ar`-tagged Claim specs).
+
 ## [0.2.0] - 2026-06-24
 
 This release tracks two thematic refactors that together harden the agent-invocation and persistence layers, plus a third slice that closes EvaluatorOptimizer ergonomics gaps surfaced by host adoption:
