@@ -9,14 +9,14 @@ Workflow-first multi-agent orchestration for Ruby. Smith sits on top of `RubyLLM
 
 ```ruby
 # Gemfile
-gem "smith-agents", "~> 0.2.0"
+gem "smith-agents", "~> 0.2.0", require: "smith"
 ```
 
 ```bash
 bundle install
 ```
 
-The Ruby module namespace stays `Smith::`; only the gem name is namespaced (the `smith` name on RubyGems was already taken).
+The Ruby module namespace stays `Smith::`; only the gem name is namespaced because `smith` on RubyGems is taken. The `require: "smith"` in the Gemfile tells bundler to load the actual file name.
 
 ## Quickstart
 
