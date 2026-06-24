@@ -17,7 +17,7 @@ RSpec.describe "Smith::Workflow state serialization shape" do
 
     state = workflow.to_state
 
-    expect(state.keys).to eq(%i[class state persistence_key context budget_consumed step_count execution_namespace created_at updated_at next_transition_name session_messages total_cost total_tokens tool_results outcome usage_entries last_output last_failed_step persistence_version schema_version seed_digest step_in_progress])
+    expect(state.keys).to eq(%i[class state persistence_key context budget_consumed step_count execution_namespace created_at updated_at next_transition_name session_messages total_cost total_tokens tool_results outcome usage_entries last_output last_failed_step persistence_version schema_version seed_digest step_in_progress persisted_keys])
     expect(state[:class]).to eq("SpecStateWorkflow")
     expect(state[:state]).to eq(:idle)
     expect(state[:persistence_key]).to eq("workflow:6")

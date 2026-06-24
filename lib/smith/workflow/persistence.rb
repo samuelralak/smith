@@ -46,7 +46,12 @@ module Smith
           # workflow class opts into idempotency_mode :strict. Restore
           # raises Smith::StepInProgressOnRestore if true under strict
           # mode. Lax mode leaves this false and never raises.
-          step_in_progress: @step_in_progress || false
+          step_in_progress: @step_in_progress || false,
+          # Keys recorded via DeterministicStep#write_context. Used by
+          # persist :auto Context mode to scope the persisted context
+          # slice. Always emitted (sorted for stable diffing) so
+          # explicit-mode workflows produce forward-compatible payloads.
+          persisted_keys: (@persisted_keys || ::Set.new).to_a.map(&:to_sym).sort
         }
       end
 
@@ -55,6 +60,7 @@ module Smith
       def restore_state(hash)
         migrated = migrate_if_needed(hash)
         normalized = normalize_persisted_state(migrated)
+        restore_persisted_keys(normalized)
         restore_core_fields(normalized)
         @persistence_key = normalized[:persistence_key]
         @ledger = rebuild_ledger(normalized[:budget_consumed] || {})
@@ -176,6 +182,25 @@ module Smith
         @execution_namespace = normalized[:execution_namespace]
         @created_at = normalized[:created_at]
         @updated_at = normalized[:updated_at]
+      end
+
+      def restore_persisted_keys(normalized)
+        @persisted_keys_mutex = Mutex.new
+        raw = normalized[:persisted_keys]
+        if raw.is_a?(Array) && !raw.empty?
+          @persisted_keys = ::Set.new(raw.map(&:to_sym))
+          return
+        end
+
+        manager = self.class.context_manager
+        if manager && manager.respond_to?(:persist_mode) && manager.persist_mode == :auto
+          ctx = normalized[:context]
+          existing = ctx.is_a?(Hash) ? ctx.keys.map { |k| k.to_sym } : []
+          seed = manager.persist_auto_seed.map(&:to_sym)
+          @persisted_keys = ::Set.new(existing + seed)
+        else
+          @persisted_keys = ::Set.new
+        end
       end
 
       # Bridges stored schema_version to the workflow class's current
@@ -303,17 +328,27 @@ module Smith
 
       def persisted_context
         keys = resolve_persist_keys
-        keys ? @context.slice(*keys) : @context
+        return @context if keys.nil?
+        return @context.slice(*(@persisted_keys || ::Set.new).to_a) if keys == :auto
+
+        @context.slice(*keys)
       end
 
       def filter_persisted_context(context)
         keys = resolve_persist_keys
-        keys ? context.slice(*keys) : context
+        return context if keys.nil?
+        return context.slice(*(@persisted_keys || ::Set.new).to_a) if keys == :auto
+
+        context.slice(*keys)
       end
 
       def resolve_persist_keys
         manager = self.class.context_manager
         return nil unless manager
+
+        if manager.respond_to?(:persist_mode) && manager.persist_mode == :auto
+          return :auto
+        end
 
         keys = manager.persist
         keys.empty? ? nil : keys

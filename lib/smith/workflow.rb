@@ -3,6 +3,7 @@
 require "digest"
 require "json"
 require "securerandom"
+require "set"
 require "time"
 
 module Smith
@@ -223,8 +224,18 @@ module Smith
       # workflows with the marker set raise
       # Smith::StepInProgressOnRestore. Lax mode leaves it false.
       @step_in_progress = false
+      # Set of context keys recorded via deterministic step write_context
+      # writes. Used by persist :auto Context mode to compute the
+      # persisted-context slice. Seeded from the Context class's
+      # also: declaration so explicit input keys round-trip.
+      @persisted_keys = ::Set.new(initial_persist_auto_seed)
+      @persisted_keys_mutex = Mutex.new
       initialize_tool_result_state
       seed_initial_session_messages
+    end
+
+    def persisted_keys
+      @persisted_keys.dup.freeze
     end
 
     def advance!
@@ -270,7 +281,20 @@ module Smith
       @state == :failed
     end
 
+    def record_persisted_key!(key)
+      @persisted_keys_mutex.synchronize do
+        @persisted_keys << key.to_sym
+      end
+    end
+
     private
+
+    def initial_persist_auto_seed
+      manager = self.class.context_manager
+      return [] unless manager && manager.respond_to?(:persist_mode) && manager.persist_mode == :auto
+
+      manager.persist_auto_seed.map(&:to_sym)
+    end
 
     # Centralized capture for both `advance!` paths — the normal
     # `execute_step` return AND the `UnresolvedTransitionError` rescue

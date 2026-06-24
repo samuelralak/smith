@@ -35,6 +35,7 @@ module Smith
 
       def apply_deterministic_writes!(step)
         @context.merge!(step.context_writes)
+        step.context_writes.each_key { |key| record_persisted_key!(key) }
         @router_next_transition = step.routed_to if step.routed_to
         @outcome = snapshot_value(step.outcome) if step.outcome
       end
