@@ -36,11 +36,13 @@ module Smith
           return result if result
         end
 
-        raise WorkflowError, "optimization exhausted #{state.config[:max_rounds]} rounds without acceptance"
+        handle_exit(state, :on_exhaustion,
+                    "optimization exhausted #{state.config[:max_rounds]} rounds without acceptance")
       end
 
       def run_optimization_round(state, round)
         generate_candidate!(state, round)
+        invoke_before_eval(state)
         evaluation = normalize_evaluation(evaluate_candidate(state))
         validate_evaluation_structure!(evaluation)
         validate_evaluation_fields!(evaluation, state.config)
@@ -48,13 +50,29 @@ module Smith
         return state.candidate if evaluation[:accept]
 
         if evaluation[:converged]
-          raise WorkflowError, "optimization converged without acceptance after round #{round + 1}"
+          return handle_exit(state, :on_converged,
+                             "optimization converged without acceptance after round #{round + 1}")
         end
 
-        check_improvement_threshold!(evaluation, state, round)
+        threshold_exit = check_improvement_threshold!(evaluation, state, round)
+        return threshold_exit if threshold_exit
+
         state.last_score = evaluation[:score]
         state.feedback = evaluation[:feedback]
         nil
+      end
+
+      # :raise => WorkflowError(message); :return_last => state.candidate;
+      # callable => mode.call(state). Default :raise preserves legacy
+      # behavior for hosts that don't opt in to graceful exits.
+      def handle_exit(state, mode_key, message)
+        mode = state.config[mode_key]
+        case mode
+        when :raise        then raise WorkflowError, message
+        when :return_last  then state.candidate
+        else
+          mode.call(state)
+        end
       end
 
       # Real RubyLLM schema-bound responses come back as Hash with String
@@ -101,10 +119,30 @@ module Smith
       end
 
       def evaluate_candidate(state)
-        invoke_with_evaluator_schema(
-          state.evaluator_class, state.config[:evaluator_schema],
-          [{ role: :user, content: state.candidate.to_s }]
-        )
+        input = build_evaluator_input(state)
+        invoke_with_evaluator_schema(state.evaluator_class, state.config[:evaluator_schema], input)
+      end
+
+      # evaluator_context: :inject_state appends the candidate as a
+      # user turn to the prepared_input the generator received, so the
+      # evaluator sees the same seed_messages + inject_state context.
+      # Default nil keeps the legacy candidate-only payload.
+      def build_evaluator_input(state)
+        return [{ role: :user, content: state.candidate.to_s }] unless state.config[:evaluator_context] == :inject_state
+
+        prior = Array(state.prepared_input).dup
+        prior.push(role: :user, content: state.candidate.to_s)
+      end
+
+      # Runs after candidate generation, before evaluator invocation.
+      # Receives (state, @context); @context is mutable. Return value
+      # is discarded. Raised exceptions bubble through the standard
+      # step failure path.
+      def invoke_before_eval(state)
+        callback = state.config[:before_eval]
+        return unless callback
+
+        callback.call(state, @context)
       end
 
       def invoke_with_evaluator_schema(evaluator_class, schema, input)
@@ -137,10 +175,14 @@ module Smith
         end
       end
 
+      # Returns nil when the threshold doesn't trip. When it does,
+      # routes through on_threshold and returns the resulting value
+      # (non-nil terminates the loop with that as the step output).
       def check_improvement_threshold!(evaluation, state, round)
-        return unless stop_for_threshold?(evaluation[:score], state.last_score, state.config[:improvement_threshold])
+        return nil unless stop_for_threshold?(evaluation[:score], state.last_score, state.config[:improvement_threshold])
 
-        raise WorkflowError, "optimization improvement below threshold after round #{round + 1}"
+        handle_exit(state, :on_threshold,
+                    "optimization improvement below threshold after round #{round + 1}")
       end
 
       def prepare_generator_input(prepared_input, round, prior_candidate, feedback)

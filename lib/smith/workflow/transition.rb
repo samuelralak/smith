@@ -46,13 +46,28 @@ module Smith
         @workflow_class = klass
       end
 
-      def optimize(generator:, evaluator:, max_rounds:, evaluator_schema:, improvement_threshold: nil)
+      def optimize(generator:, evaluator:, max_rounds:, evaluator_schema:,
+                   improvement_threshold: nil,
+                   evaluator_context: nil,
+                   before_eval: nil,
+                   on_exhaustion: :raise,
+                   on_converged: :raise,
+                   on_threshold: :raise)
         validate_optimize_conflicts!
         validate_optimize_controls!(generator, evaluator, max_rounds, evaluator_schema)
+        validate_optimize_exit_modes!(on_exhaustion: on_exhaustion, on_converged: on_converged,
+                                      on_threshold: on_threshold)
+        validate_optimize_evaluator_context!(evaluator_context)
+        validate_optimize_before_eval!(before_eval)
 
         @optimization_config = {
           generator: generator, evaluator: evaluator, max_rounds: max_rounds,
-          evaluator_schema: evaluator_schema, improvement_threshold: improvement_threshold
+          evaluator_schema: evaluator_schema, improvement_threshold: improvement_threshold,
+          evaluator_context: evaluator_context,
+          before_eval: before_eval,
+          on_exhaustion: on_exhaustion,
+          on_converged: on_converged,
+          on_threshold: on_threshold
         }
       end
 
@@ -160,6 +175,33 @@ module Smith
         return if max_rounds.is_a?(Integer) && max_rounds.positive?
 
         raise WorkflowError, "optimize max_rounds must be a positive integer"
+      end
+
+      VALID_EXIT_MODES = [:raise, :return_last].freeze
+      private_constant :VALID_EXIT_MODES
+
+      def validate_optimize_exit_modes!(on_exhaustion:, on_converged:, on_threshold:)
+        { on_exhaustion: on_exhaustion, on_converged: on_converged, on_threshold: on_threshold }.each do |name, value|
+          next if VALID_EXIT_MODES.include?(value)
+          next if value.respond_to?(:call)
+
+          raise WorkflowError,
+                "optimize #{name} must be :raise, :return_last, or a callable; got #{value.inspect}"
+        end
+      end
+
+      def validate_optimize_evaluator_context!(evaluator_context)
+        return if evaluator_context.nil? || evaluator_context == :inject_state
+
+        raise WorkflowError,
+              "optimize evaluator_context must be nil or :inject_state; got #{evaluator_context.inspect}"
+      end
+
+      def validate_optimize_before_eval!(before_eval)
+        return if before_eval.nil?
+        return if before_eval.respond_to?(:call)
+
+        raise WorkflowError, "optimize before_eval must respond to :call; got #{before_eval.inspect}"
       end
     end
   end

@@ -678,4 +678,332 @@ RSpec.describe "Smith::Workflow::EvaluatorOptimizer runtime behavior" do
       expect(result.steps.first[:error].message).to match(/Hash/)
     end
   end
+
+  describe "evaluator_context: :inject_state" do
+    it "appends the candidate as a user turn to the prepared_input the generator received" do
+      generator = with_stubbed_class("SpecOptGenInject", agent_class) do
+        register_as :spec_opt_gen_inject
+        model "gpt-5-mini"
+      end
+      evaluator = with_stubbed_class("SpecOptEvalInject", agent_class) do
+        register_as :spec_opt_eval_inject
+        model "gpt-5-mini"
+      end
+
+      stub_agent(generator, "candidate prose")
+
+      evaluator_inputs = Queue.new
+      allow(evaluator).to receive(:chat) do
+        messages = []
+        chat = Object.new
+        chat.define_singleton_method(:messages) { messages }
+        chat.define_singleton_method(:with_instructions) do |instructions|
+          messages.unshift({ role: :system, content: instructions })
+          self
+        end
+        chat.define_singleton_method(:add_message) { |m| messages << { role: m[:role], content: m[:content] } }
+        chat.define_singleton_method(:with_schema) { |_s| self }
+        chat.define_singleton_method(:complete) do
+          evaluator_inputs << messages.dup
+          Struct.new(:content, :input_tokens, :output_tokens).new({ accept: true, feedback: nil, score: 0.95 }, 5, 3)
+        end
+        chat
+      end
+
+      schema = Class.new
+      ctx_klass = with_stubbed_class("SpecOptInjectContext", require_const("Smith::Context")) do
+        inject_state { |_persisted| "voice contract goes here" }
+      end
+
+      workflow = with_stubbed_class("SpecOptInjectWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+        state :failed
+        context_manager ctx_klass
+
+        transition :translate, from: :idle, to: :done do
+          optimize generator: :spec_opt_gen_inject, evaluator: :spec_opt_eval_inject,
+                   max_rounds: 3, evaluator_schema: schema, evaluator_context: :inject_state
+          on_failure :fail
+        end
+      end.new
+
+      result = workflow.run!
+
+      expect(result.state).to eq(:done)
+      seen = []
+      seen << evaluator_inputs.pop until evaluator_inputs.empty?
+
+      expect(seen.length).to eq(1)
+      # Candidate appended LAST, prior inject_state observations precede it
+      expect(seen.first.last).to eq(role: :user, content: "candidate prose")
+      expect(seen.first.any? { |m| m[:content].to_s.include?("voice contract goes here") }).to be true
+    end
+
+    it "rejects an unknown evaluator_context value at workflow load time" do
+      expect do
+        with_stubbed_class("SpecOptBadEvalContext", workflow_class) do
+          initial_state :idle
+          state :done
+
+          transition :translate, from: :idle, to: :done do
+            optimize generator: :gen, evaluator: :eval, max_rounds: 3,
+                     evaluator_schema: Class.new, evaluator_context: :wat
+          end
+        end
+      end.to raise_error(workflow_error, /evaluator_context must be nil or :inject_state/)
+    end
+  end
+
+  describe "before_eval: callback" do
+    it "runs the callback after the candidate is generated and before the evaluator is invoked" do
+      generator = with_stubbed_class("SpecOptGenBeforeEval", agent_class) do
+        register_as :spec_opt_gen_before_eval
+        model "gpt-5-mini"
+      end
+      evaluator = with_stubbed_class("SpecOptEvalBeforeEval", agent_class) do
+        register_as :spec_opt_eval_before_eval
+        model "gpt-5-mini"
+      end
+
+      stub_agent(generator, "candidate")
+
+      observed = []
+      stub_agent(evaluator, { accept: true, feedback: nil, score: 0.9 })
+
+      schema = Class.new
+
+      workflow = with_stubbed_class("SpecOptBeforeEvalWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+        state :failed
+
+        transition :translate, from: :idle, to: :done do
+          optimize generator: :spec_opt_gen_before_eval, evaluator: :spec_opt_eval_before_eval,
+                   max_rounds: 3, evaluator_schema: schema,
+                   before_eval: ->(state, context) {
+                     observed << [state.candidate, context.dup]
+                     context[:violations] = ["fake violation"]
+                   }
+          on_failure :fail
+        end
+      end.new
+
+      result = workflow.run!
+
+      expect(result.state).to eq(:done)
+      expect(observed.length).to eq(1)
+      expect(observed.first[0]).to eq("candidate")
+      expect(workflow.instance_variable_get(:@context)[:violations]).to eq(["fake violation"])
+    end
+
+    it "lets a raised exception bubble through the standard step failure path" do
+      generator = with_stubbed_class("SpecOptGenBeforeEvalRaise", agent_class) do
+        register_as :spec_opt_gen_before_eval_raise
+        model "gpt-5-mini"
+      end
+      evaluator = with_stubbed_class("SpecOptEvalBeforeEvalRaise", agent_class) do
+        register_as :spec_opt_eval_before_eval_raise
+        model "gpt-5-mini"
+      end
+
+      stub_agent(generator, "candidate")
+      stub_agent(evaluator, { accept: true, feedback: nil, score: 0.9 })
+
+      schema = Class.new
+
+      workflow = with_stubbed_class("SpecOptBeforeEvalRaiseWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+        state :failed
+
+        transition :translate, from: :idle, to: :done do
+          optimize generator: :spec_opt_gen_before_eval_raise,
+                   evaluator: :spec_opt_eval_before_eval_raise,
+                   max_rounds: 3, evaluator_schema: schema,
+                   before_eval: ->(_s, _c) { raise "validator blew up" }
+          on_failure :fail
+        end
+      end.new
+
+      result = workflow.run!
+
+      expect(result.state).to eq(:failed)
+      expect(result.steps.first[:error].message).to include("validator blew up")
+    end
+
+    it "rejects a non-callable before_eval at workflow load time" do
+      expect do
+        with_stubbed_class("SpecOptBadBeforeEval", workflow_class) do
+          initial_state :idle
+          state :done
+
+          transition :translate, from: :idle, to: :done do
+            optimize generator: :gen, evaluator: :eval, max_rounds: 3,
+                     evaluator_schema: Class.new, before_eval: "not callable"
+          end
+        end
+      end.to raise_error(workflow_error, /before_eval must respond to :call/)
+    end
+  end
+
+  describe "graceful-exit modes" do
+    it "on_exhaustion: :return_last returns the last candidate as the step output" do
+      generator = with_stubbed_class("SpecOptGenReturnLastExhaust", agent_class) do
+        register_as :spec_opt_gen_return_last_exhaust
+        model "gpt-5-mini"
+      end
+      evaluator = with_stubbed_class("SpecOptEvalReturnLastExhaust", agent_class) do
+        register_as :spec_opt_eval_return_last_exhaust
+        model "gpt-5-mini"
+      end
+
+      stub_agent_sequence(generator, %w[round1 round2])
+      stub_agent(evaluator, { accept: false, feedback: "more work", score: 0.5 })
+
+      schema = Class.new
+
+      workflow = with_stubbed_class("SpecOptReturnLastExhaustWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+        state :failed
+
+        transition :translate, from: :idle, to: :done do
+          optimize generator: :spec_opt_gen_return_last_exhaust,
+                   evaluator: :spec_opt_eval_return_last_exhaust,
+                   max_rounds: 2, evaluator_schema: schema,
+                   on_exhaustion: :return_last
+          on_failure :fail
+        end
+      end.new
+
+      result = workflow.run!
+
+      expect(result.state).to eq(:done)
+      expect(result.output).to eq("round2")
+    end
+
+    it "on_converged: :return_last returns the most recent candidate on a converged signal" do
+      generator = with_stubbed_class("SpecOptGenReturnLastConverged", agent_class) do
+        register_as :spec_opt_gen_return_last_converged
+        model "gpt-5-mini"
+      end
+      evaluator = with_stubbed_class("SpecOptEvalReturnLastConverged", agent_class) do
+        register_as :spec_opt_eval_return_last_converged
+        model "gpt-5-mini"
+      end
+
+      stub_agent(generator, "single-round")
+      stub_agent(evaluator, { accept: false, feedback: "minor", converged: true, score: 0.9 })
+
+      schema = Class.new
+
+      workflow = with_stubbed_class("SpecOptReturnLastConvergedWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+        state :failed
+
+        transition :translate, from: :idle, to: :done do
+          optimize generator: :spec_opt_gen_return_last_converged,
+                   evaluator: :spec_opt_eval_return_last_converged,
+                   max_rounds: 5, evaluator_schema: schema,
+                   on_converged: :return_last
+          on_failure :fail
+        end
+      end.new
+
+      result = workflow.run!
+
+      expect(result.state).to eq(:done)
+      expect(result.output).to eq("single-round")
+    end
+
+    it "on_threshold: :return_last returns the most recent candidate on plateau" do
+      generator = with_stubbed_class("SpecOptGenReturnLastThreshold", agent_class) do
+        register_as :spec_opt_gen_return_last_threshold
+        model "gpt-5-mini"
+      end
+      evaluator = with_stubbed_class("SpecOptEvalReturnLastThreshold", agent_class) do
+        register_as :spec_opt_eval_return_last_threshold
+        model "gpt-5-mini"
+      end
+
+      stub_agent_sequence(generator, %w[draft1 draft2])
+      stub_agent_sequence(evaluator, [
+        { accept: false, feedback: "try again", score: 0.7 },
+        { accept: false, feedback: "still", score: 0.71 }
+      ])
+
+      schema = Class.new
+
+      workflow = with_stubbed_class("SpecOptReturnLastThresholdWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+        state :failed
+
+        transition :translate, from: :idle, to: :done do
+          optimize generator: :spec_opt_gen_return_last_threshold,
+                   evaluator: :spec_opt_eval_return_last_threshold,
+                   max_rounds: 5, evaluator_schema: schema,
+                   improvement_threshold: 0.05,
+                   on_threshold: :return_last
+          on_failure :fail
+        end
+      end.new
+
+      result = workflow.run!
+
+      expect(result.state).to eq(:done)
+      expect(result.output).to eq("draft2")
+    end
+
+    it "accepts a callable mode and uses its return value as the step output" do
+      generator = with_stubbed_class("SpecOptGenCallableExit", agent_class) do
+        register_as :spec_opt_gen_callable_exit
+        model "gpt-5-mini"
+      end
+      evaluator = with_stubbed_class("SpecOptEvalCallableExit", agent_class) do
+        register_as :spec_opt_eval_callable_exit
+        model "gpt-5-mini"
+      end
+
+      stub_agent(generator, "draft")
+      stub_agent(evaluator, { accept: false, feedback: "needs work", score: 0.5 })
+
+      schema = Class.new
+
+      workflow = with_stubbed_class("SpecOptCallableExitWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+        state :failed
+
+        transition :translate, from: :idle, to: :done do
+          optimize generator: :spec_opt_gen_callable_exit,
+                   evaluator: :spec_opt_eval_callable_exit,
+                   max_rounds: 1, evaluator_schema: schema,
+                   on_exhaustion: ->(state) { { candidate: state.candidate, soft_fail: true } }
+          on_failure :fail
+        end
+      end.new
+
+      result = workflow.run!
+
+      expect(result.state).to eq(:done)
+      expect(result.output).to eq(candidate: "draft", soft_fail: true)
+    end
+
+    it "rejects invalid exit-mode symbols at workflow load time" do
+      expect do
+        with_stubbed_class("SpecOptBadExitMode", workflow_class) do
+          initial_state :idle
+          state :done
+
+          transition :translate, from: :idle, to: :done do
+            optimize generator: :gen, evaluator: :eval, max_rounds: 3,
+                     evaluator_schema: Class.new, on_exhaustion: :wat
+          end
+        end
+      end.to raise_error(workflow_error, /on_exhaustion must be :raise, :return_last, or a callable/)
+    end
+  end
 end

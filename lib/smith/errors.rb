@@ -1,7 +1,35 @@
 # frozen_string_literal: true
 
 module Smith
-  module Errors; end
+  # Classification surface for host retry policies. Smith owns the
+  # answer to "should the workflow attempt be retried?" so consumers
+  # don't reimplement the case statement in every Execution / Job.
+  module Errors
+    # Returns true when the host should retry the workflow attempt.
+    # AgentError + DeadlineExceeded are always retryable.
+    # DeterministicStepFailure + ToolGuardrailFailed honor their
+    # `retryable` attribute (opt-in at the raise site).
+    # All other Smith errors and non-Smith errors return false.
+    def self.retryable?(error)
+      return false if error.nil?
+
+      case error
+      when Smith::DeterministicStepFailure, Smith::ToolGuardrailFailed
+        error.retryable == true
+      when Smith::AgentError, Smith::DeadlineExceeded
+        true
+      else
+        false
+      end
+    end
+
+    # Always-retryable error classes for explicit ActiveJob retry_on
+    # allow-lists. Excludes the retryable-bearing families because
+    # their retryability is per-raise, not per-class.
+    def self.retryable_classes
+      [Smith::AgentError, Smith::DeadlineExceeded].freeze
+    end
+  end
 
   class BudgetExceeded < Error; end
   class DeadlineExceeded < Error; end

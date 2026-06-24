@@ -6,12 +6,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
-This release tracks two thematic refactors that together harden the agent-invocation and persistence layers:
+No unreleased changes.
+
+## [0.2.0] - 2026-06-24
+
+This release tracks two thematic refactors that together harden the agent-invocation and persistence layers, plus a third slice that closes EvaluatorOptimizer ergonomics gaps surfaced by host adoption:
 
 - **Phase A**: replaces the Opus 4.7 monkey-patch with a generic, library-shipped capability-aware normalizer; fixes the previously-broken cross-provider fallback path (Claude → gpt-5.5 + tools + thinking) by routing through `/v1/responses` when supported or gracefully dropping incompatible tools otherwise.
 - **Phase B**: hardens the persistence layer with TTL, retry, optimistic locking, schema versioning, seed-drift validation, step-in-progress idempotency, and an in-process Memory adapter for test isolation.
+- **Phase C**: extends EvaluatorOptimizer with `evaluator_context: :inject_state`, a `before_eval:` deterministic hook, and `on_exhaustion:` / `on_converged:` / `on_threshold:` graceful-exit modes; adds `Smith::Errors.retryable?` to own the retryable-error classification host-side.
 
 ### Added
+
+#### Phase C: EvaluatorOptimizer ergonomics + retry classification
+
+- `Smith::Errors.retryable?(error)` classifier owned at the library level. `AgentError` and `DeadlineExceeded` are always-retryable; `DeterministicStepFailure` and `ToolGuardrailFailed` honor their `retryable` attribute (opt-in at the raise site); all other Smith errors and non-Smith errors return false. Replaces ad-hoc case statements in host Execution / Job wrappers.
+- `Smith::Errors.retryable_classes` returns the frozen always-retryable class list for ActiveJob `retry_on` allow-lists.
+- `optimize evaluator_context: :inject_state` opts the evaluator into the same `prepared_input` the generator was built with. The evaluator now sees the workflow's `seed_messages` plus `Context.inject_state` observations (voice profiles, research artifacts, source URLs) plus the candidate as a turn-local user message. Default `nil` preserves the legacy candidate-only payload.
+- `optimize before_eval: proc { |state, context| ... }` runs after the generator produces a candidate and before the evaluator is invoked. The hook receives the `OptimizationState` and the live workflow `@context` (mutable). Typical use: a deterministic validator (regex kill-list, structural check) writes findings into context so the evaluator surfaces them deterministically instead of rediscovering by feel each round.
+- `optimize on_exhaustion:`, `on_converged:`, `on_threshold:` graceful-exit modes. Each accepts `:raise` (default, legacy behavior), `:return_last` (return the most recent candidate as the step output), or a callable receiving the `OptimizationState`. Lets refinement workflows opt into "best of N rounds" semantics instead of terminal `WorkflowError`.
 
 #### Phase A: capability-aware request shaping
 
