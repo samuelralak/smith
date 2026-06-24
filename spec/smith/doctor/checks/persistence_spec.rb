@@ -5,8 +5,8 @@ require "smith/doctor"
 RSpec.describe Smith::Doctor::Checks::Persistence do
   describe "schema_presence" do
     it "skips when ActiveRecord is not defined" do
+      hide_const("ActiveRecord")
       report = Smith::Doctor::Report.new
-      # In test env, ActiveRecord is not loaded
       described_class.check_schema_presence(report)
 
       check = report.checks.find { |c| c.name == "persistence.schema_presence" }
