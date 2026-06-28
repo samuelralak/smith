@@ -24,6 +24,7 @@ Current contract coverage exists for:
 - top-level configuration surface, including structural-trace defaults and content-tracing opt-in default
 - agent inheritance, DSL, registry binding, fail-fast unresolved-agent behavior, and fallback model-chain runtime behavior
 - workflow DSL, transition metadata capture, serialization entry points, exact state shape, run-result surface, best-known execution cost aggregation, persisted-context filtering, and configured-adapter durability helper surface
+- static workflow graph inspection and validation reports: read-only transition snapshots, unresolved named-target diagnostics, router target validation, undefined state diagnostics, reachability warnings, and graph metrics
 - per-agent-call billing facts: `Workflow::UsageEntry` struct shape, JSON-safe to_h/from_h round-trip with symbol coercion, `RunResult#usage_entries` field with deep-copy on population, lifecycle recording from completed AND failed-but-billable attempts via a single mutex critical section, and parallel-fan-out attribution via local-arg `model_used` (no `@last_attempt_model` ivar)
 - nested-workflow billing rollup: child `total_cost` + `total_tokens` + `usage_entries` rolled up into parent BEFORE the failed-step check raises (preserves failed-child billable work on the parent), with deep-copied entries via `from_h(snapshot_value(...))` so child and parent are fully independent
 - terminal-restore correctness for `RunResult#output` / `#last_error` / `#failure_detail`: persisted `@last_output` and class-aware `@last_failed_step` snapshot drive synthesis when steps are empty on terminal-restore, with backward compat for pre-patch state and value-symbol coercion that matches fresh-run shape
@@ -682,6 +683,8 @@ Documented contracts covered:
   - `.context_manager`
   - `.seed_messages`
   - `.persistence_key`
+  - `.graph`
+  - `.validate_graph`
 - instance/class execution surface:
   - `#advance!`
   - `#run!`
@@ -718,6 +721,60 @@ Notes:
 - This spec checks DSL surface and declared transition metadata only.
 - The default `:fail` transition contract is covered here even if the current implementation is still failing that spec.
 - The architecture gives enough support for the DSL shape, but not yet enough detail to assert all transition side effects without over-prescribing implementation.
+
+### `spec/smith/workflow/graph_spec.rb`
+
+Purpose:
+
+- asserts the static workflow graph inspection surface
+- asserts pre-runtime diagnostics for declared workflow topology
+
+Architecture basis:
+
+- Section 2, Control Flow Shape
+- Section 4.2, Workflow
+- Section 5.2, Workflow Execution
+- Named transition validation contract
+
+Documented contracts covered:
+
+- `.graph` returns a read-only inspection object for the workflow class
+- `.validate_graph` returns a report without executing agents or advancing workflow state
+- declared state and transition names are preserved without graph-level coercion
+- report surface:
+  - `#valid?`
+  - `#status`
+  - `#errors`
+  - `#warnings`
+  - `#suggestions`
+  - `#to_h`
+- transition snapshots expose:
+  - `name`
+  - `from`
+  - `to`
+  - `kind`
+  - `success_transition`
+  - `failure_transition`
+  - router `routes`
+  - router `fallback`
+- diagnostics cover:
+  - missing or undeclared initial state
+  - undefined `from` and `to` states
+  - unresolved `on_success` and `on_failure` targets
+  - unresolved router route/fallback targets
+  - warning-only target state mismatches
+  - warning-only unreachable transitions
+- metrics cover:
+  - state count
+  - transition count
+  - reachable transition count
+  - terminal states
+
+Notes:
+
+- Graph inspection is static and diagnostic-only.
+- This spec intentionally does not introduce host-owned progress projection, durability, retry policy, or recovery semantics into Smith core.
+- Runtime loud-failure behavior for unresolved named transitions remains covered in deterministic-step and run-result specs.
 
 ### `spec/smith/workflow/durability_spec.rb`
 

@@ -70,6 +70,7 @@ module Smith
     unless %i[off auto].include?(value)
       raise ArgumentError, "Smith.config.openai_api_mode must be :off or :auto, got #{value.inspect}"
     end
+
     value
   }
 
@@ -227,6 +228,8 @@ require_relative "smith/agent/registry"
 
 # Workflow (Transition, DSL, Persistence, and Execution must load before Workflow)
 require_relative "smith/workflow/transition"
+require_relative "smith/workflow/graph"
+require_relative "smith/workflow/graph_dsl"
 require_relative "smith/workflow/dsl"
 require_relative "smith/workflow/persistence"
 require_relative "smith/workflow/durability"

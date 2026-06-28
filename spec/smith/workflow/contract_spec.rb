@@ -4,7 +4,19 @@ RSpec.describe "Smith::Workflow contract" do
   let(:workflow_class) { require_const("Smith::Workflow") }
 
   it "exposes the workflow DSL used throughout the architecture" do
-    %i[initial_state state transition budget max_transitions guardrails context_manager seed_messages persistence_key].each do |dsl|
+    %i[
+      initial_state
+      state
+      transition
+      graph
+      validate_graph
+      budget
+      max_transitions
+      guardrails
+      context_manager
+      seed_messages
+      persistence_key
+    ].each do |dsl|
       expect(workflow_class).to respond_to(dsl), "expected Smith::Workflow to implement .#{dsl}"
     end
   end

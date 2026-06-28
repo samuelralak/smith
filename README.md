@@ -94,6 +94,21 @@ end
 
 The full pattern guide with working examples for each lives in [`docs/PATTERNS.md`](docs/PATTERNS.md).
 
+## Workflow Graph Inspection
+
+Smith can inspect a workflow's declared graph without running agents or advancing state. This is useful for host apps that want to render, lint, or cache a workflow shape before execution.
+
+```ruby
+report = ReplyWorkflow.validate_graph
+
+report.valid?        # => true
+report.transitions   # => read-only transition snapshots
+report.diagnostics   # => errors and warnings for missing states or routes
+report.metrics       # => state, transition, reachability, and terminal-state counts
+```
+
+Graph inspection is static and diagnostic-only. Runtime execution, persistence, progress projection, retries, and recovery remain host-owned concerns.
+
 ## Configuration
 
 ```ruby
