@@ -8,6 +8,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 No unreleased changes.
 
+## [0.4.1] - 2026-06-28
+
+Patch release for static workflow graph inspection. This is additive and diagnostic-only: Smith exposes declared workflow topology for hosts to render, lint, or cache without executing agents, advancing state, owning progress projection, or changing durability/recovery boundaries.
+
+### Added
+
+- `Smith::Workflow.graph` — returns a read-only inspection object for a workflow class.
+- `Smith::Workflow.validate_graph` — returns a structured report with validity status, diagnostics, suggestions, transition snapshots, and graph metrics.
+- Pre-runtime graph diagnostics for missing initial states, undefined transition states, unresolved `on_success` / `on_failure` targets, unresolved router route/fallback targets, target-state mismatch warnings, and unreachable-transition warnings.
+- Transition snapshots that preserve declared names exactly and expose `name`, `from`, `to`, `kind`, success/failure targets, router routes, and router fallback.
+
+### Test coverage
+
+- Default suite: 862 examples, 0 failures.
+- Touched Ruby files: 17 files inspected by RuboCop, 0 offenses.
+
 ## [0.4.0] - 2026-06-24
 
 Two more host-ergonomic primitives that close the deferred-from-0.3.0 backlog: `Workflow.stuck_for?` for liveness probing and `Context.persist :auto` for write-tracked context persistence. Both are purely additive.
