@@ -55,6 +55,58 @@ RSpec.describe "Smith::Workflow context persistence contract" do
     expect(restored.to_state[:context]).to eq(current_findings: "kept")
   end
 
+  it "preserves string state names when restoring after a JSON round-trip" do
+    workflow_class_with_string_states = with_stubbed_class("SpecStringStateRestoreWorkflow", workflow_class) do
+      initial_state "idle"
+      state "mid"
+      state "done"
+
+      transition "first", from: "idle", to: "mid" do
+        compute { |step| step.write_context(:visited, ["first"]) }
+      end
+
+      transition "second", from: "mid", to: "done" do
+        compute { |step| step.write_context(:visited, step.read_context(:visited) + ["second"]) }
+      end
+    end
+
+    workflow = workflow_class_with_string_states.new
+    workflow.advance!
+    json_state = JSON.parse(JSON.generate(workflow.to_state))
+
+    restored = workflow_class_with_string_states.from_state(json_state)
+    result = restored.run!
+
+    expect(result.state).to eq("done")
+    expect(result.context[:visited]).to eq(%w[first second])
+    expect(result.steps.map { |step| step[:transition] }).to eq(["second"])
+  end
+
+  it "preserves string failure snapshots when restoring after a JSON round-trip" do
+    workflow_class_with_string_failure = with_stubbed_class("SpecStringFailureRestoreWorkflow", workflow_class) do
+      initial_state "idle"
+      state "failed"
+
+      transition "explode", from: "idle", to: "idle" do
+        compute { |_step| raise Smith::WorkflowError, "boom" }
+        on_failure "fail"
+      end
+
+      transition "fail", from: "idle", to: "failed"
+    end
+
+    result = workflow_class_with_string_failure.new.run!
+    json_state = JSON.parse(JSON.generate(workflow_class_with_string_failure.new.tap(&:run!).to_state))
+    restored = workflow_class_with_string_failure.from_state(json_state)
+    restored_result = restored.run!
+
+    expect(result.failed?).to be true
+    expect(restored_result.failed?).to be true
+    expect(restored_result.steps.map { |step| step[:transition] }).to eq(["explode"])
+    expect(restored_result.steps.first[:from]).to eq("idle")
+    expect(restored_result.steps.first[:to]).to eq("idle")
+  end
+
   it "round-trips persisted session history alongside persisted workflow context" do
     agent = with_stubbed_class("SpecPersistedSessionHistoryAgent", agent_class) do
       register_as :spec_persisted_session_history_agent

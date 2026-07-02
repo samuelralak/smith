@@ -33,8 +33,12 @@ module Smith
       def route(agent_name, routes:, confidence_threshold:, fallback:)
         validate_route_conflicts!
 
-        @agent_name = agent_name
-        @router_config = { routes: routes, confidence_threshold: confidence_threshold, fallback: fallback }
+        @agent_name = normalize_agent_name!(agent_name, "router")
+        @router_config = {
+          routes: normalize_router_routes!(routes),
+          confidence_threshold: normalize_confidence_threshold!(confidence_threshold),
+          fallback: normalize_transition_reference!(fallback, "router fallback")
+        }
       end
 
       def workflow(klass)
@@ -241,6 +245,57 @@ module Smith
 
         validate_distinct_fanout_agents!(normalized)
         normalized.freeze
+      end
+
+      def normalize_agent_name!(agent_name, label)
+        value = agent_name.to_s.strip
+        raise WorkflowError, "#{label} agent must not be blank" if value.empty?
+
+        value.to_sym
+      end
+
+      def normalize_router_routes!(routes)
+        raise WorkflowError, "router routes must be a Hash" unless routes.is_a?(Hash)
+        raise WorkflowError, "router routes must not be empty" if routes.empty?
+
+        routes.each_with_object({}) do |(route_key, transition_name), map|
+          key = normalize_router_route_key!(route_key)
+          raise WorkflowError, "router route :#{key} is duplicated" if map.key?(key)
+
+          map[key] = normalize_transition_reference!(transition_name, "router route :#{key}")
+        end.freeze
+      end
+
+      def normalize_router_route_key!(route_key)
+        value = route_key.to_s.strip
+        raise WorkflowError, "router route keys must not be blank" if value.empty?
+
+        value.to_sym
+      end
+
+      def normalize_confidence_threshold!(threshold)
+        numeric = Float(threshold)
+        return numeric if numeric >= 0.0 && numeric <= 1.0
+
+        raise WorkflowError, "router confidence_threshold must be a number in 0.0..1.0"
+      rescue TypeError, ArgumentError
+        raise WorkflowError, "router confidence_threshold must be a number in 0.0..1.0"
+      end
+
+      def normalize_transition_reference!(transition_name, label)
+        case transition_name
+        when Symbol
+          raise WorkflowError, "#{label} transition must not be blank" if transition_name.to_s.empty?
+
+          transition_name
+        when String
+          value = transition_name.strip
+          raise WorkflowError, "#{label} transition must not be blank" if value.empty?
+
+          value.freeze
+        else
+          raise WorkflowError, "#{label} transition must be String or Symbol"
+        end
       end
 
       def normalize_fanout_branch_key!(branch_key)

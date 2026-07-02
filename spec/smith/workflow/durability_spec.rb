@@ -286,6 +286,21 @@ RSpec.describe "Smith::Workflow durability helpers" do
     expect(adapter.fetch("wf:class-run")).to be_nil
   end
 
+  it "clears string-named done terminal state with the default clear policy" do
+    klass = with_stubbed_class("SpecStringDoneRunPersistedWorkflow", workflow_class) do
+      initial_state "idle"
+      state "done"
+
+      transition "finish", from: "idle", to: "done"
+    end
+
+    result = klass.run_persisted!(key: "wf:string-done", adapter:)
+
+    expect(result.state).to eq("done")
+    expect(adapter.deleted).to eq(["wf:string-done"])
+    expect(adapter.fetch("wf:string-done")).to be_nil
+  end
+
   it "can preserve terminal state instead of clearing it after the class-level run" do
     klass = with_stubbed_class("SpecClassRunPersistedNoClearWorkflow", workflow_class) do
       initial_state :idle

@@ -53,6 +53,34 @@ RSpec.describe "Smith::Workflow parallel execution" do
     expect(result.output.map { |branch| branch[:branch] }).to eq([0, 1])
   end
 
+  it "rejects non-positive parallel branch counts before executing branches" do
+    workflow = with_stubbed_class("SpecParallelZeroCountWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :fan_out, from: :idle, to: :done do
+        execute :spec_parallel_agent, parallel: true, count: 0
+      end
+    end.new
+
+    expect { workflow.run! }
+      .to raise_error(workflow_error, /parallel branch count must be a positive integer/)
+  end
+
+  it "rejects callable parallel branch counts that do not resolve to positive integers" do
+    workflow = with_stubbed_class("SpecParallelBadCallableCountWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :fan_out, from: :idle, to: :done do
+        execute :spec_parallel_agent, parallel: true, count: ->(_context) { "two" }
+      end
+    end.new
+
+    expect { workflow.run! }
+      .to raise_error(workflow_error, /parallel branch count must be a positive integer/)
+  end
+
   it "routes through on_failure when a parallel branch fails" do
     workflow = with_stubbed_class("SpecParallelFailureWorkflow", workflow_class) do
       initial_state :idle

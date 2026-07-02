@@ -21,7 +21,10 @@ module Smith
 
       def self.resolve_branch_count(transition, context)
         count = transition.agent_opts[:count]
-        count.respond_to?(:call) ? count.call(context) : (count || 1)
+        resolved = count.respond_to?(:call) ? count.call(context) : (count || 1)
+        return resolved if resolved.is_a?(Integer) && resolved.positive?
+
+        raise WorkflowError, "parallel branch count must be a positive integer"
       end
 
       def self.execute(branches:)

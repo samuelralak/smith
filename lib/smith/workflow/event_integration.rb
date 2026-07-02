@@ -13,9 +13,9 @@ module Smith
 
         Smith::Events.emit(
           Events::StepCompleted.new(
-            transition: transition.name,
-            from: transition.from,
-            to: transition.to
+            transition: transition.name.to_sym,
+            from: transition.from&.to_sym,
+            to: transition.to.to_sym
           )
         )
       end

@@ -4,16 +4,23 @@ module Smith
   class Workflow
     class Router
       def self.resolve(classifier_output, config, workflow_class:)
-        validate!(classifier_output, config)
-        transition_name = select_transition(classifier_output, config)
+        output = normalize_output(classifier_output)
+        validate!(output, config)
+        transition_name = select_transition(output, config)
         validate_transition_exists!(transition_name, workflow_class)
         transition_name
+      end
+
+      def self.normalize_output(output)
+        return output unless output.is_a?(Hash)
+
+        output.transform_keys { |key| key.is_a?(String) ? key.to_sym : key }
       end
 
       def self.validate!(output, config)
         validate_structure!(output)
         validate_confidence!(output[:confidence])
-        validate_route_key!(output[:route].to_sym, output[:confidence], config)
+        validate_route_key!(normalize_route_key(output[:route]), output[:confidence], config)
       end
 
       def self.validate_structure!(output)
@@ -37,10 +44,14 @@ module Smith
 
       def self.select_transition(output, config)
         if output[:confidence] >= config[:confidence_threshold]
-          config[:routes][output[:route].to_sym]
+          config[:routes][normalize_route_key(output[:route])]
         else
           config[:fallback]
         end
+      end
+
+      def self.normalize_route_key(route)
+        route.to_s.strip.to_sym
       end
 
       def self.validate_transition_exists!(transition_name, workflow_class)

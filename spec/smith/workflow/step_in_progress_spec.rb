@@ -126,6 +126,80 @@ RSpec.describe "Smith::Workflow step_in_progress idempotency marker" do
       payload = JSON.parse(adapter.fetch("workflow:idempotency-test"))
       expect(payload["step_in_progress"]).to be(false)
     end
+
+    it "does not poison persisted state when transition budget is exhausted before step work starts" do
+      klass = Class.new(Smith::Workflow) do
+        persistence_key { |_ctx| "workflow:idempotency-budget-test" }
+        idempotency_mode :strict
+        max_transitions 0
+        initial_state :idle
+        state :done
+        transition :finish, from: :idle, to: :done
+      end
+
+      workflow = klass.new
+      workflow.persist!("workflow:idempotency-budget-test", adapter: adapter)
+
+      expect do
+        workflow.advance_persisted!("workflow:idempotency-budget-test", adapter: adapter)
+      end.to raise_error(Smith::MaxTransitionsExceeded)
+
+      payload = JSON.parse(adapter.fetch("workflow:idempotency-budget-test"))
+      expect(payload["step_in_progress"]).to be(false)
+      expect { klass.restore("workflow:idempotency-budget-test", adapter: adapter) }.not_to raise_error
+    end
+
+    it "does not poison persisted state when advance_persisted fails before step work starts" do
+      klass = Class.new(Smith::Workflow) do
+        idempotency_mode :strict
+        initial_state :idle
+        state :middle
+        state :other
+        state :done
+
+        transition :start, from: :idle, to: :middle do
+          on_success :finish
+        end
+
+        transition :finish, from: :other, to: :done
+      end
+
+      workflow = klass.new
+      workflow.advance!
+      workflow.persist!("workflow:idempotency-origin-test", adapter: adapter)
+
+      expect do
+        workflow.advance_persisted!("workflow:idempotency-origin-test", adapter: adapter)
+      end.to raise_error(Smith::WorkflowError, /cannot run from state :middle/)
+
+      payload = JSON.parse(adapter.fetch("workflow:idempotency-origin-test"))
+      expect(payload["step_in_progress"]).to be(false)
+      expect { klass.restore("workflow:idempotency-origin-test", adapter: adapter) }.not_to raise_error
+    end
+
+    it "does not poison persisted state when run_persisted fails before step work starts" do
+      klass = Class.new(Smith::Workflow) do
+        idempotency_mode :strict
+        initial_state :idle
+        state :middle
+        state :other
+        state :done
+
+        transition :start, from: :idle, to: :middle do
+          on_success :finish
+        end
+
+        transition :finish, from: :other, to: :done
+      end
+
+      expect do
+        klass.new.run_persisted!("workflow:idempotency-run-origin-test", adapter: adapter)
+      end.to raise_error(Smith::WorkflowError, /cannot run from state :middle/)
+
+      payload = JSON.parse(adapter.fetch("workflow:idempotency-run-origin-test"))
+      expect(payload["step_in_progress"]).to be(false)
+      expect { klass.restore("workflow:idempotency-run-origin-test", adapter: adapter) }.not_to raise_error
+    end
   end
 
   it "treats a pre-marker payload (no step_in_progress key) as false" do

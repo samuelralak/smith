@@ -94,6 +94,68 @@ RSpec.describe "Smith::Workflow::Router runtime behavior" do
     expect(workflow.state).to eq(:handling_general)
   end
 
+  it "normalizes string route keys and string classifier output keys" do
+    classifier = with_stubbed_class("SpecRouterStringKeyClassifier", agent_class) do
+      register_as :spec_router_string_key_classifier
+      model "gpt-5-mini"
+    end
+
+    stub_classifier(classifier, { "route" => "refund", "confidence" => 0.9 })
+
+    workflow = with_stubbed_class("SpecRouterStringKeyWorkflow", workflow_class) do
+      initial_state :idle
+      state :triaged
+      state :handling_refund
+      state :handling_general
+
+      transition :classify, from: :idle, to: :triaged do
+        route :spec_router_string_key_classifier,
+              routes: { "refund" => :handle_refund },
+              confidence_threshold: "0.75",
+              fallback: "handle_general"
+      end
+
+      transition :handle_refund, from: :triaged, to: :handling_refund
+      transition "handle_general", from: :triaged, to: :handling_general
+    end.new
+
+    workflow.advance!
+    next_step = workflow.advance!
+
+    expect(next_step[:transition]).to eq(:handle_refund)
+    expect(workflow.state).to eq(:handling_refund)
+  end
+
+  it "rejects malformed router declarations at DSL declaration time" do
+    expect do
+      with_stubbed_class("SpecRouterNilRoutesWorkflow", workflow_class) do
+        initial_state :idle
+        state :triaged
+
+        transition :classify, from: :idle, to: :triaged do
+          route :spec_router_string_key_classifier,
+                routes: nil,
+                confidence_threshold: 0.75,
+                fallback: :handle_general
+        end
+      end
+    end.to raise_error(workflow_error, /router routes must be a Hash/)
+
+    expect do
+      with_stubbed_class("SpecRouterBadThresholdWorkflow", workflow_class) do
+        initial_state :idle
+        state :triaged
+
+        transition :classify, from: :idle, to: :triaged do
+          route :spec_router_string_key_classifier,
+                routes: { refund: :handle_refund },
+                confidence_threshold: 2,
+                fallback: :handle_general
+        end
+      end
+    end.to raise_error(workflow_error, /confidence_threshold/)
+  end
+
   it "fails the step normally when the route key is not in declared routes" do
     classifier = with_stubbed_class("SpecRouterUnknownRouteClassifier", agent_class) do
       register_as :spec_router_unknown_route_classifier

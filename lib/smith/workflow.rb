@@ -30,11 +30,15 @@ module Smith
     RunResult = Struct.new(:state, :output, :steps, :total_cost, :total_tokens, :context, :session_messages,
                            :tool_results, :outcome, :usage_entries, keyword_init: true) do
       def done?
-        state == :done
+        state_named?(:done)
       end
 
       def failed?
-        state == :failed
+        state_named?(:failed)
+      end
+
+      def state_named?(name)
+        state == name || state.to_s == name.to_s
       end
 
       def terminal_output
@@ -239,12 +243,13 @@ module Smith
     end
 
     def advance!
-      max = self.class.max_transitions || DEFAULT_MAX_TRANSITIONS
-      raise MaxTransitionsExceeded if @step_count >= max
+      ensure_transition_budget!
+      @step_work_started = false
 
       transition = resolve_transition
       return if transition.nil?
 
+      @step_work_started = true
       step_result = execute_step(transition)
       @step_count += 1
       @updated_at = Time.now.utc.iso8601
@@ -274,11 +279,11 @@ module Smith
     end
 
     def done?
-      @state == :done
+      state_named?(:done)
     end
 
     def failed?
-      @state == :failed
+      state_named?(:failed)
     end
 
     def record_persisted_key!(key)
@@ -360,15 +365,38 @@ module Smith
       true
     end
 
+    def ensure_transition_budget!
+      max = self.class.max_transitions || DEFAULT_MAX_TRANSITIONS
+      raise MaxTransitionsExceeded if @step_count >= max
+    end
+
     def resolve_transition
       if @next_transition_name
         name = @next_transition_name
         @next_transition_name = nil
-        self.class.find_transition(name) ||
+        transition = self.class.find_transition(name) ||
           raise(UnresolvedTransitionError.new(name, self.class, @state))
+        validate_transition_origin!(transition)
+        transition
       else
         self.class.transitions_from(@state).first
       end
+    end
+
+    def validate_transition_origin!(transition)
+      expected = transition.from
+      return if expected.nil? || expected == @state
+
+      raise WorkflowError,
+            "transition :#{transition.name} cannot run from state :#{@state}; expected :#{expected}"
+    end
+
+    def step_work_started?
+      @step_work_started == true
+    end
+
+    def state_named?(name)
+      @state == name || @state.to_s == name.to_s
     end
 
     def build_run_result(steps)
@@ -436,9 +464,9 @@ module Smith
       # symbols; JSON round-trip stringifies them; coerce back to
       # match fresh-run shape exactly.
       {
-        transition: snap[:transition]&.to_sym,
-        from:       snap[:from]&.to_sym,
-        to:         snap[:to]&.to_sym,
+        transition: normalize_transition_name(snap[:transition]),
+        from:       normalize_state_name(snap[:from]),
+        to:         normalize_state_name(snap[:to]),
         error:      error
       }
     end

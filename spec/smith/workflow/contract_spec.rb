@@ -141,4 +141,78 @@ RSpec.describe "Smith::Workflow contract" do
     expect(step[:error].message).to include("unresolved agent :missing_research_agent")
     expect(step[:error].message).to include("transition :start")
   end
+
+  it "raises the original step error when no failure transition is declared" do
+    workflow = with_stubbed_class("SpecUnhandledFailureWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :start, from: :idle, to: :done do
+        execute :missing_research_agent
+      end
+    end.new
+
+    expect { workflow.run! }
+      .to raise_error(require_const("Smith::WorkflowError"), /unresolved agent :missing_research_agent/)
+  end
+
+  it "executes actionable failure transitions instead of only jumping to their target state" do
+    workflow = with_stubbed_class("SpecActionableFailureWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :start, from: :idle, to: :done do
+        execute :missing_research_agent
+        on_failure :cleanup
+      end
+
+      transition :cleanup, from: :idle, to: :failed do
+        compute { |step| step.write_context(:cleaned_up, true) }
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:failed)
+    expect(result.context[:cleaned_up]).to be true
+    expect(result.steps.map { |step| step[:transition] }).to eq(%i[start cleanup])
+  end
+
+  it "rejects jump-only failure transitions whose origin state does not match the current state" do
+    workflow = with_stubbed_class("SpecFailureOriginMismatchWorkflow", workflow_class) do
+      initial_state :idle
+      state :other
+      state :done
+      state :failed
+
+      transition :start, from: :idle, to: :done do
+        execute :missing_research_agent
+        on_failure :fail
+      end
+
+      transition :fail, from: :other, to: :failed
+    end.new
+
+    expect { workflow.run! }
+      .to raise_error(require_const("Smith::WorkflowError"), /cannot run from state :idle/)
+  end
+
+  it "rejects named transitions whose origin state does not match the current state" do
+    workflow = with_stubbed_class("SpecNamedTransitionOriginWorkflow", workflow_class) do
+      initial_state :idle
+      state :middle
+      state :other
+      state :done
+
+      transition :start, from: :idle, to: :middle do
+        on_success :finish
+      end
+
+      transition :finish, from: :other, to: :done
+    end.new
+
+    expect { workflow.run! }
+      .to raise_error(require_const("Smith::WorkflowError"), /cannot run from state :middle/)
+  end
 end

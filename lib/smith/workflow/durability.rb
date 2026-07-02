@@ -167,9 +167,20 @@ module Smith
           return false unless state_name && class_name
 
           klass = Object.const_get(class_name)
-          klass.transitions_from(state_name.to_sym).empty? && next_transition.nil?
+          state = state_name_for_payload(klass, state_name)
+          klass.transitions_from(state).empty? && next_transition.nil?
         rescue JSON::ParserError, NameError, NoMethodError
           false
+        end
+
+        def state_name_for_payload(klass, state_name)
+          states = klass.instance_variable_get(:@states) || []
+          return state_name if states.include?(state_name)
+
+          symbolized = state_name.to_sym if state_name.respond_to?(:to_sym)
+          return symbolized if states.include?(symbolized)
+
+          state_name
         end
 
         def persistence_adapter!(adapter)
@@ -241,12 +252,19 @@ module Smith
         persist!(resolved_key, adapter:)
 
         until terminal?
+          ensure_transition_budget!
+
           if strict_idempotency?
             mark_step_in_progress!
             persist!(resolved_key, adapter:)
           end
 
-          step = advance!
+          begin
+            step = advance!
+          rescue StandardError
+            clear_pre_step_marker!(resolved_key, adapter:)
+            raise
+          end
           steps << step if step
 
           clear_step_in_progress!
@@ -261,6 +279,7 @@ module Smith
         return if terminal?
 
         resolved_key = resolve_persistence_key!(key)
+        ensure_transition_budget!
         mark_step_in_progress! if strict_idempotency?
         persist!(resolved_key, adapter:)
         step = advance!
@@ -268,6 +287,9 @@ module Smith
         persist!(resolved_key, adapter:) if step
         invoke_on_step_callback(step, on_step) if step
         step
+      rescue StandardError
+        clear_pre_step_marker!(resolved_key, adapter:) if defined?(resolved_key) && resolved_key
+        raise
       end
 
       def persist!(key = nil, adapter: Smith.persistence_adapter)
@@ -304,6 +326,14 @@ module Smith
 
       def strict_idempotency?
         self.class.idempotency_mode == :strict
+      end
+
+      def clear_pre_step_marker!(key, adapter:)
+        return unless strict_idempotency?
+        return if step_work_started?
+
+        clear_step_in_progress!
+        persist!(key, adapter:)
       end
 
       # Forwards the persist payload to the adapter, splatting `ttl:`

@@ -163,9 +163,9 @@ module Smith
 
         h = raw.transform_keys { |k| k.is_a?(String) ? k.to_sym : k }
         {
-          transition: h[:transition]&.to_sym,
-          from: h[:from]&.to_sym,
-          to: h[:to]&.to_sym,
+          transition: normalize_transition_name(h[:transition]),
+          from: normalize_state_name(h[:from]),
+          to: normalize_state_name(h[:to]),
           error_class: h[:error_class],
           error_family: h[:error_family],
           error_message: h[:error_message],
@@ -255,7 +255,7 @@ module Smith
       end
 
       def normalize_symbol_fields!(normalized)
-        normalized[:state] = normalized[:state]&.to_sym
+        normalized[:state] = normalize_state_name(normalized[:state])
         if normalized[:outcome].is_a?(Hash) && normalized[:outcome].key?(:kind)
           normalized[:outcome][:kind] = normalized[:outcome][:kind]&.to_sym
         elsif normalized[:outcome].is_a?(Hash) && normalized[:outcome].key?("kind")
@@ -268,13 +268,31 @@ module Smith
 
       def normalize_transition_name(value)
         return if value.nil?
-        return value if self.class.find_transition(value)
+        transition = self.class.find_transition(value)
+        return transition.name if transition
         return value unless value.is_a?(String)
 
         symbolized = value.to_sym
-        return symbolized if self.class.find_transition(symbolized)
+        transition = self.class.find_transition(symbolized)
+        return transition.name if transition
 
-        value
+        symbolized
+      end
+
+      def normalize_state_name(value)
+        return if value.nil?
+        return value if declared_state?(value)
+        return value unless value.is_a?(String)
+
+        symbolized = value.to_sym
+        return symbolized if declared_state?(symbolized)
+
+        symbolized
+      end
+
+      def declared_state?(value)
+        states = self.class.instance_variable_get(:@states) || []
+        states.include?(value)
       end
 
       def normalize_nested_hashes!(normalized)

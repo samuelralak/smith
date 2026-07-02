@@ -127,7 +127,7 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
           state :done
 
           transition :check, from: :idle, to: :done do
-            route :some_agent, routes: {}, confidence_threshold: 0.5, fallback: :fail
+            route :some_agent, routes: { done: :finish }, confidence_threshold: 0.5, fallback: :finish
             compute { |_step| }
           end
         end
@@ -335,7 +335,7 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
       expect(observed[:read_context]).to eq("testing")
     end
 
-    it "reports the live workflow state even when a named transition has a mismatched from state" do
+    it "rejects named deterministic routes whose from state does not match the live workflow state" do
       observed = {}
 
       klass = with_stubbed_class("SpecComputeCurrentStateMismatchWorkflow", workflow_class) do
@@ -354,9 +354,10 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
         end
       end
 
-      klass.new.run!
+      expect { klass.new.run! }
+        .to raise_error(Smith::WorkflowError, /cannot run from state :verified/)
 
-      expect(observed[:current_state]).to eq(:verified)
+      expect(observed).to be_empty
     end
 
     it "extracts last_output from session messages" do

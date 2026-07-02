@@ -20,14 +20,31 @@ module Smith
         run_agent_output_guardrails(output, agent_class)
       end
 
-      def handle_step_failure(transition, _error)
+      def handle_step_failure(transition, error)
         failure_name = transition.failure_transition
-        return unless failure_name
+        raise error unless failure_name
 
         fail_transition = self.class.find_transition(failure_name)
-        return unless fail_transition
+        raise error unless fail_transition
+        validate_transition_origin!(fail_transition)
+
+        if actionable_failure_transition?(fail_transition)
+          @next_transition_name = failure_name
+          return
+        end
 
         @state = fail_transition.to
+      end
+
+      def actionable_failure_transition?(transition)
+        transition.agent_name ||
+          transition.deterministic? ||
+          transition.routed? ||
+          transition.fanout? ||
+          transition.nested? ||
+          transition.optimized? ||
+          transition.orchestrated? ||
+          transition.success_transition
       end
 
       def run_workflow_input_guardrails
