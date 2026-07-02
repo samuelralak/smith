@@ -17,7 +17,6 @@ environment before calling the slice complete.
 
 ```ruby
 # Gemfile
-# After Smith 0.4.2 is published:
 gem "smith-agents", "~> 0.4.2", require: "smith"
 ```
 

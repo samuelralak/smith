@@ -8,13 +8,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 No unreleased changes.
 
-## [0.4.2] - 2026-07-02 (local release candidate)
+## [0.4.2] - 2026-07-02
 
-Patch candidate for bounded fan-out and retry workflow primitives. This remains
+Patch release for bounded fan-out and retry workflow primitives. This remains
 workflow-first and host-owned: Smith executes declared transitions and exposes
 inspection metadata, while durable scheduling, long waits, tool adapter
-contracts, and deployment packaging stay with the host application. Publish this
-gem before host applications depend on `~> 0.4.2` in CI or deployment builds.
+contracts, and deployment packaging stay with the host application.
 
 ### Added
 
