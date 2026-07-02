@@ -13,6 +13,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   are not native first-class contracts yet, and durable polling/wait semantics
   remain host-owned unless an explicit wait contract exists.
 
+### Added
+
+- `Workflow.runtime_readiness`, a static diagnostic report that separates graph
+  topology validity from runtime binding readiness without executing agents,
+  tools, providers, jobs, or persistence.
+- Runtime-readiness diagnostics for unresolved, invalid, lazy/uninspectable,
+  model-less, and model-required agent bindings across execute, route,
+  optimize, orchestrate, nested, and fan-out workflow shapes.
+- Runtime-readiness metrics now expose direct counts and transitive counts folded
+  in from nested workflows.
+- `Smith::Agent::Registry.binding_for` and `.bindings` expose non-resolving
+  registry inspection for diagnostics and host cleanup.
+- Richer fan-out transition snapshot metadata: branch count, join state,
+  ordered branch list, and named branch-result output shape.
+
 ## [0.4.2] - 2026-07-02
 
 Patch release for bounded fan-out and retry workflow primitives. This remains

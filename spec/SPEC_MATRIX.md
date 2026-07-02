@@ -24,7 +24,7 @@ Current contract coverage exists for:
 - top-level configuration surface, including structural-trace defaults and content-tracing opt-in default
 - agent inheritance, DSL, registry binding, fail-fast unresolved-agent behavior, and fallback model-chain runtime behavior
 - workflow DSL, transition metadata capture, serialization entry points, exact state shape, run-result surface, best-known execution cost aggregation, persisted-context filtering, and configured-adapter durability helper surface
-- static workflow graph inspection and validation reports: read-only transition snapshots, unresolved named-target diagnostics, router target validation, undefined state diagnostics, reachability warnings, and graph metrics
+- static workflow graph inspection and validation reports: read-only transition snapshots, unresolved named-target diagnostics, router target validation, undefined state diagnostics, reachability warnings, graph metrics, fan-out join metadata, and runtime readiness reports
 - per-agent-call billing facts: `Workflow::UsageEntry` struct shape, JSON-safe to_h/from_h round-trip with symbol coercion, `RunResult#usage_entries` field with deep-copy on population, lifecycle recording from completed AND failed-but-billable attempts via a single mutex critical section, and parallel-fan-out attribution via local-arg `model_used` (no `@last_attempt_model` ivar)
 - nested-workflow billing rollup: child `total_cost` + `total_tokens` + `usage_entries` rolled up into parent BEFORE the failed-step check raises (preserves failed-child billable work on the parent), with deep-copied entries via `from_h(snapshot_value(...))` so child and parent are fully independent
 - terminal-restore correctness for `RunResult#output` / `#last_error` / `#failure_detail`: persisted `@last_output` and class-aware `@last_failed_step` snapshot drive synthesis when steps are empty on terminal-restore, with backward compat for pre-patch state and value-symbol coercion that matches fresh-run shape
@@ -781,6 +781,8 @@ Documented contracts covered:
   - `failure_transition`
   - router `routes`
   - router `fallback`
+  - fan-out branch map
+  - fan-out join metadata (`branch_count`, `join_state`, ordered branch list, and output shape)
 - diagnostics cover:
   - missing or undeclared initial state
   - undefined `from` and `to` states
@@ -793,11 +795,48 @@ Documented contracts covered:
   - transition count
   - reachable transition count
   - terminal states
+- `.runtime_readiness` returns a static report that separates topology status
+  from runtime binding readiness
+- runtime readiness report surface:
+  - `#ready?`
+  - `#valid?`
+  - `#status`
+  - `#topology_status`
+  - `#diagnostics`
+  - `#runtime_diagnostics`
+  - `#errors`
+  - `#warnings`
+  - `#suggestions`
+  - `#metrics`
+  - `#to_h`
+- runtime readiness diagnostics cover:
+  - unregistered agent bindings across execute, route, optimize, orchestrate,
+    and fan-out transitions
+  - invalid non-agent registry bindings as errors
+  - lazy/uninspectable registry bindings without resolving the lazy binding
+  - registered agent bindings without configured models as warnings when the
+    role can run without model output
+  - model-required roles as errors when the registered agent has no configured
+    model
+  - nested workflow readiness diagnostics projected onto the parent transition
+- runtime readiness metrics cover:
+  - topology status
+  - direct and transitive agent binding counts
+  - unresolved agent binding count
+  - invalid agent binding count
+  - uninspectable agent binding count
+  - model-less agent binding count
+  - required-model missing count
+  - direct and transitive nested workflow counts
+  - direct and transitive fan-out group and branch counts
 
 Notes:
 
 - Graph inspection is static and diagnostic-only.
-- This spec intentionally does not introduce host-owned progress projection, durability, retry policy, or recovery semantics into Smith core.
+- Runtime readiness is also static and diagnostic-only.
+- This spec intentionally does not introduce host-owned progress projection,
+  durability, retry policy, provider calls, tool execution, or recovery
+  semantics into Smith core.
 - Runtime loud-failure behavior for unresolved named transitions remains covered in deterministic-step and run-result specs.
 
 ### `spec/smith/workflow/durability_spec.rb`
@@ -1537,6 +1576,8 @@ Documented contracts covered:
 - branch agent input guardrails run before session preparation, so rejected
   fan-out branches cannot inject or persist session state before admission
 - graph inspection exposes `kind: :fanout` and the branch map
+- graph inspection exposes richer fan-out metadata: branch count, join state,
+  ordered branch list, and named branch-result output shape
 
 Notes:
 

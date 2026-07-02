@@ -15,7 +15,7 @@ module Smith
         ].freeze
 
         attr_reader :name, :from, :to, :kind, :success_transition, :failure_transition, :routes, :fallback,
-                    :fanout_branches, :retry_policy
+                    :fanout_branches, :fanout, :retry_policy
 
         def self.from_transition(transition)
           new(
@@ -28,8 +28,23 @@ module Smith
             routes: transition.router_config&.fetch(:routes, nil),
             fallback: transition.router_config&.fetch(:fallback, nil),
             fanout_branches: transition.fanout_config&.fetch(:branches, nil),
+            fanout: fanout_for(transition),
             retry_policy: retry_policy_for(transition)
           )
+        end
+
+        def self.fanout_for(transition)
+          branches = transition.fanout_config&.fetch(:branches, nil)
+          return unless branches
+
+          {
+            branch_count: branches.length,
+            join_state: transition.to,
+            output_shape: :named_branch_results,
+            branches: branches.map do |branch, agent|
+              { branch: branch, agent: agent }.freeze
+            end.freeze
+          }.freeze
         end
 
         def self.retry_policy_for(transition)
@@ -63,6 +78,7 @@ module Smith
           @routes = attributes[:routes]
           @fallback = attributes[:fallback]
           @fanout_branches = attributes[:fanout_branches]
+          @fanout = attributes[:fanout]
           @retry_policy = attributes[:retry_policy]
         end
 
@@ -77,6 +93,7 @@ module Smith
             routes: routes,
             fallback: fallback,
             fanout_branches: fanout_branches,
+            fanout: fanout,
             retry_policy: retry_policy
           }.compact
         end

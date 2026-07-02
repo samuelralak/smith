@@ -14,5 +14,9 @@ module Smith
     def self.validate_graph
       graph.validate
     end
+
+    def self.runtime_readiness
+      graph.runtime_readiness
+    end
   end
 end

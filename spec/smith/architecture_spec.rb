@@ -35,6 +35,7 @@ RSpec.describe "smith architecture contract" do
       Smith::Trace::Logger
       Smith::Trace::OpenTelemetry
       Smith::Workflow::Graph
+      Smith::Workflow::Graph::RuntimeReadinessReport
       Smith::Workflow::Persistence
     ].each do |path|
       expect(fetch_const(path)).not_to be_nil, "expected #{path} to be defined"

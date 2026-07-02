@@ -291,5 +291,17 @@ RSpec.describe "Smith::Workflow heterogeneous fan-out" do
       static: :spec_fanout_static_agent,
       security: :spec_fanout_security_agent
     )
+    expect(transition.to_h.fetch(:fanout)).to eq(
+      branch_count: 2,
+      join_state: :reviewed,
+      output_shape: :named_branch_results,
+      branches: [
+        { branch: :static, agent: :spec_fanout_static_agent },
+        { branch: :security, agent: :spec_fanout_security_agent }
+      ]
+    )
+    expect(transition.to_h.fetch(:fanout)).to be_frozen
+    expect(transition.to_h.fetch(:fanout).fetch(:branches)).to be_frozen
+    expect(transition.to_h.fetch(:fanout).fetch(:branches).first).to be_frozen
   end
 end

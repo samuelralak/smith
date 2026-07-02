@@ -224,6 +224,7 @@ require_relative "smith/context/session"
 # Agent (depends on RubyLLM::Agent)
 require_relative "smith/agent"
 require_relative "smith/agent/lifecycle"
+require_relative "smith/agent/registry_binding"
 require_relative "smith/agent/registry"
 
 # Workflow (Transition, DSL, Persistence, and Execution must load before Workflow)

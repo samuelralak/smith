@@ -2,6 +2,7 @@
 
 require "dry-container"
 require "monitor"
+require_relative "registry_binding"
 
 module Smith
   class Agent
@@ -14,14 +15,10 @@ module Smith
 
       def self.find(name)
         registry_monitor.synchronize do
-          key = normalize_key(name)
-          key?(key) ? resolve(key) : nil
+          registered_binding(normalize_key(name))
         end
       end
 
-      # Override Dry::Container::Mixin#register to route agent classes
-      # through ensure_registered while preserving full generic container
-      # semantics (block, options) for non-agent registrations.
       def self.register(key, contents = nil, options = {}, &block)
         if block_given? || !(contents.is_a?(Class) && contents <= Smith::Agent)
           registry_monitor.synchronize { super(key, contents, options, &block) }
@@ -47,7 +44,7 @@ module Smith
         key = normalize_key(name)
 
         registry_monitor.synchronize do
-          existing = key?(key) ? resolve(key) : nil
+          existing = registered_binding(key)
 
           if existing.nil?
             register_unchecked!(key, klass)
@@ -71,22 +68,15 @@ module Smith
       def self.fetch!(name, workflow_class: nil, transition_name: nil, role: :agent)
         registry_monitor.synchronize do
           key = normalize_key(name)
-          return resolve(key) if key?(key)
+          binding = registered_binding(key)
+          return binding if binding
 
-          details = []
-          details << "workflow #{workflow_class}" if workflow_class
-          details << "transition :#{transition_name}" if transition_name
-          suffix = details.empty? ? "" : " for #{details.join(', ')}"
-
-          raise Smith::WorkflowError, "unresolved #{role} :#{key}#{suffix}"
+          raise Smith::WorkflowError, "unresolved #{role} :#{key}#{fetch_suffix(workflow_class, transition_name)}"
         end
       end
 
-      # Re-entrant lock (Monitor, not Mutex) so block-backed resolve
-      # inside find/fetch! can safely re-enter the registry without
-      # deadlocking on the same thread.
       def self.registry_monitor
-        @_registry_monitor ||= Monitor.new
+        @registry_monitor ||= Monitor.new
       end
 
       def self.validate_agent_class!(klass)
@@ -115,6 +105,19 @@ module Smith
       end
       private_class_method :register_unchecked!
 
+      def self.registered_binding(key)
+        key?(key) ? resolve(key) : nil
+      end
+      private_class_method :registered_binding
+
+      def self.fetch_suffix(workflow_class, transition_name)
+        details = []
+        details << "workflow #{workflow_class}" if workflow_class
+        details << "transition :#{transition_name}" if transition_name
+        details.empty? ? "" : " for #{details.join(", ")}"
+      end
+      private_class_method :fetch_suffix
+
       def self.stale_reload_binding?(existing, klass)
         existing_name = existing.respond_to?(:name) ? existing.name : nil
         klass_name = klass.name
@@ -126,3 +129,5 @@ module Smith
     end
   end
 end
+
+require_relative "registry/introspection"

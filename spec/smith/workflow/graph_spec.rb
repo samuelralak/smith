@@ -119,4 +119,324 @@ RSpec.describe "Smith::Workflow graph inspection" do
     expect(report.states).to eq(%w[idle done])
     expect(report.transitions.map(&:name)).to include("start")
   end
+
+  it "reports runtime readiness without executing agents" do
+    agent_class = require_const("Smith::Agent")
+
+    with_stubbed_class("SpecGraphReadyAgent", agent_class) do
+      register_as :spec_graph_ready_agent
+      model "gpt-4.1-nano"
+    end
+
+    workflow = with_stubbed_class("SpecGraphRuntimeReadyWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :start, from: :idle, to: :done do
+        execute :spec_graph_ready_agent
+      end
+    end
+
+    report = workflow.runtime_readiness
+
+    expect(report).to be_ready
+    expect(report.status).to eq(:ready)
+    expect(report.topology_status).to eq(:valid)
+    expect(report.runtime_diagnostics).to be_empty
+    expect(report.metrics).to include(
+      agent_bindings_count: 1,
+      unresolved_agent_bindings_count: 0,
+      modelless_agent_bindings_count: 0
+    )
+  end
+
+  it "separates topology validity from runtime readiness diagnostics" do
+    workflow = with_stubbed_class("SpecGraphRuntimeNotReadyWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :start, from: :idle, to: :done do
+        execute :missing_runtime_agent
+      end
+    end
+
+    report = workflow.runtime_readiness
+
+    expect(report).not_to be_ready
+    expect(report.status).to eq(:not_ready)
+    expect(report.topology_status).to eq(:valid)
+    expect(report.errors.map(&:code)).to include(:unresolved_agent_binding)
+    expect(report.runtime_diagnostics.map(&:code)).to eq([:unresolved_agent_binding])
+    expect(report.to_h).to include(:graph, :topology_diagnostics, :runtime_diagnostics)
+  end
+
+  it "warns for registered agents that have no model configured" do
+    agent_class = require_const("Smith::Agent")
+
+    with_stubbed_class("SpecGraphNoModelAgent", agent_class) do
+      register_as :spec_graph_no_model_agent
+    end
+
+    workflow = with_stubbed_class("SpecGraphNoModelWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :start, from: :idle, to: :done do
+        execute :spec_graph_no_model_agent
+      end
+    end
+
+    report = workflow.runtime_readiness
+
+    expect(report).to be_ready
+    expect(report.status).to eq(:warning)
+    expect(report.warnings.map(&:code)).to include(:agent_without_model)
+    expect(report.metrics.fetch(:modelless_agent_bindings_count)).to eq(1)
+  end
+
+  it "does not resolve lazy registry bindings while reporting them" do
+    registry = require_const("Smith::Agent::Registry")
+    calls = 0
+
+    registry.register(:spec_graph_lazy_agent) do
+      calls += 1
+      require_const("Smith::Agent")
+    end
+
+    workflow = with_stubbed_class("SpecGraphLazyAgentWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :start, from: :idle, to: :done do
+        execute :spec_graph_lazy_agent
+      end
+    end
+
+    report = workflow.runtime_readiness
+
+    expect(report.status).to eq(:warning)
+    expect(report.warnings.map(&:code)).to include(:uninspectable_agent_binding)
+    expect(report.metrics.fetch(:uninspectable_agent_bindings_count)).to eq(1)
+    expect(calls).to eq(0)
+  end
+
+  it "reports invalid non-agent registry bindings instead of crashing" do
+    registry = require_const("Smith::Agent::Registry")
+    registry.register(:spec_graph_plain_value_agent, "plain")
+
+    workflow = with_stubbed_class("SpecGraphInvalidAgentBindingWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :start, from: :idle, to: :done do
+        execute :spec_graph_plain_value_agent
+      end
+    end
+
+    report = workflow.runtime_readiness
+
+    expect(report.status).to eq(:not_ready)
+    expect(report.errors.map(&:code)).to include(:invalid_agent_binding)
+    expect(report.metrics.fetch(:invalid_agent_bindings_count)).to eq(1)
+  end
+
+  it "reports unresolved bindings across route, optimize, orchestrate, and fan-out transitions" do
+    schema = Class.new { def self.required_keys = [] }
+
+    workflow = with_stubbed_class("SpecGraphRuntimeSpecializedMissingWorkflow", workflow_class) do
+      initial_state :idle
+      state :routed
+      state :optimized
+      state :orchestrated
+      state :fanned
+      state :done
+
+      transition :route_step, from: :idle, to: :routed do
+        route :missing_router_agent,
+              routes: { done: :finish },
+              confidence_threshold: 0.5,
+              fallback: :finish
+      end
+
+      transition :optimize_step, from: :idle, to: :optimized do
+        optimize generator: :missing_generator_agent,
+                 evaluator: :missing_evaluator_agent,
+                 max_rounds: 1,
+                 evaluator_schema: schema
+      end
+
+      transition :orchestrate_step, from: :idle, to: :orchestrated do
+        orchestrate orchestrator: :missing_orchestrator_agent,
+                    worker: :missing_worker_agent,
+                    max_workers: 2,
+                    max_delegation_rounds: 1,
+                    task_schema: schema,
+                    worker_output_schema: schema,
+                    final_output_schema: schema
+      end
+
+      transition :fanout_step, from: :idle, to: :fanned do
+        fan_out branches: {
+          research: :missing_research_agent,
+          review: :missing_review_agent
+        }
+      end
+
+      transition :finish, from: :routed, to: :done
+    end
+
+    report = workflow.runtime_readiness
+
+    expect(report.status).to eq(:not_ready)
+    expect(report.errors.map(&:target)).to include(
+      :missing_router_agent,
+      :missing_generator_agent,
+      :missing_evaluator_agent,
+      :missing_orchestrator_agent,
+      :missing_worker_agent,
+      :missing_research_agent,
+      :missing_review_agent
+    )
+    expect(report.metrics.fetch(:unresolved_agent_bindings_count)).to eq(7)
+    expect(report.metrics.fetch(:fanout_branches_count)).to eq(2)
+  end
+
+  it "fails closed when model-required roles have no configured model" do
+    agent_class = require_const("Smith::Agent")
+    schema = Class.new { def self.required_keys = [] }
+
+    %i[
+      spec_graph_router_no_model_agent
+      spec_graph_generator_no_model_agent
+      spec_graph_evaluator_no_model_agent
+      spec_graph_orchestrator_no_model_agent
+      spec_graph_worker_no_model_agent
+    ].each do |agent_name|
+      with_stubbed_class("SpecGraph#{agent_name.to_s.split("_").map(&:capitalize).join}", agent_class) do
+        register_as agent_name
+      end
+    end
+
+    workflow = with_stubbed_class("SpecGraphRuntimeRequiredModelWorkflow", workflow_class) do
+      initial_state :idle
+      state :routed
+      state :optimized
+      state :orchestrated
+      state :done
+
+      transition :route_step, from: :idle, to: :routed do
+        route :spec_graph_router_no_model_agent,
+              routes: { done: :finish },
+              confidence_threshold: 0.5,
+              fallback: :finish
+      end
+
+      transition :optimize_step, from: :idle, to: :optimized do
+        optimize generator: :spec_graph_generator_no_model_agent,
+                 evaluator: :spec_graph_evaluator_no_model_agent,
+                 max_rounds: 1,
+                 evaluator_schema: schema
+      end
+
+      transition :orchestrate_step, from: :idle, to: :orchestrated do
+        orchestrate orchestrator: :spec_graph_orchestrator_no_model_agent,
+                    worker: :spec_graph_worker_no_model_agent,
+                    max_workers: 2,
+                    max_delegation_rounds: 1,
+                    task_schema: schema,
+                    worker_output_schema: schema,
+                    final_output_schema: schema
+      end
+
+      transition :finish, from: :routed, to: :done
+    end
+
+    report = workflow.runtime_readiness
+
+    expect(report.status).to eq(:not_ready)
+    expect(report.errors.map(&:code)).to all(eq(:agent_without_required_model))
+    expect(report.metrics.fetch(:required_model_missing_count)).to eq(5)
+  end
+
+  it "projects nested workflow readiness diagnostics onto the parent transition" do
+    child = with_stubbed_class("SpecGraphNestedNotReadyChild", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :child_start, from: :idle, to: :done do
+        execute :missing_nested_agent
+      end
+    end
+
+    parent = with_stubbed_class("SpecGraphNestedNotReadyParent", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :start, from: :idle, to: :done do
+        workflow child
+      end
+    end
+
+    report = parent.runtime_readiness
+
+    expect(report.status).to eq(:not_ready)
+    expect(report.errors.map(&:code)).to include(:nested_unresolved_agent_binding)
+    expect(report.metrics.fetch(:unresolved_agent_bindings_count)).to eq(1)
+    nested = report.errors.find { |diagnostic| diagnostic.code == :nested_unresolved_agent_binding }
+    expect(nested.transition).to eq(:start)
+    expect(nested.message).to include("Nested workflow SpecGraphNestedNotReadyChild")
+  end
+
+  it "folds nested workflow readiness metrics into parent metrics" do
+    agent_class = require_const("Smith::Agent")
+
+    with_stubbed_class("SpecGraphNestedReadyAgent", agent_class) do
+      register_as :spec_graph_nested_ready_agent
+      model "gpt-4.1-nano"
+    end
+
+    child = with_stubbed_class("SpecGraphNestedReadyChild", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :child_start, from: :idle, to: :done do
+        execute :spec_graph_nested_ready_agent
+      end
+    end
+
+    parent = with_stubbed_class("SpecGraphNestedReadyParent", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :start, from: :idle, to: :done do
+        workflow child
+      end
+    end
+
+    report = parent.runtime_readiness
+
+    expect(report.status).to eq(:ready)
+    expect(report.metrics).to include(
+      direct_agent_bindings_count: 0,
+      agent_bindings_count: 1,
+      direct_nested_workflow_count: 1,
+      nested_workflow_count: 1
+    )
+  end
+
+  it "labels anonymous workflows in runtime readiness reports" do
+    workflow = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :start, from: :idle, to: :done do
+        execute :missing_anonymous_agent
+      end
+    end
+
+    report = workflow.runtime_readiness
+
+    expect(report.workflow_class).to match(/\A#<Class:/)
+    expect(report.errors.first.suggestion).to include(workflow.inspect)
+  end
 end

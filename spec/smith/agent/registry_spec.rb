@@ -18,6 +18,7 @@ RSpec.describe "Smith::Agent registry contract" do
     expect(registry).to respond_to(:clear!)
     expect(registry).to respond_to(:delete)
     expect(registry).to respond_to(:ensure_registered)
+    expect(registry).to respond_to(:binding_for)
   end
 
   it "supports explicit registration names via register_as" do
@@ -94,9 +95,9 @@ RSpec.describe "Smith::Agent registry contract" do
 
       registry.ensure_registered(:collision_key, klass_a)
 
-      expect {
+      expect do
         registry.ensure_registered(:collision_key, klass_b)
-      }.to raise_error(Smith::AgentRegistryError, /collision/)
+      end.to raise_error(Smith::AgentRegistryError, /collision/)
     end
 
     it "raises AgentRegistryError for anonymous classes on collision" do
@@ -105,21 +106,21 @@ RSpec.describe "Smith::Agent registry contract" do
 
       registry.ensure_registered(:anon_key, anon_a)
 
-      expect {
+      expect do
         registry.ensure_registered(:anon_key, anon_b)
-      }.to raise_error(Smith::AgentRegistryError)
+      end.to raise_error(Smith::AgentRegistryError)
     end
 
     it "validates input — rejects non-Class" do
-      expect {
+      expect do
         registry.ensure_registered(:bad_key, "not a class")
-      }.to raise_error(Smith::AgentRegistryError, /Smith::Agent subclass/)
+      end.to raise_error(Smith::AgentRegistryError, /Smith::Agent subclass/)
     end
 
     it "validates input — rejects non-Agent class" do
-      expect {
+      expect do
         registry.ensure_registered(:bad_key, String)
-      }.to raise_error(Smith::AgentRegistryError, /Smith::Agent subclass/)
+      end.to raise_error(Smith::AgentRegistryError, /Smith::Agent subclass/)
     end
   end
 
@@ -157,9 +158,9 @@ RSpec.describe "Smith::Agent registry contract" do
 
       registry.register(:collision_register, klass_a)
 
-      expect {
+      expect do
         registry.register(:collision_register, klass_b)
-      }.to raise_error(Smith::AgentRegistryError, /collision/)
+      end.to raise_error(Smith::AgentRegistryError, /collision/)
     end
 
     it "preserves block-based registration" do
@@ -170,6 +171,53 @@ RSpec.describe "Smith::Agent registry contract" do
     it "preserves options forwarding" do
       registry.register(:memoized_value, "static", call: false)
       expect(registry.find(:memoized_value)).to eq("static")
+    end
+  end
+
+  describe ".binding_for" do
+    it "returns concrete agent bindings without resolving lazy entries" do
+      calls = 0
+      klass = make_agent("Test::BindingProbeAgent")
+
+      registry.register(:concrete_binding_probe, klass)
+      registry.register(:lazy_binding_probe) do
+        calls += 1
+        klass
+      end
+
+      concrete = registry.binding_for(:concrete_binding_probe)
+      lazy = registry.binding_for(:lazy_binding_probe)
+
+      expect(concrete).to include(key: "concrete_binding_probe", agent_class: klass, call: false)
+      expect(lazy).to include(key: "lazy_binding_probe", agent_class: nil, call: true)
+      expect(calls).to eq(0)
+    end
+
+    it "reports non-agent container bindings without coercing them" do
+      registry.register(:plain_binding_probe, "plain")
+
+      binding = registry.binding_for(:plain_binding_probe)
+
+      expect(binding).to include(key: "plain_binding_probe", agent_class: nil, call: false, raw_binding: "plain")
+    end
+  end
+
+  describe ".bindings" do
+    it "enumerates registered bindings without resolving lazy entries" do
+      calls = 0
+      klass = make_agent("Test::BindingsProbeAgent")
+
+      registry.register(:concrete_bindings_probe, klass)
+      registry.register(:lazy_bindings_probe) do
+        calls += 1
+        klass
+      end
+
+      bindings = registry.bindings
+
+      expect(bindings.fetch("concrete_bindings_probe")).to include(agent_class: klass, call: false)
+      expect(bindings.fetch("lazy_bindings_probe")).to include(agent_class: nil, call: true)
+      expect(calls).to eq(0)
     end
   end
 
@@ -194,18 +242,18 @@ RSpec.describe "Smith::Agent registry contract" do
       registry.register(:mixed_key, "plain_value")
       klass = make_agent("Test::MixedAgent")
 
-      expect {
+      expect do
         registry.ensure_registered(:mixed_key, klass)
-      }.to raise_error(Smith::AgentRegistryError, /collision/)
+      end.to raise_error(Smith::AgentRegistryError, /collision/)
     end
 
     it "overridden register raises AgentRegistryError when key holds a plain value" do
       registry.register(:mixed_register, "plain_value")
       klass = make_agent("Test::MixedRegisterAgent")
 
-      expect {
+      expect do
         registry.register(:mixed_register, klass)
-      }.to raise_error(Smith::AgentRegistryError, /collision/)
+      end.to raise_error(Smith::AgentRegistryError, /collision/)
     end
   end
 end
