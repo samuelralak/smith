@@ -1535,6 +1535,11 @@ Documented contracts covered:
 - `read_context` reads the current context including any `write_context` writes made earlier in the same step (read-after-write coherence within a single step body)
 - `write_outcome` records first-class run-result accessors (`outcome`, `outcome_kind`, `outcome_payload`) as part of the step's success path
 - `route_to` chooses a named transition from the available next-transitions; an unresolved name fails loudly with `Smith::WorkflowError`
+- optional deterministic route annotations via `compute(routes: [...])` and
+  `run(routes: [...])` declare inspectable allowed `route_to` targets; malformed
+  annotations fail at DSL definition time, graph validation reports unresolved
+  annotated targets, reachability includes annotated routes, and runtime rejects
+  `step.route_to` targets outside the declared set
 - `fail!` accepts a message and optional metadata payload; the failure routes through `on_failure`
 - persistence round-trip: deterministic step state survives `to_state` / `from_state` and resumes correctly mid-workflow
 - trace lifecycle emits `started` / `success` (with the emitted outcome kind) / `routed` / `failed` events at the deterministic-step boundary
@@ -1547,10 +1552,10 @@ Notes:
 - `compute` is workflow-resolved (instance method on the `Workflow` subclass); `run` is host-resolved (registered host helper). Both share the same constrained step-object surface so step bodies are interchangeable.
 - This is one of Smith's largest spec files (~1150 lines, ~50 examples) — covers DSL declaration, runtime semantics, persistence, trace, guardrails, and mixed-mode integration in one place.
 - `compute` / `run` are not first-class deterministic repair,
-  polling/wait, or guarded state re-entry loop contracts. They can express
-  carefully handwritten local logic, but Smith does not yet expose reusable
-  loop policy metadata, persisted attempt/wake ledgers, or native graph
-  diagnostics for those contracts.
+  polling/wait, or guarded state re-entry loop contracts. Route annotations make
+  handwritten deterministic routing inspectable and enforceable, but Smith does
+  not yet expose reusable loop policy metadata, persisted attempt/wake ledgers,
+  or native graph diagnostics for those contracts.
 
 ### `spec/smith/workflow/fanout_spec.rb`
 
@@ -2301,9 +2306,11 @@ replace the bounded Orchestrator-Worker delegation contract covered earlier.
 - Expressible but not native:
   - deterministic repair can be handwritten with `compute` / `run` only when a
     workflow author explicitly owns the guard, repair action, revalidation
-    target, attempt bounds, and unrepaired exit behavior
+    target, attempt bounds, and unrepaired exit behavior; deterministic
+    `routes: [...]` should be used to make any `route_to` targets inspectable
   - guarded state re-entry can be handwritten with `compute` / `run` only when
-    the workflow author explicitly owns route targets and safety policy
+    the workflow author explicitly owns route targets and safety policy, and
+    declares those targets with `routes: [...]`
 - Not Smith-owned today:
   - polling/wait loops require a host queue/timer, persisted wake state, timeout
     and cancellation policy, and resume through Smith persistence helpers

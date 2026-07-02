@@ -114,8 +114,8 @@ For bounded dynamic delegation, use the separate Orchestrator-Worker pattern.
 |---|---|---|
 | Retry loop | Executable | `retry_on`, bounded to one transition. |
 | Evaluator-Optimizer | Executable | `optimize`, bounded by `max_rounds` plus structured evaluator output. |
-| Deterministic repair | Not first-class yet | Can be handwritten with `compute` / `run` only when the workflow author owns the exact guard, repair, revalidation, and exit policy. It is not a native inspectable repair-loop contract. |
-| Guarded state re-entry | Not first-class yet | `compute` / `run` can route to a named transition, but Smith does not yet own persisted entry counts, mutation policy, or safe re-entry contracts. |
+| Deterministic repair | Not first-class yet | Can be handwritten with `compute` / `run` only when the workflow author owns the exact guard, repair, revalidation, and exit policy. Deterministic steps may declare inspectable `routes: [...]`, but that is not a native repair-loop contract. |
+| Guarded state re-entry | Not first-class yet | `compute` / `run` can declare and route to named transitions with `routes: [...]`, but Smith does not yet own persisted entry counts, mutation policy, or safe re-entry contracts. |
 | Polling / wait | Host-owned | Use the host app's queue/timer plus Smith persistence helpers. Smith must not model durable polling with busy-waits or sleep loops. |
 
 ## Workflow Graph Inspection

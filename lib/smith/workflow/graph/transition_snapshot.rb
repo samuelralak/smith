@@ -15,7 +15,7 @@ module Smith
         ].freeze
 
         attr_reader :name, :from, :to, :kind, :success_transition, :failure_transition, :routes, :fallback,
-                    :fanout_branches, :fanout, :retry_policy
+                    :deterministic_routes, :fanout_branches, :fanout, :retry_policy
 
         def self.from_transition(transition)
           new(
@@ -27,6 +27,7 @@ module Smith
             failure_transition: transition.failure_transition,
             routes: transition.router_config&.fetch(:routes, nil),
             fallback: transition.router_config&.fetch(:fallback, nil),
+            deterministic_routes: transition.deterministic_routes,
             fanout_branches: transition.fanout_config&.fetch(:branches, nil),
             fanout: fanout_for(transition),
             retry_policy: retry_policy_for(transition)
@@ -77,6 +78,7 @@ module Smith
           @failure_transition = attributes[:failure_transition]
           @routes = attributes[:routes]
           @fallback = attributes[:fallback]
+          @deterministic_routes = attributes[:deterministic_routes]
           @fanout_branches = attributes[:fanout_branches]
           @fanout = attributes[:fanout]
           @retry_policy = attributes[:retry_policy]
@@ -92,6 +94,7 @@ module Smith
             failure_transition: failure_transition,
             routes: routes,
             fallback: fallback,
+            deterministic_routes: deterministic_routes,
             fanout_branches: fanout_branches,
             fanout: fanout,
             retry_policy: retry_policy

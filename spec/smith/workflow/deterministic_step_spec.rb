@@ -42,6 +42,56 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
       expect(transition.deterministic_kind).to eq(:run)
     end
 
+    it "accepts route annotations on deterministic transitions" do
+      klass = with_stubbed_class("SpecDeterministicRoutesWorkflow", workflow_class) do
+        initial_state :idle
+        state :checked
+        state :done
+
+        transition "check", from: :idle, to: :checked do
+          compute(routes: [:finish, "repair"]) { |step| step.read_context(:noop) }
+        end
+
+        transition :finish, from: :checked, to: :done do
+          run { |step| step.read_context(:noop) }
+        end
+
+        transition "repair", from: :checked, to: :done do
+          run { |step| step.read_context(:noop) }
+        end
+      end
+
+      transition = klass.find_transition("check")
+
+      expect(transition.deterministic_routes).to eq([:finish, "repair"])
+      expect(transition.deterministic_routes).to be_frozen
+      expect(transition.deterministic_routes.last).to be_frozen
+    end
+
+    it "rejects malformed deterministic route annotations" do
+      expect {
+        with_stubbed_class("SpecDeterministicRoutesTypeWorkflow", workflow_class) do
+          initial_state :idle
+          state :done
+
+          transition :check, from: :idle, to: :done do
+            compute(routes: :finish) { |step| step.read_context(:noop) }
+          end
+        end
+      }.to raise_error(Smith::WorkflowError, /deterministic routes must be an Array/)
+
+      expect {
+        with_stubbed_class("SpecDeterministicRoutesDuplicateWorkflow", workflow_class) do
+          initial_state :idle
+          state :done
+
+          transition :check, from: :idle, to: :done do
+            run(routes: [:finish, :finish]) { |step| step.read_context(:noop) }
+          end
+        end
+      }.to raise_error(Smith::WorkflowError, /deterministic route .* is duplicated/)
+    end
+
     it "rejects compute + execute" do
       expect {
         with_stubbed_class("SpecComputeExecuteWorkflow", workflow_class) do
@@ -285,6 +335,30 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
       expect(observed[:read_context]).to eq("testing")
     end
 
+    it "reports the live workflow state even when a named transition has a mismatched from state" do
+      observed = {}
+
+      klass = with_stubbed_class("SpecComputeCurrentStateMismatchWorkflow", workflow_class) do
+        initial_state :idle
+        state :verified
+        state :other
+        state :done
+
+        transition :verify, from: :idle, to: :verified do
+          compute { |step| step.read_context(:noop) }
+          on_success :finish
+        end
+
+        transition :finish, from: :other, to: :done do
+          compute { |step| observed[:current_state] = step.current_state }
+        end
+      end
+
+      klass.new.run!
+
+      expect(observed[:current_state]).to eq(:verified)
+    end
+
     it "extracts last_output from session messages" do
       observed_output = nil
 
@@ -465,6 +539,56 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
       expect(result.state).to eq(:done)
       transitions = result.steps.map { |s| s[:transition] }
       expect(transitions).to eq(%i[verify alternate_path])
+    end
+
+    it "rejects route_to targets outside declared deterministic routes" do
+      klass = with_stubbed_class("SpecUndeclaredDeterministicRouteWorkflow", workflow_class) do
+        initial_state :idle
+        state :verified
+        state :done
+        state :failed
+
+        transition :verify, from: :idle, to: :verified do
+          compute(routes: [:finish]) { |step| step.route_to(:repair) }
+          on_failure :fail
+        end
+
+        transition :finish, from: :verified, to: :done do
+          compute { |step| step.read_context(:noop) }
+        end
+
+        transition :repair, from: :verified, to: :done do
+          compute { |step| step.read_context(:noop) }
+        end
+      end
+
+      result = klass.new.run!
+
+      expect(result.state).to eq(:failed)
+      expect(result.last_error.message).to include("route_to :repair is not declared in deterministic routes")
+    end
+
+    it "requires route_to targets to match deterministic route annotations exactly" do
+      klass = with_stubbed_class("SpecExactDeterministicRouteWorkflow", workflow_class) do
+        initial_state :idle
+        state :verified
+        state :done
+        state :failed
+
+        transition :verify, from: :idle, to: :verified do
+          compute(routes: ["finish"]) { |step| step.route_to(:finish) }
+          on_failure :fail
+        end
+
+        transition "finish", from: :verified, to: :done do
+          compute { |step| step.read_context(:noop) }
+        end
+      end
+
+      result = klass.new.run!
+
+      expect(result.state).to eq(:failed)
+      expect(result.last_error.message).to include("route_to :finish is not declared in deterministic routes")
     end
 
     it "uses on_success when route_to is not called" do
@@ -858,6 +982,33 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
       expect(transitions).to eq([:finish])
     end
 
+    it "string route_to target survives persistence and JSON round-trip exactly" do
+      klass = with_stubbed_class("SpecDetPersistStringRouteWorkflow", workflow_class) do
+        initial_state :idle
+        state :verified
+        state :done
+
+        transition :verify, from: :idle, to: :verified do
+          compute(routes: ["finish"]) { |step| step.route_to("finish") }
+        end
+
+        transition "finish", from: :verified, to: :done do
+          compute { |step| step.read_context(:noop) }
+        end
+      end
+
+      workflow = klass.new
+      workflow.advance!
+
+      restored = klass.from_state(workflow.to_state)
+      restored_after_json = klass.from_state(JSON.parse(JSON.generate(workflow.to_state)))
+
+      expect(restored.to_state[:next_transition_name]).to eq("finish")
+      expect(restored.run!.steps.map { |step| step[:transition] }).to eq(["finish"])
+      expect(restored_after_json.to_state[:next_transition_name]).to eq("finish")
+      expect(restored_after_json.run!.steps.map { |step| step[:transition] }).to eq(["finish"])
+    end
+
     it "survives a JSON round-trip" do
       manager = with_stubbed_class("SpecDetJsonContext", context_class) do
         persist :data
@@ -1051,9 +1202,37 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
   # ---------------------------------------------------------------------------
 
   describe "guardrails" do
-    it "does not expose a workflow instance on the step object" do
+    def deterministic_transition(name: :check, from: :idle, routes: nil)
+      Struct.new(:name, :from, :deterministic_routes).new(name, from, routes)
+    end
+
+    it "keeps the direct constructor compatible with transition_name callers" do
       step = Smith::Workflow::DeterministicStep.new(
         context: {}, session_messages: [], tool_results: [], state: :idle, transition_name: :check
+      )
+
+      expect(step.transition_name).to eq(:check)
+      expect(step.current_state).to eq(:idle)
+    end
+
+    it "does not expose mutable deterministic route metadata" do
+      mutable_route = +"finish"
+      step = Smith::Workflow::DeterministicStep.new(
+        context: {}, session_messages: [], tool_results: [], state: :idle,
+        transition: deterministic_transition(routes: [mutable_route])
+      )
+
+      expect(step.allowed_routes).to be_frozen
+      expect(step.allowed_routes.first).to be_frozen
+
+      mutable_route.replace("mutated")
+
+      expect(step.allowed_routes.first).to eq("finish")
+    end
+
+    it "does not expose a workflow instance on the step object" do
+      step = Smith::Workflow::DeterministicStep.new(
+        context: {}, session_messages: [], tool_results: [], state: :idle, transition: deterministic_transition
       )
 
       expect(step).not_to respond_to(:workflow)
@@ -1065,7 +1244,7 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
 
     it "does not expose persistence adapter, registry, or logger" do
       step = Smith::Workflow::DeterministicStep.new(
-        context: {}, session_messages: [], tool_results: [], state: :idle, transition_name: :check
+        context: {}, session_messages: [], tool_results: [], state: :idle, transition: deterministic_transition
       )
 
       expect(step).not_to respond_to(:persistence_adapter)
@@ -1077,7 +1256,7 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
     it "enforces explicit context writes instead of arbitrary mutation" do
       step = Smith::Workflow::DeterministicStep.new(
         context: { topic: "original" }, session_messages: [], tool_results: [],
-        state: :idle, transition_name: :check
+        state: :idle, transition: deterministic_transition
       )
 
       step.write_context(:result, "computed")

@@ -21,6 +21,7 @@ module Smith
         def names
           names = [transition.success_transition, transition.failure_transition]
           names.concat(router_names)
+          names.concat(deterministic_route_names)
           names.compact.uniq
         end
 
@@ -31,6 +32,10 @@ module Smith
             *transition.router_config.fetch(:routes).values,
             transition.router_config.fetch(:fallback)
           ]
+        end
+
+        def deterministic_route_names
+          transition.deterministic_routes || []
         end
       end
     end

@@ -16,6 +16,7 @@ module Smith
               transition_target_diagnostic(transition, :success_transition, transition.success_transition),
               transition_target_diagnostic(transition, :failure_transition, transition.failure_transition),
               *router_target_diagnostics(transition),
+              *deterministic_route_diagnostics(transition),
               *target_state_mismatch_diagnostics(transition)
             ].compact
           end
@@ -42,6 +43,12 @@ module Smith
 
           Targets.router_for(transition).filter_map do |target|
             transition_target_diagnostic(transition, :router_target, target)
+          end
+        end
+
+        def deterministic_route_diagnostics(transition)
+          Array(transition.deterministic_routes).filter_map do |target|
+            transition_target_diagnostic(transition, :deterministic_route, target)
           end
         end
 

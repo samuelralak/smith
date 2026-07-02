@@ -29,7 +29,7 @@ module Smith
           session_messages: snapshot_value(@session_messages || []),
           tool_results: snapshot_value(@tool_results || []),
           state: @state,
-          transition_name: transition.name
+          transition: transition
         )
       end
 

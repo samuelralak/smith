@@ -87,6 +87,30 @@ RSpec.describe "Smith::Workflow graph inspection" do
     expect(mismatch.message).to include(":handle_refund starts from :idle instead of :triaged")
   end
 
+  it "reports deterministic route targets in snapshots, reachability, and diagnostics" do
+    workflow = with_stubbed_class("SpecGraphDeterministicRoutesWorkflow", workflow_class) do
+      initial_state :idle
+      state :checked
+      state :done
+
+      transition :check, from: :idle, to: :checked do
+        compute(routes: [:finish, :missing_repair]) { |step| step.route_to(:finish) }
+      end
+
+      transition :finish, from: :checked, to: :done do
+        run { |step| step.read_context(:noop) }
+      end
+    end
+
+    report = workflow.validate_graph
+
+    expect(report.status).to eq(:invalid)
+    expect(report.errors.map(&:code)).to include(:unresolved_deterministic_route)
+    expect(report.transitions.find { |transition| transition.name == :check }.deterministic_routes)
+      .to eq([:finish, :missing_repair])
+    expect(report.metrics.fetch(:reachable_transitions_count)).to eq(2)
+  end
+
   it "reports undefined states and unreachable transitions" do
     workflow = with_stubbed_class("SpecGraphUnreachableWorkflow", workflow_class) do
       initial_state :idle

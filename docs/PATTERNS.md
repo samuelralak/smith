@@ -389,8 +389,8 @@ Today that means:
 |---|---|---|---|
 | Retry | Yes | `retry_on` | Local transition retry only. Durable scheduling and idempotency stay with the host. |
 | Evaluator-Optimizer | Yes | `optimize` | Bounded refinement inside one transition using structured evaluator output. |
-| Deterministic repair | Not native | Handwritten `compute` / `run` when exact semantics are owned by the workflow author. | No first-class repair contract, persisted repair counts, or graph-inspection metadata yet. |
-| Guarded state re-entry | Not native | Handwritten `compute` / `run` may `route_to` a named transition. | No Smith-owned entry-count ledger, re-entry guard contract, or mutation policy yet. |
+| Deterministic repair | Not native | Handwritten `compute` / `run` when exact semantics are owned by the workflow author. Deterministic route targets can be declared with `routes: [...]`. | No first-class repair contract or persisted repair counts yet. |
+| Guarded state re-entry | Not native | Handwritten `compute` / `run` may declare and route to named transitions with `routes: [...]`. | No Smith-owned entry-count ledger, re-entry guard contract, or mutation policy yet. |
 | Polling / wait | No | Host queue/timer plus Smith persistence helpers. | Smith must not model durable polling with sleeps, busy-waits, or `max_transitions` cycling. |
 
 Do not hide a durable wait or unbounded repair policy inside `compute` / `run`.
@@ -401,9 +401,12 @@ not a durable scheduler.
 
 If a host or compiler wants deterministic repair, polling/wait, or guarded
 state re-entry as reusable graph contracts, the contract must be added explicitly
-before code generation claims executability. At minimum that future contract
-needs bounded attempts, persisted state keys where appropriate, deterministic
-exit behavior, graph-inspection metadata, and practical execution coverage.
+before code generation claims executability. Deterministic `routes: [...]`
+annotations make handwritten route targets inspectable, but they do not by
+themselves provide bounded repair counts, mutation policy, or durable wait
+semantics. At minimum that future contract needs bounded attempts, persisted
+state keys where appropriate, deterministic exit behavior, graph-inspection
+metadata, and practical execution coverage.
 
 ## Example 9: Orchestrator-Worker
 
@@ -550,7 +553,7 @@ The yielded step object exposes a narrow, read-heavy surface:
 
 ### Behavior
 
-- **Routing**: `step.route_to` overrides `on_success`. If neither is set, normal state-based resolution applies. Named transitions that do not exist fail loudly with `WorkflowError`.
+- **Routing**: `step.route_to` overrides `on_success`. If neither is set, normal state-based resolution applies. Named transitions that do not exist fail loudly with `WorkflowError`. When a deterministic transition declares `compute(routes: [...])` or `run(routes: [...])`, `step.route_to` must target one of those names; graph inspection validates the annotated targets before runtime.
 - **Failure**: `step.fail!` raises `Smith::DeterministicStepFailure` (extends `WorkflowError`) with `retryable`, `kind`, and `details` metadata. Routes through `on_failure` like any other step failure.
 - **Outcome**: `step.write_outcome(kind:, payload:)` stores a workflow-owned terminal payload without smuggling it through context. The payload is persisted with the workflow and surfaced on `RunResult.outcome`, `RunResult.outcome_kind`, and `RunResult.outcome_payload`.
 - **Context reads**: `step.context` returns an isolated snapshot of the workflow context at step start. Mutating that snapshot does not mutate workflow state. `step.read_context(key)` returns a merged view — pending `write_context` values override the snapshot. Use `read_context` when you need read-after-write coherence within the same step.

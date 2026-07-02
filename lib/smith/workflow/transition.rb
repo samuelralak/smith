@@ -5,7 +5,8 @@ module Smith
     class Transition
       attr_reader :name, :from, :to, :agent_name, :agent_opts, :success_transition, :failure_transition,
                   :router_config, :workflow_class, :optimization_config, :orchestrator_config,
-                  :fanout_config, :retry_config, :deterministic_block, :deterministic_kind
+                  :fanout_config, :retry_config, :deterministic_block, :deterministic_kind,
+                  :deterministic_routes
 
       def initialize(name, from:, to:, &)
         @name = name
@@ -104,12 +105,13 @@ module Smith
       end
 
       %i[compute run].each do |method_name|
-        define_method(method_name) do |&block|
+        define_method(method_name) do |routes: nil, &block|
           validate_deterministic_conflicts!
           raise WorkflowError, "#{method_name} requires a block" unless block
 
           @deterministic_block = block
           @deterministic_kind = method_name
+          @deterministic_routes = normalize_deterministic_routes!(routes)
         end
       end
 
@@ -276,6 +278,35 @@ module Smith
         validate_non_negative_numeric!(:backoff, backoff)
         validate_non_negative_numeric!(:jitter, jitter)
         validate_non_negative_numeric!(:max_delay, max_delay) unless max_delay.nil?
+      end
+
+      def normalize_deterministic_routes!(routes)
+        return nil if routes.nil?
+        raise WorkflowError, "deterministic routes must be an Array" unless routes.is_a?(Array)
+        raise WorkflowError, "deterministic routes must not be empty" if routes.empty?
+
+        routes.each_with_object([]) do |route, list|
+          name = normalize_deterministic_route!(route)
+          raise WorkflowError, "deterministic route #{name.inspect} is duplicated" if list.include?(name)
+
+          list << name
+        end.freeze
+      end
+
+      def normalize_deterministic_route!(route)
+        case route
+        when Symbol
+          raise WorkflowError, "deterministic route names must not be blank" if route.to_s.empty?
+
+          route
+        when String
+          value = route.strip
+          raise WorkflowError, "deterministic route names must not be blank" if value.empty?
+
+          value.freeze
+        else
+          raise WorkflowError, "deterministic route names must be String or Symbol"
+        end
       end
 
       def validate_non_negative_numeric!(name, value)

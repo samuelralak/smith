@@ -263,7 +263,18 @@ module Smith
         end
         return unless normalized.key?(:next_transition_name)
 
-        normalized[:next_transition_name] = normalized[:next_transition_name]&.to_sym
+        normalized[:next_transition_name] = normalize_transition_name(normalized[:next_transition_name])
+      end
+
+      def normalize_transition_name(value)
+        return if value.nil?
+        return value if self.class.find_transition(value)
+        return value unless value.is_a?(String)
+
+        symbolized = value.to_sym
+        return symbolized if self.class.find_transition(symbolized)
+
+        value
       end
 
       def normalize_nested_hashes!(normalized)
