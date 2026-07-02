@@ -992,6 +992,10 @@ Notes:
 
 - First-phase success requires an accepted candidate; convergence without acceptance is a bounded failure, not a best-effort success mode.
 - Evaluator-optimizer remains a transition-body helper inside one workflow step; it does not introduce a second workflow runner or per-round persisted resume surface.
+- This is the only native repair/refinement-style loop contract beyond local `retry_on`.
+  Deterministic repair, polling/wait, and guarded state re-entry are not covered
+  by this helper unless their contracts map exactly to this structured
+  generator/evaluator model.
 
 ### `spec/smith/workflow/nested_execution_spec.rb`
 
@@ -1503,6 +1507,11 @@ Notes:
 - The deterministic step primitives are the host's escape hatch for non-LLM logic that must run inside the workflow lifecycle (deterministic decisions, host-policy gates, structured transformations on agent output).
 - `compute` is workflow-resolved (instance method on the `Workflow` subclass); `run` is host-resolved (registered host helper). Both share the same constrained step-object surface so step bodies are interchangeable.
 - This is one of Smith's largest spec files (~1150 lines, ~50 examples) — covers DSL declaration, runtime semantics, persistence, trace, guardrails, and mixed-mode integration in one place.
+- `compute` / `run` are not first-class deterministic repair,
+  polling/wait, or guarded state re-entry loop contracts. They can express
+  carefully handwritten local logic, but Smith does not yet expose reusable
+  loop policy metadata, persisted attempt/wake ledgers, or native graph
+  diagnostics for those contracts.
 
 ### `spec/smith/workflow/fanout_spec.rb`
 
@@ -2240,6 +2249,42 @@ Recommended future specs:
 
 - extend `spec/smith/workflow/parallel_spec.rb` only if richer provider-style branch semantics or provider-timeout budget behavior are added
 
+#### Explicit Loop-Policy Boundary
+
+This subsection is scoped to repair and wait-style loop policies. It does not
+replace the bounded Orchestrator-Worker delegation contract covered earlier.
+
+- Supported executable repair/wait-style loop contracts today:
+  - local transition retry through `retry_on`
+  - Evaluator-Optimizer refinement through `optimize`
+- Expressible but not native:
+  - deterministic repair can be handwritten with `compute` / `run` only when a
+    workflow author explicitly owns the guard, repair action, revalidation
+    target, attempt bounds, and unrepaired exit behavior
+  - guarded state re-entry can be handwritten with `compute` / `run` only when
+    the workflow author explicitly owns route targets and safety policy
+- Not Smith-owned today:
+  - polling/wait loops require a host queue/timer, persisted wake state, timeout
+    and cancellation policy, and resume through Smith persistence helpers
+- Architecture risk:
+  - do not model durable polling/wait with sleeps, busy loops, or
+    `max_transitions` cycling inside Smith
+  - bounded local retry backoff remains part of the `retry_on` contract; it is
+    not a durable polling/wake mechanism
+  - do not claim a compiler-generated deterministic repair or guarded re-entry
+    contract is executable until Smith has a native primitive or the host
+    runtime contract is explicit and tested
+
+Additional recommended future specs before adding native loop policies:
+
+- `spec/smith/workflow/deterministic_repair_spec.rb`
+- `spec/smith/workflow/guarded_reentry_spec.rb`
+- `spec/smith/workflow/wait_contract_spec.rb`
+
+Any native implementation must first update the architecture contract for
+attempt/wake persistence, inspection metadata, failure/exhaustion semantics,
+idempotent re-entry, and host-owned scheduler boundaries.
+
 ### Section 5.3 State Serialization
 
 Partially covered:
@@ -2283,6 +2328,8 @@ The following architecture areas are especially sensitive because they were repe
 - synchronous guardrail boundaries
 - opt-in content tracing
 - explicit host-app responsibility for durability and approval flows
+- loop-policy boundaries: no hidden durable waits, schedulers, or unbounded
+  repair cycles inside Smith-owned workflow execution
 
 When adding specs in these areas:
 

@@ -375,6 +375,34 @@ Why this matters:
 - exhaustion, malformed evaluator output, and convergence without acceptance fail normally
 - costs and token usage from the full loop roll into the workflow totals
 
+## Repair And Wait Boundaries
+
+Smith's workflow layer is intentionally bounded. A repair or wait-style loop is
+executable in Smith only when Smith can validate the contract and enforce
+deterministic stopping rules. This section does not restate every bounded
+workflow helper; Orchestrator-Worker is a separate bounded delegation pattern.
+Today that means:
+
+| Loop kind | Executable? | Smith primitive | Boundary |
+|---|---|---|---|
+| Retry | Yes | `retry_on` | Local transition retry only. Durable scheduling and idempotency stay with the host. |
+| Evaluator-Optimizer | Yes | `optimize` | Bounded refinement inside one transition using structured evaluator output. |
+| Deterministic repair | Not native | Handwritten `compute` / `run` when exact semantics are owned by the workflow author. | No first-class repair contract, persisted repair counts, or graph-inspection metadata yet. |
+| Guarded state re-entry | Not native | Handwritten `compute` / `run` may `route_to` a named transition. | No Smith-owned entry-count ledger, re-entry guard contract, or mutation policy yet. |
+| Polling / wait | No | Host queue/timer plus Smith persistence helpers. | Smith must not model durable polling with sleeps, busy-waits, or `max_transitions` cycling. |
+
+Do not hide a durable wait or unbounded repair policy inside `compute` / `run`.
+Those primitives are synchronous deterministic steps inside the current workflow
+runner. They are appropriate for local verification, normalization, failure
+classification, explicit routing, and bounded retry-adjacent checks; they are
+not a durable scheduler.
+
+If a host or compiler wants deterministic repair, polling/wait, or guarded
+state re-entry as reusable graph contracts, the contract must be added explicitly
+before code generation claims executability. At minimum that future contract
+needs bounded attempts, persisted state keys where appropriate, deterministic
+exit behavior, graph-inspection metadata, and practical execution coverage.
+
 ## Example 9: Orchestrator-Worker
 
 Use `orchestrate` when you need an orchestrator that can emit structured tasks for workers and later decide when the system is done.
@@ -529,3 +557,4 @@ The yielded step object exposes a narrow, read-heavy surface:
 - **Persistence**: Context writes and written outcomes survive `to_state`/`from_state`. The block itself (a Proc) lives on the class-level Transition and is never serialized.
 - **Trace**: Emits `:deterministic_step` traces for start, success/routed, and failure. When a step writes an outcome, the trace includes `outcome_kind`.
 - **Mutual exclusivity**: `compute` and `run` cannot be combined with `execute`, `route`, `workflow`, `optimize`, or `orchestrate`. A transition declares exactly one primary execution body.
+- **No hidden scheduler**: `compute` and `run` execute synchronously inside the current runner. Use them for bounded deterministic logic, not for durable polling or wake-up loops.

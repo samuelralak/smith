@@ -103,6 +103,21 @@ end
 
 The full pattern guide with working examples for each lives in [`docs/PATTERNS.md`](docs/PATTERNS.md).
 
+### Repair And Wait Boundaries
+
+Smith only owns repair and wait-style loop behavior when the bounds and stop
+conditions are explicit and enforceable inside the workflow step. Durable
+timers, queue delivery, and wake-up policy remain host-owned.
+For bounded dynamic delegation, use the separate Orchestrator-Worker pattern.
+
+| Contract | Status | Smith mapping |
+|---|---|---|
+| Retry loop | Executable | `retry_on`, bounded to one transition. |
+| Evaluator-Optimizer | Executable | `optimize`, bounded by `max_rounds` plus structured evaluator output. |
+| Deterministic repair | Not first-class yet | Can be handwritten with `compute` / `run` only when the workflow author owns the exact guard, repair, revalidation, and exit policy. It is not a native inspectable repair-loop contract. |
+| Guarded state re-entry | Not first-class yet | `compute` / `run` can route to a named transition, but Smith does not yet own persisted entry counts, mutation policy, or safe re-entry contracts. |
+| Polling / wait | Host-owned | Use the host app's queue/timer plus Smith persistence helpers. Smith must not model durable polling with busy-waits or sleep loops. |
+
 ## Workflow Graph Inspection
 
 Smith can inspect a workflow's declared graph without running agents or advancing state. This is useful for host apps that want to render, lint, or cache a workflow shape before execution.

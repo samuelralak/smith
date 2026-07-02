@@ -6,7 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
-No unreleased changes.
+### Documentation
+
+- Clarify Smith's repair and wait-style loop boundaries: `retry_on` and
+  `optimize` are executable today, deterministic repair and guarded re-entry
+  are not native first-class contracts yet, and durable polling/wait semantics
+  remain host-owned unless an explicit wait contract exists.
 
 ## [0.4.2] - 2026-07-02
 
