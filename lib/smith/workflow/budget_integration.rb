@@ -30,17 +30,31 @@ module Smith
       def reconcile_branch_budget(ledger, estimates, agent_result: nil)
         return unless ledger && estimates
 
-        actuals = extract_actuals(agent_result)
+        actuals = extract_actuals(agent_results_for_settlement(agent_result))
         estimates.each do |dim, amt|
           ledger.reconcile!(dim, amt, actual_for_dimension(dim, actuals[:tokens], actuals[:cost]))
         end
       end
 
-      def extract_actuals(agent_result)
+      def extract_actuals(agent_results)
+        results = Array(agent_results).compact
+
         {
-          tokens: (agent_result&.input_tokens || 0) + (agent_result&.output_tokens || 0),
-          cost: agent_result&.cost || 0
+          tokens: results.sum { |result| (result.input_tokens || 0) + (result.output_tokens || 0) },
+          cost: results.sum { |result| result.cost || 0 }
         }
+      end
+
+      def agent_results_for_settlement(agent_result = nil)
+        [*failed_billable_attempts, agent_result].compact
+      end
+
+      def failed_billable_attempts
+        Array(Thread.current[:smith_failed_agent_results])
+      end
+
+      def clear_failed_billable_attempts
+        Thread.current[:smith_failed_agent_results] = []
       end
 
       def actual_for_dimension(dim, actual_tokens, actual_cost = 0)
@@ -59,7 +73,7 @@ module Smith
       def settle_budget_on_failure(ledger, estimates, agent_result)
         return unless ledger && estimates
 
-        if agent_result
+        if agent_result || failed_billable_attempts.any?
           reconcile_branch_budget(ledger, estimates, agent_result: agent_result)
         else
           release_branch_budget(ledger, estimates)
@@ -83,6 +97,12 @@ module Smith
         agent_result = result.is_a?(Workflow::AgentResult) ? result : nil
         reconcile_branch_budget(ledger, reserved, agent_result: agent_result)
         { branch: index, agent: transition.agent_name, output: agent_result ? agent_result.content : result }
+      end
+
+      def finalize_named_branch(branch_key, agent_name, result, ledger, reserved)
+        agent_result = result.is_a?(Workflow::AgentResult) ? result : nil
+        reconcile_branch_budget(ledger, reserved, agent_result: agent_result)
+        { branch: branch_key, agent: agent_name, output: agent_result ? agent_result.content : result }
       end
 
       def estimate_for_dimension(dim, limit, branch_count)

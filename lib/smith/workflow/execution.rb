@@ -8,13 +8,15 @@ module Smith
       include EvaluatorOptimizer
       include OrchestratorWorker
       include ParallelExecution
+      include FanoutExecution
+      include RetryExecution
       include DeterministicExecution
 
       private
 
       def execute_step(transition)
         setup_step_context
-        output = with_scoped_artifacts { run_guarded_step(transition) }
+        output = with_scoped_artifacts { run_with_retry_policy(transition) }
         complete_step(transition, output)
       rescue StandardError => e
         @outcome = nil
@@ -40,6 +42,7 @@ module Smith
 
       def run_guarded_step(transition)
         return dispatch_step(transition) if transition.deterministic?
+        return run_guarded_fanout_step(transition) if transition.fanout?
 
         agent_class = resolve_agent_class(transition)
         run_input_guardrails(agent_class)
@@ -93,6 +96,7 @@ module Smith
 
       def execute_serial_step(transition, prepared_input: nil)
         Thread.current[:smith_last_agent_result] = nil
+        clear_failed_billable_attempts
         ledger = effective_call_ledger
         reserved = reserve_for_serial(transition, ledger)
         begin
@@ -104,6 +108,7 @@ module Smith
         ensure
           settle_budget_on_failure(ledger, reserved, Thread.current[:smith_last_agent_result]) if reserved
           Thread.current[:smith_last_agent_result] = nil
+          clear_failed_billable_attempts
         end
       end
 

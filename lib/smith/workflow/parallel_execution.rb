@@ -50,10 +50,12 @@ module Smith
         Tool.current_ledger = ledger
         Tool.current_tool_result_collector = tool_result_collector
         Thread.current[:smith_last_agent_result] = nil
+        clear_failed_billable_attempts
       end
 
       def teardown_branch_context(env)
         Thread.current[:smith_last_agent_result] = nil
+        clear_failed_billable_attempts
         Tool.current_ledger = nil
         Tool.current_tool_result_collector = nil
         env.teardown_thread
@@ -68,7 +70,7 @@ module Smith
       end
 
       def check_cancellation!(signal)
-        raise Smith::WorkflowError, "cancelled" if signal.cancelled?
+        raise Parallel::Cancellation, "cancelled" if signal.cancelled?
       end
     end
   end

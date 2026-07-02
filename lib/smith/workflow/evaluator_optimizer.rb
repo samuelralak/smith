@@ -91,7 +91,7 @@ module Smith
         when Hash
           deep_symbolize_evaluation(evaluation)
         when String
-          parsed = (JSON.parse(evaluation, symbolize_names: true) rescue nil)
+          parsed = parse_evaluation_json(evaluation)
           parsed.is_a?(Hash) ? parsed : evaluation
         else
           evaluation
@@ -155,9 +155,12 @@ module Smith
 
       def invoke_agent_with_budget(agent_class, prepared_input)
         Thread.current[:smith_last_agent_result] = nil
+        clear_failed_billable_attempts
         with_agent_context(agent_class) do
           invoke_with_call_ledger(agent_class, prepared_input)
         end
+      ensure
+        clear_failed_billable_attempts
       end
 
       def invoke_with_call_ledger(agent_class, prepared_input)
@@ -179,10 +182,18 @@ module Smith
       # routes through on_threshold and returns the resulting value
       # (non-nil terminates the loop with that as the step output).
       def check_improvement_threshold!(evaluation, state, round)
-        return nil unless stop_for_threshold?(evaluation[:score], state.last_score, state.config[:improvement_threshold])
+        unless stop_for_threshold?(evaluation[:score], state.last_score, state.config[:improvement_threshold])
+          return nil
+        end
 
         handle_exit(state, :on_threshold,
                     "optimization improvement below threshold after round #{round + 1}")
+      end
+
+      def parse_evaluation_json(evaluation)
+        JSON.parse(evaluation, symbolize_names: true)
+      rescue JSON::ParserError
+        nil
       end
 
       def prepare_generator_input(prepared_input, round, prior_candidate, feedback)

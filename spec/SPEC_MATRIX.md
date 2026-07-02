@@ -655,8 +655,32 @@ Documented contracts covered:
 Notes:
 
 - Fallback remains an agent-lifecycle helper, not a workflow-level routing primitive.
-- Same-model retry is not implemented as a separate Smith loop in first phase.
+- Transition-level retry is covered by `spec/smith/workflow/retry_policy_spec.rb`.
+  Agent fallback remains a separate model-chain concern.
 - This spec covers the bounded local fallback chain, not richer provider/deployment-specific failover policy.
+
+### `spec/smith/workflow/retry_policy_spec.rb`
+
+Purpose:
+
+- asserts bounded transition-level retry behavior
+
+Architecture basis:
+
+- Section 5.2, Workflow Execution
+- Section 11, Phase 4 Production Readiness
+
+Documented contracts covered:
+
+- `retry_on attempts:` retries errors classified by `Smith::Errors.retryable?`
+  when no explicit error classes are supplied
+- explicit retry classes opt a transition into retrying those error families
+- retry attempts are bounded and exhaustion routes through normal failure
+  handling
+- non-retryable errors fail without extra attempts
+- declaration-time validation rejects invalid attempts, error classes, and delay
+  controls
+- graph inspection exposes retry policy metadata without executing the workflow
 
 ### `spec/smith/workflow/contract_spec.rb`
 
@@ -1479,6 +1503,36 @@ Notes:
 - The deterministic step primitives are the host's escape hatch for non-LLM logic that must run inside the workflow lifecycle (deterministic decisions, host-policy gates, structured transformations on agent output).
 - `compute` is workflow-resolved (instance method on the `Workflow` subclass); `run` is host-resolved (registered host helper). Both share the same constrained step-object surface so step bodies are interchangeable.
 - This is one of Smith's largest spec files (~1150 lines, ~50 examples) — covers DSL declaration, runtime semantics, persistence, trace, guardrails, and mixed-mode integration in one place.
+
+### `spec/smith/workflow/fanout_spec.rb`
+
+Purpose:
+
+- asserts native heterogeneous multi-agent fan-out/fan-in transition behavior
+
+Architecture basis:
+
+- Section 5.2, Workflow Execution
+- Section 11, Phase 3 Workflow Patterns
+
+Documented contracts covered:
+
+- `fan_out branches:` declares a bounded branch set with stable branch keys and
+  distinct agent registry keys
+- DSL validation rejects malformed branches and mixed execution primitives
+- branch execution returns ordered named branch results under one transition
+- branch failures discard partial output and route through normal failure
+  handling
+- workflow guardrails run once around the transition while agent guardrails run
+  per branch
+- branch agent input guardrails run before session preparation, so rejected
+  fan-out branches cannot inject or persist session state before admission
+- graph inspection exposes `kind: :fanout` and the branch map
+
+Notes:
+
+- Use `execute :agent, parallel: true` for homogeneous same-agent branches.
+  Use `fan_out` when branches are distinct specialist agents.
 
 ### `spec/smith/events/contract_spec.rb`
 

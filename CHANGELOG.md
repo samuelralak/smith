@@ -8,6 +8,43 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 No unreleased changes.
 
+## [0.4.2] - 2026-07-02 (local release candidate)
+
+Patch candidate for bounded fan-out and retry workflow primitives. This remains
+workflow-first and host-owned: Smith executes declared transitions and exposes
+inspection metadata, while durable scheduling, long waits, tool adapter
+contracts, and deployment packaging stay with the host application. Publish this
+gem before host applications depend on `~> 0.4.2` in CI or deployment builds.
+
+### Added
+
+- `fan_out branches: {...}` transition DSL for bounded heterogeneous
+  multi-agent fan-out with stable branch keys and named aggregate results.
+- `retry_on` transition DSL for bounded local retries using explicit error
+  classes or Smith's built-in retryability classifier.
+- Graph inspection metadata for `:fanout` transitions and retry policy details.
+
+### Changed
+
+- Fan-out branch execution preserves branch identity, branch-specific budgets,
+  agent guardrails, tool guardrails, deadlines, and usage accounting.
+- Parallel/fan-out failure handling now prefers the initiating branch error over
+  cooperative cancellation errors.
+- Failed-but-billable provider attempts are included in budget reconciliation
+  for retry, fallback, and fan-out settlement paths.
+- Retry `max_delay` remains a hard cap even when jitter is configured.
+
+### Test coverage
+
+- Default suite: 880 examples, 0 failures.
+- Practical gem-level execution probe covering heterogeneous `fan_out`,
+  same-agent parallel execution, `retry_on`, failed-but-billable budget
+  settlement, cancellation cause preservation, branch input guardrail ordering
+  before session preparation, graph metadata, and invalid declaration rejection.
+- Added focused coverage for heterogeneous fan-out, retry policies,
+  failed-but-billable retry budget accounting, cancellation cause preservation,
+  and graph inspection metadata.
+
 ## [0.4.1] - 2026-06-28
 
 Patch release for static workflow graph inspection. This is additive and diagnostic-only: Smith exposes declared workflow topology for hosts to render, lint, or cache without executing agents, advancing state, owning progress projection, or changing durability/recovery boundaries.

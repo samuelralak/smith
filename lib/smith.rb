@@ -243,6 +243,8 @@ require_relative "smith/workflow/nested_execution"
 require_relative "smith/workflow/evaluator_optimizer"
 require_relative "smith/workflow/orchestrator_worker"
 require_relative "smith/workflow/parallel_execution"
+require_relative "smith/workflow/fanout_execution"
+require_relative "smith/workflow/retry_execution"
 require_relative "smith/workflow/deterministic_step"
 require_relative "smith/workflow/deterministic_execution"
 require_relative "smith/workflow/execution"
@@ -252,6 +254,7 @@ require_relative "smith/workflow/execution_frame"
 require_relative "smith/workflow/pipeline"
 require_relative "smith/workflow/router"
 require_relative "smith/workflow/parallel"
+require_relative "smith/workflow/parallel/cancellation"
 
 # Conditional Rails integration
 require_relative "smith/railtie" if defined?(Rails::Railtie)

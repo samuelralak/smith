@@ -5,11 +5,20 @@ Workflow-first multi-agent orchestration for Ruby. Smith sits on top of `RubyLLM
 > [!WARNING]
 > Smith is pre-1.0. Expect contract tightening between minor versions. Pin to an exact version in production.
 
+## Verification Discipline
+
+Tests are required, but they are never enough for runtime primitive changes.
+Every Smith workflow slice must also run practical gem-level execution probes.
+When a host application consumes unreleased Smith changes, point that host app at
+the local Smith repository and exercise the changed workflow paths in the host
+environment before calling the slice complete.
+
 ## Installation
 
 ```ruby
 # Gemfile
-gem "smith-agents", "~> 0.2.0", require: "smith"
+# After Smith 0.4.2 is published:
+gem "smith-agents", "~> 0.4.2", require: "smith"
 ```
 
 ```bash
@@ -87,6 +96,7 @@ end
 | Pipeline | sequential transitions | Multi-step workflow with explicit success/failure routing. |
 | Router | `route :classifier, routes: {...}` | Branch on a classifier agent's output. |
 | Parallel fan-out | `execute :agent, parallel: true` | Concurrent agent calls under one ledger. |
+| Heterogeneous fan-out | `fan_out branches: {...}` | Concurrent calls to different agents with named branch results. |
 | Nested workflow | `workflow OtherWorkflow` | Reuse a subflow as one transition. |
 | Evaluator-Optimizer | `optimize generator:, evaluator:, ...` | Generate-then-critique refinement loops. |
 | Orchestrator-Worker | `orchestrate orchestrator:, worker:, ...` | Dynamic task fan-out with delegation rounds. |
@@ -230,6 +240,19 @@ Smith::Errors.retryable_classes
 # => [Smith::AgentError, Smith::DeadlineExceeded]  (for ActiveJob retry_on)
 ```
 
+Workflow transitions can also declare a bounded local retry policy:
+
+```ruby
+transition :draft, from: :idle, to: :done do
+  execute :writer
+  retry_on Smith::AgentError, attempts: 3, backoff: 0.1, max_delay: 1.0
+end
+```
+
+When no classes are passed, `retry_on` uses `Smith::Errors.retryable?`.
+This is a bounded local transition retry policy. Durable scheduling, long waits,
+and external idempotency guarantees remain host-owned.
+
 ## Development
 
 ```bash
@@ -238,4 +261,5 @@ bundle exec rspec
 bundle exec rubocop
 ```
 
-770 examples, MIT licensed. See [`CHANGELOG.md`](CHANGELOG.md) for the 0.2.0 surface and [`UPSTREAM_PROPOSAL.md`](UPSTREAM_PROPOSAL.md) for the vendored Responses adapter retirement path.
+880 examples, MIT licensed. See [`CHANGELOG.md`](CHANGELOG.md) for the current
+release surface.

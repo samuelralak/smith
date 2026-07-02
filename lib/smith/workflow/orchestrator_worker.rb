@@ -23,7 +23,8 @@ module Smith
       private
 
       def dispatch_step(transition, prepared_input: nil)
-        if transition.parallel? then execute_parallel_step(transition, prepared_input: prepared_input)
+        if transition.fanout? then execute_fanout_step(transition, prepared_input: prepared_input)
+        elsif transition.parallel? then execute_parallel_step(transition, prepared_input: prepared_input)
         elsif transition.nested? then execute_nested_workflow(transition)
         elsif transition.optimized? then execute_optimization_step(transition, prepared_input: prepared_input)
         elsif transition.orchestrated? then execute_orchestration_step(transition, prepared_input: prepared_input)

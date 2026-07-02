@@ -5,7 +5,7 @@ module Smith
     class Transition
       attr_reader :name, :from, :to, :agent_name, :agent_opts, :success_transition, :failure_transition,
                   :router_config, :workflow_class, :optimization_config, :orchestrator_config,
-                  :deterministic_block, :deterministic_kind
+                  :fanout_config, :retry_config, :deterministic_block, :deterministic_kind
 
       def initialize(name, from:, to:, &)
         @name = name
@@ -15,7 +15,7 @@ module Smith
       end
 
       def execute(agent_name, **opts)
-        raise WorkflowError, "transition cannot declare both execute and compute/run" if @deterministic_block
+        validate_execute_conflicts!
 
         @agent_name = agent_name
         @agent_opts = opts
@@ -30,7 +30,7 @@ module Smith
       end
 
       def route(agent_name, routes:, confidence_threshold:, fallback:)
-        raise WorkflowError, "transition cannot declare both route and compute/run" if @deterministic_block
+        validate_route_conflicts!
 
         @agent_name = agent_name
         @router_config = { routes: routes, confidence_threshold: confidence_threshold, fallback: fallback }
@@ -39,9 +39,16 @@ module Smith
       def workflow(klass)
         raise WorkflowError, "workflow binding must be a Class" unless klass.is_a?(Class)
         raise WorkflowError, "workflow binding must be a Smith::Workflow subclass" unless klass < Workflow
-        raise WorkflowError, "transition cannot declare both workflow and execute" if @agent_name && !@router_config
-        raise WorkflowError, "transition cannot declare both workflow and route" if @router_config
-        raise WorkflowError, "transition cannot declare both workflow and compute/run" if @deterministic_block
+
+        validate_conflicts!(
+          "workflow",
+          [
+            ["execute", @agent_name && !@router_config],
+            ["route", @router_config],
+            ["compute/run", @deterministic_block],
+            ["fan_out", @fanout_config]
+          ]
+        )
 
         @workflow_class = klass
       end
@@ -77,6 +84,25 @@ module Smith
         @orchestrator_config = opts
       end
 
+      def fan_out(branches:)
+        validate_fanout_conflicts!
+
+        @fanout_config = { branches: normalize_fanout_branches!(branches) }
+      end
+      alias fanout fan_out
+
+      def retry_on(*error_classes, attempts:, backoff: 0, max_delay: nil, jitter: 0)
+        validate_retry_controls!(error_classes, attempts:, backoff:, max_delay:, jitter:)
+
+        @retry_config = {
+          error_classes: error_classes.freeze,
+          attempts: attempts,
+          backoff: Float(backoff),
+          max_delay: max_delay.nil? ? nil : Float(max_delay),
+          jitter: Float(jitter)
+        }.freeze
+      end
+
       %i[compute run].each do |method_name|
         define_method(method_name) do |&block|
           validate_deterministic_conflicts!
@@ -93,6 +119,10 @@ module Smith
 
       def orchestrated?
         !@orchestrator_config.nil?
+      end
+
+      def fanout?
+        !@fanout_config.nil?
       end
 
       def optimized?
@@ -113,28 +143,148 @@ module Smith
 
       private
 
+      def validate_execute_conflicts!
+        validate_conflicts!(
+          "execute",
+          [
+            ["compute/run", @deterministic_block],
+            ["fan_out", @fanout_config]
+          ]
+        )
+      end
+
+      def validate_route_conflicts!
+        validate_conflicts!(
+          "route",
+          [
+            ["compute/run", @deterministic_block],
+            ["fan_out", @fanout_config]
+          ]
+        )
+      end
+
       def validate_deterministic_conflicts!
-        raise WorkflowError, "transition cannot declare both compute/run and execute" if @agent_name && !@router_config
-        raise WorkflowError, "transition cannot declare both compute/run and route" if @router_config
-        raise WorkflowError, "transition cannot declare both compute/run and workflow" if @workflow_class
-        raise WorkflowError, "transition cannot declare both compute/run and optimize" if @optimization_config
-        raise WorkflowError, "transition cannot declare both compute/run and orchestrate" if @orchestrator_config
+        validate_conflicts!(
+          "compute/run",
+          [
+            ["execute", @agent_name && !@router_config],
+            ["route", @router_config],
+            ["workflow", @workflow_class],
+            ["optimize", @optimization_config],
+            ["orchestrate", @orchestrator_config],
+            ["fan_out", @fanout_config]
+          ]
+        )
         raise WorkflowError, "transition cannot declare both compute and run" if @deterministic_block
       end
 
       def validate_optimize_conflicts!
-        raise WorkflowError, "transition cannot declare both optimize and execute" if @agent_name && !@router_config
-        raise WorkflowError, "transition cannot declare both optimize and route" if @router_config
-        raise WorkflowError, "transition cannot declare both optimize and workflow" if @workflow_class
-        raise WorkflowError, "transition cannot declare both optimize and compute/run" if @deterministic_block
+        validate_conflicts!(
+          "optimize",
+          [
+            ["execute", @agent_name && !@router_config],
+            ["route", @router_config],
+            ["workflow", @workflow_class],
+            ["compute/run", @deterministic_block],
+            ["fan_out", @fanout_config]
+          ]
+        )
       end
 
       def validate_orchestrate_conflicts!
-        raise WorkflowError, "transition cannot declare both orchestrate and execute" if @agent_name && !@router_config
-        raise WorkflowError, "transition cannot declare both orchestrate and route" if @router_config
-        raise WorkflowError, "transition cannot declare both orchestrate and workflow" if @workflow_class
-        raise WorkflowError, "transition cannot declare both orchestrate and optimize" if @optimization_config
-        raise WorkflowError, "transition cannot declare both orchestrate and compute/run" if @deterministic_block
+        validate_conflicts!(
+          "orchestrate",
+          [
+            ["execute", @agent_name && !@router_config],
+            ["route", @router_config],
+            ["workflow", @workflow_class],
+            ["optimize", @optimization_config],
+            ["compute/run", @deterministic_block],
+            ["fan_out", @fanout_config]
+          ]
+        )
+      end
+
+      def validate_fanout_conflicts!
+        validate_conflicts!(
+          "fan_out",
+          [
+            ["execute", @agent_name && !@router_config],
+            ["route", @router_config],
+            ["workflow", @workflow_class],
+            ["optimize", @optimization_config],
+            ["orchestrate", @orchestrator_config],
+            ["compute/run", @deterministic_block]
+          ]
+        )
+      end
+
+      def validate_conflicts!(primitive, conflicts)
+        conflicts.each do |other, present|
+          raise WorkflowError, "transition cannot declare both #{primitive} and #{other}" if present
+        end
+      end
+
+      def normalize_fanout_branches!(branches)
+        raise WorkflowError, "fan_out branches must be a Hash" unless branches.is_a?(Hash)
+        raise WorkflowError, "fan_out requires at least one branch" if branches.empty?
+
+        normalized = branches.each_with_object({}) do |(branch_key, agent_name), map|
+          key = normalize_fanout_branch_key!(branch_key)
+          agent = normalize_fanout_agent_name!(agent_name, key)
+          raise WorkflowError, "fan_out branch #{key.inspect} is duplicated" if map.key?(key)
+
+          map[key] = agent
+        end
+
+        validate_distinct_fanout_agents!(normalized)
+        normalized.freeze
+      end
+
+      def normalize_fanout_branch_key!(branch_key)
+        key = branch_key.to_s.strip
+        raise WorkflowError, "fan_out branch keys must not be blank" if key.empty?
+
+        key.to_sym
+      end
+
+      def normalize_fanout_agent_name!(agent_name, branch_key)
+        value = agent_name.to_s.strip
+        raise WorkflowError, "fan_out branch #{branch_key.inspect} must declare an agent" if value.empty?
+
+        value.to_sym
+      end
+
+      def validate_distinct_fanout_agents!(branches)
+        duplicates = branches.values.tally.select { |_agent, count| count > 1 }.keys
+        return if duplicates.empty?
+
+        raise WorkflowError, "fan_out branch agents must be distinct: #{duplicates.map(&:inspect).join(", ")}"
+      end
+
+      def validate_retry_controls!(error_classes, attempts:, backoff:, max_delay:, jitter:)
+        unless attempts.is_a?(Integer) && attempts.positive?
+          raise WorkflowError, "retry_on attempts must be a positive integer"
+        end
+
+        error_classes.each do |error_class|
+          next if error_class.is_a?(Class) && error_class <= StandardError
+
+          raise WorkflowError, "retry_on error classes must inherit from StandardError"
+        end
+
+        validate_non_negative_numeric!(:backoff, backoff)
+        validate_non_negative_numeric!(:jitter, jitter)
+        validate_non_negative_numeric!(:max_delay, max_delay) unless max_delay.nil?
+      end
+
+      def validate_non_negative_numeric!(name, value)
+        numeric = Float(value)
+        return if numeric >= 0.0
+
+        raise WorkflowError, "retry_on #{name} must be non-negative"
+      rescue TypeError, ArgumentError
+        raise WorkflowError, "retry_on #{name} must be numeric"
       end
 
       def validate_orchestrate_controls!(opts)
@@ -177,7 +327,7 @@ module Smith
         raise WorkflowError, "optimize max_rounds must be a positive integer"
       end
 
-      VALID_EXIT_MODES = [:raise, :return_last].freeze
+      VALID_EXIT_MODES = %i[raise return_last].freeze
       private_constant :VALID_EXIT_MODES
 
       def validate_optimize_exit_modes!(on_exhaustion:, on_converged:, on_threshold:)

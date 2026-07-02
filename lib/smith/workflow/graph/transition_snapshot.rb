@@ -10,10 +10,12 @@ module Smith
           %i[nested_workflow nested?],
           %i[optimizer optimized?],
           %i[orchestrator orchestrated?],
+          %i[fanout fanout?],
           %i[parallel parallel?]
         ].freeze
 
-        attr_reader :name, :from, :to, :kind, :success_transition, :failure_transition, :routes, :fallback
+        attr_reader :name, :from, :to, :kind, :success_transition, :failure_transition, :routes, :fallback,
+                    :fanout_branches, :retry_policy
 
         def self.from_transition(transition)
           new(
@@ -24,8 +26,23 @@ module Smith
             success_transition: transition.success_transition,
             failure_transition: transition.failure_transition,
             routes: transition.router_config&.fetch(:routes, nil),
-            fallback: transition.router_config&.fetch(:fallback, nil)
+            fallback: transition.router_config&.fetch(:fallback, nil),
+            fanout_branches: transition.fanout_config&.fetch(:branches, nil),
+            retry_policy: retry_policy_for(transition)
           )
+        end
+
+        def self.retry_policy_for(transition)
+          config = transition.retry_config
+          return unless config
+
+          {
+            attempts: config.fetch(:attempts),
+            error_classes: config.fetch(:error_classes).map(&:name),
+            backoff: config.fetch(:backoff),
+            max_delay: config[:max_delay],
+            jitter: config.fetch(:jitter)
+          }.compact
         end
 
         def self.kind_for(transition)
@@ -45,6 +62,8 @@ module Smith
           @failure_transition = attributes[:failure_transition]
           @routes = attributes[:routes]
           @fallback = attributes[:fallback]
+          @fanout_branches = attributes[:fanout_branches]
+          @retry_policy = attributes[:retry_policy]
         end
 
         def to_h
@@ -56,7 +75,9 @@ module Smith
             success_transition: success_transition,
             failure_transition: failure_transition,
             routes: routes,
-            fallback: fallback
+            fallback: fallback,
+            fanout_branches: fanout_branches,
+            retry_policy: retry_policy
           }.compact
         end
       end

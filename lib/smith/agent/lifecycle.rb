@@ -46,10 +46,10 @@ module Smith
 
       def build_model_chain(agent_class)
         primary = if agent_class.respond_to?(:model_block) && agent_class.model_block
-          resolve_dynamic_model(agent_class)
-        else
-          agent_class.chat_kwargs[:model]
-        end
+                    resolve_dynamic_model(agent_class)
+                  else
+                    agent_class.chat_kwargs[:model]
+                  end
         fallbacks = agent_class.fallback_models || []
         [primary, *fallbacks].compact
       end
@@ -103,8 +103,8 @@ module Smith
 
         declared = agent_class.inputs || []
         user_declared = declared - Smith::Agent::RESERVED_INPUT_NAMES
-        user_declared.each_with_object({}) do |name, kwargs|
-          kwargs[name] = @context[name]
+        user_declared.to_h do |name|
+          [name, @context[name]]
         end
       end
 
@@ -131,7 +131,9 @@ module Smith
 
         combined_contents = existing_system_contents + prepared_system_contents
         return if combined_contents.empty?
-        return prepared_system_messages.each { |message| chat.add_message(message) } unless combined_contents.all?(String)
+        unless combined_contents.all?(String)
+          return prepared_system_messages.each { |message| chat.add_message(message) }
+        end
 
         if chat.respond_to?(:with_instructions)
           chat.with_instructions(combined_contents.join("\n\n"))
@@ -178,6 +180,8 @@ module Smith
         agent_result = Workflow::AgentResult.new(
           content: nil, input_tokens: input, output_tokens: output, cost: cost, model_used: model_id
         )
+        Thread.current[:smith_failed_agent_results] ||= []
+        Thread.current[:smith_failed_agent_results] << agent_result
         record_usage(agent_class, agent_result, :failed_attempt, model_id)
       end
 

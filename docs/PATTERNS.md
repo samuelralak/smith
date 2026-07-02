@@ -239,7 +239,47 @@ Why this is valuable:
 - branch failures discard step output and route through normal failure handling
 - prepared input is reused consistently across branches
 
-## Example 6: Nested Workflows
+## Example 6: Heterogeneous Fan-Out
+
+Use heterogeneous fan-out when different specialists should run concurrently and return named branch results under one workflow transition.
+
+```ruby
+class StaticReviewAgent < Smith::Agent
+  register_as :static_review_agent
+  model "gpt-4.1-nano"
+end
+
+class SecurityReviewAgent < Smith::Agent
+  register_as :security_review_agent
+  model "gpt-4.1-nano"
+end
+
+class CodeReviewWorkflow < Smith::Workflow
+  initial_state :idle
+  state :reviewed
+  state :failed
+
+  transition :review, from: :idle, to: :reviewed do
+    fan_out branches: {
+      static: :static_review_agent,
+      security: :security_review_agent
+    }
+    on_failure :fail
+  end
+end
+```
+
+What you get:
+
+- stable branch identity in the step output
+- branch-specific agent budgets, guardrails, tools, and model configuration
+- one shared prepared input for the transition
+- one shared transition result, so downstream joins remain explicit in the workflow
+- branch failures discard partial output and route through normal failure handling
+
+Use same-agent `parallel: true` for repeated homogeneous work. Use `fan_out` when branches are different agents with different responsibilities.
+
+## Example 7: Nested Workflows
 
 Use nested workflows when one part of the system deserves to be a reusable subflow with its own states and transitions.
 
@@ -281,7 +321,7 @@ What you get:
 - nested best-known token/cost totals roll up into the parent result
 - artifact scope is preserved across nesting
 
-## Example 7: Evaluator-Optimizer
+## Example 8: Evaluator-Optimizer
 
 Use `optimize` when one agent generates candidates and another agent evaluates whether the result is acceptable.
 
@@ -335,7 +375,7 @@ Why this matters:
 - exhaustion, malformed evaluator output, and convergence without acceptance fail normally
 - costs and token usage from the full loop roll into the workflow totals
 
-## Example 8: Orchestrator-Worker
+## Example 9: Orchestrator-Worker
 
 Use `orchestrate` when you need an orchestrator that can emit structured tasks for workers and later decide when the system is done.
 
@@ -489,4 +529,3 @@ The yielded step object exposes a narrow, read-heavy surface:
 - **Persistence**: Context writes and written outcomes survive `to_state`/`from_state`. The block itself (a Proc) lives on the class-level Transition and is never serialized.
 - **Trace**: Emits `:deterministic_step` traces for start, success/routed, and failure. When a step writes an outcome, the trace includes `outcome_kind`.
 - **Mutual exclusivity**: `compute` and `run` cannot be combined with `execute`, `route`, `workflow`, `optimize`, or `orchestrate`. A transition declares exactly one primary execution body.
-

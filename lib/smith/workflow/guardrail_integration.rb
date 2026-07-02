@@ -6,24 +6,18 @@ module Smith
       private
 
       def apply_tool_guardrails(agent_class)
-        sources = [self.class.guardrails, agent_class&.guardrails].compact
+        sources = tool_guardrail_sources(agent_class)
         Tool.current_guardrails = sources.empty? ? nil : sources
       end
 
       def run_input_guardrails(agent_class)
-        wf_guardrails = self.class.guardrails
-        Guardrails::Runner.run_inputs(wf_guardrails, @context) if wf_guardrails
-
-        agent_guardrails = agent_class&.guardrails
-        Guardrails::Runner.run_inputs(agent_guardrails, @context) if agent_guardrails
+        run_workflow_input_guardrails
+        run_agent_input_guardrails(agent_class)
       end
 
       def run_output_guardrails(output, agent_class)
-        wf_guardrails = self.class.guardrails
-        Guardrails::Runner.run_outputs(wf_guardrails, output) if wf_guardrails
-
-        agent_guardrails = agent_class&.guardrails
-        Guardrails::Runner.run_outputs(agent_guardrails, output) if agent_guardrails
+        run_workflow_output_guardrails(output)
+        run_agent_output_guardrails(output, agent_class)
       end
 
       def handle_step_failure(transition, _error)
@@ -34,6 +28,30 @@ module Smith
         return unless fail_transition
 
         @state = fail_transition.to
+      end
+
+      def run_workflow_input_guardrails
+        wf_guardrails = self.class.guardrails
+        Guardrails::Runner.run_inputs(wf_guardrails, @context) if wf_guardrails
+      end
+
+      def run_agent_input_guardrails(agent_class)
+        agent_guardrails = agent_class&.guardrails
+        Guardrails::Runner.run_inputs(agent_guardrails, @context) if agent_guardrails
+      end
+
+      def run_workflow_output_guardrails(output)
+        wf_guardrails = self.class.guardrails
+        Guardrails::Runner.run_outputs(wf_guardrails, output) if wf_guardrails
+      end
+
+      def run_agent_output_guardrails(output, agent_class)
+        agent_guardrails = agent_class&.guardrails
+        Guardrails::Runner.run_outputs(agent_guardrails, output) if agent_guardrails
+      end
+
+      def tool_guardrail_sources(agent_class)
+        [self.class.guardrails, agent_class&.guardrails].compact
       end
     end
   end

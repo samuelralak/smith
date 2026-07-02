@@ -39,11 +39,16 @@ module Smith
         fulfilled, values, reasons = Concurrent::Promises.zip(*futures).result
 
         unless fulfilled
-          error = reasons.compact.first
+          error = preferred_error(reasons)
           raise error
         end
 
         values
+      end
+
+      def self.preferred_error(reasons)
+        errors = reasons.compact
+        errors.find { |error| !error.is_a?(Cancellation) } || errors.first
       end
     end
   end
