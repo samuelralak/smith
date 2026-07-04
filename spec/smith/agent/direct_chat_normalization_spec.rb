@@ -1,9 +1,8 @@
 # frozen_string_literal: true
 
 # Pins the direct-call normalization contract: when a host constructs a
-# chat via `Smith::Agent.chat()` OUTSIDE the workflow lifecycle (e.g.,
-# hadithi-xl's `Drafts::Workflows::Support::InvokeCleaner.chat` at
-# invoke_cleaner.rb:38), Smith::Models::Normalizer still fires on the
+# chat via `Smith::Agent.chat()` OUTSIDE the workflow lifecycle, the
+# Smith::Models::Normalizer still fires on the
 # returned chat. This is the reason Smith hooks the normalizer at
 # Smith::Agent.chat() rather than at Lifecycle#attempt_model. The
 # workflow-only hook point would miss every direct caller.
@@ -42,10 +41,9 @@ RSpec.describe "Smith::Agent.chat() direct-call normalization" do
       expect(chat.instance_variable_get(:@temperature)).to be_nil
     end
 
-    it "preserves the resolved chat after add_message (the InvokeCleaner-equivalent flow)" do
-      # Mirrors hadithi-xl Drafts::Workflows::Support::InvokeCleaner.chat
-      # at invoke_cleaner.rb:38, which builds the chat, then appends a
-      # user message, then calls .complete. Normalization fires at chat
+    it "preserves the resolved chat after add_message in direct-call flows" do
+      # Mirrors a direct caller that builds the chat, appends a user
+      # message, then calls .complete. Normalization fires at chat
       # construction; downstream add_message must NOT undo the adaptive
       # translation already stamped into @params.
       chat = agent_class.chat

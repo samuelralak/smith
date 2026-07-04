@@ -215,8 +215,7 @@ RSpec.describe Smith::Models::Normalizer do
   describe "End-to-end via Smith::Agent.chat (direct call path)" do
     # This is the canonical case that motivated placing the normalizer
     # in Smith::Agent.chat() rather than Lifecycle#attempt_model — direct
-    # Agent.chat callers (like hadithi-xl's InvokeCleaner) need
-    # normalization too.
+    # Direct Agent.chat callers need normalization too.
     let(:agent_class) do
       Class.new(Smith::Agent) do
         model "claude-opus-4-7"

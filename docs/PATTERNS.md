@@ -276,8 +276,8 @@ What you get:
 - one shared prepared input for the transition
 - one shared transition result, so downstream joins remain explicit in the workflow
 - branch failures discard partial output and route through normal failure handling
-- graph inspection exposes the join state, branch count, ordered branch map, and
-  named branch-result output shape
+- graph inspection exposes the join state, branch count, ordered branch map,
+  output contract, resume contract, and per-branch named result contracts
 
 Use same-agent `parallel: true` for repeated homogeneous work. Use `fan_out` when branches are different agents with different responsibilities.
 

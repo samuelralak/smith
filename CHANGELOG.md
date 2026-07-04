@@ -26,7 +26,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - `Smith::Agent::Registry.binding_for` and `.bindings` expose non-resolving
   registry inspection for diagnostics and host cleanup.
 - Richer fan-out transition snapshot metadata: branch count, join state,
-  ordered branch list, and named branch-result output shape.
+  ordered branch list, output contract, resume contract, and per-branch result
+  contracts for named branch-result output.
 
 ## [0.4.2] - 2026-07-02
 
@@ -148,7 +149,7 @@ This release tracks two thematic refactors that together harden the agent-invoca
 - `Smith::Models` registry (Dry::Container-backed) for application-side `Smith::Models::Profile` overrides; mirrors the `Smith::Agent::Registry` stale-reload-binding pattern for Rails autoreload safety.
 - `Smith::Models::Profile` immutable capability record (`Data.define`) covering thinking_shape, accepts_temperature, tools_with_thinking_native, tools_with_thinking_route, and a derived `endpoint_mode`.
 - `Smith::Models::Inference` library-shipped pattern rules describing each provider family's payload shape (Anthropic Opus 4.7+ adaptive, Anthropic 4.0-4.6 budget_tokens, OpenAI gpt-5 family reasoning_effort + responses route, OpenAI gpt-4.x, Gemini 2.5+ budget_tokens, etc.). Smith ships zero hardcoded model_ids; new model releases that match an existing pattern work without library changes.
-- `Smith::Models::Normalizer.apply!(chat, profile:)` per-attempt request shaper. Translates Anthropic Opus 4.7+ thinking to the adaptive payload shape (`@params[:thinking] = { type: "adaptive" }` + `output_config[:effort]`), nulls temperature where the resolved profile forbids it, routes `(gpt-5 + tools + thinking)` via `openai_api_mode: :responses` when supported, drops incompatible tools otherwise. Hooks at `Smith::Agent.chat()` so direct callers (e.g., InvokeCleaner-style usage outside the workflow lifecycle) are normalized too.
+- `Smith::Models::Normalizer.apply!(chat, profile:)` per-attempt request shaper. Translates Anthropic Opus 4.7+ thinking to the adaptive payload shape (`@params[:thinking] = { type: "adaptive" }` + `output_config[:effort]`), nulls temperature where the resolved profile forbids it, routes `(gpt-5 + tools + thinking)` via `openai_api_mode: :responses` when supported, drops incompatible tools otherwise. Hooks at `Smith::Agent.chat()` so direct callers outside the workflow lifecycle are normalized too.
 - `Smith::Agent::RESERVED_INPUT_NAMES = %i[model_id provider endpoint_mode]` auto-injected into `runtime_context` per attempt from the resolved profile. The `Smith::Agent.inputs` getter returns reserved ∪ user (frozen, deduplicated); the setter raises `Smith::AgentError` if a user-declared name collides with a reserved name.
 - `Smith::Tool.compatible_with(...)` DSL for declaring per-(provider, endpoint) tool compatibility. `Smith::Tool.inherited` dups the spec so subclasses inherit the parent's compatibility metadata.
 - `Smith::Tools::Think` declares `compatible_with :anthropic, :gemini, openai: :responses`. Drops gracefully on OpenAI chat-completions when `openai_api_mode = :off`, runs via `/v1/responses` when `:auto`.
@@ -208,4 +209,4 @@ This release tracks two thematic refactors that together harden the agent-invoca
 
 ## [0.1.0] - Initial public-track release
 
-Initial pre-release tagged for the Hadithi consumer's local-path dependency. No formal changelog prior to the Phase A/B refactor.
+Initial pre-release. No formal changelog prior to the Phase A/B refactor.

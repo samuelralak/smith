@@ -363,13 +363,47 @@ RSpec.describe "Smith::Workflow heterogeneous fan-out" do
       end
     end
     custom_reviewed = mutable_state.new("custom_reviewed")
+    nonduplicable_state = Class.new do
+      def to_s
+        "nonduplicable_reviewed"
+      end
+
+      def dup
+        raise TypeError, "nonduplicable topology value"
+      end
+    end.new
+    self_dup_state = Class.new do
+      def to_s
+        "self_dup_reviewed"
+      end
+
+      def dup
+        self
+      end
+    end.new
 
     workflow = with_stubbed_class("SpecFanoutGraphImmutabilityWorkflow", workflow_class) do
       initial_state idle
       state reviewed
       state custom_reviewed
+      state nonduplicable_state
+      state self_dup_state
 
       transition review, from: idle, to: custom_reviewed do
+        fan_out branches: {
+          static: :spec_fanout_static_agent,
+          security: :spec_fanout_security_agent
+        }
+      end
+
+      transition :nonduplicable_review, from: reviewed, to: nonduplicable_state do
+        fan_out branches: {
+          static: :spec_fanout_static_agent,
+          security: :spec_fanout_security_agent
+        }
+      end
+
+      transition :self_dup_review, from: custom_reviewed, to: self_dup_state do
         fan_out branches: {
           static: :spec_fanout_static_agent,
           security: :spec_fanout_security_agent
@@ -383,6 +417,8 @@ RSpec.describe "Smith::Workflow heterogeneous fan-out" do
     expect(reviewed).not_to be_frozen
     expect(review).not_to be_frozen
     expect(custom_reviewed).not_to be_frozen
+    expect(nonduplicable_state).not_to be_frozen
+    expect(self_dup_state).not_to be_frozen
   end
 
   it "reports fanout resume behavior according to workflow idempotency mode" do

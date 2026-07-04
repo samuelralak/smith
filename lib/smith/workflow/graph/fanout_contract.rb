@@ -91,10 +91,16 @@ module Smith
         end
 
         def immutable_value(value)
-          return value.dup if value.respond_to?(:dup) && !immediate_value?(value)
+          return value if immediate_value?(value)
 
-          value
+          duplicate = value.dup
+          return value if duplicate.equal?(value)
+
+          duplicate.freeze
         rescue TypeError
+          # Some host-owned topology values intentionally refuse duplication.
+          # Leave them untouched; the graph contract containers are still
+          # frozen, and inspection must never mutate workflow-owned values.
           value
         end
 
@@ -120,11 +126,13 @@ module Smith
           case value
           when Hash
             value.each_value { |nested| deep_freeze(nested) }
+            value.freeze
           when Array
             value.each { |nested| deep_freeze(nested) }
+            value.freeze
           end
 
-          value.freeze
+          value
         end
       end
     end

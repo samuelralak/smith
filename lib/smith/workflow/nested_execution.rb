@@ -29,10 +29,9 @@ module Smith
       # Roll up child totals AND usage_entries BEFORE the failed-step
       # check raises. Previously the rollup only fired on child success
       # — billable agent work inside a failed child was silently
-      # dropped from the parent's totals/entries. The drift guard at
-      # the hadithi boundary wouldn't catch it (parent rollups + entries
-      # consistently undercount the same way; sum invariant still holds
-      # incorrectly). Roll up first, then re-raise, so the parent's
+      # dropped from the parent's totals/entries. Simple aggregate drift
+      # checks can miss this when parent rollups and entries undercount
+      # the same way. Roll up first, then re-raise, so the parent's
       # terminal state reflects the child's billable work even when the
       # child failed.
       def handle_child_result(child_result)

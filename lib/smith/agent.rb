@@ -142,10 +142,9 @@ module Smith
 
       # Closes the `inputs` contract at the chat() boundary AND runs the
       # Smith::Models::Normalizer. Hook lives here (not in
-      # Lifecycle#attempt_model) so direct callers like hadithi-xl's
-      # InvokeCleaner.chat (which constructs a chat outside the workflow
-      # lifecycle) are normalized too. Without this placement, Cleaner's
-      # Opus 4.7 adaptive thinking translation would only fire for
+      # Lifecycle#attempt_model) so direct callers that construct a chat
+      # outside the workflow lifecycle are normalized too. Without this
+      # placement, model-specific request translation would only fire for
       # workflow-driven calls.
       #
       # Single profile lookup: resolved once via Models.find_or_infer and

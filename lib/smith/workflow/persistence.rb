@@ -20,7 +20,7 @@ module Smith
           total_tokens: @total_tokens || 0,
           tool_results: @tool_results || [],
           outcome: snapshot_outcome,
-          # New durable fields for hadithi billing. All wrapped in
+          # Durable usage fields. All wrapped in
           # snapshot_value so non-JSON-safe runtime values (e.g.
           # custom Hash details on DeterministicStepFailure) get the
           # same deep-copy treatment as context/session_messages/etc.

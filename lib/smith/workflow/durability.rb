@@ -32,11 +32,9 @@ module Smith
         # `store/fetch/delete`, and this peek piggybacks on `fetch`.
         # Custom adapters work without changes.
         #
-        # Hadithi uses this to skip the credits guard at execution time
-        # when persisted state already exists for a workflow key (a
-        # prior attempt's billable work is durable in Redis, OR an
-        # in-flight workflow is being resumed — either way, no NEW
-        # credit authorization is needed).
+        # Hosts can use this to distinguish a resumed workflow from a
+        # brand-new workflow when coordinating external accounting or
+        # admission-control checks.
         def persisted_state_exists?(key: nil, context: {}, adapter: Smith.persistence_adapter)
           resolved_key = resolved_persistence_key(key:, context:)
           !fetch_persisted_payload(resolved_key, adapter:).nil?
@@ -51,11 +49,9 @@ module Smith
         # the top of `run_persisted!` BEFORE the first `advance!`. A
         # worker that dies between that initial `persist!` and the
         # first model call leaves a Redis key with no billable work.
-        # If the credits guard's bypass keys on `persisted_state_exists?`
-        # alone, a zero-balance user's retry on that abandoned init
-        # state silently runs the first model call (the guard is
-        # skipped because state exists, but the state has nothing to
-        # bill — it's just the workflow's starting state).
+        # If external accounting or admission-control checks key on
+        # `persisted_state_exists?` alone, a retry on that abandoned
+        # init state can be mistaken for a billable/resumable workflow.
         #
         # `restorable_billing_state?` returns true only when there's
         # actual `usage_entries` to bill on idempotent replay. Terminal

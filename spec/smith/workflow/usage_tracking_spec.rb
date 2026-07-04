@@ -375,7 +375,7 @@ RSpec.describe "Smith::Workflow usage tracking" do
       # This is the load-bearing case: Smith's `run_persisted!` writes
       # initial state at the top, BEFORE the first `advance!`. A worker
       # crash in that window leaves persisted state with zero billable
-      # work. The credits-guard bypass must NOT skip on that state.
+      # work. Host admission/accounting checks must not skip on that state.
       workflow_klass = with_stubbed_class("SpecBillingPeekInitOnlyWorkflow", workflow_class) do
         persistence_key { |_ctx| "workflow:billing-init" }
         initial_state :idle

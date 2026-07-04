@@ -26,7 +26,7 @@ module Smith
     # kwargs hash as the first positional field, silently leaving the
     # remaining fields nil — verified empirically. The `keyword_init`
     # flag routes kwargs to the right fields. `usage_entries` is the
-    # 10th field, added in this slice for hadithi billing.
+    # 10th field, added for host usage accounting.
     RunResult = Struct.new(:state, :output, :steps, :total_cost, :total_tokens, :context, :session_messages,
                            :tool_results, :outcome, :usage_entries, keyword_init: true) do
       def done?
@@ -100,8 +100,8 @@ module Smith
     end
 
     # One row per agent provider call. `usage_id` is a UUID generated
-    # at recording time and stable across persist/restore — hadithi
-    # uses it as the idempotency anchor on `usage_events.smith_usage_id`.
+    # at recording time and stable across persist/restore so hosts can
+    # use it as an idempotency anchor.
     # Includes `to_h`/`from_h` for JSON serialization (plain Struct
     # JSON-encodes to `"#<struct ...>"` — useless).
     #
@@ -444,8 +444,8 @@ module Smith
         # Skip const_get for retryable-bearing families. An unknown
         # subclass with a message-only constructor would const_get
         # successfully but discard the snapshot's `retryable`/`kind`/
-        # `details` (defaults to nil), and hadithi's `retryable?`
-        # check would misclassify a retryable failure as terminal.
+        # `details` (defaults to nil), and host retry classification
+        # could misclassify a retryable failure as terminal.
         # Family fallback rebuilds the parent class with kwargs intact.
         family_fallback(snap)
       else
@@ -547,7 +547,7 @@ module Smith
     # `Struct#dup` is shallow — it shares mutable string fields between
     # the original and the duplicate. Smith's existing snapshot helpers
     # (`snapshot_context`, etc.) also use this round-trip pattern; the
-    # billing-facing RunResult must not alias mutable workflow state.
+    # usage-facing RunResult must not alias mutable workflow state.
     # Same rule applies to nested-workflow rollup (see
     # `nested_execution.rb`).
     def snapshot_usage_entries
