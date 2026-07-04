@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "fanout_contract"
+
 module Smith
   class Workflow
     class Graph
@@ -17,7 +19,7 @@ module Smith
         attr_reader :name, :from, :to, :kind, :success_transition, :failure_transition, :routes, :fallback,
                     :deterministic_routes, :fanout_branches, :fanout, :retry_policy
 
-        def self.from_transition(transition)
+        def self.from_transition(transition, workflow_class: nil)
           new(
             name: transition.name,
             from: transition.from,
@@ -29,23 +31,13 @@ module Smith
             fallback: transition.router_config&.fetch(:fallback, nil),
             deterministic_routes: transition.deterministic_routes,
             fanout_branches: transition.fanout_config&.fetch(:branches, nil),
-            fanout: fanout_for(transition),
+            fanout: fanout_for(transition, workflow_class: workflow_class),
             retry_policy: retry_policy_for(transition)
           )
         end
 
-        def self.fanout_for(transition)
-          branches = transition.fanout_config&.fetch(:branches, nil)
-          return unless branches
-
-          {
-            branch_count: branches.length,
-            join_state: transition.to,
-            output_shape: :named_branch_results,
-            branches: branches.map do |branch, agent|
-              { branch: branch, agent: agent }.freeze
-            end.freeze
-          }.freeze
+        def self.fanout_for(transition, workflow_class:)
+          FanoutContract.from_transition(transition, workflow_class: workflow_class)
         end
 
         def self.retry_policy_for(transition)

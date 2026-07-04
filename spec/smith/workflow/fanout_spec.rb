@@ -295,13 +295,121 @@ RSpec.describe "Smith::Workflow heterogeneous fan-out" do
       branch_count: 2,
       join_state: :reviewed,
       output_shape: :named_branch_results,
+      branch_order: :declaration_order,
+      join: {
+        state: :reviewed,
+        transition: :review
+      },
+      output_contract: {
+        collection: :array,
+        item_shape: :named_branch_result,
+        ordering: :branch_declaration_order,
+        branch_key_field: :branch,
+        agent_field: :agent,
+        output_field: :output,
+        failure: :discard_all_branch_results_on_failure
+      },
+      resume_contract: {
+        granularity: :transition,
+        branch_checkpointing: false,
+        idempotency_mode: :lax,
+        in_flight_resume: :reruns_transition
+      },
       branches: [
         { branch: :static, agent: :spec_fanout_static_agent },
         { branch: :security, agent: :spec_fanout_security_agent }
+      ],
+      branch_contracts: [
+        {
+          branch: :static,
+          agent: :spec_fanout_static_agent,
+          result_branch_value: :static,
+          result_shape: {
+            branch: :static,
+            agent: :spec_fanout_static_agent,
+            output: :agent_output
+          }
+        },
+        {
+          branch: :security,
+          agent: :spec_fanout_security_agent,
+          result_branch_value: :security,
+          result_shape: {
+            branch: :security,
+            agent: :spec_fanout_security_agent,
+            output: :agent_output
+          }
+        }
       ]
     )
     expect(transition.to_h.fetch(:fanout)).to be_frozen
     expect(transition.to_h.fetch(:fanout).fetch(:branches)).to be_frozen
     expect(transition.to_h.fetch(:fanout).fetch(:branches).first).to be_frozen
+    expect(transition.to_h.fetch(:fanout).fetch(:branch_contracts)).to be_frozen
+    expect(transition.to_h.fetch(:fanout).fetch(:branch_contracts).first.fetch(:result_shape)).to be_frozen
+  end
+
+  it "does not freeze workflow-owned topology values during fanout graph inspection" do
+    idle = +"idle"
+    reviewed = +"reviewed"
+    review = +"review"
+    mutable_state = Class.new do
+      def initialize(value)
+        @value = value
+      end
+
+      def to_s
+        @value
+      end
+    end
+    custom_reviewed = mutable_state.new("custom_reviewed")
+
+    workflow = with_stubbed_class("SpecFanoutGraphImmutabilityWorkflow", workflow_class) do
+      initial_state idle
+      state reviewed
+      state custom_reviewed
+
+      transition review, from: idle, to: custom_reviewed do
+        fan_out branches: {
+          static: :spec_fanout_static_agent,
+          security: :spec_fanout_security_agent
+        }
+      end
+    end
+
+    workflow.validate_graph
+
+    expect(idle).not_to be_frozen
+    expect(reviewed).not_to be_frozen
+    expect(review).not_to be_frozen
+    expect(custom_reviewed).not_to be_frozen
+  end
+
+  it "reports fanout resume behavior according to workflow idempotency mode" do
+    strict_workflow = with_stubbed_class("SpecFanoutStrictResumeWorkflow", workflow_class) do
+      idempotency_mode :strict
+      initial_state :idle
+      state :reviewed
+
+      transition :review, from: :idle, to: :reviewed do
+        fan_out branches: {
+          static: :spec_fanout_static_agent,
+          security: :spec_fanout_security_agent
+        }
+      end
+    end
+
+    strict_fanout = strict_workflow
+      .validate_graph
+      .transitions
+      .find { |snapshot| snapshot.name == :review }
+      .to_h
+      .fetch(:fanout)
+      .fetch(:resume_contract)
+
+    expect(strict_fanout).to include(
+      idempotency_mode: :strict,
+      in_flight_resume: :blocked_by_step_in_progress
+    )
   end
 end

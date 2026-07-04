@@ -21,7 +21,7 @@ module Smith
       end
 
       def transition_snapshots
-        transitions.values.map { |transition| TransitionSnapshot.from_transition(transition) }
+        transitions.values.map { |transition| TransitionSnapshot.from_transition(transition, workflow_class: workflow_class) }
       end
     end
   end
@@ -40,6 +40,7 @@ require_relative "graph/runtime_binding_diagnostics"
 require_relative "graph/runtime_readiness_report"
 require_relative "graph/runtime_readiness_metrics"
 require_relative "graph/targets"
+require_relative "graph/fanout_contract"
 require_relative "graph/transition_snapshot"
 require_relative "graph/transition_diagnostics"
 require_relative "graph/validator"
