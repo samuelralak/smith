@@ -94,7 +94,7 @@ RSpec.describe "Smith::Workflow graph inspection" do
       state :done
 
       transition :check, from: :idle, to: :checked do
-        compute(routes: [:finish, :missing_repair]) { |step| step.route_to(:finish) }
+        compute(routes: %i[finish missing_repair]) { |step| step.route_to(:finish) }
       end
 
       transition :finish, from: :checked, to: :done do
@@ -107,7 +107,7 @@ RSpec.describe "Smith::Workflow graph inspection" do
     expect(report.status).to eq(:invalid)
     expect(report.errors.map(&:code)).to include(:unresolved_deterministic_route)
     expect(report.transitions.find { |transition| transition.name == :check }.deterministic_routes)
-      .to eq([:finish, :missing_repair])
+      .to eq(%i[finish missing_repair])
     expect(report.metrics.fetch(:reachable_transitions_count)).to eq(2)
   end
 
@@ -323,6 +323,103 @@ RSpec.describe "Smith::Workflow graph inspection" do
     )
     expect(report.metrics.fetch(:unresolved_agent_bindings_count)).to eq(7)
     expect(report.metrics.fetch(:fanout_branches_count)).to eq(2)
+  end
+
+  it "exposes optimizer and orchestrator contracts through graph inspection" do
+    evaluator_schema = with_stubbed_class("SpecGraphOptimizationEvaluatorSchema") do
+      def self.required_keys = %i[accept feedback]
+    end
+    task_schema = with_stubbed_class("SpecGraphOrchestrationTaskSchema") do
+      def self.required_keys = %i[task_id input]
+    end
+    worker_output_schema = with_stubbed_class("SpecGraphOrchestrationWorkerOutputSchema") do
+      def self.required_keys = %i[finding]
+    end
+    final_output_schema = with_stubbed_class("SpecGraphOrchestrationFinalOutputSchema") do
+      def self.required_keys = %i[summary]
+    end
+
+    workflow = with_stubbed_class("SpecGraphRuntimeContractWorkflow", workflow_class) do
+      initial_state :idle
+      state :optimized
+      state :orchestrated
+
+      transition :improve, from: :idle, to: :optimized do
+        optimize generator: :spec_graph_generator_agent,
+                 evaluator: :spec_graph_evaluator_agent,
+                 max_rounds: 3,
+                 evaluator_schema: evaluator_schema,
+                 improvement_threshold: 0.1,
+                 evaluator_context: :inject_state,
+                 before_eval: ->(_state, _context) {},
+                 on_exhaustion: :return_last
+      end
+
+      transition :delegate, from: :optimized, to: :orchestrated do
+        orchestrate orchestrator: :spec_graph_orchestrator_agent,
+                    worker: :spec_graph_worker_agent,
+                    max_workers: 4,
+                    max_delegation_rounds: 2,
+                    task_schema: task_schema,
+                    worker_output_schema: worker_output_schema,
+                    final_output_schema: final_output_schema
+      end
+    end
+
+    report = workflow.validate_graph
+    optimize = report.transitions.find { |transition| transition.name == :improve }.to_h.fetch(:optimization)
+    orchestration = report.transitions.find { |transition| transition.name == :delegate }.to_h.fetch(:orchestration)
+
+    expect(optimize).to include(
+      generator: :spec_graph_generator_agent,
+      evaluator: :spec_graph_evaluator_agent,
+      max_rounds: 3,
+      evaluator_schema: "SpecGraphOptimizationEvaluatorSchema",
+      evaluator_context: :inject_state,
+      improvement_threshold: 0.1,
+      before_eval: :callable
+    )
+    expect(optimize.fetch(:evaluator_schema)).to be_frozen
+    expect(optimize.fetch(:exit_modes)).to eq(
+      exhaustion: :return_last,
+      converged: :raise,
+      threshold: :raise
+    )
+    expect(optimize.fetch(:output_contract).fetch(:evaluator_output)).to eq(
+      required: { accept: :boolean },
+      rejection_requires: %i[feedback],
+      threshold_requires: %i[score],
+      optional: %i[score converged]
+    )
+    expect(optimize.fetch(:resume_contract)).to include(
+      granularity: :transition,
+      round_checkpointing: false,
+      idempotency_mode: :lax,
+      in_flight_resume: :reruns_transition
+    )
+
+    expect(orchestration).to include(
+      orchestrator: :spec_graph_orchestrator_agent,
+      worker: :spec_graph_worker_agent,
+      max_workers: 4,
+      max_delegation_rounds: 2,
+      task_schema: "SpecGraphOrchestrationTaskSchema",
+      worker_output_schema: "SpecGraphOrchestrationWorkerOutputSchema",
+      final_output_schema: "SpecGraphOrchestrationFinalOutputSchema",
+      worker_dispatch: :serial
+    )
+    expect(orchestration.fetch(:decision_contract)).to eq(
+      shape: :hash,
+      exactly_one_of: %i[tasks final stop],
+      tasks_limit: 4
+    )
+    expect(orchestration.fetch(:resume_contract)).to include(
+      granularity: :transition,
+      round_checkpointing: false,
+      worker_checkpointing: false,
+      idempotency_mode: :lax,
+      in_flight_resume: :reruns_transition
+    )
   end
 
   it "fails closed when model-required roles have no configured model" do

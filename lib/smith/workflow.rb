@@ -6,6 +6,11 @@ require "securerandom"
 require "set"
 require "time"
 
+require_relative "workflow/agent_result"
+require_relative "workflow/branch_env"
+require_relative "workflow/run_result"
+require_relative "workflow/usage_entry"
+
 module Smith
   class Workflow
     include DSL
@@ -20,117 +25,6 @@ module Smith
     include Execution
 
     DEFAULT_MAX_TRANSITIONS = 100
-
-    # `keyword_init: true` is mandatory: `build_run_result` constructs
-    # the result via keyword arguments. Plain Ruby Structs treat the
-    # kwargs hash as the first positional field, silently leaving the
-    # remaining fields nil — verified empirically. The `keyword_init`
-    # flag routes kwargs to the right fields. `usage_entries` is the
-    # 10th field, added for host usage accounting.
-    RunResult = Struct.new(:state, :output, :steps, :total_cost, :total_tokens, :context, :session_messages,
-                           :tool_results, :outcome, :usage_entries, keyword_init: true) do
-      def done?
-        state_named?(:done)
-      end
-
-      def failed?
-        state_named?(:failed)
-      end
-
-      def state_named?(name)
-        state == name || state.to_s == name.to_s
-      end
-
-      def terminal_output
-        output
-      end
-
-      def outcome_kind
-        outcome&.dig(:kind)
-      end
-
-      def outcome_payload
-        outcome&.dig(:payload)
-      end
-
-      def last_error
-        steps.reverse.map { |step| step[:error] }.compact.first
-      end
-
-      def failed_transition
-        failure_detail&.fetch(:transition)
-      end
-
-      def failure_detail
-        failed_step = steps.reverse.find { |step| step[:error] }
-        return nil unless failed_step
-
-        {
-          transition: failed_step[:transition],
-          from: failed_step[:from],
-          to: failed_step[:to],
-          error: failed_step[:error]
-        }
-      end
-    end
-
-    # keyword_init: true so adding new fields in future schema versions
-    # remains backward-compatible: `from_response` and `from_h` can fill
-    # extra fields without breaking existing call sites that pass the
-    # historical positional args. Reading old persisted records into a
-    # newer Struct shape: from_h slices to current members (unknown keys
-    # silently dropped; missing keys default to nil).
-    AgentResult = Struct.new(
-      :content, :input_tokens, :output_tokens, :cost, :model_used,
-      keyword_init: true
-    ) do
-      def self.from_response(response, content, model_used: nil)
-        new(
-          content: content,
-          input_tokens: response.respond_to?(:input_tokens) ? response.input_tokens : nil,
-          output_tokens: response.respond_to?(:output_tokens) ? response.output_tokens : nil,
-          cost: nil,
-          model_used: model_used
-        )
-      end
-
-      def usage_known?
-        !input_tokens.nil? && !output_tokens.nil?
-      end
-    end
-
-    # One row per agent provider call. `usage_id` is a UUID generated
-    # at recording time and stable across persist/restore so hosts can
-    # use it as an idempotency anchor.
-    # Includes `to_h`/`from_h` for JSON serialization (plain Struct
-    # JSON-encodes to `"#<struct ...>"` — useless).
-    #
-    # keyword_init: true gives forward/backward compatibility:
-    # - Adding a new field: old persisted hashes restore cleanly (new
-    #   field defaults to nil).
-    # - Reading new persisted hashes with an older Smith version: from_h
-    #   slices to known members (unknown keys silently dropped).
-    UsageEntry = Struct.new(
-      :usage_id,
-      :agent_name,
-      :model,
-      :input_tokens,
-      :output_tokens,
-      :cost,
-      :attempt_kind,
-      :recorded_at,
-      keyword_init: true
-    ) do
-      def self.from_h(hash)
-        sym = hash.transform_keys(&:to_sym)
-        filtered = sym.slice(*members)
-        # Symbolize :agent_name and :attempt_kind for backward compat
-        # with callers that consume the field as Symbol.
-        filtered[:agent_name] = filtered[:agent_name].to_sym if filtered[:agent_name].is_a?(String)
-        filtered[:attempt_kind] = filtered[:attempt_kind].to_sym if filtered[:attempt_kind].is_a?(String)
-        new(**filtered)
-      end
-    end
 
     # Reconstruct Smith error classes from `@last_failed_step` snapshots.
     # Order matters: more-specific subclasses first, so a real DSF doesn't
@@ -170,24 +64,6 @@ module Smith
     # directly so the parent-class constructor preserves the attrs.
     RETRYABLE_BEARING_FAMILIES = %w[deterministic_step_failure tool_guardrail_failed].freeze
     private_constant :RETRYABLE_BEARING_FAMILIES
-
-    # keyword_init: true for forward/backward compat (see UsageEntry).
-    BranchEnv = Struct.new(
-      :prepared_input, :guardrail_sources, :scoped_store, :branch_estimates, :deadline,
-      keyword_init: true
-    ) do
-      def setup_thread
-        Smith::Tool.current_guardrails = guardrail_sources
-        Smith::Tool.current_deadline = deadline
-        Smith.scoped_artifacts = scoped_store
-      end
-
-      def teardown_thread
-        Smith::Tool.current_guardrails = nil
-        Smith::Tool.current_deadline = nil
-        Smith.scoped_artifacts = nil
-      end
-    end
 
     attr_reader :state, :last_prepared_input, :session_messages, :ledger
 

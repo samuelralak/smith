@@ -17,7 +17,7 @@ environment before calling the slice complete.
 
 ```ruby
 # Gemfile
-gem "smith-agents", "~> 0.4.2", require: "smith"
+gem "smith-agents", "~> 0.4.3", require: "smith"
 ```
 
 ```bash
@@ -153,6 +153,11 @@ jobs, or verify host-owned durability.
 Readiness metrics include both direct graph counts and transitive counts folded
 in from nested workflows.
 
+Transition snapshots include runtime contracts for complex primitives where
+Smith owns executable semantics: heterogeneous fan-out, evaluator-optimizer, and
+orchestrator-worker transitions expose bounded settings, output shapes, and
+transition-level resume behavior for host renderers and compilers.
+
 ## Configuration
 
 ```ruby
@@ -197,7 +202,10 @@ result = ReplyWorkflow.run_persisted!(
 )
 ```
 
-Built-in adapters (all support TTL where the backend allows; `Redis`, `ActiveRecord`, `Memory` also support optimistic locking via `store_versioned`):
+Built-in adapters (all support TTL where the backend allows; `Redis`,
+`ActiveRecord`, and `Memory` support optimistic locking via `store_versioned`;
+`Redis` and `Memory` also support heartbeat probes via `record_heartbeat` /
+`last_heartbeat`):
 
 - `:memory` — in-process Hash, intended for tests and `test_mode = true`
 - `:redis` — Redis client; uses WATCH/MULTI/EXEC for CAS

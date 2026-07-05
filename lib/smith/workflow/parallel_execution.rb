@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "branch_env"
+
 module Smith
   class Workflow
     module ParallelExecution

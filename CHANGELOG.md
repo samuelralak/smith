@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-07-05
+
 ### Documentation
 
 - Clarify Smith's repair and wait-style loop boundaries: `retry_on` and
@@ -15,6 +17,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Added
 
+- Static graph-inspection contracts for `optimize` and `orchestrate`
+  transitions, including bounded loop/delegation settings, schema labels, output
+  contracts, exit policies, dispatch semantics, and transition-level resume
+  guarantees.
 - `Workflow.runtime_readiness`, a static diagnostic report that separates graph
   topology validity from runtime binding readiness without executing agents,
   tools, providers, jobs, or persistence.
@@ -28,6 +34,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Richer fan-out transition snapshot metadata: branch count, join state,
   ordered branch list, output contract, resume contract, and per-branch result
   contracts for named branch-result output.
+- Direct doctor coverage for registered agent model-profile checks, including
+  static primary and static fallback models, making safe-default model shaping
+  explicit before hosts rely on runtime behavior.
+
+### Changed
+
+- `smith doctor --profile rails_persistence` now reports the full optional
+  persistence capability surface (`store_versioned`, `record_heartbeat`, and
+  `last_heartbeat`) instead of checking optimistic locking only.
+- Workflow runtime value objects now live in dedicated files while preserving
+  the existing public constants (`Smith::Workflow::RunResult`,
+  `AgentResult`, `UsageEntry`, `BranchEnv`, and internal execution helpers).
+- Release documentation now reflects the current heartbeat optional-capability
+  contract and the RubyLLM integration boundary.
+
+### Test coverage
+
+- Default suite: 926 examples, 0 failures.
+- Practical gem-level execution probe covering 30 varied workflows across
+  strict/lax idempotency, same-agent parallel branches, heterogeneous fan-out,
+  retry metadata, optimizer contracts, and orchestrator-worker flows.
+- Smith Studio host verification against the local Smith checkout: 186 runtime
+  tests and a 30-scenario generated-class lifecycle proof gate.
+- Built `pkg/smith-agents-0.4.3.gem` and smoke-tested `require "smith"` from
+  the unpacked package.
 
 ## [0.4.2] - 2026-07-02
 

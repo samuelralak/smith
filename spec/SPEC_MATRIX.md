@@ -23,13 +23,13 @@ Current contract coverage exists for:
 - top-level configuration surface, including structural-trace defaults and content-tracing opt-in default
 - agent inheritance, DSL, registry binding, fail-fast unresolved-agent behavior, and fallback model-chain runtime behavior
 - workflow DSL, transition metadata capture, serialization entry points, exact state shape, run-result surface, best-known execution cost aggregation, persisted-context filtering, and configured-adapter durability helper surface
-- static workflow graph inspection and validation reports: read-only transition snapshots, unresolved named-target diagnostics, router target validation, undefined state diagnostics, reachability warnings, graph metrics, fan-out join metadata, and runtime readiness reports
+- static workflow graph inspection and validation reports: read-only transition snapshots, unresolved named-target diagnostics, router target validation, undefined state diagnostics, reachability warnings, graph metrics, fan-out join metadata, optimizer/orchestrator contracts, and runtime readiness reports
 - per-agent-call usage facts: `Workflow::UsageEntry` struct shape, JSON-safe to_h/from_h round-trip with symbol coercion, `RunResult#usage_entries` field with deep-copy on population, lifecycle recording from completed AND failed-but-accounted attempts via a single mutex critical section, and parallel-fan-out attribution via local-arg `model_used` (no `@last_attempt_model` ivar)
 - nested-workflow usage rollup: child `total_cost` + `total_tokens` + `usage_entries` rolled up into parent BEFORE the failed-step check raises (preserves failed-child accounted work on the parent), with deep-copied entries via `from_h(snapshot_value(...))` so child and parent are fully independent
 - terminal-restore correctness for `RunResult#output` / `#last_error` / `#failure_detail`: persisted `@last_output` and class-aware `@last_failed_step` snapshot drive synthesis when steps are empty on terminal-restore, with backward compat for pre-patch state and value-symbol coercion that matches fresh-run shape
 - usage-aware durability peek API: `Workflow.persisted_state_exists?` (fast key-presence check) and `Workflow.restorable_billing_state?` (only true when restored state has at least one `usage_entries` entry — distinguishes Smith's bare initial-state persist from preserved accounted work)
 - tiered model pricing in `Smith::Pricing.compute_cost`: flat shape unchanged, tiered shape with `tiers: [{max_input_tokens, input_cost_per_token, output_cost_per_token}, ...]` walked in order, nil `max_input_tokens` as unbounded, both string and symbol keys
-- runtime model-registry extension via `Smith::RubyLLMModels.install!` (Opus 4.7 registration) and Anthropic provider compat shim prepended on `RubyLLM::Providers::Anthropic` (rewrites adaptive-thinking payload + drops temperature for Opus 4.7; non-4.7 models pass through unchanged)
+- Smith model capability registry, provider-family inference rules, capability-aware normalizer, and direct doctor coverage for registered agent model-shaping gaps
 - workflow pattern namespaces
 - artifact namespace, top-level accessor, configured-store resolution, built-in backend entry points, and named operational methods
 - artifact lifecycle behavior, including opaque refs, per-store isolation, and namespace-prefixed refs
@@ -782,6 +782,10 @@ Documented contracts covered:
   - router `fallback`
   - fan-out branch map
   - fan-out join metadata (`branch_count`, `join_state`, ordered branch list, and output shape)
+  - optimizer contracts (generator/evaluator bindings, max rounds, schema label, evaluator context, exit modes, output contract, and transition-level resume contract)
+  - optimizer output contracts distinguish required `accept`, rejection-required
+    `feedback`, threshold-required `score`, and optional `score` / `converged`
+  - orchestrator-worker contracts (orchestrator/worker bindings, bounds, schema labels, decision/output contracts, dispatch semantics, and transition-level resume contract)
 - diagnostics cover:
   - missing or undeclared initial state
   - undefined `from` and `to` states
@@ -2491,17 +2495,34 @@ Notes:
 - bundled JSON fallback does not satisfy strict DB mode — RubyLLM.models facade is not used
 - verification chain: resolve class → check AR ancestry → check table exists → check records present
 
+### `spec/smith/doctor/checks/models_registry_spec.rb`
+
+Covered behaviors:
+
+- passes when registered static agent models are covered by Smith's provider-family inference rules
+- passes when a host registers an explicit `Smith::Models::Profile`
+- warns when registered static agent models would rely on safe-default shaping
+- warns when static fallback models would rely on safe-default shaping, even
+  when the primary model is dynamic
+- skips block-form dynamic models because they resolve per workflow attempt
+
+Notes:
+
+- This check reports Smith-specific request-shaping coverage. RubyLLM's model registry can know a model exists while Smith may still not know the model's thinking/tool-routing semantics.
+
 ### `spec/smith/doctor/checks/persistence_capabilities_spec.rb`
 
 Covered behaviors:
 
 - warns (`persistence.capabilities`, status `:warn`) when `Smith.persistence_adapter` returns nil (no adapter configured and `test_mode` false)
-- passes when the configured adapter supports all `OPTIONAL_METHODS` (currently `%i[store_versioned]`); `Memory` and `RedisStore` qualify
-- warns with actionable detail when the adapter is missing optional capabilities, naming the missing capabilities and recommending RedisStore / ActiveRecordStore / Memory
+- passes when the configured adapter supports all `OPTIONAL_METHODS`
+  (`store_versioned`, `record_heartbeat`, `last_heartbeat`); `Memory` and
+  `RedisStore` qualify
+- warns with actionable detail when the adapter is missing optional capabilities, naming the missing capabilities and explaining the fallback semantics
 
 Notes:
 
-- The check is wired into the `:rails_persistence` profile; the default `:auto` profile skips it. Hosts running under other profiles rely on the runtime one-time `Smith::PersistenceAdapters.warn_missing_versioning` to surface adapter capability gaps at first persist.
+- The check is wired into the `:rails_persistence` profile; the default `:auto` profile skips it. Hosts running under other profiles rely on runtime one-time Smith warnings and `Workflow.stuck_for?` fallback behavior to surface adapter capability gaps.
 
 ### `spec/smith/persistence_adapters_spec.rb`
 
@@ -2518,7 +2539,7 @@ Covered behaviors:
 - custom adapter classes can be instantiated with keyword options
 - invalid custom adapter classes fail contract validation
 - unknown adapter symbols fail clearly
-- `Smith::PersistenceAdapters::OPTIONAL_METHODS = %i[store_versioned]` introspected via `supports?(adapter, capability)`
+- `Smith::PersistenceAdapters::OPTIONAL_METHODS = %i[store_versioned record_heartbeat last_heartbeat]` introspected via `supports?(adapter, capability)`
 - `warn_missing_versioning(adapter)` issues a one-time per-adapter-class warning when an adapter does not implement `store_versioned`; subsequent calls are no-ops within the same Smith boot (Monitor-synchronized via class-level Set)
 
 Notes:

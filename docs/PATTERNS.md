@@ -376,6 +376,9 @@ Why this matters:
 - acceptance criteria are structured
 - exhaustion, malformed evaluator output, and convergence without acceptance fail normally
 - costs and token usage from the full loop roll into the workflow totals
+- graph inspection exposes the generator/evaluator bindings, max rounds, schema
+  label, evaluator context, exit modes, required/conditional evaluator output
+  fields, and transition-level resume contract
 
 ## Repair And Wait Boundaries
 
@@ -487,6 +490,9 @@ Why this is valuable:
 - tasks and outputs are structured
 - worker fan-out is controlled
 - exhaustion and malformed orchestrator output fail as first-class workflow failures
+- graph inspection exposes orchestrator/worker bindings, bounds, schema labels,
+  decision/output contracts, serial worker-dispatch semantics, and
+  transition-level resume behavior
 
 Notes:
 

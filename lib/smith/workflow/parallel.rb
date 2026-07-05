@@ -2,23 +2,11 @@
 
 require "concurrent"
 
+require_relative "parallel/cancellation_signal"
+
 module Smith
   class Workflow
     class Parallel
-      CancellationSignal = Struct.new(:cancelled, :mutex) do
-        def initialize
-          super(false, Mutex.new)
-        end
-
-        def cancel!
-          mutex.synchronize { self.cancelled = true }
-        end
-
-        def cancelled?
-          mutex.synchronize { cancelled }
-        end
-      end
-
       def self.resolve_branch_count(transition, context)
         count = transition.agent_opts[:count]
         resolved = count.respond_to?(:call) ? count.call(context) : (count || 1)

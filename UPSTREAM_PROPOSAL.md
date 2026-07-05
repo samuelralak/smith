@@ -139,3 +139,22 @@ What stays Smith-owned (orchestration concerns, not provider-API concerns):
 
 - RubyLLM PR #770 (OpenAI `/v1/responses` support) is the related upstream track. Smith's vendored `Smith::Providers::OpenAI::Responses` retires when #770 merges.
 - This proposal (capability profiles + before_complete) is a separate, additive RubyLLM RFC. Once accepted, Smith files a migration PR to consume it.
+
+## Current RubyLLM Docs Check
+
+As of the release-prep audit, RubyLLM's official documentation describes a model
+registry with model capability and pricing data, Rails DB-backed model registry
+support, provider overrides, instrumentation, and concurrent tool execution.
+Smith should continue treating RubyLLM as the source of truth for provider
+communication and model inventory while keeping Smith-specific workflow
+semantics, request shaping, and tool-compatibility policy explicit.
+
+Release implication: before deleting Smith's model normalizer, Responses
+adapter, or model-profile inference layer, verify that RubyLLM exposes the
+specific public hooks Smith needs for:
+
+- clearing incompatible temperature/thinking settings without private ivar
+  mutation
+- request-shaping hooks before provider payload rendering
+- endpoint selection for tools plus thinking/reasoning combinations
+- model capability fields that distinguish Smith's workflow-relevant cases

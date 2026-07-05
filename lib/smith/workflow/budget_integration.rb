@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "agent_result"
+
 module Smith
   class Workflow
     module BudgetIntegration

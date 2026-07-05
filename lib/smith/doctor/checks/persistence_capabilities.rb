@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../../persistence_adapters"
+
 module Smith
   module Doctor
     module Checks
@@ -12,47 +14,53 @@ module Smith
       module PersistenceCapabilities
         module_function
 
-        OPTIONAL_CAPABILITIES = %i[store_versioned].freeze
+        OPTIONAL_CAPABILITIES = Smith::PersistenceAdapters::OPTIONAL_METHODS
 
         def run(report)
           adapter = resolve_adapter
-          if adapter.nil?
-            report.add(
-              name: "persistence.capabilities",
-              status: :warn,
-              message: "No persistence adapter configured",
-              detail: "Smith.config.persistence_adapter is nil and Smith.config.test_mode is false. " \
-                      "Hosts using durable workflows must set persistence_adapter."
-            )
-            return
-          end
+          return report_missing_adapter(report) if adapter.nil?
 
           missing = OPTIONAL_CAPABILITIES.reject { |cap| Smith::PersistenceAdapters.supports?(adapter, cap) }
+          return report_supported_capabilities(report, adapter) if missing.empty?
 
-          if missing.empty?
-            report.add(
-              name: "persistence.capabilities",
-              status: :pass,
-              message: "#{adapter.class.name} supports all optional persistence capabilities",
-              detail: "Supported: #{OPTIONAL_CAPABILITIES.join(', ')}"
-            )
-          else
-            report.add(
-              name: "persistence.capabilities",
-              status: :warn,
-              message: "#{adapter.class.name} missing optional capabilities: #{missing.join(', ')}",
-              detail: "Workflows using these capabilities fall back to non-versioned writes " \
-                      "with a one-time warning per adapter class. Switch to RedisStore, " \
-                      "ActiveRecordStore (with lock_version column), or the Memory adapter " \
-                      "for full coverage."
-            )
-          end
+          report_missing_capabilities(report, adapter, missing)
         end
 
         def resolve_adapter
           Smith.persistence_adapter
         rescue StandardError
           nil
+        end
+
+        def report_missing_adapter(report)
+          report.add(
+            name: "persistence.capabilities",
+            status: :warn,
+            message: "No persistence adapter configured",
+            detail: "Smith.config.persistence_adapter is nil and Smith.config.test_mode is false. " \
+                    "Hosts using durable workflows must set persistence_adapter."
+          )
+        end
+
+        def report_supported_capabilities(report, adapter)
+          report.add(
+            name: "persistence.capabilities",
+            status: :pass,
+            message: "#{adapter.class.name} supports all optional persistence capabilities",
+            detail: "Supported: #{OPTIONAL_CAPABILITIES.join(", ")}"
+          )
+        end
+
+        def report_missing_capabilities(report, adapter, missing)
+          report.add(
+            name: "persistence.capabilities",
+            status: :warn,
+            message: "#{adapter.class.name} missing optional capabilities: #{missing.join(", ")}",
+            detail: "Smith will fall back where possible: non-versioned writes when store_versioned " \
+                    "is missing, and payload updated_at parsing when heartbeat methods are missing. " \
+                    "Use RedisStore or Memory for full versioning and heartbeat coverage; " \
+                    "ActiveRecordStore currently covers optimistic locking when lock_version is present."
+          )
         end
       end
     end

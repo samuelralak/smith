@@ -1,16 +1,13 @@
 # frozen_string_literal: true
 
+require "json"
+
+require_relative "agent_result"
+require_relative "optimization_state"
+
 module Smith
   class Workflow
     module EvaluatorOptimizer
-      OptimizationState = Struct.new(
-        :config, :prepared_input, :candidate, :feedback, :last_score, :generator_class, :evaluator_class
-      ) do
-        def initialize(config, prepared_input)
-          super(config, prepared_input, nil, nil, nil, nil, nil)
-        end
-      end
-
       private
 
       def execute_optimization_step(transition, prepared_input: nil)

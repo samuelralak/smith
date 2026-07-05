@@ -1,25 +1,13 @@
 # frozen_string_literal: true
 
 require "json"
-require "securerandom"
+
+require_relative "orchestration_state"
+require_relative "worker_execution"
 
 module Smith
   class Workflow
     module OrchestratorWorker
-      OrchestrationState = Struct.new(
-        :config, :prepared_input, :orchestrator_class, :worker_class, :worker_results
-      ) do
-        def initialize(config, prepared_input)
-          super(config, prepared_input, nil, nil, nil)
-        end
-      end
-
-      WorkerExecution = Struct.new(:execution_id, :task, :output) do
-        def self.run(worker_class, task, schema, budget_runner)
-          new(SecureRandom.uuid, task, budget_runner.call(worker_class, task, schema))
-        end
-      end
-
       private
 
       def dispatch_step(transition, prepared_input: nil)

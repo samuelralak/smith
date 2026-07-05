@@ -36,29 +36,40 @@ module Smith
           end
         end
 
-        # Walk Smith::Agent::Registry. For each agent, extract the model
-        # id from chat_kwargs (static `model "..."` form). Block-form
-        # `model do |ctx| ... end` agents are skipped because their
-        # model is resolved per-attempt and can't be enumerated at boot.
+        # Walk Smith::Agent::Registry. For each agent, extract every static
+        # model id Smith can know at boot: the primary `model "..."` value and
+        # any static fallback models. Block-form primary models are skipped
+        # because they resolve per-attempt, but their static fallbacks still
+        # need coverage checks.
         # Check whether find_or_infer returns a custom (non-default)
         # Profile — meaning either an explicit override or an inference
         # rule matched.
         def uncovered_models
           return [] unless defined?(Smith::Agent::Registry)
 
-          model_ids = []
-          Smith::Agent::Registry.each do |_key, agent|
-            next unless agent.is_a?(Class)
-            next unless agent.respond_to?(:chat_kwargs)
+          static_model_ids.uniq.reject { |model_id| covered_model?(model_id) }
+        end
 
-            id = agent.chat_kwargs[:model]
-            model_ids << id if id
+        def static_model_ids
+          Smith::Agent::Registry.each.with_object([]) do |(_key, agent), ids|
+            ids.concat(static_model_ids_for(agent)) if inspectable_agent?(agent)
           end
+        end
 
-          model_ids.uniq.reject do |model_id|
-            Smith::Models.find(model_id) ||
-              (defined?(Smith::Models::Inference) && Smith::Models::Inference.profile_for(model_id))
-          end
+        def inspectable_agent?(agent)
+          agent.is_a?(Class) && agent.respond_to?(:chat_kwargs)
+        end
+
+        def static_model_ids_for(agent)
+          [
+            agent.chat_kwargs[:model],
+            *(agent.respond_to?(:fallback_models) ? agent.fallback_models : nil)
+          ].compact
+        end
+
+        def covered_model?(model_id)
+          Smith::Models.find(model_id) ||
+            (defined?(Smith::Models::Inference) && Smith::Models::Inference.profile_for(model_id))
         end
       end
     end

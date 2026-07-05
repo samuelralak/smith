@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "usage_entry"
+
 module Smith
   class Workflow
     module Persistence

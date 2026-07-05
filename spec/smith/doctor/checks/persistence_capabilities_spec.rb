@@ -46,9 +46,11 @@ RSpec.describe Smith::Doctor::Checks::PersistenceCapabilities do
     expect(check.status).to eq(:pass)
     expect(check.message).to match(/Memory supports all optional persistence capabilities/)
     expect(check.detail).to include("store_versioned")
+    expect(check.detail).to include("record_heartbeat")
+    expect(check.detail).to include("last_heartbeat")
   end
 
-  it "warns when the adapter is missing optional capabilities (cache backend with no CAS)" do
+  it "warns when the adapter is missing all optional capabilities" do
     cache_like = Class.new do
       def store(_key, _payload, **_opts); end
       def fetch(_key); end
@@ -65,6 +67,29 @@ RSpec.describe Smith::Doctor::Checks::PersistenceCapabilities do
 
     check = report.checks.find { |c| c.name == "persistence.capabilities" }
     expect(check.status).to eq(:warn)
-    expect(check.message).to match(/missing optional capabilities: store_versioned/)
+    expect(check.message).to match(/missing optional capabilities: store_versioned, record_heartbeat, last_heartbeat/)
+    expect(check.detail).to include("payload updated_at parsing")
+  end
+
+  it "warns when the adapter supports optimistic locking but not heartbeat probes" do
+    versioned_only = Class.new do
+      def store(_key, _payload, **_opts); end
+      def fetch(_key); end
+      def delete(_key); end
+      def store_versioned(_key, _payload, expected_version:, **_opts); end
+    end.new
+
+    Smith.configure do |c|
+      c.persistence_adapter = versioned_only
+      c.test_mode = false
+    end
+
+    report = Smith::Doctor::Report.new
+    described_class.run(report)
+
+    check = report.checks.find { |c| c.name == "persistence.capabilities" }
+    expect(check.status).to eq(:warn)
+    expect(check.message).to match(/missing optional capabilities: record_heartbeat, last_heartbeat/)
+    expect(check.message).not_to include("store_versioned,")
   end
 end
