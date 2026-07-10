@@ -17,7 +17,7 @@ environment before calling the slice complete.
 
 ```ruby
 # Gemfile
-gem "smith-agents", "~> 0.4.3", require: "smith"
+gem "smith-agents", "0.4.4", require: "smith"
 ```
 
 ```bash

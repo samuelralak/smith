@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-07-10
+
+Patch release for provider-safe workflow handoffs. Smith keeps accepted agent
+outputs in durable session history while adapting only the next provider call
+when a completed workflow stage would otherwise look like an unsupported
+assistant prefill.
+
 ### Fixed
 
 - Adapt workflow-prepared provider input that ends with an accepted assistant
@@ -15,6 +22,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   Provider preparation now also reads string-keyed roles and content restored
   through JSON host persistence. Explicit assistant-prefill seed messages remain
   unchanged unless they match Smith's recorded accepted workflow output.
+
+### Verification
+
+- Default suite: 932 examples, 0 failures.
+- Practical gem-level JSON persistence/restore probe with a 25-branch parallel
+  handoff, provider-safe message ordering, non-persisted continuation, and
+  explicit assistant-prefill preservation.
+- Smith Runtime host verification on Ruby 4.0.1 and Rails 8.1.3: 139 tests,
+  391 assertions, 0 failures, plus a process-level restored workflow run.
 
 ## [0.4.3] - 2026-07-05
 
