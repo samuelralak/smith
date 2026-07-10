@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 require "monitor"
+require_relative "persistence_adapters/active_record_connection_errors"
+require_relative "persistence_adapters/active_record_initial_write"
+require_relative "persistence_adapters/payload_version"
 require_relative "persistence_adapters/cache_store"
 require_relative "persistence_adapters/rails_cache"
 require_relative "persistence_adapters/redis_store"

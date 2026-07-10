@@ -211,7 +211,8 @@ Built-in adapters (all support TTL where the backend allows; `Redis`,
 - `:redis` — Redis client; uses WATCH/MULTI/EXEC for CAS
 - `:rails_cache`, `:solid_cache` — Rails cache backends
 - `:cache_store` — any object responding to `write/read/delete`
-- `:active_record` — keyed ActiveRecord model with `lock_version` column for CAS
+- `:active_record` — keyed ActiveRecord model with an enabled optimistic-locking
+  column for row-level CAS; Smith's logical version remains in the JSON payload
 
 See [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md) for schema versioning, seed-drift validation, and the `idempotency_mode :strict` step-in-progress contract.
 

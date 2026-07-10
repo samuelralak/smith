@@ -2568,6 +2568,46 @@ Notes:
 - lazy cache-backed backend resolution failures are reported as `durability.adapter` failures instead of escaping the doctor run
 - `Smith.config.test_mode = true` auto-selects the Memory adapter when `persistence_adapter` is nil, letting spec suites skip wiring Redis/Rails.cache in `spec_helper.rb`
 
+### `spec/smith/persistence_adapters/active_record_store_spec.rb`
+
+Purpose:
+
+- pins the real Active Record adapter contract in the default test suite
+
+Documented contracts covered:
+
+- consecutive Smith writes compare `expected_version` with the stored payload's
+  `persistence_version`, independently of the Rails row lock
+- stale logical versions report the stored Smith version
+- an `ActiveRecord::StaleObjectError` is translated to
+  `Smith::PersistenceVersionConflict` with `actual: :concurrent`
+- legacy syntactically malformed payloads retain the established version-zero
+  behavior while valid JSON scalars fail closed
+- writes participate in an outer Active Record transaction/savepoint
+- workflow persist/restore rejects a stale restored writer without advancing its
+  in-memory persistence version
+- custom host locking columns work when model and adapter agree
+- mismatched or disabled host optimistic-locking configuration fails closed
+- concurrent initial inserts are contained and translated without invalidating
+  the caller's transaction
+- key uniqueness validations are translated while unrelated unique constraints
+  and callback rollbacks preserve their original Active Record meaning
+- connection failures are translated without replaying the uncertain versioned
+  write below the host-owned transaction boundary
+
+### `spec/smith/persistence_adapters/payload_version_spec.rb`
+
+Purpose:
+
+- pins the shared logical-version parser used by versioned persistence adapters
+
+Documented contracts covered:
+
+- serialized JSON and decoded documents expose the same `persistence_version`
+- missing versions and syntactically malformed payloads retain the established
+  version-zero fallback; scalar payloads and explicit invalid versions fail
+  closed
+
 ### `spec/smith/persistence_adapters/memory_spec.rb`
 
 Purpose:

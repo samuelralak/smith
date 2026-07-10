@@ -62,6 +62,7 @@ module Smith
       def restore_state(hash)
         migrated = migrate_if_needed(hash)
         normalized = normalize_persisted_state(migrated)
+        persistence_version = validated_persistence_version(normalized)
         restore_persisted_keys(normalized)
         restore_core_fields(normalized)
         @persistence_key = normalized[:persistence_key]
@@ -87,7 +88,7 @@ module Smith
         # Backward-compat: pre-versioning payloads have no key, restore to 0
         # so the first persist! after restore expects version 0 (matches
         # the original store from the legacy adapter contract).
-        @persistence_version = normalized[:persistence_version] || 0
+        @persistence_version = persistence_version
         # Preserve the seed digest from the persisted payload so it
         # round-trips on subsequent persists. validate_seed_digest!
         # compares this against a fresh evaluation of the seed builder
@@ -99,6 +100,14 @@ module Smith
         # mode by raising if the marker is set on restore.
         @step_in_progress = normalized[:step_in_progress] || false
         validate_step_in_progress!(normalized) if self.class.idempotency_mode == :strict
+      end
+
+      def validated_persistence_version(normalized)
+        version = normalized.fetch(:persistence_version, 0)
+        return version if version.is_a?(Integer) && version >= 0
+
+        raise Smith::SerializationError,
+              "persisted workflow persistence_version must be a non-negative integer, got #{version.inspect}"
       end
 
       def validate_step_in_progress!(normalized)

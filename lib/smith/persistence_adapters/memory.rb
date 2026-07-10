@@ -96,9 +96,7 @@ module Smith
       private
 
       def parse_version(payload)
-        JSON.parse(payload).fetch("persistence_version", 0)
-      rescue JSON::ParserError
-        0
+        PayloadVersion.call(payload)
       end
     end
   end

@@ -90,6 +90,15 @@ RSpec.describe "Smith::Workflow optimistic locking via store_versioned" do
     expect(restored.instance_variable_get(:@persistence_version)).to eq(0)
   end
 
+  it "fails closed when persisted state contains an invalid persistence version" do
+    state = workflow_class.new.to_state.merge(persistence_version: "1")
+    adapter.store("workflow:optimistic-test", JSON.generate(state))
+
+    expect do
+      workflow_class.restore("workflow:optimistic-test", adapter: adapter)
+    end.to raise_error(Smith::SerializationError, /persistence_version must be a non-negative integer/)
+  end
+
   describe "adapters without store_versioned (CacheStore family)" do
     # Anonymous adapter that implements only the required contract.
     let(:non_versioned_adapter) do

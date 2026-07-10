@@ -55,4 +55,7 @@ If the model has AASM and you want to skip events, call `.cas` explicitly; if yo
 
 ## Testing
 
-Specs that exercise the AR strategies are tagged `:ar` and excluded from the default suite. The full suite under `SMITH_AR_SPECS=1` boots an in-memory SQLite database and the `ClaimableRecord` fixture model. Default `bundle exec rspec` runs 816 examples (Claim load-hygiene only); `SMITH_AR_SPECS=1 bundle exec rspec` runs 831 (adds 15 AR-tagged Claim specs).
+The default spec suite boots an in-memory SQLite database and runs the tagged
+Active Record strategy examples against the `ClaimableRecord` fixture model.
+Package smoke tests separately verify that requiring Smith does not make Active
+Record a runtime dependency.

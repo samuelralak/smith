@@ -6,6 +6,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+### Fixed
+
+- Align `ActiveRecordStore#store_versioned` with Smith's persistence contract by
+  comparing `expected_version` to the stored payload's `persistence_version`.
+  Rails' optimistic-locking column remains an independent row-level CAS token,
+  so consecutive workflow persists no longer report a false conflict after the
+  initial insert.
+- Fail closed when an Active Record host model does not have optimistic locking
+  enabled on the adapter's configured `version_column`. Custom locking columns
+  remain host-owned and must be configured on the model explicitly.
+- Use Rails' native create-or-find savepoint for concurrent initial inserts,
+  preserving callback rollbacks and distinguishing key collisions from other
+  unique-constraint failures.
+- Keep malformed payload-version handling consistent across versioned adapters,
+  reject scalar state documents, fail closed when an explicit persisted version
+  is invalid, and never replay an uncertain versioned write below a host-owned
+  transaction boundary.
+- Resolve string-backed Active Record models on each operation so host framework
+  reloads cannot leave the adapter holding a stale class object.
+
 ## [0.4.4] - 2026-07-10
 
 Patch release for provider-safe workflow handoffs. Smith keeps accepted agent
