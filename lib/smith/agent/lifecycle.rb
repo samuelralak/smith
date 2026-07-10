@@ -3,6 +3,10 @@
 module Smith
   class Agent
     module Lifecycle
+      WORKFLOW_CONTINUATION_MESSAGE =
+        "Use the preceding assistant result as input and perform your assigned workflow step."
+      private_constant :WORKFLOW_CONTINUATION_MESSAGE
+
       TRANSIENT_ERRORS = [
         RubyLLM::ServerError, RubyLLM::ServiceUnavailableError,
         RubyLLM::OverloadedError, RubyLLM::RateLimitError
@@ -111,12 +115,29 @@ module Smith
       def add_prepared_input(chat, prepared_input)
         return unless prepared_input
 
+        prepared_input = provider_safe_prepared_input(prepared_input)
         system_messages, other_messages = prepared_input.partition do |message|
           message_role(message) == :system
         end
 
         merge_system_messages!(chat, system_messages) if system_messages.any?
         other_messages.each { |message| chat.add_message(message) }
+      end
+
+      def provider_safe_prepared_input(prepared_input)
+        messages = prepared_input.to_a
+        return messages unless workflow_handoff?(messages)
+
+        messages + [{ role: :user, content: WORKFLOW_CONTINUATION_MESSAGE }]
+      end
+
+      def workflow_handoff?(messages)
+        message = messages.reverse_each.find { |candidate| message_role(candidate) != :system }
+        return false unless message
+        return false unless message_role(message) == :assistant
+        return false unless defined?(@last_output) && !@last_output.nil?
+
+        message_content(message) == @last_output
       end
 
       def merge_system_messages!(chat, prepared_system_messages)
@@ -143,19 +164,18 @@ module Smith
       end
 
       def message_role(message)
-        if message.respond_to?(:role)
-          message.role&.to_sym
-        else
-          message[:role]&.to_sym
-        end
+        message_attribute(message, :role)&.to_sym
       end
 
       def message_content(message)
-        if message.respond_to?(:content)
-          message.content
-        else
-          message[:content]
-        end
+        message_attribute(message, :content)
+      end
+
+      def message_attribute(message, name)
+        return message.public_send(name) if message.respond_to?(name)
+        return message[name] if message.respond_to?(:key?) && message.key?(name)
+
+        message[name.to_s]
       end
 
       def fallback_eligible?(error)

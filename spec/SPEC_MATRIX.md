@@ -1767,6 +1767,16 @@ Documented contracts covered:
 - injected state merges into the existing agent-instruction system message before provider call
 - workflow-prepared input preserves a single control-plane `system` message and leaves turn-local metadata in normal conversational roles
 - accepted workflow output is appended to stored session history after successful step completion
+- workflow-prepared input that would end with an accepted assistant turn receives
+  a Smith-authored user continuation for the provider call only, preserving
+  stored assistant history while avoiding unsupported assistant-prefill handoff
+  on providers/models that require the request to end with a user turn
+- provider-safe continuation recognizes string roles restored through JSON,
+  ignores trailing system messages when finding the conversational turn, does
+  not mutate shared prepared input, and is derived independently per invocation;
+  restored string-key content remains available to system-message merging
+- explicit assistant-prefill seed messages remain unchanged unless the trailing
+  assistant content matches Smith's recorded accepted workflow output
 - accepted falsy workflow output is also preserved in stored session history
 - rejected output is not appended when output guardrails fail
 

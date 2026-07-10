@@ -260,6 +260,134 @@ RSpec.describe "Smith::Context runtime contract" do
     )
   end
 
+  it "adds a provider-safe workflow continuation when prepared input ends with an assistant turn" do
+    first_agent = with_stubbed_class("SpecContinuationFirstAgent", agent_class) do
+      register_as :spec_continuation_first_agent
+      model "claude-sonnet-4-6"
+    end
+    second_agent = with_stubbed_class("SpecContinuationSecondAgent", agent_class) do
+      register_as :spec_continuation_second_agent
+      model "claude-sonnet-4-6"
+    end
+
+    first_messages = []
+    second_messages = []
+    first_chat = fake_chat(first_messages, "first output")
+    second_chat = fake_chat(second_messages, "final output")
+
+    allow(first_agent).to receive(:chat).and_return(first_chat)
+    allow(second_agent).to receive(:chat).and_return(second_chat)
+
+    workflow = with_stubbed_class("SpecContinuationWorkflow", workflow_class) do
+      seed_messages { [{ role: :user, content: "initial request" }] }
+      initial_state :idle
+      state :reviewed
+      state :done
+
+      transition :first, from: :idle, to: :reviewed do
+        execute :spec_continuation_first_agent
+        on_success :second
+      end
+
+      transition :second, from: :reviewed, to: :done do
+        execute :spec_continuation_second_agent
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    expect(first_messages).to eq([{ role: :user, content: "initial request" }])
+    expect(second_messages).to eq(
+      [
+        { role: :user, content: "initial request" },
+        { role: :assistant, content: "first output" },
+        {
+          role: :user,
+          content: "Use the preceding assistant result as input and perform your assigned workflow step."
+        }
+      ]
+    )
+    expect(workflow.session_messages).to eq(
+      [
+        { role: :user, content: "initial request" },
+        { role: :assistant, content: "first output" },
+        { role: :assistant, content: "final output" }
+      ]
+    )
+  end
+
+  it "recognizes restored string roles without mutating provider input" do
+    workflow = workflow_class.allocate
+    prepared_input = [
+      { "role" => "user", "content" => "initial request" },
+      { "role" => "assistant", "content" => "stage output" },
+      { "role" => "system", "content" => "runtime state" }
+    ].freeze
+    workflow.instance_variable_set(:@last_output, { "status" => "accepted" })
+    prepared_input[1]["content"] = { "status" => "accepted" }
+
+    provider_input = workflow.send(:provider_safe_prepared_input, prepared_input)
+
+    expect(provider_input).to eq(
+      [
+        *prepared_input,
+        {
+          role: :user,
+          content: "Use the preceding assistant result as input and perform your assigned workflow step."
+        }
+      ]
+    )
+    expect(prepared_input.length).to eq(3)
+    expect(provider_input).not_to equal(prepared_input)
+  end
+
+  it "does not add a continuation when the prepared input ends with a user turn" do
+    workflow = workflow_class.allocate
+    prepared_input = [
+      { role: :assistant, content: "earlier output" },
+      { role: :user, content: "active request" }
+    ].freeze
+
+    provider_input = workflow.send(:provider_safe_prepared_input, prepared_input)
+
+    expect(provider_input).to eq(prepared_input)
+    expect(prepared_input.length).to eq(2)
+  end
+
+  it "preserves an explicit assistant seed that is not a prior workflow output" do
+    workflow = workflow_class.allocate
+    prepared_input = [{ role: :assistant, content: "The answer is (" }].freeze
+
+    provider_input = workflow.send(:provider_safe_prepared_input, prepared_input)
+
+    expect(provider_input).to eq(prepared_input)
+  end
+
+  it "does not add a continuation to empty or system-only prepared input" do
+    workflow = workflow_class.allocate
+    workflow.instance_variable_set(:@last_output, "prior output")
+
+    expect(workflow.send(:provider_safe_prepared_input, [])).to eq([])
+    expect(
+      workflow.send(:provider_safe_prepared_input, [{ role: :system, content: "runtime state" }])
+    ).to eq([{ role: :system, content: "runtime state" }])
+  end
+
+  it "derives each provider continuation independently from shared prepared input" do
+    workflow = workflow_class.allocate
+    prepared_input = [{ role: :assistant, content: "shared branch input" }].freeze
+    workflow.instance_variable_set(:@last_output, "shared branch input")
+
+    provider_inputs = Array.new(3) do
+      workflow.send(:provider_safe_prepared_input, prepared_input)
+    end
+
+    expect(provider_inputs.map(&:length)).to eq([2, 2, 2])
+    expect(provider_inputs.map(&:object_id).uniq.length).to eq(3)
+    expect(prepared_input.length).to eq(1)
+  end
+
   it "appends accepted falsy workflow output to stored session messages" do
     agent = with_stubbed_class("SpecFalsySessionAgent", agent_class) do
       register_as :spec_falsy_session_agent
@@ -343,5 +471,17 @@ RSpec.describe "Smith::Context runtime contract" do
         { role: :system, content: "[smith:injected-state]\nsummary: still persisted" }
       ]
     )
+  end
+
+  def fake_chat(messages, content)
+    Object.new.tap do |chat|
+      chat.define_singleton_method(:add_message) do |message|
+        messages << message
+        self
+      end
+      chat.define_singleton_method(:complete) do
+        Struct.new(:content).new(content)
+      end
+    end
   end
 end

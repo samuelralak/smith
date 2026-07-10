@@ -6,6 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+### Fixed
+
+- Adapt workflow-prepared provider input that ends with an accepted assistant
+  result by adding a non-persisted user continuation for the next agent call.
+  This preserves Smith session history while avoiding unsupported assistant
+  prefilling on provider models that require a user turn before completion.
+  Provider preparation now also reads string-keyed roles and content restored
+  through JSON host persistence. Explicit assistant-prefill seed messages remain
+  unchanged unless they match Smith's recorded accepted workflow output.
+
 ## [0.4.3] - 2026-07-05
 
 ### Documentation
