@@ -134,6 +134,47 @@ RSpec.describe "Smith::Workflow split-step persistence" do
     expect(workflow.to_state.fetch(:context).fetch(:input)).to eq("prepared")
   end
 
+  it "defensively copies state returned by a subclass serializer" do
+    created_at = String.new("2026-07-11T00:00:00Z")
+    serializer_class = Class.new(workflow_class) do
+      def to_state = super.merge(created_at: @created_at)
+    end
+    workflow = serializer_class.new(created_at:)
+    workflow.prepare_persisted_step!(key, adapter: adapter)
+
+    workflow.to_state.fetch(:created_at).replace("2000-01-01T00:00:00Z")
+
+    expect(workflow.to_state.fetch(:created_at)).to eq("2026-07-11T00:00:00Z")
+  end
+
+  it "detaches caller-owned timestamps before durable verification" do
+    created_at = Time.now.utc.iso8601
+    timestamp_class = Class.new(Smith::Workflow) do
+      attr_writer :after_split_step_verification
+
+      idempotency_mode :strict
+      budget wall_clock: 60
+      initial_state :idle
+      state :done
+      transition :finish, from: :idle, to: :done do
+        compute { |step| step.write_context(:executed, true) }
+      end
+
+      private
+
+      def verify_split_step_preparation_available!
+        super
+        @after_split_step_verification.call
+      end
+    end
+    workflow = timestamp_class.new(created_at:)
+    workflow.after_split_step_verification = -> { created_at.replace("2000-01-01T00:00:00Z") }
+    workflow.prepare_persisted_step!(key, adapter: adapter)
+
+    expect(workflow.execute_prepared_step!).to include(transition: :finish, to: :done)
+    expect(workflow.to_state.fetch(:created_at)).not_to eq(created_at)
+  end
+
   it "does not expose mutable session state while a boundary is active" do
     workflow = workflow_class.new
     workflow.prepare_persisted_step!(key, adapter: adapter)
@@ -146,6 +187,27 @@ RSpec.describe "Smith::Workflow split-step persistence" do
   it "pins non-expiring persistence through the checkpoint write" do
     original_ttl = Smith.config.persistence_ttl
     workflow = workflow_class.new
+    workflow.prepare_persisted_step!(key, adapter: adapter)
+    workflow.execute_prepared_step!
+    Smith.config.persistence_ttl = 0.02
+
+    workflow.persist!(key, adapter: adapter)
+    sleep 0.03
+
+    expect(adapter.fetch(key)).not_to be_nil
+    workflow.complete_persisted_step!
+  ensure
+    Smith.config.persistence_ttl = original_ttl
+  end
+
+  it "does not let subclass TTL overrides defeat the pinned boundary policy" do
+    original_ttl = Smith.config.persistence_ttl
+    subclass = Class.new(workflow_class) do
+      private
+
+      def effective_persistence_ttl = Smith.config.persistence_ttl
+    end
+    workflow = subclass.new
     workflow.prepare_persisted_step!(key, adapter: adapter)
     workflow.execute_prepared_step!
     Smith.config.persistence_ttl = 0.02
@@ -602,6 +664,7 @@ RSpec.describe "Smith::Workflow split-step persistence" do
     workflow = subclass.new
     workflow.prepare_persisted_step!(key, adapter: adapter)
 
+    expect { workflow.advance! }.to raise_error(Smith::WorkflowError, /execute_prepared_step/)
     expect do
       workflow.execute_prepared_step!
     end.to raise_error(Smith::WorkflowError, /did not return the claimed transition/)
@@ -799,7 +862,7 @@ RSpec.describe "Smith::Workflow split-step persistence" do
     expect(committed.execute_prepared_step!).to include(transition: :finish, to: :done)
   end
 
-  it "keeps a rolled-back post-step checkpoint guarded", :ar, :commit do
+  it "retries a known rolled-back post-step checkpoint", :ar, :commit do
     active_record_adapter = Smith::PersistenceAdapters::ActiveRecordStore.new(
       model: SmithWorkflowStateRecord
     )
@@ -817,9 +880,16 @@ RSpec.describe "Smith::Workflow split-step persistence" do
     expect do
       workflow.complete_persisted_step!
     end.to raise_error(Smith::WorkflowError, /not committed/)
-    expect do
-      workflow_class.restore(key, adapter: active_record_adapter)
-    end.to raise_error(Smith::StepInProgressOnRestore)
+
+    ActiveRecord::Base.transaction(requires_new: true) do
+      workflow.persist!(key, adapter: active_record_adapter)
+      TransactionalPeerRecord.create!(workflow_key: key, event_name: "step.completed")
+    end
+    workflow.complete_persisted_step!
+
+    restored = workflow_class.restore(key, adapter: active_record_adapter)
+    expect(restored).to be_done
+    expect(TransactionalPeerRecord).to exist(workflow_key: key, event_name: "step.completed")
   end
 
   it "refuses checkpoint completion before the transaction commits", :ar, :commit do

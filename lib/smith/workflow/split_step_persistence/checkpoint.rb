@@ -11,6 +11,7 @@ module Smith
           completed = false
           payload = @split_step_adapter.fetch(@split_step_persistence_key)
           unless persisted_split_step_checkpoint?(payload)
+            recover_rolled_back_split_step_checkpoint!(payload)
             raise WorkflowError, "the persisted split-step checkpoint is not committed"
           end
 

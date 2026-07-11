@@ -77,6 +77,15 @@ module Smith
           raise WorkflowError, "a split-step persistence boundary is already active"
         end
 
+        def guard_split_step_subclass_execution!
+          @split_step_mutex.synchronize do
+            return unless @split_step_phase
+            return if split_step_advance_permitted?
+          end
+
+          raise WorkflowError, "use execute_prepared_step! for the active split-step boundary"
+        end
+
         def split_step_advance_permitted?
           @split_step_phase == :executing &&
             @split_step_execution_thread.equal?(Thread.current) &&

@@ -28,8 +28,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Add a generic strict split-step persistence contract for hosts that coordinate
   pre/post transition state without holding a transaction across provider or
   tool execution. Mutable execution state and non-expiring persistence policy
-  are pinned for the boundary. Same-transaction atomicity remains adapter- and
-  host-owned.
+  are pinned for the boundary, subclass entry points remain guarded, and a
+  proven transaction rollback can retry from the exact committed preparation.
+  Same-transaction atomicity remains adapter- and host-owned.
 
 ## [0.4.4] - 2026-07-10
 

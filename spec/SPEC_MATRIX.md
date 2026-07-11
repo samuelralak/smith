@@ -1212,6 +1212,11 @@ Documented contracts covered:
   durable verification cannot change the state consumed by the transition
 - mutable session-state readers return defensive snapshots while a split-step
   boundary is active
+- `to_state` returns a defensive snapshot while a boundary is active, and
+  caller-owned timestamp and metadata strings are detached before preparation
+- subclass serializers are wrapped in the same defensive snapshot boundary
+- post-preparation workflow class mutation is outside the supported lifecycle;
+  custom `inherited` hooks must preserve `super`
 - the in-memory marker remains armed until committed checkpoint completion, so
   pre-completion serialization fails closed
 - split-step execution rejects non-versioned adapters, adapters whose
@@ -1219,6 +1224,8 @@ Documented contracts covered:
   persistence
 - non-expiring persistence is pinned across preparation and checkpoint even if
   global persistence TTL configuration changes mid-boundary
+- subclass execution entry points cannot bypass an active boundary, and
+  subclass TTL overrides cannot defeat its pinned non-expiring policy
 - custom serializers cannot remove the strict preparation marker; Smith owns
   checkpoint marker serialization independently of custom state
 - duplicate preparation is rejected without another persistence write
@@ -1251,7 +1258,9 @@ Documented contracts covered:
 - `dup` cannot copy active split-step execution authority
 - the host checkpoints accepted state separately through `persist!` and releases
   the local boundary only after `complete_persisted_step!` verifies the commit
-- a rolled-back post-step checkpoint remains guarded and cannot be completed
+- a rolled-back post-step checkpoint remains guarded; when the exact committed
+  preparation is still durable, the same object can retry the unchanged
+  checkpoint from the proven preparation version
 - checkpoint completion is rejected while its adapter transaction remains open
 - checkpoint completion is compare-and-set and permits one completer
 - losing completion contenders cannot roll back the winner's phase

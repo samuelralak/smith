@@ -5,6 +5,10 @@ module Smith
     module SplitStepPersistence
       NO_SPLIT_TRANSITION = Object.new.freeze
 
+      def self.prepended(base)
+        base.singleton_class.prepend(Inheritance)
+      end
+
       include Boundary
       include StateSnapshot
       include PreparationClaim

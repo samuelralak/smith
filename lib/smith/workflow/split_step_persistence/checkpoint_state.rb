@@ -28,6 +28,18 @@ module Smith
           end
         end
 
+        def recover_rolled_back_split_step_checkpoint!(payload)
+          return unless persisted_split_step_payload?(payload, @split_step_preparation_payload)
+
+          preparation_version = JSON.parse(payload).fetch("persistence_version")
+          @split_step_mutex.synchronize do
+            return unless @split_step_phase == :confirming_checkpoint
+
+            @persistence_version = preparation_version
+            @split_step_phase = :checkpoint_unknown
+          end
+        end
+
         def mark_split_step_checkpoint_unknown!
           @split_step_mutex.synchronize do
             @split_step_phase = :checkpoint_unknown if @split_step_phase == :checkpointing

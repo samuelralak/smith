@@ -162,7 +162,9 @@ one execution attempt. Preparation also takes an O(S) defensive snapshot of
 mutable workflow execution state, where S is the serialized state size. This
 is the necessary ownership boundary: aliases held before preparation cannot
 change what the accepted transition later consumes, and public mutable-state
-readers return defensive snapshots while the boundary is active. The
+readers and `to_state` return defensive snapshots while the boundary is active.
+Subclass execution entry points remain guarded, and subclass TTL helpers cannot
+override the pinned boundary policy. The
 in-memory marker remains armed so any serialization
 before committed completion still fails closed. Other workflow execution and
 checkpoint APIs are rejected until the host checkpoints the accepted state
@@ -172,6 +174,12 @@ before clearing the marker and releasing the process-local boundary, and
 likewise refuses to run while the adapter reports an open transaction.
 `prepared_persisted_step?` exposes whether the one execution attempt remains
 available without revealing transition internals.
+
+Workflow classes are part of the execution contract once preparation begins.
+Hosts must not add or prepend methods to that class until the boundary is
+complete, and custom `inherited` hooks must call `super`. Ruby intentionally
+allows open-class mutation, so Smith treats post-preparation class mutation as
+an unsupported host lifecycle violation rather than attempting to sandbox it.
 
 The lifecycle row and Smith checkpoint are atomic only when the persistence
 adapter participates in the same transaction and database connection domain as
@@ -189,10 +197,11 @@ remains set. A strict restore therefore fails closed with
 `StepInProgressOnRestore`; the host must reconcile operation results or classify
 the run as uncertain rather than blindly replaying the transition. The same
 in-memory workflow object cannot retry an attempted transition. If a host
-transaction rolls back after a successful `persist!`, discard that in-memory
-workflow object and restore again because its local persistence version already
-advanced. The object remains guarded, and `complete_persisted_step!` rejects the
-rolled-back checkpoint instead of releasing it.
+transaction rolls back after a successful `persist!`,
+`complete_persisted_step!` rejects the rolled-back checkpoint. When the adapter
+still contains the exact committed preparation, Smith restores that known
+version and permits the same in-memory object to retry the unchanged checkpoint.
+Any different or missing payload remains uncertain and non-retryable.
 
 Ambiguous persistence acknowledgements also fail closed. If preparation may
 have written before raising, the object cannot execute. If a post-step
