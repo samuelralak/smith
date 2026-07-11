@@ -298,6 +298,11 @@ and external idempotency guarantees remain host-owned.
 
 ## Development
 
+Smith changes must not use brute-force graph search, validation, scheduling, or
+class-generation algorithms. Document the relevant time and space complexity,
+prefer indexed, linear, logarithmic, or otherwise bounded approaches, and treat
+an avoidable asymptotic regression as a release blocker.
+
 ```bash
 bundle install
 bundle exec rspec
