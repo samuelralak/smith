@@ -7,7 +7,7 @@ module Smith
       # doesn't require activerecord at load time. Hosts that use this
       # adapter already have activerecord in their dep tree.
       def initialize(model:, key_column: :key, payload_column: :payload, version_column: :lock_version)
-        @model_source = model
+        @model_source = model.is_a?(String) ? model.dup.freeze : model
         @key_column = key_column
         @payload_column = payload_column
         @version_column = version_column
@@ -34,6 +34,10 @@ module Smith
         Retry.with_retries(operation: :delete, transient: ActiveRecordConnectionErrors.classes) do
           model_class.where(@key_column => key).delete_all
         end
+      end
+
+      def transaction_open?
+        model_class.connection.transaction_open?
       end
 
       # Optimistic locking via Rails' built-in optimistic locking on the

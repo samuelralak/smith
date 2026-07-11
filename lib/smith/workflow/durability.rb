@@ -294,6 +294,7 @@ module Smith
         previous_version = @persistence_version || 0
         next_version = previous_version + 1
         payload = JSON.generate(to_state.merge(persistence_version: next_version))
+        payload = yield(payload, next_version) if block_given?
 
         dispatch_store!(store, resolved_key, payload, previous_version: previous_version)
 

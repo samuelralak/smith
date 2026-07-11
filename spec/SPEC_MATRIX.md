@@ -1194,6 +1194,85 @@ Notes:
 - This spec now covers state shape, Ruby-hash round-trip behavior, host-style JSON round-trip behavior, and restored budget-ledger equivalence.
 - It does not yet assert non-serialization of every possible Ruby object in nested structures.
 
+### `spec/smith/workflow/split_step_persistence_spec.rb`
+
+Purpose:
+
+- pins the generic host-transactional boundary for one strict persisted step
+
+Documented contracts covered:
+
+- preparation persists `step_in_progress` and returns the pending transition
+  without consuming it
+- execution requires a prepared strict workflow, re-verifies durable
+  preparation, and advances exactly one transition
+- prepared execution state is detached from external mutable aliases and must
+  still match the exact prepared payload before execution
+- serialized state exposed after preparation is detached, so mutating it after
+  durable verification cannot change the state consumed by the transition
+- mutable session-state readers return defensive snapshots while a split-step
+  boundary is active
+- the in-memory marker remains armed until committed checkpoint completion, so
+  pre-completion serialization fails closed
+- split-step execution rejects non-versioned adapters, adapters whose
+  `store_versioned` method cannot accept explicit `ttl:`, and expiring
+  persistence
+- non-expiring persistence is pinned across preparation and checkpoint even if
+  global persistence TTL configuration changes mid-boundary
+- custom serializers cannot remove the strict preparation marker; Smith owns
+  checkpoint marker serialization independently of custom state
+- duplicate preparation is rejected without another persistence write
+- rejected preparation revokes authorization, while ambiguously acknowledged
+  preparation remains guarded and non-executable
+- execution is bound to the exact transition object captured at preparation
+- the prepared transition contract is frozen against in-place DSL mutation
+- nested transition configuration is deeply frozen before durable preparation
+- checkpointing is bound to the original persistence key and adapter instance
+- mutable keys are copied into immutable string identities
+- equal mutable checkpoint keys resolve back to the pinned immutable identity
+- transactional preparation must be confirmed after commit and cannot execute
+  after rollback
+- a cryptographic preparation token prevents one workflow object from adopting
+  another object's otherwise identical committed payload
+- preparation confirmation is compare-and-set and permits one confirmer
+- losing preparation and confirmation contenders cannot mutate the winner's
+  phase
+- an abnormal execution cannot be replayed on the same workflow object
+- ordinary execution and checkpoint APIs cannot bypass an active boundary
+- reentrant public execution from inside the prepared transition is rejected
+- concurrent public execution while the prepared transition runs is rejected
+- ordinary execution owns the workflow against concurrent preparation
+- preparation owns the workflow before reading transition, key, or adapter
+- every active split-step phase serializes as in-progress, including preparation
+  intent before its adapter write
+- concurrent prepared execution permits exactly one claimant
+- unresolved routed transitions retain normal workflow failure handling
+- declared handled failure routes remain valid accepted checkpoints
+- `dup` cannot copy active split-step execution authority
+- the host checkpoints accepted state separately through `persist!` and releases
+  the local boundary only after `complete_persisted_step!` verifies the commit
+- a rolled-back post-step checkpoint remains guarded and cannot be completed
+- checkpoint completion is rejected while its adapter transaction remains open
+- checkpoint completion is compare-and-set and permits one completer
+- losing completion contenders cannot roll back the winner's phase
+- verification phases reject concurrent checkpoints
+- rejected persistence targets do not mutate the workflow's cached key
+- rejected duplicate preparations cannot mutate the winner's cached key
+- subclass method collisions cannot replace Smith's prepared transition
+- commit verification uses the exact payload serialized by the persistence
+  write, including workflows with stateful serializers
+- a failed post-step checkpoint remains guarded and can be retried safely
+- concurrent post-step checkpointing permits exactly one claimant
+- checkpoint writes never disarm the in-memory uncertainty marker or expose
+  completion before the adapter write returns
+- an ambiguously acknowledged checkpoint can be verified without replaying its
+  write
+- checkpoint retries retain digest witnesses for ambiguous attempted payloads
+  without retaining duplicate large payloads
+- restore between preparation and acceptance fails closed
+- lax and unprepared workflows are rejected; a fresh terminal preparation is a
+  no-op while an active terminal boundary rejects duplicate preparation
+
 ### `spec/smith/workflow/optimistic_locking_spec.rb`
 
 Purpose:
@@ -2526,7 +2605,8 @@ Covered behaviors:
 
 - warns (`persistence.capabilities`, status `:warn`) when `Smith.persistence_adapter` returns nil (no adapter configured and `test_mode` false)
 - passes when the configured adapter supports all `OPTIONAL_METHODS`
-  (`store_versioned`, `record_heartbeat`, `last_heartbeat`); `Memory` and
+  (`store_versioned`, `record_heartbeat`, `last_heartbeat`,
+  `transaction_open?`); `Memory` and
   `RedisStore` qualify
 - warns with actionable detail when the adapter is missing optional capabilities, naming the missing capabilities and explaining the fallback semantics
 
@@ -2549,7 +2629,7 @@ Covered behaviors:
 - custom adapter classes can be instantiated with keyword options
 - invalid custom adapter classes fail contract validation
 - unknown adapter symbols fail clearly
-- `Smith::PersistenceAdapters::OPTIONAL_METHODS = %i[store_versioned record_heartbeat last_heartbeat]` introspected via `supports?(adapter, capability)`
+- `Smith::PersistenceAdapters::OPTIONAL_METHODS = %i[store_versioned record_heartbeat last_heartbeat transaction_open?]` introspected via `supports?(adapter, capability)`
 - `warn_missing_versioning(adapter)` issues a one-time per-adapter-class warning when an adapter does not implement `store_versioned`; subsequent calls are no-ops within the same Smith boot (Monitor-synchronized via class-level Set)
 
 Notes:

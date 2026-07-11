@@ -26,6 +26,12 @@ ActiveRecord::Schema.define do
     t.timestamps
   end
   add_index :smith_workflow_state_records, :unique_token, unique: true
+
+  create_table :transactional_peer_records do |t|
+    t.string :workflow_key, null: false
+    t.string :event_name, null: false
+    t.timestamps
+  end
 end
 
 class ClaimableRecord < ActiveRecord::Base
@@ -40,9 +46,18 @@ end
 
 RSpec.configure do |config|
   config.around(:each, :ar) do |example|
-    ActiveRecord::Base.transaction do
-      example.run
-      raise ActiveRecord::Rollback
+    if example.metadata[:commit]
+      begin
+        example.run
+      ensure
+        SmithWorkflowStateRecord.delete_all
+        TransactionalPeerRecord.delete_all
+      end
+    else
+      ActiveRecord::Base.transaction do
+        example.run
+        raise ActiveRecord::Rollback
+      end
     end
   end
 end

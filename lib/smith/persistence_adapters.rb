@@ -26,7 +26,7 @@ module Smith
     # check support via `supports?(adapter, capability)` and fall back
     # gracefully (e.g., Workflow#persist! warns once and uses plain
     # `store` when `store_versioned` is missing).
-    OPTIONAL_METHODS = %i[store_versioned record_heartbeat last_heartbeat].freeze
+    OPTIONAL_METHODS = %i[store_versioned record_heartbeat last_heartbeat transaction_open?].freeze
 
     def self.resolve(adapter, **options)
       return nil if adapter.nil?

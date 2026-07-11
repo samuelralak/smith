@@ -17,7 +17,7 @@ module Smith
 
       def initialize(store:, namespace: "smith")
         @store_source = store
-        @namespace = namespace
+        @namespace = namespace.nil? ? nil : namespace.to_s.dup.freeze
       end
 
       def store(key, payload, ttl: Smith.config.persistence_ttl)
@@ -41,6 +41,8 @@ module Smith
           backend.delete(namespaced(key))
         end
       end
+
+      def transaction_open? = false
 
       def backend_name
         backend.class.name || backend.class.to_s

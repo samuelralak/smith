@@ -48,7 +48,7 @@ module Smith
           # workflow class opts into idempotency_mode :strict. Restore
           # raises Smith::StepInProgressOnRestore if true under strict
           # mode. Lax mode leaves this false and never raises.
-          step_in_progress: @step_in_progress || false,
+          step_in_progress: @step_in_progress || !@split_step_phase.nil?,
           # Keys recorded via DeterministicStep#write_context. Used by
           # persist :auto Context mode to scope the persisted context
           # slice. Always emitted (sorted for stable diffing) so
@@ -99,6 +99,7 @@ module Smith
         # round-trips it. validate_step_in_progress! enforces strict
         # mode by raising if the marker is set on restore.
         @step_in_progress = normalized[:step_in_progress] || false
+        @split_step_mutex = Mutex.new
         validate_step_in_progress!(normalized) if self.class.idempotency_mode == :strict
       end
 

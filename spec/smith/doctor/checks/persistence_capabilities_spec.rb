@@ -69,6 +69,7 @@ RSpec.describe Smith::Doctor::Checks::PersistenceCapabilities do
     expect(check.status).to eq(:warn)
     expect(check.message).to match(/missing optional capabilities: store_versioned, record_heartbeat, last_heartbeat/)
     expect(check.detail).to include("payload updated_at parsing")
+    expect(check.detail).to include("commit-aware split-step confirmation is unavailable")
   end
 
   it "warns when the adapter supports optimistic locking but not heartbeat probes" do

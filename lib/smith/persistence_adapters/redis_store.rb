@@ -26,7 +26,7 @@ module Smith
 
       def initialize(redis:, namespace: "smith")
         @redis_source = redis
-        @namespace = namespace
+        @namespace = namespace.nil? ? nil : namespace.to_s.dup.freeze
       end
 
       def store(key, payload, ttl: Smith.config.persistence_ttl)
@@ -50,6 +50,8 @@ module Smith
           client.del(namespaced(key), namespaced_heartbeat(key))
         end
       end
+
+      def transaction_open? = false
 
       def record_heartbeat(key, ttl: Smith.config.persistence_ttl)
         Retry.with_retries(operation: :record_heartbeat, transient: self.class.transient_errors) do

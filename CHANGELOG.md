@@ -25,6 +25,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   transaction boundary.
 - Resolve string-backed Active Record models on each operation so host framework
   reloads cannot leave the adapter holding a stale class object.
+- Add a generic strict split-step persistence contract for hosts that coordinate
+  pre/post transition state without holding a transaction across provider or
+  tool execution. Mutable execution state and non-expiring persistence policy
+  are pinned for the boundary. Same-transaction atomicity remains adapter- and
+  host-owned.
 
 ## [0.4.4] - 2026-07-10
 

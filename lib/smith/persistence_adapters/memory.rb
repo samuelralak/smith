@@ -48,6 +48,8 @@ module Smith
         end
       end
 
+      def transaction_open? = false
+
       def record_heartbeat(key, ttl: Smith.config.persistence_ttl)
         @monitor.synchronize do
           @heartbeats[key] = { at: Time.now.utc, expires_at: ttl ? Time.now.utc + ttl : nil }

@@ -16,6 +16,7 @@ module Smith
     include DSL
     include Persistence
     include Durability
+    prepend SplitStepPersistence
     include GuardrailIntegration
     include BudgetIntegration
     include EventIntegration
@@ -104,6 +105,12 @@ module Smith
       # workflows with the marker set raise
       # Smith::StepInProgressOnRestore. Lax mode leaves it false.
       @step_in_progress = false
+      # Process-local phase for the split-step persistence API. This is not
+      # serialized: strict restore rejects the durable step_in_progress marker
+      # before an uncertain step can be resumed.
+      @split_step_phase = nil
+      @split_step_transition_name = nil
+      @split_step_mutex = Mutex.new
       # Set of context keys recorded via deterministic step write_context
       # writes. Used by persist :auto Context mode to compute the
       # persisted-context slice. Seeded from the Context class's
@@ -119,10 +126,12 @@ module Smith
     end
 
     def advance!
+      advance_claim = SplitStepPersistence.instance_method(:claim_split_step_advance!).bind_call(self)
       ensure_transition_budget!
       @step_work_started = false
 
-      transition = resolve_transition
+      transition = SplitStepPersistence.instance_method(:resolve_split_step_advance_transition).bind_call(self)
+      transition = resolve_transition if transition.equal?(SplitStepPersistence::NO_SPLIT_TRANSITION)
       return if transition.nil?
 
       @step_work_started = true
@@ -139,9 +148,12 @@ module Smith
       step_result = { transition: e.requested_name, from: origin_state, to: @state, error: e }
       record_step_snapshot(step_result)
       step_result
+    ensure
+      SplitStepPersistence.instance_method(:release_split_step_advance!).bind_call(self, advance_claim) if advance_claim
     end
 
     def run!
+      SplitStepPersistence.instance_method(:ensure_split_step_execution_allowed!).bind_call(self)
       steps = []
       until terminal?
         step = advance!

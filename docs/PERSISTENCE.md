@@ -120,6 +120,86 @@ workflow.clear_persisted!("ticket:T-1042")
 
 These helpers do not make Smith a job system or durable runtime. They only remove repetitive restore/checkpoint boilerplate around the configured persistence adapter while leaving queueing, projection, and recovery policy with the host app.
 
+### Host-Coordinated Step Boundaries
+
+Hosts can split one strict transition into explicit prepare, execute, and
+checkpoint phases:
+
+```ruby
+transition_name = nil
+
+ApplicationRecord.transaction do
+  transition_name = workflow.prepare_persisted_step!(key, adapter: adapter)
+  HostEvent.create!(name: "step.started", transition: transition_name)
+end
+
+workflow.confirm_prepared_step!
+step = workflow.execute_prepared_step! # provider/tool work; no host transaction
+
+ApplicationRecord.transaction do
+  workflow.persist!(key, adapter: adapter)
+  HostEvent.create!(name: "step.completed", transition: step.fetch(:transition))
+end
+
+workflow.complete_persisted_step!
+```
+
+This contract is available only to workflows using `idempotency_mode :strict`,
+a versioned persistence adapter whose `store_versioned` method accepts `ttl:`,
+and non-expiring workflow persistence. Smith explicitly pins `ttl: nil` for
+every boundary write, so a later global configuration change cannot turn an
+accepted checkpoint into expiring state.
+`prepare_persisted_step!` writes the normal `step_in_progress` marker and returns
+the pending transition name without consuming it. Duplicate preparation on the
+same workflow object is rejected. The boundary is pinned to the exact
+transition object, persistence key, and adapter instance selected during
+preparation. The key is copied into an immutable string and the transition
+contract is frozen. When an adapter can report an open transaction,
+`confirm_prepared_step!` must verify the committed preparation before execution;
+it refuses confirmation while that transaction is still open.
+`execute_prepared_step!` re-verifies the exact durable preparation and permits
+one execution attempt. Preparation also takes an O(S) defensive snapshot of
+mutable workflow execution state, where S is the serialized state size. This
+is the necessary ownership boundary: aliases held before preparation cannot
+change what the accepted transition later consumes, and public mutable-state
+readers return defensive snapshots while the boundary is active. The
+in-memory marker remains armed so any serialization
+before committed completion still fails closed. Other workflow execution and
+checkpoint APIs are rejected until the host checkpoints the accepted state
+through `persist!`. After that transaction commits,
+`complete_persisted_step!` verifies the exact checkpoint through the adapter
+before clearing the marker and releasing the process-local boundary, and
+likewise refuses to run while the adapter reports an open transaction.
+`prepared_persisted_step?` exposes whether the one execution attempt remains
+available without revealing transition internals.
+
+The lifecycle row and Smith checkpoint are atomic only when the persistence
+adapter participates in the same transaction and database connection domain as
+the host record. `ActiveRecordStore` can provide that property when its model
+uses the same database connection; it also reports transaction state so Smith
+cannot confirm an uncommitted boundary. Memory, Redis, cache-backed,
+cross-database, and external adapters do not participate in
+`ApplicationRecord.transaction`; hosts using them must supply their own
+coordination protocol and must not claim the two writes are atomic.
+Custom transactional adapters should implement `transaction_open?` so Smith can
+enforce the same commit-aware confirmation rule.
+
+If execution raises or the process dies after external work, the durable marker
+remains set. A strict restore therefore fails closed with
+`StepInProgressOnRestore`; the host must reconcile operation results or classify
+the run as uncertain rather than blindly replaying the transition. The same
+in-memory workflow object cannot retry an attempted transition. If a host
+transaction rolls back after a successful `persist!`, discard that in-memory
+workflow object and restore again because its local persistence version already
+advanced. The object remains guarded, and `complete_persisted_step!` rejects the
+rolled-back checkpoint instead of releasing it.
+
+Ambiguous persistence acknowledgements also fail closed. If preparation may
+have written before raising, the object cannot execute. If a post-step
+checkpoint may have written before raising, `complete_persisted_step!` can
+verify the exact attempted payload without replaying the write. Otherwise the
+host may retry the unchanged checkpoint against the same key and adapter.
+
 ## Active Record Optimistic Locking
 
 `ActiveRecordStore` keeps two version domains deliberately separate:
