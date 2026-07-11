@@ -126,22 +126,34 @@ Hosts can split one strict transition into explicit prepare, execute, and
 checkpoint phases:
 
 ```ruby
-transition_name = nil
+def execute_one_step(workflow, key, adapter)
+  transition_name = nil
 
-ApplicationRecord.transaction do
-  transition_name = workflow.prepare_persisted_step!(key, adapter: adapter)
-  HostEvent.create!(name: "step.started", transition: transition_name)
+  ApplicationRecord.transaction do
+    transition_name = workflow.prepare_persisted_step!(key, adapter: adapter)
+    next unless transition_name
+
+    prepared = workflow.prepared_persisted_step
+    HostEvent.create!(
+      name: "step.started",
+      transition: transition_name,
+      operation_token: prepared.token,
+      preparation_digest: prepared.preparation_digest
+    )
+  end
+
+  return unless transition_name
+
+  workflow.confirm_prepared_step!
+  step = workflow.execute_prepared_step! # provider/tool work; no host transaction
+
+  ApplicationRecord.transaction do
+    workflow.persist!(key, adapter: adapter)
+    HostEvent.create!(name: "step.completed", transition: step.fetch(:transition))
+  end
+
+  workflow.complete_persisted_step!
 end
-
-workflow.confirm_prepared_step!
-step = workflow.execute_prepared_step! # provider/tool work; no host transaction
-
-ApplicationRecord.transaction do
-  workflow.persist!(key, adapter: adapter)
-  HostEvent.create!(name: "step.completed", transition: step.fetch(:transition))
-end
-
-workflow.complete_persisted_step!
 ```
 
 This contract is available only to workflows using `idempotency_mode :strict`,
@@ -157,12 +169,34 @@ preparation. The key is copied into an immutable string and the transition
 contract is frozen. When an adapter can report an open transaction,
 `confirm_prepared_step!` must verify the committed preparation before execution;
 it refuses confirmation while that transaction is still open.
+After preparation, `prepared_persisted_step` returns an immutable
+`Smith::Workflow::PreparedStep` descriptor containing the opaque preparation
+token, transition and origin names, pinned persistence key and logical version,
+next step number, and canonical preparation-payload digest. It exposes no
+workflow context, messages, tool results, prompts, or provider output. The
+descriptor is a host correlation witness for
+the active process-local boundary, not a replacement checkpoint or authority to
+reconstruct and execute a workflow. Its scalar identity remains stable through
+execution and checkpointing. Use `prepared_persisted_step.to_h` when serializing
+the descriptor itself. It returns `nil` before persistence
+acknowledges preparation, after an ambiguous preparation outcome, when
+preparation begins on an already-terminal workflow, and after committed
+completion. With a transactional adapter, the
+descriptor is available inside the still-open transaction so the host can write
+its own correlated record atomically. The adapter's exact transaction identity
+is authoritative even when a host propagates that transaction context across
+fibers or executors. The descriptor is a correlation witness, not proof that the
+transaction subsequently committed.
 `execute_prepared_step!` re-verifies the exact durable preparation and permits
 one execution attempt. Preparation also takes an O(S) defensive snapshot of
 mutable workflow execution state, where S is the serialized state size. This
 is the necessary ownership boundary: aliases held before preparation cannot
 change what the accepted transition later consumes, and public mutable-state
 readers and `to_state` return defensive snapshots while the boundary is active.
+The canonical correlation digest is computed before dispatch in O(S log K)
+time, where K is the largest object-key count, and is bounded to 4 MiB and
+100,000 JSON nodes. Larger state must use Smith artifact references instead of
+an inline split-step payload.
 Subclass execution entry points remain guarded, and subclass TTL helpers cannot
 override the pinned boundary policy. The
 in-memory marker remains armed so any serialization
@@ -189,8 +223,11 @@ cannot confirm an uncommitted boundary. Memory, Redis, cache-backed,
 cross-database, and external adapters do not participate in
 `ApplicationRecord.transaction`; hosts using them must supply their own
 coordination protocol and must not claim the two writes are atomic.
-Custom transactional adapters should implement `transaction_open?` so Smith can
-enforce the same commit-aware confirmation rule.
+Custom transactional adapters should implement both `transaction_open?` and
+`transaction_identity`. The identity must be stable for one open transaction or
+savepoint and change for every later transaction. Smith's `ActiveRecordStore`
+uses the public `current_transaction.uuid` API for this exact fence. Smith fails
+before writing when an open transaction has no exact identity capability.
 
 If execution raises or the process dies after external work, the durable marker
 remains set. A strict restore therefore fails closed with

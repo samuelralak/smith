@@ -41,6 +41,79 @@ RSpec.describe "Smith::Workflow split-step persistence" do
     expect(checkpoint.fetch("state")).to eq("done")
   end
 
+  it "exposes an immutable opaque descriptor for the active preparation" do
+    workflow = workflow_class.new
+
+    expect(workflow.prepared_persisted_step).to be_nil
+    workflow.prepare_persisted_step!(key, adapter: adapter)
+    descriptor = workflow.prepared_persisted_step
+
+    expect(descriptor).to be_a(Smith::Workflow::PreparedStep)
+    expect(descriptor).to have_attributes(
+      transition: "finish",
+      from: "idle",
+      persistence_key: key,
+      persistence_version: 1,
+      step_number: 1
+    )
+    expect(descriptor.token).to match(Smith::Workflow::PreparedStep::UUID_PATTERN)
+    expect(descriptor.preparation_digest).to match(Smith::Workflow::PreparedStep::DIGEST_PATTERN)
+    expect(descriptor.to_h.values).to all(be_frozen)
+    expect(descriptor.attributes).to be_frozen
+    expect(workflow.prepared_persisted_step).to equal(descriptor)
+
+    workflow.execute_prepared_step!
+    expect(workflow.prepared_persisted_step).to equal(descriptor)
+    expect(workflow.prepared_persisted_step).to have_attributes(persistence_version: 1, step_number: 1)
+    workflow.persist!(key, adapter: adapter)
+    expect(workflow.prepared_persisted_step).to equal(descriptor)
+    expect(workflow.prepared_persisted_step).to have_attributes(persistence_version: 1, step_number: 1)
+    workflow.complete_persisted_step!
+
+    expect(workflow.prepared_persisted_step).to be_nil
+  end
+
+  it "owns and freezes its descriptor attributes without freezing caller values" do
+    token = SecureRandom.uuid
+    transition = +"finish"
+    descriptor = Smith::Workflow::PreparedStep.new(
+      token: token,
+      transition: transition,
+      from: "idle",
+      persistence_key: key,
+      persistence_version: 1,
+      step_number: 1,
+      preparation_digest: "a" * 64
+    )
+
+    expect(token).not_to be_frozen
+    expect(transition).not_to be_frozen
+    expect { descriptor.attributes[:transition] = "changed" }.to raise_error(FrozenError)
+    expect(descriptor.transition).to eq("finish")
+    expect(JSON.parse(JSON.generate(descriptor.to_h))).to include("transition" => "finish")
+  end
+
+  it "does not dispatch descriptor construction through workflow subclasses" do
+    subclass = Class.new(workflow_class) do
+      private
+
+      def build_split_step_prepared_descriptor(_unexpected_argument) = nil
+    end
+    workflow = subclass.new
+
+    workflow.prepare_persisted_step!(key, adapter: adapter)
+
+    expect(workflow.prepared_persisted_step).to be_a(Smith::Workflow::PreparedStep)
+  end
+
+  it "digests semantically identical preparation JSON identically" do
+    digest = Smith::Workflow::SplitStepPersistence::CanonicalPayloadDigest
+    first = digest.call('{"b":[{"z":1,"a":2}],"a":true,"zero":0}')
+    second = digest.call("{\n  \"zero\": -0.0, \"a\": true, \"b\": [{\"a\": 2.0, \"z\": 1.0}]\n}")
+
+    expect(first).to eq(second)
+  end
+
   it "fails closed when a host restores between preparation and acceptance" do
     workflow_class.new.prepare_persisted_step!(key, adapter: adapter)
 
@@ -255,7 +328,7 @@ RSpec.describe "Smith::Workflow split-step persistence" do
       workflow.prepare_persisted_step!(key, adapter: adapter)
     end.to raise_error(Smith::WorkflowError, /invalid step_in_progress marker/)
     expect(adapter.fetch(key)).to be_nil
-    expect { workflow.advance! }.to raise_error(Smith::WorkflowError, /split-step/)
+    expect(workflow.advance!).to include(transition: :finish, to: :done)
   end
 
   it "owns checkpoint marker serialization independently of custom state" do
@@ -502,6 +575,7 @@ RSpec.describe "Smith::Workflow split-step persistence" do
     entered = Queue.new
     release = Queue.new
     allow(adapter).to receive(:transaction_open?).and_return(true, false)
+    allow(adapter).to receive(:transaction_identity).and_return("transaction-1")
     workflow = workflow_class.new
     workflow.prepare_persisted_step!(key, adapter: adapter)
     allow(adapter).to receive(:fetch).and_wrap_original do |original, *args|
@@ -515,6 +589,7 @@ RSpec.describe "Smith::Workflow split-step persistence" do
     loser.report_on_exception = false
 
     expect { loser.value }.to raise_error(Smith::WorkflowError, /no uncommitted.*awaiting confirmation/)
+    expect(workflow.prepared_persisted_step).to be_nil
     expect do
       workflow.persist!(key, adapter: adapter)
     end.to raise_error(Smith::WorkflowError, /cannot be checkpointed/)
@@ -533,6 +608,7 @@ RSpec.describe "Smith::Workflow split-step persistence" do
     expect do
       workflow.prepare_persisted_step!(key, adapter: adapter)
     end.to raise_error(Smith::PersistenceVersionConflict)
+    expect(workflow.prepared_persisted_step).to be_nil
     expect(workflow).not_to be_prepared_persisted_step
     expect(workflow.to_state.fetch(:step_in_progress)).to be(false)
     expect do
@@ -550,11 +626,101 @@ RSpec.describe "Smith::Workflow split-step persistence" do
     expect do
       workflow.prepare_persisted_step!(key, adapter: adapter)
     end.to raise_error(IOError, "acknowledgement lost")
+    expect(workflow.prepared_persisted_step).to be_nil
     expect(JSON.parse(adapter.fetch(key)).fetch("step_in_progress")).to be(true)
     expect { workflow.advance! }.to raise_error(Smith::WorkflowError, /split-step/)
     expect do
       workflow.execute_prepared_step!
     end.to raise_error(Smith::WorkflowError, /no persisted step is prepared/)
+  end
+
+  it "fails before persistence when transaction-state classification fails" do
+    workflow = workflow_class.new
+    allow(adapter).to receive(:transaction_open?).and_raise(IOError, "transaction state unavailable")
+
+    expect do
+      workflow.prepare_persisted_step!(key, adapter: adapter)
+    end.to raise_error(IOError, "transaction state unavailable")
+    expect(workflow.prepared_persisted_step).to be_nil
+    expect(adapter.fetch(key)).to be_nil
+    expect(workflow.advance!).to include(transition: :finish, to: :done)
+  end
+
+  it "requires an exact identity from transactional adapters" do
+    workflow = workflow_class.new
+    allow(adapter).to receive(:transaction_open?).and_return(true)
+    allow(adapter).to receive(:respond_to?).and_wrap_original do |original, method_name, *arguments|
+      method_name == :transaction_identity ? false : original.call(method_name, *arguments)
+    end
+
+    expect do
+      workflow.prepare_persisted_step!(key, adapter: adapter)
+    end.to raise_error(Smith::WorkflowError, /requires transaction_identity/)
+    expect(adapter.fetch(key)).to be_nil
+  end
+
+  it "uses the exact transaction identity as descriptor authority" do
+    transaction_open = true
+    transaction_identity = "transaction-1"
+    workflow = workflow_class.new
+    allow(adapter).to receive(:transaction_open?) { transaction_open }
+    allow(adapter).to receive(:transaction_identity) { transaction_identity.to_sym }
+
+    workflow.prepare_persisted_step!(key, adapter: adapter)
+
+    expect(workflow.prepared_persisted_step).to be_a(Smith::Workflow::PreparedStep)
+    expect(Thread.new { workflow.prepared_persisted_step }.value).to be_a(Smith::Workflow::PreparedStep)
+
+    transaction_open = false
+    expect(workflow.prepared_persisted_step).to be_nil
+    transaction_open = true
+    transaction_identity = "transaction-2"
+    expect(workflow.prepared_persisted_step).to be_nil
+    transaction_open = false
+    workflow.confirm_prepared_step!
+    expect(workflow.prepared_persisted_step).to be_a(Smith::Workflow::PreparedStep)
+  end
+
+  it "validates the descriptor before dispatching the preparation write" do
+    blank_transition_class = Class.new(Smith::Workflow) do
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+      transition :"", from: :idle, to: :done
+    end
+    workflow = blank_transition_class.new
+
+    expect do
+      workflow.prepare_persisted_step!(key, adapter: adapter)
+    end.to raise_error(Dry::Struct::Error)
+    expect(adapter.fetch(key)).to be_nil
+    expect(workflow.prepared_persisted_step).to be_nil
+  end
+
+  it "bounds canonical preparation payload work before dispatch" do
+    oversized = "x" * Smith::Workflow::SplitStepPersistence::CanonicalPayloadDigest::MAX_BYTES
+    workflow = workflow_class.new(context: { oversized: oversized })
+
+    expect do
+      workflow.prepare_persisted_step!(key, adapter: adapter)
+    end.to raise_error(Smith::WorkflowError, /preparation payload exceeds maximum bytes/)
+    expect(adapter.fetch(key)).to be_nil
+    expect(workflow.prepared_persisted_step).to be_nil
+    expect(workflow.advance!).to include(transition: :finish, to: :done)
+  end
+
+  it "resets an unwritten preparation when serialization fails before dispatch" do
+    serialization_class = Class.new(workflow_class) do
+      def to_state = raise(IOError, "serialization unavailable")
+    end
+    workflow = serialization_class.new
+
+    expect do
+      workflow.prepare_persisted_step!(key, adapter: adapter)
+    end.to raise_error(IOError, "serialization unavailable")
+    expect(adapter.fetch(key)).to be_nil
+    expect(workflow.prepared_persisted_step).to be_nil
+    expect(workflow.advance!).to include(transition: :finish, to: :done)
   end
 
   it "fails closed when an acknowledged preparation is reported as a version conflict" do
@@ -567,6 +733,7 @@ RSpec.describe "Smith::Workflow split-step persistence" do
     expect do
       workflow.prepare_persisted_step!(key, adapter: adapter)
     end.to raise_error(Smith::PersistenceVersionConflict)
+    expect(workflow.prepared_persisted_step).to be_nil
     expect(JSON.parse(adapter.fetch(key)).fetch("step_in_progress")).to be(true)
     expect { workflow.advance! }.to raise_error(Smith::WorkflowError, /split-step/)
   end
@@ -850,6 +1017,22 @@ RSpec.describe "Smith::Workflow split-step persistence" do
     expect(subclass.new.run!).to be_done
   end
 
+  it "keeps preparation dispatch ahead of subclass private-method collisions" do
+    hijacked = false
+    subclass = Class.new(workflow_class) do
+      define_method(:dispatch_store!) do |*|
+        hijacked = true
+        raise "dispatch hijacked"
+      end
+      private :dispatch_store!
+    end
+    workflow = subclass.new
+
+    expect(workflow.prepare_persisted_step!(key, adapter: adapter)).to eq(:finish)
+    expect(hijacked).to be(false)
+    expect(adapter.fetch(key)).not_to be_nil
+  end
+
   it "rejects execution and checkpoint bypasses while a step is prepared" do
     workflow = workflow_class.new
     workflow.prepare_persisted_step!(key, adapter: adapter)
@@ -981,12 +1164,17 @@ RSpec.describe "Smith::Workflow split-step persistence" do
 
     ActiveRecord::Base.transaction(requires_new: true) do
       rolled_back.prepare_persisted_step!(rolled_back_key, adapter: active_record_adapter)
+      expect(rolled_back.prepared_persisted_step).to be_a(Smith::Workflow::PreparedStep)
       TransactionalPeerRecord.create!(workflow_key: rolled_back_key, event_name: "step.started")
       raise ActiveRecord::Rollback
     end
 
     expect(SmithWorkflowStateRecord).not_to exist(key: rolled_back_key)
     expect(TransactionalPeerRecord).not_to exist(workflow_key: rolled_back_key)
+    expect(rolled_back.prepared_persisted_step).to be_nil
+    ActiveRecord::Base.transaction(requires_new: true) do
+      expect(rolled_back.prepared_persisted_step).to be_nil
+    end
     expect do
       rolled_back.confirm_prepared_step!
     end.to raise_error(Smith::WorkflowError, /not committed/)
@@ -998,13 +1186,16 @@ RSpec.describe "Smith::Workflow split-step persistence" do
     committed = workflow_class.new
     ActiveRecord::Base.transaction(requires_new: true) do
       committed.prepare_persisted_step!(committed_key, adapter: active_record_adapter)
+      expect(committed.prepared_persisted_step).to be_a(Smith::Workflow::PreparedStep)
       TransactionalPeerRecord.create!(workflow_key: committed_key, event_name: "step.started")
     end
+    expect(committed.prepared_persisted_step).to be_nil
     committed.confirm_prepared_step!
 
     expect(SmithWorkflowStateRecord).to exist(key: committed_key)
     expect(TransactionalPeerRecord).to exist(workflow_key: committed_key)
     expect(committed).to be_prepared_persisted_step
+    expect(committed.prepared_persisted_step).to be_a(Smith::Workflow::PreparedStep)
   end
 
   it "cannot confirm another workflow object's identical preparation", :ar, :commit do

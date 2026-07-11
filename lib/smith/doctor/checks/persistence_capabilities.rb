@@ -58,9 +58,12 @@ module Smith
             message: "#{adapter.class.name} missing optional capabilities: #{missing.join(", ")}",
             detail: "Smith will fall back where possible: non-versioned writes when store_versioned " \
                     "is missing, and payload updated_at parsing when heartbeat methods are missing. " \
-                    "Without transaction_open?, commit-aware split-step confirmation is unavailable. " \
+                    "Without transaction_open? and transaction_identity, exact commit-aware " \
+                    "split-step confirmation is unavailable. " \
+                    "If transaction_open? returns true, transaction_identity is required and " \
+                    "split-step preparation fails before writing when it is missing. " \
                     "Use RedisStore or Memory for full versioning and heartbeat coverage; " \
-                    "ActiveRecordStore currently covers optimistic locking when lock_version is present."
+                    "ActiveRecordStore covers optimistic locking and exact transaction identity."
           )
         end
       end

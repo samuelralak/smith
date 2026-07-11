@@ -6,6 +6,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+### Added
+
+- Expose an immutable `Smith::Workflow::PreparedStep` descriptor for an active
+  strict split-step boundary. Hosts can persist opaque token, transition,
+  persistence-version, step-number, and preparation-digest identity without
+  reaching into workflow internals or copying Smith state.
+  `prepare_persisted_step!` retains its existing transition-name return value.
+- Compute descriptor identity before persistence dispatch with bounded,
+  canonical JSON hashing, preventing post-write validation failures and
+  unbounded preparation work.
+- Fence transactional split-step descriptors to an adapter-provided exact
+  transaction identity. `ActiveRecordStore` uses Rails' public
+  `current_transaction.uuid`; custom transactional adapters fail before writing
+  unless they expose an equivalent identity.
+
+### Changed
+
+- Custom adapters that report an open transaction now require
+  `transaction_identity` for strict split-step preparation. This intentionally
+  tightens the 0.4.5 boolean transaction contract so later unrelated
+  transactions cannot re-authorize a rolled-back descriptor.
+
 ## [0.4.5] - 2026-07-11
 
 Patch release for generic host-coordinated workflow step boundaries and

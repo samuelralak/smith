@@ -46,6 +46,10 @@ module Smith
 
           { ttl: ttl }
         end
+
+        def dispatch_store!(...)
+          DispatchBoundary.instance_method(:dispatch_store!).bind_call(self, ...)
+        end
       end
     end
   end

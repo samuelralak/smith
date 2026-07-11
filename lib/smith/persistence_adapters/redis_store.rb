@@ -52,6 +52,7 @@ module Smith
       end
 
       def transaction_open? = false
+      def transaction_identity = nil
 
       def record_heartbeat(key, ttl: Smith.config.persistence_ttl)
         Retry.with_retries(operation: :record_heartbeat, transient: self.class.transient_errors) do

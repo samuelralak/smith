@@ -28,7 +28,9 @@ module Smith
     # check support via `supports?(adapter, capability)` and fall back
     # gracefully (e.g., Workflow#persist! warns once and uses plain
     # `store` when `store_versioned` is missing).
-    OPTIONAL_METHODS = %i[store_versioned record_heartbeat last_heartbeat transaction_open?].freeze
+    OPTIONAL_METHODS = %i[
+      store_versioned record_heartbeat last_heartbeat transaction_open? transaction_identity
+    ].freeze
 
     def self.resolve(adapter, **options)
       return nil if adapter.nil?
@@ -39,22 +41,7 @@ module Smith
         return validate!(instance)
       end
 
-      built_in = case adapter.to_sym
-                 when :cache_store
-                   CacheStore.new(**options)
-                 when :rails_cache, :solid_cache
-                   RailsCache.new(**options)
-                 when :redis
-                   RedisStore.new(**options)
-                 when :active_record
-                   ActiveRecordStore.new(**options)
-                 when :memory
-                   Memory.new
-                 else
-                   raise ArgumentError, "Unknown persistence adapter #{adapter.inspect}"
-                 end
-
-      validate!(built_in)
+      validate!(build(adapter, options))
     end
 
     def self.adapter_like?(adapter)
@@ -65,8 +52,20 @@ module Smith
       return adapter if adapter_like?(adapter)
 
       missing = REQUIRED_METHODS.reject { |method_name| adapter.respond_to?(method_name) }
-      raise ArgumentError, "Persistence adapter must implement #{missing.join(', ')}"
+      raise ArgumentError, "Persistence adapter must implement #{missing.join(", ")}"
     end
+
+    def self.build(adapter, options)
+      case adapter.to_sym
+      when :cache_store then CacheStore.new(**options)
+      when :rails_cache, :solid_cache then RailsCache.new(**options)
+      when :redis then RedisStore.new(**options)
+      when :active_record then ActiveRecordStore.new(**options)
+      when :memory then Memory.new
+      else raise ArgumentError, "Unknown persistence adapter #{adapter.inspect}"
+      end
+    end
+    private_class_method :build
 
     # Capability introspection used by Workflow#persist! to decide
     # whether the adapter supports optimistic locking via store_versioned.

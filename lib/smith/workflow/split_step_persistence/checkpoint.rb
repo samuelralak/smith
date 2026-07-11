@@ -91,11 +91,9 @@ module Smith
         end
 
         def capture_split_step_payload!(payload, next_version, checkpoint_claimed:)
-          validate_split_step_marker!(payload, expected: true) if @split_step_phase == :preparing || checkpoint_claimed
-          if @split_step_phase == :preparing
-            payload = split_step_preparation_payload(payload)
-            @split_step_preparation_payload = payload
-          end
+          return capture_split_step_preparation_payload!(payload, next_version) if @split_step_phase == :preparing
+
+          validate_split_step_marker!(payload, expected: true) if checkpoint_claimed
           return payload unless checkpoint_claimed
 
           checkpoint_payload = split_step_checkpoint_payload(payload)

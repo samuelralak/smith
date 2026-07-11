@@ -34,6 +34,7 @@ RSpec.describe "Smith::Workflow contract" do
     expect(workflow).to respond_to(:prepare_persisted_step!)
     expect(workflow).to respond_to(:confirm_prepared_step!)
     expect(workflow).to respond_to(:execute_prepared_step!)
+    expect(workflow).to respond_to(:prepared_persisted_step)
     expect(workflow).to respond_to(:prepared_persisted_step?)
     expect(workflow).to respond_to(:complete_persisted_step!)
     expect(workflow).to respond_to(:persist!)

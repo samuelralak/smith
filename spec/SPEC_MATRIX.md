@@ -2625,7 +2625,7 @@ Covered behaviors:
 - warns (`persistence.capabilities`, status `:warn`) when `Smith.persistence_adapter` returns nil (no adapter configured and `test_mode` false)
 - passes when the configured adapter supports all `OPTIONAL_METHODS`
   (`store_versioned`, `record_heartbeat`, `last_heartbeat`,
-  `transaction_open?`); `Memory` and
+  `transaction_open?`, `transaction_identity`); `Memory` and
   `RedisStore` qualify
 - warns with actionable detail when the adapter is missing optional capabilities, naming the missing capabilities and explaining the fallback semantics
 
@@ -2648,7 +2648,9 @@ Covered behaviors:
 - custom adapter classes can be instantiated with keyword options
 - invalid custom adapter classes fail contract validation
 - unknown adapter symbols fail clearly
-- `Smith::PersistenceAdapters::OPTIONAL_METHODS = %i[store_versioned record_heartbeat last_heartbeat transaction_open?]` introspected via `supports?(adapter, capability)`
+- `Smith::PersistenceAdapters::OPTIONAL_METHODS` includes `store_versioned`,
+  heartbeat methods, `transaction_open?`, and `transaction_identity`, all
+  introspected via `supports?(adapter, capability)`
 - `warn_missing_versioning(adapter)` issues a one-time per-adapter-class warning when an adapter does not implement `store_versioned`; subsequent calls are no-ops within the same Smith boot (Monitor-synchronized via class-level Set)
 
 Notes:

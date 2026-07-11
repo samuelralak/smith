@@ -43,6 +43,7 @@ module Smith
       end
 
       def transaction_open? = false
+      def transaction_identity = nil
 
       def backend_name
         backend.class.name || backend.class.to_s

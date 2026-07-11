@@ -4,6 +4,12 @@ module Smith
   class Workflow
     module SplitStepPersistence
       module Preparation
+        DESCRIPTOR_PHASES = %i[
+          prepared_uncommitted prepared verifying_execution executing executed attempted
+          checkpointing checkpoint_retryable checkpoint_unknown checkpointed confirming_checkpoint
+        ].freeze
+        private_constant :DESCRIPTOR_PHASES
+
         def prepare_persisted_step!(key = nil, adapter: Smith.persistence_adapter)
           ensure_strict_split_step_persistence!
           intent_claimed = claim_split_step_preparation_intent!
@@ -27,11 +33,30 @@ module Smith
           raise WorkflowError, "the persisted split-step preparation is not committed" unless
             persisted_split_step_payload?(payload, @split_step_preparation_payload)
 
-          @split_step_mutex.synchronize { @split_step_phase = :prepared }
+          @split_step_mutex.synchronize do
+            @split_step_phase = :prepared
+            @split_step_transaction_thread = nil
+            @split_step_transaction_identity = nil
+          end
           confirmed = true
           self
         ensure
           restore_unconfirmed_preparation! if confirmation_claimed && !confirmed
+        end
+
+        def prepared_persisted_step
+          phase, descriptor, adapter, transaction_identity = @split_step_mutex.synchronize do
+            [
+              @split_step_phase,
+              @split_step_prepared_descriptor,
+              @split_step_adapter,
+              @split_step_transaction_identity
+            ]
+          end
+          return unless DESCRIPTOR_PHASES.include?(phase) && descriptor
+          return descriptor unless phase == :prepared_uncommitted
+
+          descriptor if TransactionIdentity.matches?(adapter, transaction_identity)
         end
 
         private

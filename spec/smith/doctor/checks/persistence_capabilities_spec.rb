@@ -93,4 +93,26 @@ RSpec.describe Smith::Doctor::Checks::PersistenceCapabilities do
     expect(check.message).to match(/missing optional capabilities: record_heartbeat, last_heartbeat/)
     expect(check.message).not_to include("store_versioned,")
   end
+
+  it "explains the conditional transaction identity requirement" do
+    transactional = Class.new do
+      def store(_key, _payload, **_opts); end
+      def fetch(_key); end
+      def delete(_key); end
+      def transaction_open? = true
+    end.new
+
+    Smith.configure do |config|
+      config.persistence_adapter = transactional
+      config.test_mode = false
+    end
+
+    report = Smith::Doctor::Report.new
+    described_class.run(report)
+
+    check = report.checks.find { |item| item.name == "persistence.capabilities" }
+    expect(check.status).to eq(:warn)
+    expect(check.message).to include("transaction_identity")
+    expect(check.detail).to include("fails before writing")
+  end
 end

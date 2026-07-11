@@ -13,7 +13,11 @@ module Smith
           handle_split_step_preparation_conflict!
           raise
         rescue StandardError
-          mark_split_step_preparation_unknown!
+          if @split_step_dispatch_started
+            mark_split_step_preparation_unknown!
+          else
+            reset_failed_split_step_preparation!
+          end
           raise
         end
 
@@ -37,7 +41,11 @@ module Smith
 
         def mark_split_step_preparation_unknown!
           @split_step_mutex.synchronize do
-            @split_step_phase = :preparation_unknown if @split_step_phase == :preparing
+            if @split_step_phase == :preparing
+              @split_step_phase = :preparation_unknown
+              @split_step_prepared_descriptor = nil
+              @split_step_transaction_identity = nil
+            end
           end
         end
       end

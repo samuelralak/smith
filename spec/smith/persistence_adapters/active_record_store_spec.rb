@@ -173,12 +173,23 @@ RSpec.describe Smith::PersistenceAdapters::ActiveRecordStore, :ar do
 
   it "reports whether its model connection has an open transaction", :commit do
     expect(adapter.transaction_open?).to be(false)
+    expect(adapter.transaction_identity).to be_nil
 
     SmithWorkflowStateRecord.transaction do
       expect(adapter.transaction_open?).to be(true)
+      identity = adapter.transaction_identity
+      expect(identity).to match(Smith::Workflow::PreparedStep::UUID_PATTERN)
+      expect(adapter.transaction_identity).to eq(identity)
+
+      SmithWorkflowStateRecord.transaction(requires_new: true) do
+        expect(adapter.transaction_identity).not_to eq(identity)
+      end
+
+      expect(adapter.transaction_identity).to eq(identity)
     end
 
     expect(adapter.transaction_open?).to be(false)
+    expect(adapter.transaction_identity).to be_nil
   end
 
   it "supports consecutive workflow persist and stale restore rejection" do

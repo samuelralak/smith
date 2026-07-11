@@ -36,9 +36,9 @@ module Smith
         end
       end
 
-      def transaction_open?
-        model_class.connection.transaction_open?
-      end
+      def transaction_open? = model_class.connection.transaction_open?
+
+      def transaction_identity = model_class.respond_to?(:current_transaction) && model_class.current_transaction.uuid
 
       # Optimistic locking via Rails' built-in optimistic locking on the
       # `lock_version` column. Requires the AR model to have a

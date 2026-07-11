@@ -26,6 +26,8 @@ module Smith
 
           @split_step_phase = :copied_boundary
           @split_step_token = nil
+          @split_step_prepared_descriptor = nil
+          @split_step_transaction_identity = nil
           @split_step_execution_thread = nil
           @split_step_advance_permit = false
           @split_step_preparation_thread = nil
@@ -99,6 +101,7 @@ module Smith
           @split_step_transition_signature = nil
           @split_step_origin_state = nil
           @split_step_token = nil
+          clear_split_step_descriptor_state!
           @split_step_persistence_key = nil
           @split_step_adapter = nil
           remove_instance_variable(:@split_step_persistence_ttl) if
@@ -108,6 +111,14 @@ module Smith
           @split_step_checkpoint_version = nil
           @split_step_preparation_thread = nil
           @split_step_persist_permit = false
+        end
+
+        def clear_split_step_descriptor_state!
+          @split_step_prepared_descriptor = nil
+          @split_step_transaction_identity = nil
+          @split_step_preparation_digest = nil
+          @split_step_pending_descriptor = nil
+          @split_step_dispatch_started = false
         end
       end
     end
