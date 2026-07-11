@@ -206,8 +206,23 @@ Any different or missing payload remains uncertain and non-retryable.
 Ambiguous persistence acknowledgements also fail closed. If preparation may
 have written before raising, the object cannot execute. If a post-step
 checkpoint may have written before raising, `complete_persisted_step!` can
-verify the exact attempted payload without replaying the write. Otherwise the
-host may retry the unchanged checkpoint against the same key and adapter.
+verify the exact attempted payload without replaying the write. The host must
+perform that reconciliation before retrying. If the adapter still contains the
+exact preparation, Smith permits one unchanged retry; any other result remains
+non-retryable. Smith retains one checkpoint witness, so retry bookkeeping is
+constant space rather than growing with the number of attempts.
+
+Transition contract capture uses cycle-aware `O(V + E)` traversal, with time
+and space bounded to 10,000 visits, 4 MiB of string data, and a maximum depth
+of 128. Strings are represented by SHA-256 digests rather than duplicated.
+Supported mutable data shapes are frozen, `Range` endpoints are traversed, and
+opaque mutable objects fail closed instead of receiving a misleading shallow
+signature. Callable identity is pinned for the boundary; Ruby closure state and
+method bodies remain host lifecycle concerns. Smith detects contract
+replacement but does not claim to sandbox Ruby's open object model. Subclass
+entry points remain guarded even when a host prepends modules after class
+creation, and prepared execution bypasses host `advance!` wrappers so they
+cannot become transition execution authority.
 
 ## Active Record Optimistic Locking
 
@@ -217,6 +232,11 @@ host may retry the unchanged checkpoint against the same key and adapter.
   version and is compared with `expected_version`.
 - the host model's Active Record `locking_column` is Rails' row-level
   compare-and-swap token and detects concurrent updates between load and save.
+
+Across every versioned adapter, a missing key can be created only with
+`expected_version: 0`. A nonzero expected version against missing state raises
+`PersistenceVersionConflict` with `actual: :missing`, preventing stale workflow
+objects from resurrecting host-deleted state.
 
 Legacy object-shaped payloads without `persistence_version` use version zero.
 Valid JSON scalars are not workflow-state documents, and explicit null,

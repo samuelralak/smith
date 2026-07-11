@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-07-11
+
+Patch release for generic host-coordinated workflow step boundaries and
+fail-closed persistence correctness. Smith now exposes a bounded strict
+split-step protocol while leaving transactions, scheduling, lifecycle records,
+tools, and product policy under host ownership.
+
 ### Fixed
 
 - Align `ActiveRecordStore#store_versioned` with Smith's persistence contract by
@@ -31,6 +38,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   are pinned for the boundary, subclass entry points remain guarded, and a
   proven transaction rollback can retry from the exact committed preparation.
   Same-transaction atomicity remains adapter- and host-owned.
+- Prevent Memory, Redis, and Active Record versioned adapters from recreating a
+  missing key when the caller expects a nonzero logical version. Missing state
+  now reports `PersistenceVersionConflict` with `actual: :missing`.
+- Bound split-step transition contract capture to cycle-aware `O(V + E)` traversal with explicit
+  node, byte, and depth limits; reject opaque mutable values; freeze supported
+  structured configuration; and preserve execution guards when workflow
+  subclasses receive later prepends.
+- Keep prepared transition execution on Smith's owned `advance!` path so host
+  wrappers cannot run as transition authority inside an active boundary.
+- Make the split-step aggregate own its internal require order so direct loading
+  does not depend on `smith.rb` preloading implementation files.
+- Require reconciliation before retrying an ambiguously acknowledged
+  checkpoint and retain a single checkpoint witness, keeping retry state in
+  constant space.
+- Make Memory expiry atomic with version comparison, isolate mutable payload
+  strings at its boundary, and pin Active Record column configuration.
+
+### Verification
+
+- Default suite: 1,045 examples, 0 failures.
+- Focused split-step and versioned-adapter suite: 107 examples, 0 failures;
+  changed files pass RuboCop and `git diff --check`.
+- Practical gem execution: 30 distinct 20-step workflow classes, 600 Memory
+  split steps, 1,000 Memory compare-and-swap writes, and 200 Active Record
+  split steps with restore after every committed checkpoint.
+- Smith Runtime host acceptance on Ruby 4.0.1 and Rails 8.1.3: 251 tests,
+  816 assertions, 0 failures; 20 practical signed-package compiles produced
+  valid Smith reports and cleaned every generated namespace.
 
 ## [0.4.4] - 2026-07-10
 

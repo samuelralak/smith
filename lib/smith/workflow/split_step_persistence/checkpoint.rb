@@ -44,7 +44,12 @@ module Smith
 
         def resolve_split_step_target(key, adapter)
           resolved_key = if @split_step_persistence_key
-                           candidate_split_step_persistence_key(key)
+                           candidate = candidate_split_step_persistence_key(key)
+                           if candidate.equal?(@split_step_persistence_key)
+                             candidate
+                           else
+                             normalize_split_step_persistence_key(candidate)
+                           end
                          else
                            resolve_persistence_key!(key)
                          end
@@ -63,7 +68,7 @@ module Smith
             end
             return false unless @split_step_phase
 
-            if %i[executed checkpoint_unknown].include?(@split_step_phase)
+            if %i[executed checkpoint_retryable].include?(@split_step_phase)
               @split_step_phase = :checkpointing
               return true
             end
@@ -94,10 +99,21 @@ module Smith
           return payload unless checkpoint_claimed
 
           checkpoint_payload = split_step_checkpoint_payload(payload)
-          @split_step_checkpoint_digests ||= Set.new
-          @split_step_checkpoint_digests << Digest::SHA256.hexdigest(checkpoint_payload)
+          checkpoint_digest = Digest::SHA256.hexdigest(checkpoint_payload)
+          validate_split_step_retry_payload!(checkpoint_digest)
+          @split_step_checkpoint_digest = checkpoint_digest
           @split_step_checkpoint_version = next_version
           checkpoint_payload
+        end
+
+        def validate_split_step_retry_payload!(checkpoint_digest)
+          return unless @split_step_checkpoint_digest
+          return if @split_step_checkpoint_digest == checkpoint_digest
+
+          @split_step_mutex.synchronize do
+            @split_step_phase = :checkpoint_retryable if @split_step_phase == :checkpointing
+          end
+          raise WorkflowError, "the reconciled split-step checkpoint payload changed"
         end
       end
     end

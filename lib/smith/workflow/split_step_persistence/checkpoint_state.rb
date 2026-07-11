@@ -36,7 +36,7 @@ module Smith
             return unless @split_step_phase == :confirming_checkpoint
 
             @persistence_version = preparation_version
-            @split_step_phase = :checkpoint_unknown
+            @split_step_phase = :checkpoint_retryable
           end
         end
 

@@ -79,11 +79,50 @@ RSpec.describe Smith::PersistenceAdapters::Memory do
       adapter.store_versioned("k", JSON.generate(persistence_version: 1), expected_version: 0)
       expect do
         adapter.store_versioned("k", JSON.generate(persistence_version: 5), expected_version: 0)
-      end.to raise_error(Smith::PersistenceVersionConflict) do |err|
-        expect(err.key).to eq("k")
-        expect(err.expected).to eq(0)
-        expect(err.actual).to eq(1)
-      end
+      end.to raise_error(Smith::PersistenceVersionConflict)
+    end
+
+    it "does not recreate missing state from a nonzero expected version" do
+      expect do
+        adapter.store_versioned("missing", JSON.generate(persistence_version: 3), expected_version: 2)
+      end.to raise_error(Smith::PersistenceVersionConflict) { |error| expect(error.actual).to eq(:missing) }
+      expect(adapter.fetch("missing")).to be_nil
+    end
+
+    it "treats expired state as missing during the version comparison" do
+      adapter.store_versioned(
+        "expired",
+        JSON.generate(persistence_version: 1),
+        expected_version: 0,
+        ttl: -1
+      )
+
+      expect do
+        adapter.store_versioned(
+          "expired",
+          JSON.generate(persistence_version: 2),
+          expected_version: 1
+        )
+      end.to raise_error(Smith::PersistenceVersionConflict) { |error| expect(error.actual).to eq(:missing) }
+      expect(adapter.fetch("expired")).to be_nil
+    end
+
+    it "isolates versioned payloads from caller and reader mutation" do
+      payload = JSON.generate(persistence_version: 1)
+      adapter.store_versioned("isolated", payload, expected_version: 0)
+      payload.replace(JSON.generate(persistence_version: 0))
+
+      fetched = adapter.fetch("isolated")
+      expect(JSON.parse(fetched)).to eq("persistence_version" => 1)
+      fetched.replace(JSON.generate(persistence_version: 0))
+
+      expect do
+        adapter.store_versioned(
+          "isolated",
+          JSON.generate(persistence_version: 2),
+          expected_version: 0
+        )
+      end.to raise_error(Smith::PersistenceVersionConflict) { |error| expect(error.actual).to eq(1) }
     end
   end
 

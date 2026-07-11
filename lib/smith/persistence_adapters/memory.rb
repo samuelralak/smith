@@ -23,21 +23,16 @@ module Smith
 
       def store(key, payload, ttl: Smith.config.persistence_ttl)
         @monitor.synchronize do
-          @store[key] = { payload: payload, expires_at: ttl ? Time.now.utc + ttl : nil }
+          @store[key] = entry_for(payload, ttl)
         end
       end
 
       def fetch(key)
         @monitor.synchronize do
-          entry = @store[key]
+          entry = live_entry(key)
           next nil if entry.nil?
 
-          if entry[:expires_at] && entry[:expires_at] < Time.now.utc
-            @store.delete(key)
-            next nil
-          end
-
-          entry[:payload]
+          copy_payload(entry[:payload])
         end
       end
 
@@ -78,7 +73,7 @@ module Smith
       # across all versioned adapters).
       def store_versioned(key, payload, expected_version:, ttl: Smith.config.persistence_ttl)
         @monitor.synchronize do
-          entry = @store[key]
+          entry = live_entry(key)
           if entry
             current_version = parse_version(entry[:payload])
             if current_version != expected_version
@@ -86,8 +81,10 @@ module Smith
                 key: key, expected: expected_version, actual: current_version
               )
             end
+          else
+            VersionExpectation.validate_missing!(key, expected_version)
           end
-          @store[key] = { payload: payload, expires_at: ttl ? Time.now.utc + ttl : nil }
+          @store[key] = entry_for(payload, ttl)
         end
       end
 
@@ -96,6 +93,25 @@ module Smith
       end
 
       private
+
+      def live_entry(key)
+        entry = @store[key]
+        return unless entry
+        return entry unless entry[:expires_at] && entry[:expires_at] < Time.now.utc
+
+        @store.delete(key)
+        nil
+      end
+
+      def entry_for(payload, ttl)
+        { payload: copy_payload(payload), expires_at: ttl ? Time.now.utc + ttl : nil }
+      end
+
+      def copy_payload(payload)
+        payload.dup
+      rescue TypeError
+        payload
+      end
 
       def parse_version(payload)
         PayloadVersion.call(payload)

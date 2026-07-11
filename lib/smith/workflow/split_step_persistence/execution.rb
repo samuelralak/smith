@@ -76,7 +76,7 @@ module Smith
         end
 
         def execute_claimed_split_step_transition!
-          step = advance!
+          step = Workflow.instance_method(:advance!).bind_call(self)
           return step if accepted_split_step_result?(step)
 
           raise WorkflowError, "prepared execution did not return the claimed transition"

@@ -293,6 +293,18 @@ RSpec.describe "Smith::Workflow split-step persistence" do
     expect(workflow.to_state.fetch(:persistence_key)).to eq("workflow:mutable")
   end
 
+  it "accepts the same non-string key at preparation and checkpoint" do
+    workflow = workflow_class.new
+    workflow.prepare_persisted_step!(:symbol_key, adapter: adapter)
+    workflow.execute_prepared_step!
+
+    expect do
+      workflow.persist!(:symbol_key, adapter: adapter)
+      workflow.complete_persisted_step!
+    end.not_to raise_error
+    expect(adapter.fetch("symbol_key")).not_to be_nil
+  end
+
   it "does not replace the pinned key with an equal mutable checkpoint key" do
     workflow = workflow_class.new
     workflow.prepare_persisted_step!(key, adapter: adapter)
@@ -428,22 +440,32 @@ RSpec.describe "Smith::Workflow split-step persistence" do
   it "blocks ordinary execution for the entire preparation path" do
     entered = Queue.new
     release = Queue.new
-    workflow = workflow_class.new
-    allow(workflow).to receive(:normalize_split_step_persistence_key).and_wrap_original do |original, value|
-      entered << true
-      release.pop
-      original.call(value)
+    normalization_calls = 0
+    blocking_class = Class.new(workflow_class) do
+      define_method(:normalize_split_step_persistence_key) do |value|
+        normalization_calls += 1
+        if normalization_calls == 1
+          entered << true
+          release.pop
+        end
+        super(value)
+      end
     end
+    workflow = blocking_class.new
     preparation = Thread.new { workflow.prepare_persisted_step!(key, adapter: adapter) }
     entered.pop
 
-    expect { workflow.advance! }.to raise_error(Smith::WorkflowError, /execute_prepared_step/)
-    expect do
-      workflow_class.from_state(workflow.to_state)
-    end.to raise_error(Smith::StepInProgressOnRestore)
+    begin
+      expect { workflow.advance! }.to raise_error(Smith::WorkflowError, /execute_prepared_step/)
+      expect do
+        blocking_class.from_state(workflow.to_state)
+      end.to raise_error(Smith::StepInProgressOnRestore)
+    ensure
+      release << true
+    end
 
-    release << true
     expect(preparation.value).to eq(:finish)
+    expect(normalization_calls).to eq(1)
     expect(workflow).to be_prepared_persisted_step
     expect(workflow.state).to eq(:idle)
   end
@@ -615,6 +637,123 @@ RSpec.describe "Smith::Workflow split-step persistence" do
     expect { retry_config[:attempts] = 9 }.to raise_error(FrozenError)
   end
 
+  it "deeply freezes custom transition option state" do
+    policy_class = Struct.new(:rules)
+    policy = policy_class.new({ thresholds: [0.5, 0.8] })
+    configured_class = Class.new(Smith::Workflow) do
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done do
+        execute :reviewer, policy: policy
+      end
+    end
+
+    configured_class.new.prepare_persisted_step!(key, adapter: adapter)
+
+    expect(policy).to be_frozen
+    expect(policy.rules).to be_frozen
+    expect(policy.rules.fetch(:thresholds)).to be_frozen
+  end
+
+  it "captures cyclic transition option graphs in bounded time" do
+    metadata = {}
+    metadata[:self] = metadata
+    configured_class = Class.new(Smith::Workflow) do
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done do
+        execute :reviewer, metadata: metadata
+      end
+    end
+    workflow = configured_class.new
+
+    expect(workflow.prepare_persisted_step!(key, adapter: adapter)).to eq(:finish)
+    expect(metadata).to be_frozen
+  end
+
+  it "captures and freezes mutable range endpoints" do
+    endpoint = +"alpha"
+    window = endpoint.."omega"
+    configured_class = Class.new(Smith::Workflow) do
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done do
+        execute :reviewer, window: window
+      end
+    end
+
+    configured_class.new.prepare_persisted_step!(key, adapter: adapter)
+
+    expect(window).to be_frozen
+    expect(endpoint).to be_frozen
+    expect { endpoint.replace("changed") }.to raise_error(FrozenError)
+  end
+
+  it "fails closed for opaque mutable transition values" do
+    opaque = Object.new
+    configured_class = Class.new(Smith::Workflow) do
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done do
+        execute :reviewer, opaque: opaque
+      end
+    end
+
+    expect do
+      configured_class.new.prepare_persisted_step!(key, adapter: adapter)
+    end.to raise_error(Smith::WorkflowError, /unsupported value Object/)
+  end
+
+  it "rejects oversized transition string data without poisoning the workflow instance" do
+    metadata = +("x" * (Smith::Workflow::SplitStepPersistence::TransitionContract::MAX_BYTES + 1))
+    configured_class = Class.new(Smith::Workflow) do
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done do
+        execute :reviewer, metadata: metadata
+      end
+    end
+    workflow = configured_class.new
+
+    expect do
+      workflow.prepare_persisted_step!(key, adapter: adapter)
+    end.to raise_error(Smith::WorkflowError, /maximum bytes/)
+
+    metadata.replace("bounded")
+    expect(workflow.prepare_persisted_step!(key, adapter: adapter)).to eq(:finish)
+  end
+
+  it "rejects oversized transition graphs without poisoning the workflow instance" do
+    metadata = Array.new(Smith::Workflow::SplitStepPersistence::TransitionContract::MAX_NODES, nil)
+    configured_class = Class.new(Smith::Workflow) do
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done do
+        execute :reviewer, metadata: metadata
+      end
+    end
+    workflow = configured_class.new
+
+    expect do
+      workflow.prepare_persisted_step!(key, adapter: adapter)
+    end.to raise_error(Smith::WorkflowError, /maximum size/)
+
+    metadata.clear
+    expect(workflow.prepare_persisted_step!(key, adapter: adapter)).to eq(:finish)
+  end
+
   it "binds checkpointing to the preparation key and adapter" do
     workflow = workflow_class.new
     other_adapter = Smith::PersistenceAdapters::Memory.new
@@ -633,7 +772,7 @@ RSpec.describe "Smith::Workflow split-step persistence" do
     workflow.complete_persisted_step!
   end
 
-  it "preserves subclass advance wrappers while pinning Smith transition resolution" do
+  it "bypasses subclass advance wrappers while pinning Smith transition resolution" do
     advance_calls = 0
     subclass = Class.new(workflow_class) do
       define_method(:advance!) do
@@ -653,7 +792,7 @@ RSpec.describe "Smith::Workflow split-step persistence" do
     step = workflow.execute_prepared_step!
 
     expect(step).to include(transition: :finish, to: :done)
-    expect(advance_calls).to eq(1)
+    expect(advance_calls).to eq(0)
     expect(workflow.to_state.fetch(:context)).to include(executed: true)
   end
 
@@ -665,10 +804,40 @@ RSpec.describe "Smith::Workflow split-step persistence" do
     workflow.prepare_persisted_step!(key, adapter: adapter)
 
     expect { workflow.advance! }.to raise_error(Smith::WorkflowError, /execute_prepared_step/)
-    expect do
-      workflow.execute_prepared_step!
-    end.to raise_error(Smith::WorkflowError, /did not return the claimed transition/)
-    expect(JSON.parse(adapter.fetch(key)).fetch("step_in_progress")).to be(true)
+    expect(workflow.execute_prepared_step!).to include(transition: :finish, to: :done)
+  end
+
+  it "keeps the execution guard ahead of modules prepended later" do
+    side_effects = 0
+    subclass = Class.new(workflow_class)
+    bypass = Module.new do
+      define_method(:advance!) do
+        side_effects += 1
+        { transition: :hijacked }
+      end
+      def run! = :hijacked
+    end
+    subclass.prepend(bypass)
+    workflow = subclass.new
+    workflow.prepare_persisted_step!(key, adapter: adapter)
+
+    expect { workflow.advance! }.to raise_error(Smith::WorkflowError, /execute_prepared_step/)
+    expect { workflow.run! }.to raise_error(Smith::WorkflowError, /execute_prepared_step/)
+    expect(workflow.execute_prepared_step!).to include(transition: :finish, to: :done)
+    expect(side_effects).to eq(0)
+  end
+
+  it "keeps the guard first when one prepend call includes Smith's boundary module" do
+    subclass = Class.new(workflow_class)
+    bypass = Module.new do
+      def advance! = :bypassed
+    end
+    subclass.prepend(bypass, Smith::Workflow::SplitStepPersistence::SubclassBoundary)
+    workflow = subclass.new
+    workflow.prepare_persisted_step!(key, adapter: adapter)
+
+    expect { workflow.advance! }.to raise_error(Smith::WorkflowError, /execute_prepared_step/)
+    expect(workflow.execute_prepared_step!).to include(transition: :finish, to: :done)
   end
 
   it "keeps ordinary runs compatible with a subclass private-method collision" do
@@ -923,6 +1092,12 @@ RSpec.describe "Smith::Workflow split-step persistence" do
       workflow.persist!(key, adapter: adapter)
     end.to raise_error(Smith::PersistenceIOError)
     expect { workflow.run! }.to raise_error(Smith::WorkflowError, /split-step/)
+    expect do
+      workflow.persist!(key, adapter: adapter)
+    end.to raise_error(Smith::WorkflowError, /cannot be checkpointed/)
+    expect do
+      workflow.complete_persisted_step!
+    end.to raise_error(Smith::WorkflowError, /not committed/)
 
     allow(adapter).to receive(:store_versioned).and_call_original
     workflow.persist!(key, adapter: adapter)
@@ -980,7 +1155,7 @@ RSpec.describe "Smith::Workflow split-step persistence" do
     expect(workflow.run!).to be_done
   end
 
-  it "retains prior checkpoint witnesses across a stateful retry conflict" do
+  it "reconciles an ambiguous checkpoint before permitting another write" do
     serialization_count = 0
     changing_class = Class.new(workflow_class) do
       define_method(:to_state) do
@@ -1002,12 +1177,40 @@ RSpec.describe "Smith::Workflow split-step persistence" do
     allow(adapter).to receive(:store_versioned).and_call_original
     expect do
       workflow.persist!(key, adapter: adapter)
-    end.to raise_error(Smith::PersistenceVersionConflict)
+    end.to raise_error(Smith::WorkflowError, /cannot be checkpointed/)
 
     workflow.complete_persisted_step!
 
     expect(workflow.to_state.fetch(:persistence_version)).to eq(2)
     expect(workflow.run!).to be_done
+  end
+
+  it "rejects checkpoint payload drift after rollback reconciliation" do
+    serialization_count = 0
+    changing_class = Class.new(workflow_class) do
+      define_method(:to_state) do
+        serialization_count += 1 if done?
+        super().merge(host_nonce: serialization_count)
+      end
+    end
+    workflow = changing_class.new
+    workflow.prepare_persisted_step!(key, adapter: adapter)
+    workflow.execute_prepared_step!
+    allow(adapter).to receive(:store_versioned).and_raise(
+      Smith::PersistenceIOError.new(operation: :store_versioned, cause: IOError.new("offline"))
+    )
+    expect do
+      workflow.persist!(key, adapter: adapter)
+    end.to raise_error(Smith::PersistenceIOError)
+    expect do
+      workflow.complete_persisted_step!
+    end.to raise_error(Smith::WorkflowError, /not committed/)
+
+    allow(adapter).to receive(:store_versioned).and_call_original
+    expect do
+      workflow.persist!(key, adapter: adapter)
+    end.to raise_error(Smith::WorkflowError, /payload changed/)
+    expect(JSON.parse(adapter.fetch(key)).fetch("step_in_progress")).to be(true)
   end
 
   it "captures the exact payload serialized by each persistence write" do

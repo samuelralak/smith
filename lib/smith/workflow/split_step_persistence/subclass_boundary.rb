@@ -4,6 +4,18 @@ module Smith
   class Workflow
     module SplitStepPersistence
       module SubclassBoundary
+        def self.guard
+          Module.new.tap do |guard|
+            instance_methods(false).each do |method_name|
+              guard.define_method(method_name, instance_method(method_name))
+            end
+            private_instance_methods(false).each do |method_name|
+              guard.define_method(method_name, instance_method(method_name))
+              guard.send(:private, method_name)
+            end
+          end
+        end
+
         def to_state
           state = super
           split_step_boundary_active? ? snapshot_value(state) : state

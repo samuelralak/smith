@@ -21,6 +21,24 @@ RSpec.describe Smith::PersistenceAdapters::ActiveRecordStore, :ar do
     expect(second.lock_version).to eq(1)
   end
 
+  it "pins mutable column configuration at initialization" do
+    key_column = +"key"
+    payload_column = +"payload"
+    version_column = +"lock_version"
+    configured = described_class.new(
+      model: SmithWorkflowStateRecord,
+      key_column: key_column,
+      payload_column: payload_column,
+      version_column: version_column
+    )
+    key_column.replace("changed_key")
+    payload_column.replace("changed_payload")
+    version_column.replace("changed_version")
+
+    expect(configured.store_versioned("pinned", payload(1), expected_version: 0)).to eq(true)
+    expect(SmithWorkflowStateRecord).to exist(key: "pinned")
+  end
+
   it "rejects a stale Smith payload version with the stored logical version" do
     adapter.store_versioned("workflow-1", payload(1), expected_version: 0)
 
@@ -274,6 +292,16 @@ RSpec.describe Smith::PersistenceAdapters::ActiveRecordStore, :ar do
         original.call(*args)
       end
     end
+  end
+
+  it "does not recreate missing state from a nonzero expected version" do
+    expect do
+      adapter.store_versioned("missing", payload(3), expected_version: 2)
+    end.to raise_error(Smith::PersistenceVersionConflict) { |error|
+      expect(error.expected).to eq(2)
+      expect(error.actual).to eq(:missing)
+    }
+    expect(SmithWorkflowStateRecord).not_to exist(key: "missing")
   end
 
   it "does not misattribute a callback's stale related record to the workflow row" do

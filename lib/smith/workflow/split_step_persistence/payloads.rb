@@ -15,9 +15,9 @@ module Smith
         end
 
         def persisted_split_step_checkpoint?(payload)
-          return false unless payload && @split_step_checkpoint_digests
+          return false unless payload && @split_step_checkpoint_digest
 
-          @split_step_checkpoint_digests.include?(Digest::SHA256.hexdigest(payload))
+          @split_step_checkpoint_digest == Digest::SHA256.hexdigest(payload)
         end
 
         def validate_split_step_marker!(payload, expected:)
@@ -42,41 +42,7 @@ module Smith
         end
 
         def split_step_transition_signature(transition)
-          return unless transition
-
-          transition.instance_variables.sort.map do |name|
-            [name, split_step_signature_value(transition.instance_variable_get(name))]
-          end
-        end
-
-        def split_step_signature_value(value)
-          case value
-          when Hash
-            value.map { |key, item| [split_step_signature_value(key), split_step_signature_value(item)] }
-          when Array
-            value.map { |item| split_step_signature_value(item) }
-          when String
-            value.dup.freeze
-          when Symbol, Numeric, true, false, nil
-            value
-          else
-            [value.class.name, value.object_id]
-          end
-        end
-
-        def deep_freeze_split_step_value(value)
-          case value
-          when Hash
-            value.each do |key, item|
-              deep_freeze_split_step_value(key)
-              deep_freeze_split_step_value(item)
-            end
-          when Array, Set
-            value.each { |item| deep_freeze_split_step_value(item) }
-          when Module
-            return value
-          end
-          value&.freeze
+          transition && TransitionContract.signature(transition)
         end
       end
     end

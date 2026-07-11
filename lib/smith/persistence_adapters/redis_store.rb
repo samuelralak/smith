@@ -80,32 +80,14 @@ module Smith
       # OR on EXEC failure (WATCH detected concurrent write).
       def store_versioned(key, payload, expected_version:, ttl: Smith.config.persistence_ttl)
         Retry.with_retries(operation: :store_versioned, transient: self.class.transient_errors) do
-          namespaced_key = namespaced(key)
-          result = client.watch(namespaced_key) do
-            current = client.get(namespaced_key)
-            if current && (current_version = parse_version(current)) != expected_version
-              client.unwatch
-              raise Smith::PersistenceVersionConflict.new(
-                key: key, expected: expected_version, actual: current_version
-              )
-            end
-
-            client.multi do |tx|
-              if ttl
-                tx.set(namespaced_key, payload, ex: ttl)
-              else
-                tx.set(namespaced_key, payload)
-              end
-            end
-          end
-
-          if result.nil?
-            raise Smith::PersistenceVersionConflict.new(
-              key: key, expected: expected_version, actual: :concurrent
-            )
-          end
-
-          result
+          RedisVersionedWrite.new(
+            client: client,
+            key: key,
+            storage_key: namespaced(key),
+            payload: payload,
+            expected_version: expected_version,
+            ttl: ttl
+          ).call
         end
       end
 
@@ -126,10 +108,6 @@ module Smith
 
       def namespaced_heartbeat(key)
         [@namespace, "heartbeat", key].compact.join(":")
-      end
-
-      def parse_version(payload)
-        PayloadVersion.call(payload)
       end
     end
   end

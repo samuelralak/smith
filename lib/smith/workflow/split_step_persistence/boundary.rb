@@ -104,7 +104,7 @@ module Smith
           remove_instance_variable(:@split_step_persistence_ttl) if
             instance_variable_defined?(:@split_step_persistence_ttl)
           @split_step_preparation_payload = nil
-          @split_step_checkpoint_digests = nil
+          @split_step_checkpoint_digest = nil
           @split_step_checkpoint_version = nil
           @split_step_preparation_thread = nil
           @split_step_persist_permit = false

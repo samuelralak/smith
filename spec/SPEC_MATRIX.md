@@ -1234,6 +1234,10 @@ Documented contracts covered:
 - execution is bound to the exact transition object captured at preparation
 - the prepared transition contract is frozen against in-place DSL mutation
 - nested transition configuration is deeply frozen before durable preparation
+- `Struct`, `Data`, and `Range` transition configuration is included in the
+  contract; opaque mutable objects fail closed; cyclic graphs terminate; and
+  oversized, over-depth, or over-byte graphs fail under explicit linear bounds
+  without poisoning the workflow object
 - checkpointing is bound to the original persistence key and adapter instance
 - mutable keys are copied into immutable string identities
 - equal mutable checkpoint keys resolve back to the pinned immutable identity
@@ -1268,16 +1272,22 @@ Documented contracts covered:
 - rejected persistence targets do not mutate the workflow's cached key
 - rejected duplicate preparations cannot mutate the winner's cached key
 - subclass method collisions cannot replace Smith's prepared transition
+- modules prepended after subclass creation remain behind a fresh Smith guard;
+  prepared execution uses Smith's owned `advance!` implementation rather than
+  granting transition authority to subclass or prepended wrappers
 - commit verification uses the exact payload serialized by the persistence
   write, including workflows with stateful serializers
-- a failed post-step checkpoint remains guarded and can be retried safely
+- a failed post-step checkpoint remains guarded and requires reconciliation;
+  an exact durable preparation permits one unchanged retry
 - concurrent post-step checkpointing permits exactly one claimant
 - checkpoint writes never disarm the in-memory uncertainty marker or expose
   completion before the adapter write returns
 - an ambiguously acknowledged checkpoint can be verified without replaying its
   write
-- checkpoint retries retain digest witnesses for ambiguous attempted payloads
-  without retaining duplicate large payloads
+- ambiguous checkpoint retries retain one digest witness and cannot issue
+  another write before reconciliation, keeping retry bookkeeping constant-space
+- reconciled retries must serialize the exact original checkpoint payload
+  before Smith dispatches another adapter write
 - restore between preparation and acceptance fails closed
 - lax and unprepared workflows are rejected; a fresh terminal preparation is a
   no-op while an active terminal boundary rejects duplicate preparation
@@ -2668,6 +2678,9 @@ Documented contracts covered:
 - consecutive Smith writes compare `expected_version` with the stored payload's
   `persistence_version`, independently of the Rails row lock
 - stale logical versions report the stored Smith version
+- missing rows reject nonzero expected versions with `actual: :missing`
+- mutable string column names are copied and frozen at initialization while
+  symbol column names retain their established host-facing type
 - an `ActiveRecord::StaleObjectError` is translated to
   `Smith::PersistenceVersionConflict` with `actual: :concurrent`
 - legacy syntactically malformed payloads retain the established version-zero
@@ -2683,6 +2696,28 @@ Documented contracts covered:
   and callback rollbacks preserve their original Active Record meaning
 - connection failures are translated without replaying the uncertain versioned
   write below the host-owned transaction boundary
+
+### `spec/smith/workflow/split_step_load_spec.rb`
+
+Purpose:
+
+- pins direct aggregate load-order independence
+
+Documented contracts covered:
+
+- requiring `smith/workflow/split_step_persistence` directly loads its internal
+  components without relying on `smith.rb` to preload implementation files
+
+### `spec/smith/persistence_adapters/redis_store_spec.rb`
+
+Purpose:
+
+- pins fail-closed Redis compare-and-swap creation semantics
+
+Documented contracts covered:
+
+- a missing key rejects nonzero expected versions before `MULTI` and reports
+  `Smith::PersistenceVersionConflict` with `actual: :missing`
 
 ### `spec/smith/persistence_adapters/payload_version_spec.rb`
 
@@ -2715,6 +2750,11 @@ Documented contracts covered:
 - `respond_to?(:store_versioned)` is true; `Smith::PersistenceAdapters.supports?(adapter, :store_versioned)` reports true
 - `store_versioned(k, v, expected_version: 0)` works on first write; subsequent writes require matching `expected_version`
 - `store_versioned` raises `Smith::PersistenceVersionConflict` (with key/expected/actual fields) when expected_version is stale
+- expired entries are treated atomically as missing during version comparison,
+  so stale writers cannot revive them
+- stored and fetched payload strings are copied, preventing caller mutation from
+  bypassing the adapter monitor and optimistic version check
+- missing entries reject nonzero expected versions with `actual: :missing`
 - thread safety: concurrent writes serialize via Monitor; reads observe coherent state (no torn writes / nil races)
 - `Smith::PersistenceAdapters.resolve(:memory)` returns a Memory instance
 - `Smith.persistence_adapter` auto-detects: returns Memory when persistence_adapter nil + `test_mode` true; returns nil when persistence_adapter nil + test_mode false

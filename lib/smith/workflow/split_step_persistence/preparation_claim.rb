@@ -28,6 +28,7 @@ module Smith
         end
 
         def finalize_split_step_preparation!(transition, transition_name, key, adapter, persistence_ttl)
+          transition_signature = TransitionContract.capture(transition)
           @split_step_mutex.synchronize do
             unless active_split_step_preparation_claim?
               raise WorkflowError, "the split-step preparation claim is no longer active"
@@ -36,10 +37,9 @@ module Smith
             @split_step_phase = :preparing
             @split_step_transition_name = transition_name
             @split_step_transition = transition
-            @split_step_transition_signature = split_step_transition_signature(transition)
+            @split_step_transition_signature = transition_signature
             @split_step_origin_state = @state
             @split_step_token = SecureRandom.uuid.freeze
-            deep_freeze_split_step_value(transition)
             detach_split_step_execution_state!
             @split_step_persistence_key = key
             @split_step_adapter = adapter

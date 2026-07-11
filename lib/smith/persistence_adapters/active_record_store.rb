@@ -8,9 +8,9 @@ module Smith
       # adapter already have activerecord in their dep tree.
       def initialize(model:, key_column: :key, payload_column: :payload, version_column: :lock_version)
         @model_source = model.is_a?(String) ? model.dup.freeze : model
-        @key_column = key_column
-        @payload_column = payload_column
-        @version_column = version_column
+        @key_column = normalize_column(key_column)
+        @payload_column = normalize_column(payload_column)
+        @version_column = normalize_column(version_column)
       end
 
       def store(key, payload, ttl: nil) # rubocop:disable Lint/UnusedMethodArgument
@@ -55,6 +55,10 @@ module Smith
 
       private
 
+      def normalize_column(column)
+        column.is_a?(String) ? column.dup.freeze : column
+      end
+
       def ensure_version_column!
         return if model_class.column_names.include?(@version_column.to_s)
 
@@ -76,7 +80,10 @@ module Smith
 
       def write_versioned(key, payload, expected_version)
         record = model_class.find_by(@key_column => key)
-        return create_versioned_record(key, payload, expected_version) unless record
+        unless record
+          VersionExpectation.validate_missing!(key, expected_version)
+          return create_versioned_record(key, payload, expected_version)
+        end
 
         validate_payload_version!(record, key, expected_version)
         record.public_send(:"#{@payload_column}=", payload)
