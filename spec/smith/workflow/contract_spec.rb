@@ -28,6 +28,7 @@ RSpec.describe "Smith::Workflow contract" do
     expect(workflow).to respond_to(:run!)
     expect(workflow).to respond_to(:state)
     expect(workflow).to respond_to(:terminal?)
+    expect(workflow).to respond_to(:pending_transition_name)
     expect(workflow).to respond_to(:done?)
     expect(workflow).to respond_to(:failed?)
     expect(workflow).to respond_to(:advance_persisted!)
@@ -45,6 +46,31 @@ RSpec.describe "Smith::Workflow contract" do
     expect(workflow_class).to respond_to(:restore_or_initialize)
     expect(workflow_class).to respond_to(:run_persisted!)
     expect(workflow_class).to respond_to(:from_state)
+  end
+
+  it "indexes pending transitions without changing declaration order" do
+    parent = with_stubbed_class("SpecIndexedWorkflow", workflow_class) do
+      initial_state :idle
+      state :first_done
+      state :second_done
+
+      transition :first, from: :idle, to: :first_done
+      transition :second, from: :idle, to: :second_done
+    end
+    child = Class.new(parent)
+
+    expect(parent.transitions_from(:idle).map(&:name)).to eq(%i[first second])
+    expect(parent.new.pending_transition_name).to eq(:first)
+
+    child.transition :first, from: :first_done, to: :second_done
+
+    expect(parent.transitions_from(:idle).map(&:name)).to eq(%i[first second])
+    expect(child.transitions_from(:idle).map(&:name)).to eq([:second])
+    expect(child.transitions_from(:first_done).map(&:name)).to eq([:first])
+
+    child.transition :second, from: :first_done, to: :second_done
+
+    expect(child.transitions_from(:first_done).map(&:name)).to eq(%i[first second])
   end
 
   it "supports the documented transition DSL shape" do

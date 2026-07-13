@@ -8,6 +8,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Added
 
+- Expose `Workflow#pending_transition_name` so hosts can inspect the exact next
+  transition without serializing workflow state or traversing the graph.
 - Expose an immutable `Smith::Workflow::PreparedStep` descriptor for an active
   strict split-step boundary. Hosts can persist opaque token, transition,
   persistence-version, step-number, and preparation-digest identity without
@@ -23,6 +25,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Changed
 
+- Maintain a declaration-time outgoing-transition index. First-transition and
+  terminal checks are constant-time; enumerating transitions from one state is
+  proportional to that state's outdegree. Stable declaration precedence,
+  subclass isolation, and transition redefinition semantics are preserved.
 - Custom adapters that report an open transaction now require
   `transaction_identity` for strict split-step preparation. This intentionally
   tightens the 0.4.5 boolean transaction contract so later unrelated

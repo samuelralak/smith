@@ -83,7 +83,7 @@ module Smith
           transition = if @next_transition_name
                          self.class.find_transition(@next_transition_name)
                        else
-                         self.class.transitions_from(@state).first
+                         self.class.first_transition_from(@state)
                        end
           validate_transition_origin!(transition) if transition
           transition

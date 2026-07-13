@@ -164,7 +164,7 @@ module Smith
 
           klass = Object.const_get(class_name)
           state = state_name_for_payload(klass, state_name)
-          klass.transitions_from(state).empty? && next_transition.nil?
+          !klass.transition_from?(state) && next_transition.nil?
         rescue JSON::ParserError, NameError, NoMethodError
           false
         end

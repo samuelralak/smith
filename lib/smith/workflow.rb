@@ -162,8 +162,12 @@ module Smith
       build_run_result(steps)
     end
 
+    def pending_transition_name
+      @next_transition_name || self.class.first_transition_from(@state)&.name
+    end
+
     def terminal?
-      self.class.transitions_from(@state).empty? && @next_transition_name.nil?
+      !self.class.transition_from?(@state) && @next_transition_name.nil?
     end
 
     def done?
@@ -267,7 +271,7 @@ module Smith
         validate_transition_origin!(transition)
         transition
       else
-        self.class.transitions_from(@state).first
+        self.class.first_transition_from(@state)
       end
     end
 

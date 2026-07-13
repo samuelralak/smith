@@ -12,6 +12,12 @@ module Smith
           super
           subclass.instance_variable_set(:@states, (@states || []).dup)
           subclass.instance_variable_set(:@transitions, (@transitions || {}).dup)
+          subclass.instance_variable_set(
+            :@transitions_by_state,
+            duplicate_transition_index(@transitions_by_state)
+          )
+          subclass.instance_variable_set(:@transition_order, (@transition_order || {}).dup)
+          subclass.instance_variable_set(:@transition_sequence, @transition_sequence)
           subclass.instance_variable_set(:@initial_state_name, @initial_state_name)
           subclass.instance_variable_set(:@budget_config, @budget_config&.dup)
           subclass.instance_variable_set(:@max_transitions_count, @max_transitions_count)
@@ -41,7 +47,10 @@ module Smith
 
         def transition(name, from:, to:, &)
           @transitions ||= {}
-          @transitions[name] = Transition.new(name, from: from, to: to, &)
+          remove_from_transition_index(@transitions[name]) if @transitions.key?(name)
+          declared = Transition.new(name, from: from, to: to, &)
+          @transitions[name] = declared
+          insert_into_transition_index(declared)
         end
 
         def budget(**opts)
@@ -196,7 +205,15 @@ module Smith
         end
 
         def transitions_from(state)
-          (@transitions || {}).values.select { |t| t.from == state }
+          transitions_by_state.fetch(state, []).dup
+        end
+
+        def first_transition_from(state)
+          transitions_by_state.fetch(state, []).first
+        end
+
+        def transition_from?(state)
+          transitions_by_state.fetch(state, []).any?
         end
 
         def find_transition(name)
@@ -211,11 +228,52 @@ module Smith
 
         private
 
+        def transitions_by_state
+          @transitions_by_state ||= Hash.new { |index, state| index[state] = [] }
+        end
+
+        def transition_order
+          @transition_order ||= {}
+        end
+
+        def transition_sequence
+          @transition_sequence ||= 0
+        end
+
+        def insert_into_transition_index(transition)
+          order = transition_order_for(transition.name)
+          indexed = transitions_by_state[transition.from]
+          insertion = indexed.bsearch_index { |candidate| transition_order.fetch(candidate.name) > order }
+          indexed.insert(insertion || indexed.length, transition)
+        end
+
+        def transition_order_for(name)
+          return transition_order.fetch(name) if transition_order.key?(name)
+
+          transition_order[name] = transition_sequence
+          @transition_sequence = transition_sequence + 1
+          transition_order.fetch(name)
+        end
+
+        def duplicate_transition_index(source)
+          source.to_h.each_with_object(Hash.new { |index, state| index[state] = [] }) do |(state, transitions), copy|
+            copy[state] = transitions.dup
+          end
+        end
+
+        def remove_from_transition_index(transition)
+          return unless transition
+
+          indexed = transitions_by_state[transition.from]
+          indexed.delete(transition)
+          transitions_by_state.delete(transition.from) if indexed.empty?
+        end
+
         def generate_fail_transition
           @transitions ||= {}
           return if @transitions.key?(:fail)
 
-          @transitions[:fail] = Transition.new(:fail, from: nil, to: :failed)
+          transition(:fail, from: nil, to: :failed)
         end
       end
     end
