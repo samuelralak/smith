@@ -53,6 +53,46 @@ RSpec.describe "Smith::Workflow parallel execution" do
     expect(result.output.map { |branch| branch[:branch] }).to eq([0, 1])
   end
 
+  it "does not leak an outer parallel binding into a re-entrant workflow" do
+    outer_agent = Class.new(Smith::Agent) do
+      register_as :spec_outer_parallel_agent
+      model "outer-model"
+    end
+    inner_agent = Class.new(Smith::Agent) do
+      register_as :spec_inner_parallel_agent
+      model "inner-model"
+    end
+    inner_bindings = []
+    inner_workflow = Class.new(Smith::Workflow) do
+      initial_state :idle
+      state :done
+      transition :finish, from: :idle, to: :done do
+        execute :spec_inner_parallel_agent, parallel: true, count: 1
+      end
+
+      define_method(:invoke_agent) do |agent_class, _prepared_input|
+        inner_bindings << agent_class
+        "inner"
+      end
+      private :invoke_agent
+    end
+    outer_workflow = Class.new(Smith::Workflow) do
+      initial_state :idle
+      state :done
+      transition :finish, from: :idle, to: :done do
+        execute :spec_outer_parallel_agent, parallel: true, count: 1
+      end
+    end.new
+    outer_workflow.define_singleton_method(:execute_transition_body) do |_transition, prepared_input: nil|
+      inner_workflow.new.run!
+      prepared_input
+    end
+
+    expect(outer_workflow.run!).to be_done
+    expect(inner_bindings).to eq([inner_agent])
+    expect(inner_bindings).not_to include(outer_agent)
+  end
+
   it "rejects non-positive parallel branch counts before executing branches" do
     workflow = with_stubbed_class("SpecParallelZeroCountWorkflow", workflow_class) do
       initial_state :idle

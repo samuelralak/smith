@@ -91,7 +91,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   agent bindings during authorization with bounded `O(V + E)` traversal. Later
   mutable registry replacement cannot alter the authorized execution.
   Same-agent parallel execution resolves its captured binding on the authorized
-  root thread and passes that class reference into worker branches.
+  root thread and passes an identity-scoped class reference into worker
+  branches without leaking it into re-entrant workflows on the same thread.
 - Replace recursive graph reachability with an iterative walk over a graph-local
   outgoing index. Existing graph snapshots remain isolated from later workflow
   class mutation. State-reference validation and terminal-state metrics use
@@ -122,7 +123,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Verification
 
-- Default suite: 1,174 examples, 0 failures.
+- Default suite: 1,175 examples, 0 failures.
 - Focused graph, execution-authorization, binding-snapshot, typed-result, and
   restored-message suite: 71 examples, 0 failures. All newly added files pass RuboCop;
   the changed surface passes after excluding the repository's pre-existing

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "branch_env"
+require_relative "parallel_agent_binding"
 
 module Smith
   class Workflow
@@ -28,7 +29,7 @@ module Smith
 
       def run_branch(transition, index, env, ledger, signal)
         setup_branch_context(env, ledger)
-        Thread.current[:smith_parallel_agent_class] = env.agent_class
+        Thread.current[:smith_parallel_agent_binding] = ParallelAgentBinding.new(self, transition, env.agent_class)
         with_agent_context(env.agent_class) do
           branch_ledger = effective_call_ledger
           reserved = reserve_branch_call(branch_ledger, env, ledger)
@@ -62,7 +63,7 @@ module Smith
         clear_failed_billable_attempts
         Tool.current_ledger = nil
         Tool.current_tool_result_collector = nil
-        Thread.current[:smith_parallel_agent_class] = nil
+        Thread.current[:smith_parallel_agent_binding] = nil
         env.teardown_thread
       end
 

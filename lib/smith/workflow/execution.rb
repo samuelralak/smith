@@ -107,8 +107,9 @@ module Smith
       end
 
       def resolve_agent_class(transition)
-        parallel_agent_class = Thread.current[:smith_parallel_agent_class]
-        return parallel_agent_class if transition.parallel? && parallel_agent_class
+        parallel_binding = Thread.current[:smith_parallel_agent_binding]
+        parallel_agent_class = parallel_binding&.resolve(workflow: self, transition:)
+        return parallel_agent_class if parallel_agent_class
 
         transition.agent_name && resolve_registered_agent!(
           transition.agent_name,
