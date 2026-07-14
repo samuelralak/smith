@@ -16,7 +16,8 @@ module Smith
           guardrail_sources: Tool.current_guardrails,
           scoped_store: propagate_scoped_artifacts,
           branch_estimates: estimates,
-          deadline: wall_clock_deadline
+          deadline: wall_clock_deadline,
+          agent_class:
         )
         ledger = @ledger
         branches = Array.new(count) do |i|
@@ -27,7 +28,8 @@ module Smith
 
       def run_branch(transition, index, env, ledger, signal)
         setup_branch_context(env, ledger)
-        with_agent_context(resolve_agent_class(transition)) do
+        Thread.current[:smith_parallel_agent_class] = env.agent_class
+        with_agent_context(env.agent_class) do
           branch_ledger = effective_call_ledger
           reserved = reserve_branch_call(branch_ledger, env, ledger)
           begin
@@ -60,6 +62,7 @@ module Smith
         clear_failed_billable_attempts
         Tool.current_ledger = nil
         Tool.current_tool_result_collector = nil
+        Thread.current[:smith_parallel_agent_class] = nil
         env.teardown_thread
       end
 

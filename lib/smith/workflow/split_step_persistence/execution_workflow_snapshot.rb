@@ -47,8 +47,10 @@ module Smith
 
         def reachable_definition_transitions
           Graph::Reachability.new(workflow_class.graph).each_transition.map do |transition|
-            workflow_class.find_transition(transition.name)
+            workflow_class.transition_at(transition.definition_index)
           end
+        rescue IndexError
+          raise WorkflowError, "authorized nested workflow definition changed before execution"
         end
 
         def verify_transition!(transition, expected)

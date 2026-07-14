@@ -26,6 +26,9 @@ module Smith
             @split_step_phase = @split_step_execution_previous_phase
             clear_split_step_execution_authorization!
           end
+          PreparedStepExecutionAuthorization
+            .instance_method(:close_execution!)
+            .bind_call(authorization)
           self
         end
 

@@ -17,12 +17,14 @@ module Smith
           step = nil
           result = nil
           execution_thread = Thread.current
+          execution_active = false
           begin
             activate_split_step_execution!(authorization, execution_thread)
+            execution_active = true
             step = execute_claimed_split_step_transition!
             result = consume_split_step_execution_result!(execution_thread)
           ensure
-            finish_split_step_execution!(step, execution_thread)
+            finish_split_step_execution!(step, authorization, execution_thread) if execution_active
           end
           result
         end
@@ -44,6 +46,8 @@ module Smith
 
             ensure_split_step_definition_current!
             ensure_prepared_split_step_transition_matches!
+            PreparedStepExecutionAuthorization.instance_method(:activate_execution!)
+                                              .bind_call(authorization, execution_thread)
 
             @split_step_active_execution_authorization = authorization
             @split_step_execution_result = nil
@@ -71,10 +75,10 @@ module Smith
           raise WorkflowError, "prepared execution did not return the claimed transition"
         end
 
-        def finish_split_step_execution!(step, execution_thread)
+        def finish_split_step_execution!(step, authorization, execution_thread)
           @split_step_mutex.synchronize do
-            return unless @split_step_phase == :executing &&
-                          @split_step_execution_thread.equal?(execution_thread)
+            next unless @split_step_phase == :executing &&
+                        @split_step_execution_thread.equal?(execution_thread)
 
             @split_step_execution_thread = nil
             @split_step_advance_permit = false
@@ -83,6 +87,9 @@ module Smith
             @split_step_execution_result = nil
             @split_step_phase = step ? :executed : :attempted
           end
+        ensure
+          PreparedStepExecutionAuthorization.instance_method(:close_execution!)
+                                            .bind_call(authorization, execution_thread)
         end
 
         def resolve_split_step_advance_transition

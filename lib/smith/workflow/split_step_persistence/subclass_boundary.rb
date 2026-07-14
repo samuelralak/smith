@@ -76,7 +76,7 @@ module Smith
           return true if root_execution
 
           authorization = @split_step_active_execution_authorization
-          authorization&.issued_in_current_process? == true
+          authorization&.active_in_current_execution? == true
         end
 
         def effective_persistence_ttl

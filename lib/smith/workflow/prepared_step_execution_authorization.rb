@@ -2,6 +2,7 @@
 
 require_relative "prepared_step"
 require_relative "prepared_step_dispatch"
+require_relative "prepared_step_execution_scope"
 require_relative "split_step_persistence/execution_binding_snapshot"
 require_relative "../errors"
 
@@ -27,6 +28,7 @@ module Smith
         @prepared_step = prepared_step
         @dispatch_claim = dispatch_claim
         @execution_bindings = execution_bindings
+        @execution_scope = PreparedStepExecutionScope.new
         @process_id = Process.pid
         freeze
       end
@@ -34,14 +36,18 @@ module Smith
       def issued_in_current_process? = @process_id == Process.pid
 
       def fetch_agent!(...)
-        ensure_current_process!
+        ensure_binding_access!
 
         @execution_bindings.fetch!(...)
       end
 
       def verify_workflow!(workflow_class)
-        ensure_current_process!
+        ensure_active_execution!
         @execution_bindings.verify_workflow!(workflow_class)
+      end
+
+      def active_in_current_execution?
+        issued_in_current_process? && @execution_scope.active_for?(Thread.current)
       end
 
       def initialize_copy(_source)
@@ -69,6 +75,28 @@ module Smith
       end
 
       private
+
+      def activate_execution!(thread)
+        ensure_current_process!
+        @execution_scope.activate!(thread)
+      end
+
+      def close_execution!(thread = nil)
+        @execution_scope.close!(thread)
+      end
+
+      def ensure_active_execution!
+        return if active_in_current_execution?
+
+        raise WorkflowError, "prepared-step execution authorization is outside its active execution"
+      end
+
+      def ensure_binding_access!
+        accessible = issued_in_current_process? && @execution_scope.binding_accessible_for?(Thread.current)
+        return if accessible
+
+        raise WorkflowError, "prepared-step execution authorization is outside its binding access scope"
+      end
 
       def ensure_current_process!
         return if issued_in_current_process?

@@ -222,6 +222,10 @@ module Smith
           (@transitions || {})[name]
         end
 
+        def transition_at(index)
+          (@transitions || {}).values.fetch(index)
+        end
+
         def from_state(hash)
           workflow = allocate
           workflow.send(:restore_state, hash)

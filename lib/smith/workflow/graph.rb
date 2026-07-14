@@ -54,8 +54,12 @@ module Smith
       end
 
       def own_transitions(transitions)
-        transitions.each_value.with_object({}) do |transition, snapshot|
-          contract = TransitionContract.from_transition(transition, identifiers: @identifier_projection)
+        transitions.each_value.with_index.with_object({}) do |(transition, definition_index), snapshot|
+          contract = TransitionContract.from_transition(
+            transition,
+            identifiers: @identifier_projection,
+            definition_index:
+          )
           snapshot[contract.name] = contract
         end.freeze
       end

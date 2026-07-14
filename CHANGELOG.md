@@ -78,7 +78,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Route an active prepared execution through a Smith-owned private-method
   membrane, including reachable nested workflows. Subclass overrides retain
   normal Ruby dispatch outside the authorized boundary but cannot substitute
-  retry, dispatch, guardrail, budget, or completion behavior during it.
+  retry, dispatch, guardrail, budget, or completion behavior during it. Nested
+  authority is limited to the root execution thread and revoked when that
+  execution closes, even when a host retains a child workflow instance.
 - Own String workflow identifiers at declaration time and keep graph snapshots
   isolated from mutable caller aliases. Arbitrary host topology objects remain
   unfrozen and are represented by graph-local immutable identity references, so
@@ -88,6 +90,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Capture exact direct, fan-out, optimizer, orchestrator, and reachable nested
   agent bindings during authorization with bounded `O(V + E)` traversal. Later
   mutable registry replacement cannot alter the authorized execution.
+  Same-agent parallel execution resolves its captured binding on the authorized
+  root thread and passes that class reference into worker branches.
 - Replace recursive graph reachability with an iterative walk over a graph-local
   outgoing index. Existing graph snapshots remain isolated from later workflow
   class mutation. State-reference validation and terminal-state metrics use
@@ -118,7 +122,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Verification
 
-- Default suite: 1,170 examples, 0 failures.
+- Default suite: 1,174 examples, 0 failures.
 - Focused graph, execution-authorization, binding-snapshot, typed-result, and
   restored-message suite: 71 examples, 0 failures. All newly added files pass RuboCop;
   the changed surface passes after excluding the repository's pre-existing

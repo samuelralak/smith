@@ -332,6 +332,60 @@ RSpec.describe Smith::Workflow::PreparedStepExecutionAuthorization do
     expect(workflow).to be_done
   end
 
+  it "exposes captured bindings before execution and closes them afterward" do
+    agent = Class.new(Smith::Agent) { model "test-model" }
+    Smith::Agent::Registry.register(:scoped_binding_agent, agent)
+    agent_workflow = Class.new(Smith::Workflow) do
+      definition_digest Digest::SHA256.hexdigest("scoped-agent-binding")
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+      transition(:finish, from: :idle, to: :done) { execute :scoped_binding_agent }
+    end
+    workflow = claimed_workflow(agent_workflow, "#{key}:scoped-agent-binding")
+    allow(workflow).to receive(:invoke_agent).and_return("done")
+    authorization = workflow.authorize_prepared_step_execution!
+
+    binding = authorization.fetch_agent!(
+      :scoped_binding_agent,
+      workflow_class: agent_workflow,
+      transition_name: :finish,
+      role: :agent
+    )
+    expect(binding).to equal(agent)
+    expect(workflow.execute_authorized_prepared_step!(authorization)).to be_succeeded
+    expect do
+      authorization.fetch_agent!(
+        :scoped_binding_agent,
+        workflow_class: agent_workflow,
+        transition_name: :finish,
+        role: :agent
+      )
+    end.to raise_error(Smith::WorkflowError, /outside its binding access scope/)
+  end
+
+  it "passes a root-resolved captured binding into prepared parallel branches" do
+    agent = Class.new(Smith::Agent) { model "test-model" }
+    Smith::Agent::Registry.register(:prepared_parallel_agent, agent)
+    parallel_workflow = Class.new(Smith::Workflow) do
+      definition_digest Digest::SHA256.hexdigest("prepared-parallel-binding")
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+      transition :finish, from: :idle, to: :done do
+        execute :prepared_parallel_agent, parallel: true, count: 3
+      end
+    end
+    workflow = claimed_workflow(parallel_workflow, "#{key}:prepared-parallel-binding")
+    allow(workflow).to receive(:invoke_agent).and_return("done")
+
+    result = workflow.execute_prepared_step!
+
+    expect(result).to include(transition: :finish, to: :done)
+    outputs = workflow.to_state.fetch(:last_output).map { _1.fetch(:output) }
+    expect(outputs).to eq(%w[done done done])
+  end
+
   it "rejects nested workflow definition drift before child work" do
     child_executions = 0
     child = Class.new(Smith::Workflow) do
@@ -358,6 +412,30 @@ RSpec.describe Smith::Workflow::PreparedStepExecutionAuthorization do
 
     expect(result).to be_failed
     expect(result.error.message).to include("nested workflow definition changed")
+    expect(child_executions).to eq(0)
+  end
+
+  it "authorizes nested workflows with mutable topology identifiers" do
+    transition_name = [:answer]
+    child_executions = 0
+    child = Class.new(Smith::Workflow) do
+      initial_state :start
+      state :done
+      transition(transition_name, from: :start, to: :done) { compute { child_executions += 1 } }
+    end
+    parent = Class.new(Smith::Workflow) do
+      definition_digest Digest::SHA256.hexdigest("nested-mutable-identifier")
+      idempotency_mode :strict
+      initial_state :start
+      state :done
+      transition(:child, from: :start, to: :done) { workflow child }
+    end
+    workflow = claimed_workflow(parent, "#{key}:nested-mutable-identifier")
+
+    authorization = workflow.authorize_prepared_step_execution!
+
+    expect(authorization).to be_a(described_class)
+    expect(workflow.release_prepared_step_execution!(authorization)).to equal(workflow)
     expect(child_executions).to eq(0)
   end
 
@@ -587,6 +665,42 @@ RSpec.describe Smith::Workflow::PreparedStepExecutionAuthorization do
 
     workflow = claimed_workflow(parent, "#{key}:nested-execution-membrane")
     expect(workflow.execute_prepared_step!).to include(transition: :finish, to: :done)
+    expect([body_calls, override_calls]).to eq([1, 1])
+  end
+
+  it "closes the prepared execution membrane on retained nested workflows" do
+    retained_child = nil
+    body_calls = 0
+    override_calls = 0
+    child = Class.new(Smith::Workflow) do
+      initial_state :idle
+      state :done
+      transition(:finish, from: :idle, to: :done) { compute { body_calls += 1 } }
+
+      define_method(:run_with_retry_policy) do |_transition|
+        override_calls += 1
+        :substituted
+      end
+      private :run_with_retry_policy
+    end
+    original_new = child.method(:new)
+    child.define_singleton_method(:new) do |**arguments|
+      retained_child = original_new.call(**arguments)
+    end
+    parent = Class.new(Smith::Workflow) do
+      definition_digest Digest::SHA256.hexdigest("nested-execution-scope")
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+      transition(:finish, from: :idle, to: :done) { workflow child }
+    end
+    workflow = claimed_workflow(parent, "#{key}:nested-execution-scope")
+
+    expect(workflow.execute_prepared_step!).to include(transition: :finish, to: :done)
+    expect([body_calls, override_calls]).to eq([1, 0])
+
+    transition = child.transition_at(0)
+    expect(retained_child.send(:run_with_retry_policy, transition)).to eq(:substituted)
     expect([body_calls, override_calls]).to eq([1, 1])
   end
 

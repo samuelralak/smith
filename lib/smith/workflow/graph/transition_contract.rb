@@ -11,6 +11,7 @@ module Smith
         extend Dry::Initializer
 
         option :name
+        option :definition_index
         option :from
         option :to
         option :agent_name, default: proc {}
@@ -27,9 +28,9 @@ module Smith
         option :deterministic, default: proc { false }
         option :parallel, default: proc { false }
 
-        def self.from_transition(transition, identifiers:)
+        def self.from_transition(transition, identifiers:, definition_index:)
           attributes = TransitionContractAttributes.new(transition, identifiers:).to_h
-          new(**attributes).freeze
+          new(**attributes, definition_index:).freeze
         end
 
         def deterministic? = deterministic

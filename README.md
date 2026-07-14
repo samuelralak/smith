@@ -327,5 +327,5 @@ bundle exec rspec
 bundle exec rubocop
 ```
 
-1,170 examples, MIT licensed. See [`CHANGELOG.md`](CHANGELOG.md) for the current
+1,174 examples, MIT licensed. See [`CHANGELOG.md`](CHANGELOG.md) for the current
 release surface.

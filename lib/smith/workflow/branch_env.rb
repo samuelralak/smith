@@ -4,7 +4,7 @@ module Smith
   class Workflow
     # rubocop:disable Style/RedundantStructKeywordInit
     BranchEnv = Struct.new(
-      :prepared_input, :guardrail_sources, :scoped_store, :branch_estimates, :deadline,
+      :prepared_input, :guardrail_sources, :scoped_store, :branch_estimates, :deadline, :agent_class,
       keyword_init: true
     ) do
       def setup_thread
