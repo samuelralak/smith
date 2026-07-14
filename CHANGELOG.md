@@ -23,7 +23,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   durably proves execution never started can reconstruct an exact committed
   `dispatching` boundary without replaying its claim.
 - Add strict bounded `PreparedStep.deserialize` transport decoding and the
-  typed `Sha256Hex` scalar.
+  typed `Sha256Hex` scalar. Prepared step counters are constrained to positive
+  signed 64-bit values for both Hash and JSON transports.
 
 - Expose `Workflow#pending_transition_name` so hosts can inspect the exact next
   transition without serializing workflow state or traversing the graph.
@@ -52,7 +53,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   connection failure; a lost acknowledgement is outcome-unknown and must be
   reconciled.
 - Pin the executable definition digest for the complete split-step boundary and
-  reject class digest drift before claim or execution.
+  seal it on the workflow class when preparation or recovery authority is
+  acquired. Concurrent digest setters linearize before sealing or fail before
+  claim and execution.
 - Make Active Record exact replacement one conditional SQL update over key and
   byte-exact payload while incrementing its optimistic-lock column. Validate
   the database primary key or an unconditional single-column unique key index
@@ -73,8 +76,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Verification
 
-- Default suite: 1,116 examples, 0 failures.
-- Focused prepared-recovery, persistence-adapter, and doctor suite: 104 examples,
+- Default suite: 1,118 examples, 0 failures.
+- Focused prepared-recovery, persistence-adapter, and doctor suite: 106 examples,
   0 failures; new implementation files and focused changed files pass RuboCop and
   `git diff --check`.
 - Practical gem execution: 30 restart-safe scenarios covering serialized

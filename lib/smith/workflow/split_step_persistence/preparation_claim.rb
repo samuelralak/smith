@@ -13,7 +13,7 @@ module Smith
 
             @split_step_phase = :claiming_preparation
             @split_step_preparation_thread = Thread.current
-            @split_step_definition_digest = self.class.definition_digest
+            @split_step_definition_digest = self.class.send(:seal_definition_identity!)
             true
           end
         end

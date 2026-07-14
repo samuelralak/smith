@@ -92,6 +92,14 @@ RSpec.describe "Smith::Workflow prepared-step recovery" do
     expect do
       Smith::Workflow::PreparedStep.deserialize(descriptor.to_h.merge(token: "x" * 4096))
     end.to raise_error(ArgumentError, /Hash exceeds maximum bytes/)
+    expect do
+      Smith::Workflow::PreparedStep.deserialize(descriptor.to_h.merge(step_number: 1 << 100_000))
+    end.to raise_error(ArgumentError, /positive signed 64-bit counter/)
+    expect do
+      Smith::Workflow::PreparedStep.deserialize(
+        descriptor.to_h.merge(persistence_version: Smith::Workflow::PreparedStep::MAX_COUNTER_VALUE + 1)
+      )
+    end.to raise_error(ArgumentError, /positive signed 64-bit counter/)
   end
 
   it "rejects every mismatched descriptor identity field" do
@@ -157,9 +165,17 @@ RSpec.describe "Smith::Workflow prepared-step recovery" do
     end.to raise_error(Smith::WorkflowError, /current workflow definition/)
 
     workflow_class.persistence_schema_version(1)
-    workflow_class.definition_digest("f" * 64)
+    replacement_digest = "f" * 64
+    replacement_class = Class.new(Smith::Workflow) do
+      definition_digest replacement_digest
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+      transition(:finish, from: :idle, to: :done) { compute { nil } }
+    end
+    stub_const("SpecRecoverableWorkflow", replacement_class)
     expect do
-      workflow_class.recover_prepared_step(recovery_for(descriptor), adapter: adapter)
+      replacement_class.recover_prepared_step(recovery_for(descriptor), adapter: adapter)
     end.to raise_error(Smith::WorkflowError, /current workflow definition/)
   end
 
@@ -397,20 +413,40 @@ RSpec.describe "Smith::Workflow prepared-step recovery" do
     end.to raise_error(Smith::WorkflowError)
   end
 
-  it "rejects definition-digest drift after recovery" do
+  it "seals the definition digest when recovery authority is acquired" do
     workflow = workflow_class.recover_prepared_step(recovery_for(prepare), adapter: adapter)
-    workflow_class.definition_digest("f" * 64)
 
     expect do
-      workflow.claim_prepared_step_dispatch!
-    end.to raise_error(Smith::WorkflowError, /definition has changed/)
-    expect(JSON.parse(adapter.fetch(key))).to include(
-      "definition_digest" => definition_digest,
-      "split_step_phase" => "prepared"
-    )
+      workflow_class.definition_digest("f" * 64)
+    end.to raise_error(ArgumentError, /definition_digest is sealed/)
+    workflow.claim_prepared_step_dispatch!
+    expect(workflow.execute_prepared_step!).to include(transition: :finish, to: :done)
   end
 
-  it "keeps the descriptor bound to the digest pinned before serialization" do
+  it "treats a frozen restart-safe workflow class as already sealed" do
+    frozen_class = stub_const("SpecFrozenRecoverableWorkflow", Class.new(Smith::Workflow) do
+      definition_digest Digest::SHA256.hexdigest("frozen-recoverable-workflow")
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+      transition :finish, from: :idle, to: :done
+    end)
+    digest = frozen_class.definition_digest
+    frozen_class.freeze
+    workflow = frozen_class.new
+    frozen_key = "workflow:frozen-recoverable"
+
+    workflow.prepare_persisted_step!(frozen_key, adapter: adapter)
+
+    expect(frozen_class.definition_digest(digest)).to equal(digest)
+    expect do
+      frozen_class.definition_digest(Digest::SHA256.hexdigest("different-frozen-workflow"))
+    end.to raise_error(ArgumentError, /definition_digest is sealed/)
+    workflow.claim_prepared_step_dispatch!
+    expect(workflow.execute_prepared_step!).to include(transition: :finish, to: :done)
+  end
+
+  it "rejects definition mutation during preparation before persistence" do
     original_digest = Digest::SHA256.hexdigest("definition-before-serialization")
     replacement_digest = Digest::SHA256.hexdigest("definition-during-serialization")
     changed_digest = replacement_digest
@@ -429,13 +465,11 @@ RSpec.describe "Smith::Workflow prepared-step recovery" do
     workflow = changing_class.new
     changing_key = "workflow:changing-definition"
 
-    workflow.prepare_persisted_step!(changing_key, adapter: adapter)
-
-    expect(workflow.prepared_persisted_step.definition_digest).to eq(original_digest)
-    expect(JSON.parse(adapter.fetch(changing_key))).to include("definition_digest" => original_digest)
     expect do
-      workflow.claim_prepared_step_dispatch!
-    end.to raise_error(Smith::WorkflowError, /definition has changed/)
+      workflow.prepare_persisted_step!(changing_key, adapter: adapter)
+    end.to raise_error(ArgumentError, /definition_digest is sealed/)
+    expect(adapter.fetch(changing_key)).to be_nil
+    expect(workflow.prepared_persisted_step).to be_nil
   end
 
   it "does not convert a prepared legacy boundary into restart-safe execution" do
@@ -447,12 +481,32 @@ RSpec.describe "Smith::Workflow prepared-step recovery" do
     end)
     legacy = legacy_class.new
     legacy.prepare_persisted_step!("workflow:pinned-legacy", adapter: adapter)
-    legacy_class.definition_digest("a" * 64)
 
     expect do
-      legacy.execute_prepared_step!
-    end.to raise_error(Smith::WorkflowError, /definition has changed/)
+      legacy_class.definition_digest("a" * 64)
+    end.to raise_error(ArgumentError, /definition_digest is sealed/)
     expect(JSON.parse(adapter.fetch("workflow:pinned-legacy"))).to include("definition_digest" => nil)
+    expect(legacy.execute_prepared_step!).to include(transition: :finish, to: :done)
+  end
+
+  it "keeps frozen legacy workflow classes executable without adding a digest" do
+    frozen_legacy_class = stub_const("SpecFrozenLegacyWorkflow", Class.new(Smith::Workflow) do
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+      transition :finish, from: :idle, to: :done
+    end)
+    frozen_legacy_class.freeze
+    workflow = frozen_legacy_class.new
+    frozen_key = "workflow:frozen-legacy"
+
+    workflow.prepare_persisted_step!(frozen_key, adapter: adapter)
+
+    expect(workflow.prepared_persisted_step.definition_digest).to be_nil
+    expect do
+      frozen_legacy_class.definition_digest(Digest::SHA256.hexdigest("late-frozen-digest"))
+    end.to raise_error(ArgumentError, /definition_digest is sealed/)
+    expect(workflow.execute_prepared_step!).to include(transition: :finish, to: :done)
   end
 
   it "confirms a transaction-coordinated dispatch claim before execution" do
@@ -526,8 +580,11 @@ RSpec.describe "Smith::Workflow prepared-step recovery" do
   end
   it "inherits the immutable workflow definition digest" do
     child = Class.new(workflow_class)
+    child_digest = Digest::SHA256.hexdigest("child-workflow-definition")
 
     expect(child.definition_digest).to equal(workflow_class.definition_digest)
     expect(child.definition_digest).to be_frozen
+    expect(child.definition_digest(child_digest)).to eq(child_digest)
+    expect(workflow_class.definition_digest).to eq(definition_digest)
   end
 end

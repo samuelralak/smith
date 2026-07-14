@@ -200,8 +200,8 @@ fibers or executors. The descriptor is a correlation witness, not proof that the
 transaction subsequently committed.
 Use `Smith::Workflow::PreparedStep.deserialize` to restore a descriptor from a
 Hash or bounded JSON object. The decoder rejects missing, duplicated, and
-unknown attributes; direct `Dry::Struct` construction is not a transport
-decoder.
+unknown attributes, and constrains persistence/step counters to positive signed
+64-bit values; direct `Dry::Struct` construction is not a transport decoder.
 
 For a workflow declaring `definition_digest`,
 `claim_prepared_step_dispatch!` atomically replaces the exact `prepared`
@@ -328,10 +328,12 @@ When claim and host-attempt writes share an Active Record transaction,
 known prepared boundary and permits a new exact claim. Any other confirmation
 result remains uncertain and cannot execute.
 
-The definition digest is pinned when preparation authority is acquired. Smith
-rejects claim or execution if the workflow class changes that digest before the
-boundary completes, including a class that adds a digest after preparing a
-legacy boundary.
+The definition digest is pinned and sealed on the class object when preparation
+or recovery authority is acquired. A concurrent DSL setter either completes
+before sealing and becomes the pinned identity, or raises before claim and
+execution. Repeating the same digest remains idempotent. A reloaded definition
+must use a new class object; recovery through that class still validates its
+digest against the durable descriptor.
 
 Exact replacement is a current-value compare-and-swap, not a historical fencing
 ledger. A restart-safe workflow key must be exclusively owned by Smith's
@@ -354,8 +356,10 @@ has been lost.
 Workflow classes are part of the execution contract once preparation begins.
 Hosts must not add or prepend methods to that class until the boundary is
 complete, and custom `inherited` hooks must call `super`. Ruby intentionally
-allows open-class mutation, so Smith treats post-preparation class mutation as
-an unsupported host lifecycle violation rather than attempting to sandbox it.
+allows open-class mutation. Smith blocks definition-digest changes after the
+class is sealed, while other post-preparation class mutation remains an
+unsupported host lifecycle violation rather than something Smith attempts to
+sandbox.
 
 The lifecycle row and Smith checkpoint are atomic only when the persistence
 adapter participates in the same transaction and database connection domain as

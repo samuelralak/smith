@@ -1301,7 +1301,8 @@ Purpose:
 Documented contracts covered:
 
 - strict bounded descriptor deserialization rejects malformed, missing,
-  duplicated, and unknown transport fields
+  duplicated, and unknown transport fields, plus integer counters outside the
+  positive signed 64-bit range
 - recovery requires a typed `not_started` decision, exact named class and
   schema, matching executable definition digest, exact descriptor identity,
   and the same persistence domain
@@ -1316,7 +1317,8 @@ Documented contracts covered:
   matching durable `dispatching` state can be reconstructed only from that
   receipt plus the host's typed `not_started` decision
 - definition identity is pinned at preparation/recovery and drift is rejected
-  before claim or execution
+  before claim or execution; the class-local definition identity is sealed so
+  concurrent setters linearize before acquisition or fail
 - losing same-object claim and confirmation contenders cannot revoke the
   winner's state
 - a transaction-coordinated claim is unavailable for execution until confirmed

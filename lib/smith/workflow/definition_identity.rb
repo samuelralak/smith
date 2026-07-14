@@ -6,6 +6,8 @@ module Smith
   class Workflow
     module DefinitionIdentity
       def self.included(base)
+        base.instance_variable_set(:@definition_identity_mutex, Mutex.new)
+        base.instance_variable_set(:@definition_identity_sealed, false)
         base.extend(ClassMethods)
       end
 
