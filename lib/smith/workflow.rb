@@ -136,17 +136,19 @@ module Smith
       return if transition.nil?
 
       @step_work_started = true
-      step_result = execute_step(transition)
+      step_result = if advance_claim == :split_step
+                      Execution.instance_method(:execute_step).bind_call(self, transition)
+                    else
+                      execute_step(transition)
+                    end
       @step_count += 1
       @updated_at = Time.now.utc.iso8601
       record_step_snapshot(step_result)
       step_result
     rescue UnresolvedTransitionError => e
-      origin_state = @state
-      @outcome = nil
-      raise unless route_to_fail_state!
-
-      step_result = { transition: e.requested_name, from: origin_state, to: @state, error: e }
+      step_result = GuardrailIntegration
+                    .instance_method(:handle_unresolved_transition_failure)
+                    .bind_call(self, e)
       record_step_snapshot(step_result)
       step_result
     ensure
@@ -248,14 +250,6 @@ module Smith
       return nil unless config
 
       Budget::Ledger.new(limits: config)
-    end
-
-    def route_to_fail_state!
-      fail_transition = self.class.find_transition(:fail)
-      return false unless fail_transition
-
-      @state = fail_transition.to
-      true
     end
 
     def ensure_transition_budget!
@@ -474,3 +468,24 @@ module Smith
     end
   end
 end
+
+Smith::Workflow::SplitStepPersistence::SubclassBoundary.protect_execution_path!(
+  Smith::Workflow,
+  Smith::Workflow::Execution,
+  Smith::Workflow::ExecutionBindingResolution,
+  Smith::Workflow::StepCompletion,
+  Smith::Agent::Lifecycle,
+  Smith::Workflow::NestedExecution,
+  Smith::Workflow::EvaluatorOptimizer,
+  Smith::Workflow::OrchestratorWorker,
+  Smith::Workflow::ParallelExecution,
+  Smith::Workflow::FanoutExecution,
+  Smith::Workflow::RetryExecution,
+  Smith::Workflow::DeterministicExecution,
+  Smith::Workflow::GuardrailIntegration,
+  Smith::Workflow::BudgetIntegration,
+  Smith::Workflow::EventIntegration,
+  Smith::Workflow::ArtifactIntegration,
+  Smith::Workflow::DataVolumePolicy,
+  Smith::Workflow::DeadlineEnforcement
+)

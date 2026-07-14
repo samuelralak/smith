@@ -6,6 +6,8 @@ require "securerandom"
 
 require_relative "prepared_step"
 require_relative "prepared_step_dispatch"
+require_relative "prepared_step_execution_authorization"
+require_relative "prepared_step_execution_result"
 require_relative "prepared_step_recovery"
 require_relative "split_step_persistence/subclass_boundary"
 require_relative "split_step_persistence/inheritance"
@@ -31,8 +33,11 @@ require_relative "split_step_persistence/dispatch_boundary"
 require_relative "split_step_persistence/dispatch_claim"
 require_relative "split_step_persistence/dispatch_verification"
 require_relative "split_step_persistence/dispatch_confirmation"
-require_relative "split_step_persistence/execution"
 require_relative "split_step_persistence/execution_verification"
+require_relative "split_step_persistence/execution_binding_snapshot"
+require_relative "split_step_persistence/execution_authorization"
+require_relative "split_step_persistence/execution_result_capture"
+require_relative "split_step_persistence/execution"
 require_relative "split_step_persistence/checkpoint_state"
 require_relative "split_step_persistence/checkpoint"
 require_relative "split_step_persistence/payloads"
@@ -62,8 +67,10 @@ module Smith
       include DispatchClaim
       include DispatchVerification
       include DispatchConfirmation
-      include Execution
       include ExecutionVerification
+      include ExecutionAuthorization
+      include ExecutionResultCapture
+      include Execution
       include CheckpointState
       include Checkpoint
       include Payloads

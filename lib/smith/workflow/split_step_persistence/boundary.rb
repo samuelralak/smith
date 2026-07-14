@@ -29,6 +29,8 @@ module Smith
           @split_step_prepared_descriptor = nil
           @split_step_transaction_identity = nil
           @split_step_execution_thread = nil
+          @split_step_active_execution_authorization = nil
+          @split_step_execution_result = nil
           @split_step_advance_permit = false
           @split_step_dispatch_token = nil
           @split_step_dispatch_descriptor = nil
@@ -36,7 +38,8 @@ module Smith
           @split_step_dispatch_thread = nil
           @split_step_pre_dispatch_payload = nil
           @split_step_attempted_dispatch_payload = nil
-          @split_step_execution_previous_phase = nil
+          clear_split_step_execution_verification!
+          clear_split_step_execution_authorization!
           @split_step_preparation_thread = nil
           @split_step_persist_permit = false
         end

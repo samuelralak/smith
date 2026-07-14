@@ -21,10 +21,20 @@ module Smith
       end
 
       def build_child_workflow(child_class)
+        @split_step_active_execution_authorization&.verify_workflow!(child_class)
         child = child_class.new(context: @context.dup, ledger: @ledger, created_at: @created_at)
+        unless child.instance_of?(child_class)
+          raise WorkflowError, "nested workflow constructor returned #{child.class} instead of #{child_class}"
+        end
+
+        @split_step_active_execution_authorization&.verify_workflow!(child_class)
         child.instance_variable_set(:@execution_namespace, @execution_namespace)
         child.instance_variable_set(:@inherited_deadline, wall_clock_deadline)
         child.instance_variable_set(:@inherited_scoped_artifacts, Smith.scoped_artifacts)
+        child.instance_variable_set(
+          :@split_step_active_execution_authorization,
+          @split_step_active_execution_authorization
+        )
         child
       end
 

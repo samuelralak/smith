@@ -23,13 +23,13 @@ module Smith
 
       def execute_orchestration_step(transition, prepared_input: nil)
         state = OrchestrationState.new(transition.orchestrator_config, prepared_input)
-        state.orchestrator_class = Agent::Registry.fetch!(
+        state.orchestrator_class = resolve_registered_agent!(
           state.config[:orchestrator],
           workflow_class: self.class,
           transition_name: transition.name,
           role: :orchestrator
         )
-        state.worker_class = Agent::Registry.fetch!(
+        state.worker_class = resolve_registered_agent!(
           state.config[:worker],
           workflow_class: self.class,
           transition_name: transition.name,

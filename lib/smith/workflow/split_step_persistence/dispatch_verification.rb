@@ -16,12 +16,16 @@ module Smith
           end
         end
 
-        def verify_split_step_dispatch_available!
+        def verify_split_step_dispatch_available!(verification_token)
           payload = @split_step_adapter.fetch(@split_step_persistence_key)
           return if persisted_split_step_payload?(payload, @split_step_preparation_payload)
 
           @split_step_mutex.synchronize do
-            @split_step_phase = :dispatch_unknown if @split_step_phase == :verifying_execution
+            if active_split_step_execution_verification?(verification_token)
+              @split_step_phase = :dispatch_unknown
+              @split_step_execution_previous_phase = nil
+              clear_split_step_execution_verification!
+            end
           end
           raise PersistencePayloadConflict.new(key: @split_step_persistence_key)
         end

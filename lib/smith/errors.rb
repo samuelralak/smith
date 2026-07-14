@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "error"
+
 module Smith
   # Classification surface for host retry policies. Smith owns the
   # answer to "should the workflow attempt be retried?" so consumers
@@ -35,6 +37,7 @@ module Smith
   class DeadlineExceeded < Error; end
   class MaxTransitionsExceeded < Error; end
   class GuardrailFailed < Error; end
+
   class ToolGuardrailFailed < Error
     attr_reader :retryable
 
@@ -43,8 +46,10 @@ module Smith
       super(message)
     end
   end
+
   class ToolPolicyDenied < Error; end
   class AgentError < Error; end
+
   class BlankAgentOutputError < AgentError
     attr_reader :agent_name, :model_used
 
@@ -60,6 +65,7 @@ module Smith
       super(detail)
     end
   end
+
   class WorkflowError < Error; end
 
   class DeterministicStepFailure < WorkflowError

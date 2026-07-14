@@ -5,48 +5,62 @@ module Smith
     module SplitStepPersistence
       module Execution
         def execute_prepared_step!
-          execution_started = false
+          authorization = ExecutionAuthorization
+                          .instance_method(:authorize_prepared_step_execution!)
+                          .bind_call(self)
+          result = Execution.instance_method(:execute_authorized_prepared_step!).bind_call(self, authorization)
+          result.step_snapshot
+        end
+
+        def execute_authorized_prepared_step!(authorization)
+          authorization = validate_split_step_execution_authorization!(authorization)
           step = nil
-          claim_split_step_execution_verification!
+          result = nil
+          execution_thread = Thread.current
           begin
-            verify_claimed_split_step_execution!
-            activate_split_step_execution!
-            execution_started = true
+            activate_split_step_execution!(authorization, execution_thread)
             step = execute_claimed_split_step_transition!
+            result = consume_split_step_execution_result!(execution_thread)
           ensure
-            execution_started ? finish_split_step_execution!(step) : restore_unverified_execution!
+            finish_split_step_execution!(step, execution_thread)
           end
-          step
+          result
         end
 
         def prepared_persisted_step?
           @split_step_mutex.synchronize do
             expected = restart_safe_split_step? ? :dispatch_claimed : :prepared
-            @split_step_phase == expected
+            [expected, :execution_authorized].include?(@split_step_phase)
           end
         end
 
         private
 
-        def activate_split_step_execution!
+        def activate_split_step_execution!(authorization, execution_thread)
           @split_step_mutex.synchronize do
-            unless @split_step_phase == :verifying_execution
-              raise WorkflowError, "the prepared execution claim is no longer active"
+            unless active_split_step_execution_authorization?(authorization)
+              raise WorkflowError, "the prepared-step execution authorization is no longer active"
             end
 
+            ensure_split_step_definition_current!
+            ensure_prepared_split_step_transition_matches!
+
+            @split_step_active_execution_authorization = authorization
+            @split_step_execution_result = nil
             @split_step_phase = :executing
-            @split_step_execution_previous_phase = nil
-            @split_step_execution_thread = Thread.current
+            clear_split_step_execution_authorization!
+            @split_step_execution_thread = execution_thread
             @split_step_advance_permit = true
           end
         end
 
-        def restore_unverified_execution!
+        def restore_unverified_execution!(verification_token)
           @split_step_mutex.synchronize do
-            if @split_step_phase == :verifying_execution
-              @split_step_phase = @split_step_execution_previous_phase
-              @split_step_execution_previous_phase = nil
-            end
+            next unless active_split_step_execution_verification?(verification_token)
+
+            @split_step_phase = @split_step_execution_previous_phase
+            @split_step_execution_previous_phase = nil
+            clear_split_step_execution_verification!
           end
         end
 
@@ -57,11 +71,16 @@ module Smith
           raise WorkflowError, "prepared execution did not return the claimed transition"
         end
 
-        def finish_split_step_execution!(step)
+        def finish_split_step_execution!(step, execution_thread)
           @split_step_mutex.synchronize do
+            return unless @split_step_phase == :executing &&
+                          @split_step_execution_thread.equal?(execution_thread)
+
             @split_step_execution_thread = nil
             @split_step_advance_permit = false
             @split_step_execution_previous_phase = nil
+            @split_step_active_execution_authorization = nil
+            @split_step_execution_result = nil
             @split_step_phase = step ? :executed : :attempted
           end
         end

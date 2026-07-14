@@ -5,7 +5,7 @@ module Smith
     module SplitStepPersistence
       module Preparation
         DESCRIPTOR_PHASES = %i[
-          prepared_uncommitted prepared verifying_execution executing executed attempted
+          prepared_uncommitted prepared verifying_execution execution_authorized executing executed attempted
           dispatch_claimed_uncommitted dispatch_claimed dispatch_rejected dispatch_unknown
           confirming_dispatch checkpointing checkpoint_retryable checkpoint_unknown
           checkpointed confirming_checkpoint

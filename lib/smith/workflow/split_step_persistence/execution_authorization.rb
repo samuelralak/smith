@@ -1,0 +1,86 @@
+# frozen_string_literal: true
+
+module Smith
+  class Workflow
+    module SplitStepPersistence
+      module ExecutionAuthorization
+        def authorize_prepared_step_execution!
+          verification_token = claim_split_step_execution_verification!
+          authorized = false
+          verify_claimed_split_step_execution!(verification_token)
+          authorization = build_split_step_execution_authorization
+          activate_split_step_execution_authorization!(authorization, verification_token)
+          authorized = true
+          authorization
+        ensure
+          restore_unverified_execution!(verification_token) if verification_token && !authorized
+        end
+
+        def release_prepared_step_execution!(authorization)
+          authorization = validate_split_step_execution_authorization!(authorization)
+          @split_step_mutex.synchronize do
+            unless active_split_step_execution_authorization?(authorization)
+              raise WorkflowError, "the prepared-step execution authorization is no longer active"
+            end
+
+            @split_step_phase = @split_step_execution_previous_phase
+            clear_split_step_execution_authorization!
+          end
+          self
+        end
+
+        private
+
+        def build_split_step_execution_authorization
+          PreparedStepExecutionAuthorization.new(
+            prepared_step: @split_step_prepared_descriptor,
+            dispatch_claim: @split_step_dispatch_descriptor,
+            execution_bindings: ExecutionBindingSnapshot.capture(
+              @split_step_transition,
+              workflow_class: self.class
+            )
+          )
+        end
+
+        def activate_split_step_execution_authorization!(authorization, verification_token)
+          @split_step_mutex.synchronize do
+            unless active_split_step_execution_verification?(verification_token)
+              raise WorkflowError, "the prepared execution verification is no longer active"
+            end
+
+            @split_step_execution_authorization = authorization
+            clear_split_step_execution_verification!
+            @split_step_phase = :execution_authorized
+          end
+        end
+
+        def validate_split_step_execution_authorization!(authorization)
+          return authorization if authorization.is_a?(PreparedStepExecutionAuthorization)
+
+          raise ArgumentError,
+                "authorization must be a Smith::Workflow::PreparedStepExecutionAuthorization"
+        end
+
+        def active_split_step_execution_authorization?(authorization)
+          @split_step_phase == :execution_authorized &&
+            @split_step_execution_authorization.equal?(authorization) &&
+            authorization.issued_in_current_process?
+        end
+
+        def active_split_step_execution_verification?(verification_token)
+          @split_step_phase == :verifying_execution &&
+            @split_step_execution_verification_token.equal?(verification_token)
+        end
+
+        def clear_split_step_execution_verification!
+          @split_step_execution_verification_token = nil
+        end
+
+        def clear_split_step_execution_authorization!
+          @split_step_execution_authorization = nil
+          @split_step_execution_previous_phase = nil
+        end
+      end
+    end
+  end
+end

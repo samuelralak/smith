@@ -35,20 +35,22 @@ module Smith
         def initial_state(name = nil)
           return @initial_state_name if name.nil?
 
-          @initial_state_name = name
-          state(name)
+          @initial_state_name = own_identifier(name)
+          state(@initial_state_name)
         end
 
         def state(name)
+          name = own_identifier(name)
           @states ||= []
           @states << name unless @states.include?(name)
           generate_fail_transition if name == :failed
         end
 
         def transition(name, from:, to:, &)
+          declared = Transition.new(name, from: from, to: to, &)
+          name = declared.name
           @transitions ||= {}
           remove_from_transition_index(@transitions[name]) if @transitions.key?(name)
-          declared = Transition.new(name, from: from, to: to, &)
           @transitions[name] = declared
           insert_into_transition_index(declared)
         end
@@ -227,6 +229,10 @@ module Smith
         end
 
         private
+
+        def own_identifier(identifier)
+          identifier.is_a?(String) ? identifier.dup.freeze : identifier
+        end
 
         def transitions_by_state
           @transitions_by_state ||= Hash.new { |index, state| index[state] = [] }

@@ -219,6 +219,20 @@ the caller's transaction for host-record coordination;
 See [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md) for schema versioning,
 seed-drift validation, the `idempotency_mode :strict` step-in-progress contract,
 and opt-in restart-safe prepared recovery.
+Hosts that need to commit a durable attempt before provider or tool work can
+separate verification from execution with
+`authorize_prepared_step_execution!`, commit their own attempt ledger, and then
+consume the exact process-local capability through
+`execute_authorized_prepared_step!`. Smith does not own the host lease, attempt
+record, scheduler, or unknown-outcome policy. Authorization captures the exact
+agent bindings reachable by that transition with a bounded `O(V + E)` graph
+walk, preventing mutable registry replacement between authorization and work.
+Reachable nested workflow transition contracts are captured and revalidated
+before child execution. The typed result owns a bounded snapshot of JSON-like
+Ruby values; unsupported mutable output values fail closed.
+During authorized execution, Smith also seals its private execution path against
+workflow subclass method-name collisions, including nested child workflows.
+Ordinary non-authorized runs retain normal Ruby override behavior.
 
 ## Tools and Guardrails
 
@@ -313,5 +327,5 @@ bundle exec rspec
 bundle exec rubocop
 ```
 
-880 examples, MIT licensed. See [`CHANGELOG.md`](CHANGELOG.md) for the current
+1,170 examples, MIT licensed. See [`CHANGELOG.md`](CHANGELOG.md) for the current
 release surface.

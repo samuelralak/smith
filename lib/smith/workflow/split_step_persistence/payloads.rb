@@ -7,10 +7,10 @@ module Smith
         private
 
         def persisted_split_step_payload?(payload, expected)
-          return false unless payload
+          return false unless payload.is_a?(String) && expected.is_a?(String)
 
-          JSON.parse(payload) == JSON.parse(expected)
-        rescue JSON::ParserError, TypeError
+          CanonicalPayloadDigest.call(payload) == CanonicalPayloadDigest.call(expected)
+        rescue WorkflowError, JSON::ParserError, TypeError
           false
         end
 

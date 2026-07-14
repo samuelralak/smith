@@ -23,9 +23,7 @@ module Smith
         private
 
         def terminal_states
-          graph.states.select do |state|
-            graph.transitions.values.none? { |transition| transition.from == state }
-          end
+          graph.states.select { |state| graph.transitions_from(state).empty? }
         end
       end
     end

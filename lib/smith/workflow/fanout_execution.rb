@@ -109,7 +109,7 @@ module Smith
       end
 
       def resolve_fanout_agent_class(transition, agent_name)
-        Agent::Registry.fetch!(
+        resolve_registered_agent!(
           agent_name,
           workflow_class: self.class,
           transition_name: transition&.name,

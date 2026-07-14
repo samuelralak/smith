@@ -3,10 +3,9 @@
 require "dry-configurable"
 
 require_relative "smith/version"
+require_relative "smith/error"
 
 module Smith
-  class Error < StandardError; end
-
   extend Dry::Configurable
 
   # Artifact store (§4.7)
@@ -229,6 +228,7 @@ require_relative "smith/agent/registry_binding"
 require_relative "smith/agent/registry"
 
 # Workflow (Transition, DSL, Persistence, and Execution must load before Workflow)
+require_relative "smith/workflow/identifier"
 require_relative "smith/workflow/transition"
 require_relative "smith/workflow/graph"
 require_relative "smith/workflow/graph_dsl"

@@ -1,10 +1,14 @@
 # frozen_string_literal: true
 
 require_relative "agent_result"
+require_relative "execution_binding_resolution"
+require_relative "step_completion"
 
 module Smith
   class Workflow
     module Execution
+      include ExecutionBindingResolution
+      include StepCompletion
       include Agent::Lifecycle
       include NestedExecution
       include EvaluatorOptimizer
@@ -19,11 +23,10 @@ module Smith
       def execute_step(transition)
         setup_step_context
         output = with_scoped_artifacts { run_with_retry_policy(transition) }
-        complete_step(transition, output)
+        StepCompletion.instance_method(:complete_step).bind_call(self, transition, output)
       rescue StandardError => e
         @outcome = nil
-        handle_step_failure(transition, e)
-        { transition: transition.name, from: transition.from, to: transition.to, error: e }
+        GuardrailIntegration.instance_method(:handle_step_failure).bind_call(self, transition, e)
       ensure
         teardown_step_context
       end
@@ -58,22 +61,6 @@ module Smith
         validate_data_volume!(output, agent_class)
         run_output_guardrails(output, agent_class)
         resolve_router_output(transition, output)
-      end
-
-      def complete_step(transition, output)
-        @state = transition.to
-        @next_transition_name = @router_next_transition || transition.success_transition
-        @router_next_transition = nil
-        append_accepted_output(output)
-        emit_step_completed(transition, output)
-        { transition: transition.name, from: transition.from, to: transition.to, output: output }
-      end
-
-      def append_accepted_output(output)
-        return unless @session_messages
-        return if output.nil?
-
-        @session_messages << { role: :assistant, content: output }
       end
 
       def resolve_router_output(transition, output)
@@ -120,9 +107,7 @@ module Smith
       end
 
       def resolve_agent_class(transition)
-        return nil unless transition.agent_name
-
-        Agent::Registry.fetch!(
+        transition.agent_name && resolve_registered_agent!(
           transition.agent_name,
           workflow_class: self.class,
           transition_name: transition.name,

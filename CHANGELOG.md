@@ -22,6 +22,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Add immutable, bounded `PreparedStepDispatch` receipts. An exclusive host that
   durably proves execution never started can reconstruct an exact committed
   `dispatching` boundary without replaying its claim.
+- Add a generic process-local prepared-step execution authorization. Smith
+  verifies an exact preparation or dispatch without performing transition work;
+  a host may then commit its own executing-attempt record before consuming the
+  non-copyable, process-bound capability exactly once. Standard Marshal,
+  Psych/YAML, and JSON serialization hooks reject the capability.
+- Add `PreparedStepExecutionResult` so hosts can distinguish successful and
+  failure-routed transition attempts without inferring success from workflow
+  state.
 - Add strict bounded `PreparedStep.deserialize` transport decoding and the
   typed `Sha256Hex` scalar. Prepared step counters are constrained to positive
   signed 64-bit values for both Hash and JSON transports.
@@ -64,6 +72,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   require a native reconnect-disabling scope before any Redis CAS begins.
 - Treat a persistence identity as available in doctor diagnostics only when its
   value satisfies the same bounded non-empty contract used at runtime.
+- Revalidate workflow definition and transition identity when an execution
+  authorization is consumed. Capability release and execution are linearized by
+  exact identity so concurrent or stale holders cannot revoke or replay work.
+- Route an active prepared execution through a Smith-owned private-method
+  membrane, including reachable nested workflows. Subclass overrides retain
+  normal Ruby dispatch outside the authorized boundary but cannot substitute
+  retry, dispatch, guardrail, budget, or completion behavior during it.
+- Own String workflow identifiers at declaration time and keep graph snapshots
+  isolated from mutable caller aliases. Arbitrary host topology objects remain
+  unfrozen and are represented by graph-local immutable identity references, so
+  caller mutation cannot corrupt graph keys or indexes. The authorized
+  completion and failure boundaries bind Smith's implementation directly so
+  subclass method-name collisions cannot bypass typed result capture.
+- Capture exact direct, fan-out, optimizer, orchestrator, and reachable nested
+  agent bindings during authorization with bounded `O(V + E)` traversal. Later
+  mutable registry replacement cannot alter the authorized execution.
+- Replace recursive graph reachability with an iterative walk over a graph-local
+  outgoing index. Existing graph snapshots remain isolated from later workflow
+  class mutation. State-reference validation and terminal-state metrics use
+  constant-time graph indexes. Nested runtime-readiness inspection uses an
+  iterative postorder traversal with workflow-class identity memoization and
+  cycle-edge diagnostics. Nested workflow contracts are captured and
+  revalidated before and immediately after child construction without repeated
+  full-transition scans.
+- Bound durable preparation comparison by canonical payload byte and node
+  limits, and preserve the legacy mutable step Hash while typed execution
+  results own an immutable, cycle-aware, bounded JSON-like snapshot. Result
+  validation now completes before successful workflow state mutation; invalid
+  provider output enters normal failure routing and returns a typed failure.
+  Hash keys are limited to owned String or Symbol values, and non-finite Floats
+  are rejected before success mutation.
+- Normalize top-level string keys in restored message Hashes before rebuilding
+  RubyLLM messages. Nested message content remains untouched so transport
+  decoding does not rewrite host payloads.
 
 - Maintain a declaration-time outgoing-transition index. First-transition and
   terminal checks are constant-time; enumerating transitions from one state is
@@ -76,18 +118,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Verification
 
-- Default suite: 1,118 examples, 0 failures.
-- Focused prepared-recovery, persistence-adapter, and doctor suite: 106 examples,
-  0 failures; new implementation files and focused changed files pass RuboCop and
-  `git diff --check`.
+- Default suite: 1,170 examples, 0 failures.
+- Focused graph, execution-authorization, binding-snapshot, typed-result, and
+  restored-message suite: 71 examples, 0 failures. All newly added files pass RuboCop;
+  the changed surface passes after excluding the repository's pre-existing
+  metrics baseline, and `git diff --check` passes.
 - Practical gem execution: 30 restart-safe scenarios covering serialized
   preparation and dispatch recovery, exact-claim contention, corruption,
   definition drift, ambiguous acknowledgements, and Active Record
   commit/rollback coordination; a real redis-rb 5.4.1 run additionally proved
   direct-client and factory resolution plus bounded multi-client exact-claim
   contention.
-- Smith Runtime host regression against the local Smith checkout: 712 tests,
-  3,728 assertions, 0 failures.
+- Practical execution-authorization matrix: 30 public-API scenarios covering
+  success and handled failure variants, immutable graph snapshots up to 5,000
+  transitions, cyclic and shared result values, bounded rejection cases,
+  release, single-use authorization, copying, serialization, and concurrent
+  claims.
+- Additional practical hardening matrix: 20 public-API checks covering mutable
+  topology projection, 1,000/2,000/4,000-transition validation, 5,000-transition
+  reachability, a 1,200-workflow nested chain, shared-child memoization, cycle
+  diagnostics, root and nested execution membranes, and authorization
+  contention. Measured validation times were 5.80 ms, 12.80 ms, and 16.39 ms
+  respectively on the local Ruby 4.0.1 verification host.
+- A downstream host passed its serial and parallel suites against the
+  local Smith checkout and completed its practical direct-model boundary.
 
 ## [0.4.5] - 2026-07-11
 

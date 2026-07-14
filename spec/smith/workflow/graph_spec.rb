@@ -3,6 +3,98 @@
 RSpec.describe "Smith::Workflow graph inspection" do
   let(:workflow_class) { require_const("Smith::Workflow") }
 
+  it "walks deep reachable graphs iteratively through the outgoing index" do
+    workflow = Class.new(workflow_class)
+    workflow.initial_state(:"state-0")
+    5_000.times do |index|
+      destination = :"state-#{index + 1}"
+      workflow.state(destination)
+      workflow.transition(:"transition-#{index}", from: :"state-#{index}", to: destination)
+    end
+
+    names = Smith::Workflow::Graph::Reachability.new(workflow.graph).transition_names
+
+    expect(names.length).to eq(5_000)
+    expect(names.first).to eq(:"transition-0")
+    expect(names.last).to eq(:"transition-4999")
+  end
+
+  it "keeps the outgoing index local to the graph snapshot" do
+    workflow = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+      transition :finish, from: :idle, to: :done
+    end
+    graph = workflow.graph
+
+    workflow.state :archived
+    workflow.transition :archive, from: :done, to: :archived
+
+    expect(Smith::Workflow::Graph::Reachability.new(graph).transition_names).to eq([:finish])
+    expect(Smith::Workflow::Graph::Reachability.new(workflow.graph).transition_names).to eq(%i[finish archive])
+  end
+
+  it "owns mutable String identifiers at declaration and snapshot time" do
+    initial = +"idle"
+    terminal = +"done"
+    transition_name = +"finish"
+    workflow = Class.new(workflow_class)
+    workflow.initial_state(initial)
+    workflow.state(terminal)
+    workflow.transition(transition_name, from: initial, to: terminal)
+    graph = workflow.graph
+
+    initial.replace("changed-initial")
+    terminal.replace("changed-terminal")
+    transition_name.replace("changed-transition")
+
+    expect(graph.initial_state).to eq("idle")
+    expect(graph.states).to eq(%w[idle done])
+    expect(Smith::Workflow::Graph::Reachability.new(graph).transition_names).to eq(["finish"])
+    expect(workflow.new.run!.state).to eq("done")
+  end
+
+  it "projects mutable topology identifiers without retaining graph aliases" do
+    initial = []
+    terminal = { state: :done }
+    transition_name = ["finish"]
+    workflow = Class.new(workflow_class)
+    workflow.initial_state(initial)
+    workflow.state(terminal)
+    workflow.transition(transition_name, from: initial, to: terminal)
+    graph = workflow.graph
+    projected_name = graph.transitions.keys.sole
+    projected_initial = graph.initial_state
+    projected_terminal = graph.transitions.fetch(projected_name).to
+
+    initial << :changed
+    terminal[:state] = :changed
+    transition_name << :changed
+
+    expect(graph.initial_state).to equal(projected_initial)
+    expect(graph.transitions.keys.sole).to equal(projected_name)
+    expect(graph.transitions.fetch(projected_name).to).to equal(projected_terminal)
+    expect(graph.transitions_from(projected_initial).sole.name).to equal(projected_name)
+  end
+
+  it "owns immutable transition inspection contracts without freezing the workflow definition" do
+    workflow = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+      transition :finish, from: :idle, to: :done
+    end
+    live_transition = workflow.find_transition(:finish)
+    graph = workflow.graph
+
+    live_transition.on_failure(:fail)
+
+    expect(graph.transitions.fetch(:finish)).not_to equal(live_transition)
+    expect(graph.transitions.fetch(:finish)).to be_frozen
+    expect(graph.transitions.fetch(:finish).failure_transition).to be_nil
+    expect(workflow.find_transition(:finish).failure_transition).to eq(:fail)
+  end
+
   it "exposes a read-only workflow graph report without changing runtime execution" do
     workflow = with_stubbed_class("SpecGraphValidWorkflow", workflow_class) do
       initial_state :idle
@@ -543,6 +635,73 @@ RSpec.describe "Smith::Workflow graph inspection" do
       direct_nested_workflow_count: 1,
       nested_workflow_count: 1
     )
+  end
+
+  it "inspects deep nested workflow chains without recursive stack growth" do
+    nested = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+      transition :finish, from: :idle, to: :done
+    end
+    1_200.times do |index|
+      child = nested
+      nested = Class.new(workflow_class) do
+        initial_state :idle
+        state :done
+        transition(:"nested-#{index}", from: :idle, to: :done) { workflow child }
+      end
+    end
+
+    report = nested.runtime_readiness
+
+    expect(report).to be_ready
+    expect(report.metrics.fetch(:nested_workflow_count)).to eq(1_200)
+  end
+
+  it "memoizes shared nested workflow reports and diagnoses cycles iteratively" do
+    leaf = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+      transition :finish, from: :idle, to: :done
+    end
+    graph_calls = 0
+    original_graph = leaf.method(:graph)
+    leaf.define_singleton_method(:graph) do
+      graph_calls += 1
+      original_graph.call
+    end
+    left = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+      transition(:left_leaf, from: :idle, to: :done) { workflow leaf }
+    end
+    right = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+      transition(:right_leaf, from: :idle, to: :done) { workflow leaf }
+    end
+    root = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+      transition(:left, from: :idle, to: :done) { workflow left }
+      transition(:right, from: :idle, to: :done) { workflow right }
+    end
+
+    expect(root.runtime_readiness).to be_ready
+    expect(graph_calls).to eq(1)
+
+    first = Class.new(workflow_class)
+    second = Class.new(workflow_class)
+    first.initial_state(:idle)
+    first.state(:done)
+    second.initial_state(:idle)
+    second.state(:done)
+    first.transition(:to_second, from: :idle, to: :done) { workflow second }
+    second.transition(:to_first, from: :idle, to: :done) { workflow first }
+
+    cycle_report = first.runtime_readiness
+    expect(cycle_report).not_to be_ready
+    expect(cycle_report.errors.map(&:code).map(&:to_s)).to include(/nested_workflow_cycle/)
   end
 
   it "labels anonymous workflows in runtime readiness reports" do

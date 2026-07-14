@@ -9,25 +9,25 @@ module Smith
                   :deterministic_routes
 
       def initialize(name, from:, to:, &)
-        @name = name
-        @from = from
-        @to = to
+        @name = own_identifier(name)
+        @from = own_identifier(from)
+        @to = own_identifier(to)
         instance_eval(&) if block_given?
       end
 
       def execute(agent_name, **opts)
         validate_execute_conflicts!
 
-        @agent_name = agent_name
-        @agent_opts = opts
+        @agent_name = normalize_agent_reference!(agent_name, "agent")
+        @agent_opts = opts.freeze
       end
 
       def on_success(transition_name)
-        @success_transition = transition_name
+        @success_transition = own_identifier(transition_name)
       end
 
       def on_failure(transition_name)
-        @failure_transition = transition_name
+        @failure_transition = own_identifier(transition_name)
       end
 
       def route(agent_name, routes:, confidence_threshold:, fallback:)
@@ -73,20 +73,25 @@ module Smith
         validate_optimize_before_eval!(before_eval)
 
         @optimization_config = {
-          generator: generator, evaluator: evaluator, max_rounds: max_rounds,
+          generator: normalize_agent_reference!(generator, "optimizer generator"),
+          evaluator: normalize_agent_reference!(evaluator, "optimizer evaluator"),
+          max_rounds: max_rounds,
           evaluator_schema: evaluator_schema, improvement_threshold: improvement_threshold,
           evaluator_context: evaluator_context,
           before_eval: before_eval,
           on_exhaustion: on_exhaustion,
           on_converged: on_converged,
           on_threshold: on_threshold
-        }
+        }.freeze
       end
 
       def orchestrate(**opts)
         validate_orchestrate_conflicts!
         validate_orchestrate_controls!(opts)
-        @orchestrator_config = opts
+        @orchestrator_config = opts.merge(
+          orchestrator: normalize_agent_reference!(opts.fetch(:orchestrator), "orchestrator"),
+          worker: normalize_agent_reference!(opts.fetch(:worker), "orchestrator worker")
+        ).freeze
       end
 
       def fan_out(branches:)
@@ -148,6 +153,14 @@ module Smith
       end
 
       private
+
+      def own_identifier(identifier)
+        identifier.is_a?(String) ? identifier.dup.freeze : identifier
+      end
+
+      def normalize_agent_reference!(agent_name, label)
+        Identifier.normalize(agent_name, label: "#{label} agent")
+      end
 
       def validate_execute_conflicts!
         validate_conflicts!(
@@ -248,10 +261,7 @@ module Smith
       end
 
       def normalize_agent_name!(agent_name, label)
-        value = agent_name.to_s.strip
-        raise WorkflowError, "#{label} agent must not be blank" if value.empty?
-
-        value.to_sym
+        normalize_agent_reference!(agent_name, label).to_sym
       end
 
       def normalize_router_routes!(routes)
@@ -306,10 +316,11 @@ module Smith
       end
 
       def normalize_fanout_agent_name!(agent_name, branch_key)
-        value = agent_name.to_s.strip
-        raise WorkflowError, "fan_out branch #{branch_key.inspect} must declare an agent" if value.empty?
+        if [String, Symbol].any? { agent_name.is_a?(_1) } && agent_name.to_s.strip.empty?
+          raise WorkflowError, "fan_out branch #{branch_key.inspect} must declare an agent"
+        end
 
-        value.to_sym
+        normalize_agent_reference!(agent_name, "fan_out branch #{branch_key.inspect}").to_sym
       end
 
       def validate_distinct_fanout_agents!(branches)

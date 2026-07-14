@@ -1230,6 +1230,18 @@ Documented contracts covered:
 - exact dispatch claiming is a public work-free phase, retains the logical
   workflow version, and permits only one original or recovered process to enter
   transition work
+- execution authorization is a separate work-free phase that verifies the
+  exact durable preparation or dispatch before a host commits its own attempt
+  boundary
+- execution capabilities are process-local, non-copyable, reject standard Ruby
+  serialization hooks, and use exact identity; release and consumption
+  linearize so only one wins
+- forked children cannot consume process-bound authority, and exact direct or
+  composite agent bindings are captured before host work begins
+- consuming an authorization revalidates the sealed definition and exact
+  transition contract immediately before work
+- typed execution results preserve successful and failure-routed attempts
+  independently of the workflow's resulting state
 - transactional dispatch claims remain non-executable until commit
   confirmation; exact rollback restores the prepared boundary while any other
   confirmation result fails closed
@@ -1290,6 +1302,58 @@ Documented contracts covered:
   granting transition authority to subclass or prepended wrappers
 - commit verification uses the exact payload serialized by the persistence
   write, including workflows with stateful serializers
+
+### `spec/smith/workflow/prepared_step_execution_authorization_spec.rb`
+
+Purpose:
+
+- pins the process-local handoff between Smith's durable verification and a
+  host-owned executing-attempt transaction
+
+Documented contracts covered:
+
+- authorization performs no transition work and requires the exact active
+  preparation or committed dispatch
+- structurally equivalent, cross-workflow, copied, serialized, stale, and
+  already-consumed capabilities are rejected, including process-fork transfer
+- concurrent authorization, release, and execution contenders linearize; a
+  losing verifier cannot revoke the winner's authority
+- a released capability restores the exact prior boundary, while execution
+  consumes the capability once
+- durable dispatch loss and definition or transition drift fail before work
+- oversized durable payloads fail before parsing or transition work
+- mutable registry replacement cannot change the exact authorized agent class
+- legacy strict workflows and the compatible one-call execution API retain
+  their existing behavior
+
+### `spec/smith/workflow/prepared_step_execution_result_spec.rb`
+
+Purpose:
+
+- pins the typed result returned after an authorized execution attempt
+
+Documented contracts covered:
+
+- successful steps and failure-routed steps have explicit, internally
+  consistent status and error shapes
+- the result owns and iteratively freezes bounded JSON-like step values with a
+  cycle-aware `O(V + E)` copy while preserving error identity
+- the legacy API receives a separate mutable cycle-aware snapshot
+
+### `spec/smith/workflow/execution_binding_snapshot_spec.rb`
+
+Purpose:
+
+- pins exact process-local agent binding capture for authorized transitions
+
+Documented contracts covered:
+
+- direct, fan-out, optimizer, and orchestrator bindings resolve once
+- reachable nested-workflow bindings are included
+- nested cycles terminate through identity-indexed traversal rather than
+  repeated graph scanning
+- reachable nested-workflow definitions are revalidated before child
+  construction, so post-authorization transition replacement fails closed
 
 ### `spec/smith/workflow/prepared_step_recovery_spec.rb`
 

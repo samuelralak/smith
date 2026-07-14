@@ -55,6 +55,37 @@ RSpec.describe "Smith::Workflow seed_messages DSL" do
     expect(seen_messages).to eq([{ role: :user, content: "Research: ports" }])
   end
 
+  it "normalizes JSON-restored message attribute keys at the RubyLLM boundary" do
+    seen_messages = []
+    agent = with_stubbed_class("SpecJsonRestoredMessagesAgent", agent_class) do
+      register_as :spec_json_restored_messages_agent
+      model "gpt-5-mini"
+    end
+    chat = Object.new
+    chat.define_singleton_method(:add_message) do |attributes|
+      seen_messages << RubyLLM::Message.new(attributes)
+    end
+    chat.define_singleton_method(:complete) { Struct.new(:content).new("accepted") }
+    allow(agent).to receive(:chat).and_return(chat)
+
+    klass = with_stubbed_class("SpecJsonRestoredMessagesWorkflow", workflow_class) do
+      seed_messages do
+        [{ "role" => "user", "content" => "Restored from durable JSON." }]
+      end
+
+      initial_state :idle
+      state :done
+      transition(:finish, from: :idle, to: :done) { execute :spec_json_restored_messages_agent }
+    end
+
+    result = klass.new.run!
+
+    expect(result.state).to eq(:done)
+    expect(seen_messages.map(&:to_h)).to contain_exactly(
+      include(role: :user, content: "Restored from durable JSON.")
+    )
+  end
+
   it "does not rerun seed_messages after restoring persisted state" do
     agent = with_stubbed_class("SpecSeedMessagesAgent", agent_class) do
       register_as :spec_seed_messages_agent

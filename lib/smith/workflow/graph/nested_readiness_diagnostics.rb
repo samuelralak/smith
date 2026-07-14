@@ -9,7 +9,8 @@ module Smith
         extend Dry::Initializer
 
         param :graph
-        option :visited, default: proc {}
+        option :reports
+        option :cycle_transitions, default: proc { {}.compare_by_identity }
 
         def to_a
           cycle_diagnostics + report_entries.flat_map { |entry| diagnostics_for(entry) }
@@ -28,21 +29,24 @@ module Smith
         end
 
         def cycle_diagnostics
-          nested_workflow_transitions.filter_map do |transition|
+          cycle_transitions.keys.map do |transition|
             workflow_class = transition.workflow_class
-            cycle_diagnostic(transition, workflow_class) if visited_workflows.include?(workflow_class)
+            cycle_diagnostic(transition, workflow_class)
           end
         end
 
         def report_entries
           @report_entries ||= nested_workflow_transitions.filter_map do |transition|
+            next if cycle_transitions.key?(transition)
+
             workflow_class = transition.workflow_class
-            next if visited_workflows.include?(workflow_class)
+            report = reports[workflow_class]
+            next unless report
 
             {
               transition: transition,
               workflow_class: workflow_class,
-              report: workflow_class.graph.runtime_readiness(visited: visited_workflows)
+              report: report
             }.freeze
           end.freeze
         end
@@ -76,10 +80,6 @@ module Smith
             message: "Nested workflow #{label}: #{diagnostic.message}",
             suggestion: diagnostic.suggestion
           )
-        end
-
-        def visited_workflows
-          @visited_workflows ||= Set.new(Array(visited)).add(graph.workflow_class)
         end
 
         def ref(value)

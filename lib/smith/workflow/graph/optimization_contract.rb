@@ -44,10 +44,10 @@ module Smith
 
         def evaluation_contract
           {
-            evaluator_schema: label_for(config.fetch(:evaluator_schema)),
+            evaluator_schema: config.fetch(:evaluator_schema_label),
             evaluator_context: config[:evaluator_context],
             improvement_threshold: config[:improvement_threshold],
-            before_eval: callable_label(config[:before_eval])
+            before_eval: config[:before_eval]
           }
         end
 

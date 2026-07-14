@@ -14,14 +14,17 @@ module Smith
 
             ensure_prepared_split_step_transition_matches!
 
+            token = Object.new.freeze
             @split_step_execution_previous_phase = expected
+            @split_step_execution_verification_token = token
             @split_step_phase = :verifying_execution
+            token
           end
         end
 
-        def verify_claimed_split_step_execution!
+        def verify_claimed_split_step_execution!(verification_token)
           if restart_safe_split_step?
-            verify_split_step_dispatch_available!
+            verify_split_step_dispatch_available!(verification_token)
           else
             verify_split_step_preparation_available!
           end

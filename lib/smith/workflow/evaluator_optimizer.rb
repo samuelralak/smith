@@ -12,13 +12,13 @@ module Smith
 
       def execute_optimization_step(transition, prepared_input: nil)
         state = OptimizationState.new(transition.optimization_config, prepared_input)
-        state.generator_class = Agent::Registry.fetch!(
+        state.generator_class = resolve_registered_agent!(
           state.config[:generator],
           workflow_class: self.class,
           transition_name: transition.name,
           role: :generator
         )
-        state.evaluator_class = Agent::Registry.fetch!(
+        state.evaluator_class = resolve_registered_agent!(
           state.config[:evaluator],
           workflow_class: self.class,
           transition_name: transition.name,

@@ -20,7 +20,7 @@ module Smith
         private
 
         def initial_state_diagnostics
-          return [] if graph.initial_state && graph.states.include?(graph.initial_state)
+          return [] if graph.initial_state && graph.state?(graph.initial_state)
 
           [
             Diagnostic.new(
@@ -44,7 +44,7 @@ module Smith
 
         def undefined_state_diagnostic(transition, edge, state)
           return if edge == :from && state.nil?
-          return if graph.states.include?(state)
+          return if graph.state?(state)
 
           Diagnostic.new(
             severity: :error,

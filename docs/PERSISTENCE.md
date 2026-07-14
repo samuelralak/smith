@@ -123,7 +123,7 @@ These helpers do not make Smith a job system or durable runtime. They only remov
 ### Host-Coordinated Step Boundaries
 
 Hosts can split one strict transition into explicit prepare, optional exact
-dispatch claim, execute, and checkpoint phases:
+dispatch claim, execution authorization, execute, and checkpoint phases:
 
 ```ruby
 def execute_one_step(workflow, key, adapter)
@@ -151,12 +151,39 @@ def execute_one_step(workflow, key, adapter)
     ApplicationRecord.transaction do
       dispatch = workflow.claim_prepared_step_dispatch!
       HostAttempt.find_by!(operation_token: workflow.prepared_persisted_step.token)
-        .update!(status: "dispatch_claimed", dispatch_receipt: dispatch.to_h)
+        .update!(
+          status: "dispatch_claimed",
+          dispatch_token: dispatch.token,
+          dispatch_receipt: dispatch.to_h
+        )
     end
     workflow.confirm_prepared_step_dispatch!
   end
 
-  step = workflow.execute_prepared_step! # provider/tool work; no host transaction
+  authorization = workflow.authorize_prepared_step_execution!
+  execution_started = false
+  begin
+    operation_token = authorization.prepared_step.token
+    dispatch_token = authorization.dispatch_claim&.token
+    start_status = dispatch_token ? "dispatch_claimed" : "prepared"
+    changed = ApplicationRecord.transaction do
+      HostAttempt.where(
+        operation_token:,
+        dispatch_token:,
+        status: start_status
+      ).update_all(status: "executing")
+    end
+    committed = HostAttempt.find_by(operation_token:, dispatch_token:)
+    execution_started = changed == 1 && committed&.status == "executing"
+    raise "host execution start did not commit exactly once" unless execution_started
+  ensure
+    workflow.release_prepared_step_execution!(authorization) unless execution_started
+  end
+
+  execution = workflow.execute_authorized_prepared_step!(authorization) # external work; no host transaction
+  raise execution.error if execution.failed?
+
+  step = execution.step
 
   ApplicationRecord.transaction do
     workflow.persist!(key, adapter: adapter)
@@ -216,9 +243,49 @@ transaction without holding that transaction across external work. After that
 transaction commits, `confirm_prepared_step_dispatch!` verifies the exact
 durable claim. A rolled-back claim restores the known preparation; a missing,
 modified, concurrently claimed, or ambiguously acknowledged payload fails
-closed. `execute_prepared_step!` then re-verifies the exact durable claim and
-permits one execution attempt. Only the exact-payload winner may enter provider,
-tool, or deterministic step work.
+closed. `authorize_prepared_step_execution!` then re-verifies the exact durable
+claim and returns one process-local execution capability without performing
+transition, provider, or tool work. A host can commit its own `executing`
+attempt record after authorization and before external work. That host write
+must be a conditional compare-and-set on the exact dispatch identity, and the
+host must re-read committed database state after the outer transaction returns.
+An in-memory record or transaction return value is not commit evidence because
+Rails deliberately swallows `ActiveRecord::Rollback`. If the exact host state
+does not commit, the host must call `release_prepared_step_execution!` with the
+exact capability. `execute_authorized_prepared_step!` consumes it once and
+returns a `PreparedStepExecutionResult`. Its `status`, `failed?`, and `error`
+fields preserve transition failure independently of Smith failure routing; a
+host must not treat a failure-routed workflow state as proof that external work
+succeeded. The result owns an iterative, cycle-aware snapshot bounded to 128
+levels, 100,000 visited values, and 4 MiB of string data. Hashes, Arrays,
+Strings, finite scalar JSON-like values, String or Symbol Hash keys, and the
+exact top-level `StandardError` are supported; other values fail closed. Only the exact-payload
+winner may enter provider, tool, or deterministic step work. Smith snapshots
+and validates a successful step result before advancing workflow state. If the
+external call returns an unsupported or over-limit value, the validation error
+follows the transition's normal failure route and is returned as a typed failed
+result; the success destination is never committed.
+
+The authorization rejects copying and the standard Ruby Marshal, Psych/YAML,
+and JSON serialization hooks. It is bound by object identity to one workflow
+instance and by process id to the issuing Ruby process, so a forked child cannot
+consume inherited authority. It is not a lease, cross-process fence, or durable
+attempt receipt.
+While that authority is active, Smith's prepended subclass boundary dispatches
+private execution methods through the Smith-owned implementations captured by
+the runtime. This includes nested child workflows that inherit the same
+authorization. Ordinary workflow runs remain polymorphic and continue to honor
+subclass overrides; the membrane exists only for the authorized external-work
+boundary.
+Until the capability is consumed or released, the host must retain exclusive
+authority over that workflow recovery attempt. A process crash after the host
+commits `executing` is an unknown outcome for the host to reconcile; Smith does
+not infer that transition work did or did not begin.
+
+`execute_prepared_step!` remains the compatible one-call API. It internally
+authorizes and consumes the step and returns the legacy step Hash. Hosts that
+need a durable pre-dispatch attempt boundary should use the explicit
+authorization API instead.
 
 Active Record exact replacement is deliberately a low-level persistence write.
 It does not instantiate the model, run callbacks or validations, or update
@@ -288,14 +355,19 @@ descriptor = Smith::Workflow::PreparedStep.deserialize(host_receipt.fetch(:prepa
 decision = Smith::Workflow::PreparedStepRecovery.not_started(descriptor)
 workflow = GeneratedWorkflow.recover_prepared_step(decision, adapter: adapter)
 dispatch = workflow.claim_prepared_step_dispatch!
-step = workflow.execute_prepared_step!
+authorization = workflow.authorize_prepared_step_execution!
+# Conditionally commit the exact host attempt as executing and re-read it here.
+# Release the authorization unless the committed row proves that this worker
+# won; otherwise consume it outside the transaction.
+execution = workflow.execute_authorized_prepared_step!(authorization)
 
 # A replacement worker may continue a committed claim only when the host's
 # exclusive attempt ledger proves transition/provider/tool execution did not start.
 dispatch = Smith::Workflow::PreparedStepDispatch.deserialize(host_receipt.fetch(:dispatch_receipt))
 decision = Smith::Workflow::PreparedStepRecovery.not_started(dispatch)
 workflow = GeneratedWorkflow.recover_prepared_step(decision, adapter: adapter)
-step = workflow.execute_prepared_step!
+authorization = workflow.authorize_prepared_step_execution!
+execution = workflow.execute_authorized_prepared_step!(authorization)
 ```
 
 The host may construct `not_started` only after acquiring exclusive recovery
@@ -355,7 +427,10 @@ has been lost.
 
 Workflow classes are part of the execution contract once preparation begins.
 Hosts must not add or prepend methods to that class until the boundary is
-complete, and custom `inherited` hooks must call `super`. Ruby intentionally
+complete, and custom `inherited` hooks must call `super`. The same rule applies
+to reachable nested workflow and captured agent classes. Smith captures and
+revalidates nested transition contracts and exact agent class bindings, while a
+host must not concurrently mutate those class objects. Ruby intentionally
 allows open-class mutation. Smith blocks definition-digest changes after the
 class is sealed, while other post-preparation class mutation remains an
 unsupported host lifecycle violation rather than something Smith attempts to

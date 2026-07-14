@@ -46,9 +46,9 @@ module Smith
 
         def schema_contract
           {
-            task_schema: label_for(config.fetch(:task_schema)),
-            worker_output_schema: label_for(config.fetch(:worker_output_schema)),
-            final_output_schema: label_for(config.fetch(:final_output_schema))
+            task_schema: config.fetch(:task_schema_label),
+            worker_output_schema: config.fetch(:worker_output_schema_label),
+            final_output_schema: config.fetch(:final_output_schema_label)
           }
         end
 

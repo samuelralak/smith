@@ -42,6 +42,36 @@ RSpec.describe "Smith split-step aggregate loading" do
     expect(stdout.strip).to eq("Smith::Workflow::PreparedStepDispatch")
   end
 
+  it "loads the prepared-step execution contracts directly" do
+    library_path = File.expand_path("../../../lib", __dir__)
+    script = <<~RUBY
+      require "smith/workflow/prepared_step_execution_authorization"
+      require "smith/workflow/prepared_step_execution_result"
+      snapshot = Smith::Workflow::SplitStepPersistence::ExecutionBindingSnapshot.capture(
+        nil,
+        workflow_class: Smith::Workflow
+      )
+      begin
+        snapshot.fetch!(:missing, workflow_class: Smith::Workflow, transition_name: :missing, role: :agent)
+      rescue Smith::WorkflowError
+        puts "workflow error loaded"
+      end
+      puts Smith::Workflow::PreparedStepExecutionAuthorization.name
+      puts Smith::Workflow::PreparedStepExecutionResult.name
+    RUBY
+
+    stdout, stderr, status = Open3.capture3(RbConfig.ruby, "-I", library_path, "-e", script)
+
+    expect(status).to be_success, stderr
+    expect(stdout.lines.map(&:strip)).to eq(
+      [
+        "workflow error loaded",
+        "Smith::Workflow::PreparedStepExecutionAuthorization",
+        "Smith::Workflow::PreparedStepExecutionResult"
+      ]
+    )
+  end
+
   it "loads its internal dependencies when required directly" do
     library_path = File.expand_path("../../../lib", __dir__)
     script = <<~RUBY

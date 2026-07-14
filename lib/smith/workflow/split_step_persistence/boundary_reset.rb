@@ -13,6 +13,8 @@ module Smith
           @split_step_transition_signature = nil
           @split_step_origin_state = nil
           @split_step_token = nil
+          @split_step_active_execution_authorization = nil
+          @split_step_execution_result = nil
           clear_split_step_descriptor_state!
           @split_step_persistence_key = nil
           @split_step_adapter = nil
@@ -37,7 +39,8 @@ module Smith
           @split_step_dispatch_thread = nil
           @split_step_pre_dispatch_payload = nil
           @split_step_attempted_dispatch_payload = nil
-          @split_step_execution_previous_phase = nil
+          clear_split_step_execution_verification!
+          clear_split_step_execution_authorization!
           remove_instance_variable(:@split_step_definition_digest) if
             instance_variable_defined?(:@split_step_definition_digest)
         end

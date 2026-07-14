@@ -121,7 +121,7 @@ module Smith
         end
 
         merge_system_messages!(chat, system_messages) if system_messages.any?
-        other_messages.each { |message| chat.add_message(message) }
+        other_messages.each { |message| add_message(chat, message) }
       end
 
       def provider_safe_prepared_input(prepared_input)
@@ -141,7 +141,7 @@ module Smith
       end
 
       def merge_system_messages!(chat, prepared_system_messages)
-        return prepared_system_messages.each { |message| chat.add_message(message) } unless chat.respond_to?(:messages)
+        return prepared_system_messages.each { |message| add_message(chat, message) } unless chat.respond_to?(:messages)
 
         existing_system_contents = chat.messages.filter_map do |message|
           message.content if message_role(message) == :system
@@ -153,14 +153,23 @@ module Smith
         combined_contents = existing_system_contents + prepared_system_contents
         return if combined_contents.empty?
         unless combined_contents.all?(String)
-          return prepared_system_messages.each { |message| chat.add_message(message) }
+          return prepared_system_messages.each { |message| add_message(chat, message) }
         end
 
         if chat.respond_to?(:with_instructions)
           chat.with_instructions(combined_contents.join("\n\n"))
         else
-          prepared_system_messages.each { |message| chat.add_message(message) }
+          prepared_system_messages.each { |message| add_message(chat, message) }
         end
+      end
+
+      def add_message(chat, message)
+        attributes = if message.is_a?(Hash)
+                       message.transform_keys { |key| key.respond_to?(:to_sym) ? key.to_sym : key }
+                     else
+                       message
+                     end
+        chat.add_message(attributes)
       end
 
       def message_role(message)
