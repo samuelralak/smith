@@ -21,6 +21,183 @@ RSpec.describe Smith::PersistenceAdapters::ActiveRecordStore, :ar do
     expect(second.lock_version).to eq(1)
   end
 
+  it "atomically replaces only the exact current payload" do
+    original = payload(1).sub("}", ',"phase":"prepared"}')
+    claimed = payload(1).sub("}", ',"phase":"dispatching"}')
+    adapter.store_versioned("exact", original, expected_version: 0)
+
+    expect(adapter.replace_exact("exact", claimed, expected_payload: original, ttl: nil)).to eq(claimed)
+
+    record = SmithWorkflowStateRecord.find_by!(key: "exact")
+    expect(record.payload).to eq(claimed)
+    expect(record.lock_version).to eq(1)
+  end
+
+  it "rejects same-version payload mutation during exact replacement" do
+    original = payload(1).sub("}", ',"phase":"prepared"}')
+    mutated = payload(1).sub("}", ',"phase":"mutated"}')
+    claimed = payload(1).sub("}", ',"phase":"dispatching"}')
+    SmithWorkflowStateRecord.create!(key: "exact", payload: mutated)
+
+    expect do
+      adapter.replace_exact("exact", claimed, expected_payload: original, ttl: nil)
+    end.to raise_error(Smith::PersistencePayloadConflict)
+    expect(SmithWorkflowStateRecord.find_by!(key: "exact").payload).to eq(mutated)
+  end
+
+  it "rejects a second exact replacement after the first claim" do
+    original = payload(1).sub("}", ',"phase":"prepared"}')
+    claimed = payload(1).sub("}", ',"phase":"dispatching"}')
+    adapter.store_versioned("exact", original, expected_version: 0)
+    adapter.replace_exact("exact", claimed, expected_payload: original, ttl: nil)
+
+    expect do
+      adapter.replace_exact("exact", claimed, expected_payload: original, ttl: nil)
+    end.to raise_error(Smith::PersistencePayloadConflict)
+  end
+
+  it "compares the expected payload in the atomic database update" do
+    original = payload(1).sub("}", ',"phase":"prepared"}')
+    claimed = payload(1).sub("}", ',"phase":"dispatching"}')
+    adapter.store_versioned("exact", original, expected_version: 0)
+    SmithWorkflowStateRecord.where(key: "exact").update_all(payload: payload(1).sub("}", ',"phase":"bypassed"}'))
+
+    expect do
+      adapter.replace_exact("exact", claimed, expected_payload: original, ttl: nil)
+    end.to raise_error(Smith::PersistencePayloadConflict)
+    expect(SmithWorkflowStateRecord.find_by!(key: "exact").payload).to include('"phase":"bypassed"')
+  end
+
+  it "compares payload bytes independently of the database collation" do
+    with_exact_store_model(:smith_collated_workflow_states, unique: true, collation: "NOCASE") do |model|
+      stored = '{"phase":"PREPARED"}'
+      expected = '{"phase":"prepared"}'
+      model.create!(key: "exact", payload: stored)
+      collated_adapter = described_class.new(model: model, identity: "collated")
+
+      expect do
+        collated_adapter.replace_exact("exact", '{"phase":"dispatching"}', expected_payload: expected, ttl: nil)
+      end.to raise_error(Smith::PersistencePayloadConflict)
+      expect(model.find_by!(key: "exact").payload).to eq(stored)
+    end
+  end
+
+  it "rejects a non-unique key schema before mutating duplicate rows" do
+    with_exact_store_model(:smith_duplicate_workflow_states, unique: false) do |model|
+      2.times { model.create!(key: "duplicate", payload: '{"phase":"prepared"}') }
+      duplicate_adapter = described_class.new(model: model, identity: "duplicates")
+
+      expect do
+        duplicate_adapter.replace_exact(
+          "duplicate",
+          '{"phase":"dispatching"}',
+          expected_payload: '{"phase":"prepared"}',
+          ttl: nil
+        )
+      end.to raise_error(ArgumentError, /unique database index/)
+      expect(model.where(key: "duplicate").pluck(:payload, :lock_version)).to eq(
+        Array.new(2) { ['{"phase":"prepared"}', 0] }
+      )
+    end
+  end
+
+  it "does not trust a model-level primary key declaration without a database constraint" do
+    with_exact_store_model(:smith_spoofed_primary_states, unique: false) do |model|
+      model.primary_key = "key"
+      2.times { model.create!(key: "duplicate", payload: '{"phase":"prepared"}') }
+      spoofed_adapter = described_class.new(model: model, identity: "spoofed-primary")
+
+      expect do
+        spoofed_adapter.replace_exact(
+          "duplicate",
+          '{"phase":"dispatching"}',
+          expected_payload: '{"phase":"prepared"}'
+        )
+      end.to raise_error(ArgumentError, /unique database index/)
+      expect(model.where(key: "duplicate").distinct.pluck(:payload)).to eq(['{"phase":"prepared"}'])
+    end
+  end
+
+  it "does not treat a partial unique index as global key uniqueness" do
+    with_exact_store_model(:smith_partial_unique_states, unique: false, active: true) do |model|
+      model.connection.add_index(model.table_name, :key, unique: true, where: "active = 1")
+      2.times { model.create!(key: "duplicate", payload: '{"phase":"prepared"}', active: false) }
+      partial_adapter = described_class.new(model: model, identity: "partial-index")
+
+      expect do
+        partial_adapter.replace_exact(
+          "duplicate",
+          '{"phase":"dispatching"}',
+          expected_payload: '{"phase":"prepared"}'
+        )
+      end.to raise_error(ArgumentError, /unique database index/)
+      expect(model.where(key: "duplicate").distinct.pluck(:payload)).to eq(['{"phase":"prepared"}'])
+    end
+  end
+
+  it "ignores unrelated expression indexes while validating a unique key" do
+    with_exact_store_model(:smith_expression_index_states, unique: true) do |model|
+      model.connection.execute(
+        "CREATE UNIQUE INDEX index_smith_expression_payload " \
+        "ON smith_expression_index_states (lower(payload))"
+      )
+      model.create!(key: "exact", payload: '{"phase":"prepared"}')
+      expression_adapter = described_class.new(model: model, identity: "expression-index")
+
+      expect(
+        expression_adapter.replace_exact(
+          "exact",
+          '{"phase":"dispatching"}',
+          expected_payload: '{"phase":"prepared"}'
+        )
+      ).to eq('{"phase":"dispatching"}')
+    end
+  end
+
+  it "revalidates schema metadata when one model changes tables" do
+    with_exact_store_model(:smith_unique_swap_states, unique: true) do |model|
+      swap_adapter = described_class.new(model: model, identity: "table-swap")
+      model.create!(key: "unique", payload: '{"phase":"prepared"}')
+      swap_adapter.replace_exact("unique", '{"phase":"dispatching"}', expected_payload: '{"phase":"prepared"}')
+
+      with_exact_store_model(:smith_duplicate_swap_states, unique: false) do |duplicate_model|
+        model.table_name = duplicate_model.table_name
+        model.reset_column_information
+        2.times { model.create!(key: "duplicate", payload: '{"phase":"prepared"}') }
+
+        expect do
+          swap_adapter.replace_exact(
+            "duplicate",
+            '{"phase":"dispatching"}',
+            expected_payload: '{"phase":"prepared"}'
+          )
+        end.to raise_error(ArgumentError, /unique database index/)
+        expect(model.where(key: "duplicate").distinct.pluck(:payload)).to eq(['{"phase":"prepared"}'])
+      end
+    end
+  end
+
+  it "rejects representation-normalizing payload columns before mutation" do
+    with_exact_store_model(:smith_json_workflow_states, unique: true, payload_type: :json) do |model|
+      model.create!(key: "exact", payload: { "phase" => "prepared" })
+      json_adapter = described_class.new(model: model, identity: "json")
+
+      expect do
+        json_adapter.replace_exact("exact", '{"phase":"dispatching"}', expected_payload: '{"phase":"prepared"}')
+      end.to raise_error(ArgumentError, /text or string payload column/)
+      expect(model.find_by!(key: "exact").payload).to eq("phase" => "prepared")
+    end
+  end
+
+  it "pins an explicit persistence identity without deriving infrastructure secrets" do
+    identity = +"primary:workflow-states"
+    configured = described_class.new(model: SmithWorkflowStateRecord, identity: identity)
+    identity.replace("changed")
+
+    expect(configured.persistence_identity).to eq("primary:workflow-states")
+    expect(configured.persistence_identity).to be_frozen
+  end
+
   it "pins mutable column configuration at initialization" do
     key_column = +"key"
     payload_column = +"payload"
@@ -171,6 +348,43 @@ RSpec.describe Smith::PersistenceAdapters::ActiveRecordStore, :ar do
     expect(record.lock_version).to eq(0)
   end
 
+  it "coordinates a restart-safe dispatch claim with a host transaction", :commit do
+    digest = Digest::SHA256.hexdigest("active-record-dispatch-workflow-v1")
+    workflow_class = stub_const("SpecActiveRecordDispatchWorkflow", Class.new(Smith::Workflow) do
+      definition_digest digest
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+      transition :finish, from: :idle, to: :done
+    end)
+    durable_adapter = described_class.new(
+      model: SmithWorkflowStateRecord,
+      identity: "spec:workflow-states"
+    )
+    workflow = workflow_class.new
+    key = "transactional-dispatch"
+
+    SmithWorkflowStateRecord.transaction do
+      workflow.prepare_persisted_step!(key, adapter: durable_adapter)
+    end
+    workflow.confirm_prepared_step!
+    prepared_payload = durable_adapter.fetch(key)
+
+    SmithWorkflowStateRecord.transaction do
+      workflow.claim_prepared_step_dispatch!
+      expect(JSON.parse(durable_adapter.fetch(key))).to include("split_step_phase" => "dispatching")
+      raise ActiveRecord::Rollback
+    end
+
+    expect(durable_adapter.fetch(key)).to eq(prepared_payload)
+    expect do
+      workflow.confirm_prepared_step_dispatch!
+    end.to raise_error(Smith::WorkflowError, /not committed/)
+
+    workflow.claim_prepared_step_dispatch!
+    expect(workflow.execute_prepared_step!).to include(transition: :finish, to: :done)
+  end
+
   it "reports whether its model connection has an open transaction", :commit do
     expect(adapter.transaction_open?).to be(false)
     expect(adapter.transaction_identity).to be_nil
@@ -303,6 +517,22 @@ RSpec.describe Smith::PersistenceAdapters::ActiveRecordStore, :ar do
         original.call(*args)
       end
     end
+  end
+
+  def with_exact_store_model(table_name, unique:, collation: nil, payload_type: :text, active: false)
+    connection = ActiveRecord::Base.connection
+    connection.create_table(table_name) do |table|
+      table.string :key, null: false
+      table.public_send(payload_type, :payload, null: false, collation: collation)
+      table.integer :lock_version, null: false, default: 0
+      table.boolean :active, null: false, default: true if active
+    end
+    connection.add_index(table_name, :key, unique: true) if unique
+    model = Class.new(ActiveRecord::Base)
+    model.table_name = table_name.to_s
+    yield model
+  ensure
+    connection&.drop_table(table_name, if_exists: true)
   end
 
   it "does not recreate missing state from a nonzero expected version" do

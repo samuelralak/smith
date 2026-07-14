@@ -13,6 +13,7 @@ module Smith
 
             @split_step_phase = :claiming_preparation
             @split_step_preparation_thread = Thread.current
+            @split_step_definition_digest = self.class.definition_digest
             true
           end
         end
@@ -24,6 +25,8 @@ module Smith
 
             @split_step_phase = nil
             @split_step_preparation_thread = nil
+            remove_instance_variable(:@split_step_definition_digest) if
+              instance_variable_defined?(:@split_step_definition_digest)
           end
         end
 
@@ -85,7 +88,8 @@ module Smith
             persistence_key: @split_step_persistence_key,
             persistence_version: persistence_version,
             step_number: @step_count + 1,
-            preparation_digest: @split_step_preparation_digest
+            preparation_digest: @split_step_preparation_digest,
+            definition_digest: effective_definition_digest
           )
         end
 

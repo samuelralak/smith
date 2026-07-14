@@ -2,9 +2,13 @@
 
 require "time"
 
+require_relative "redis_client_access"
+
 module Smith
   module PersistenceAdapters
     class RedisStore
+      include RedisClientAccess
+
       # Redis transient errors — narrow list; non-transient errors
       # (CommandError, etc.) propagate up immediately. Pattern matches
       # Redis::BaseConnectionError if loaded (covers Connection/Timeout)
@@ -24,9 +28,13 @@ module Smith
         end + [Errno::ECONNREFUSED, Errno::ETIMEDOUT, Errno::EPIPE]
       end
 
-      def initialize(redis:, namespace: "smith")
+      attr_reader :persistence_identity
+
+      def initialize(redis:, namespace: "smith", identity: nil)
         @redis_source = redis
         @namespace = namespace.nil? ? nil : namespace.to_s.dup.freeze
+        @persistence_identity = identity.to_s.dup.freeze if identity
+        @client_resolution_mutex = Mutex.new
       end
 
       def store(key, payload, ttl: Smith.config.persistence_ttl)
@@ -80,9 +88,9 @@ module Smith
       # Smith::PersistenceVersionConflict on a stale expected_version
       # OR on EXEC failure (WATCH detected concurrent write).
       def store_versioned(key, payload, expected_version:, ttl: Smith.config.persistence_ttl)
-        Retry.with_retries(operation: :store_versioned, transient: self.class.transient_errors) do
+        without_reconnection do |redis|
           RedisVersionedWrite.new(
-            client: client,
+            client: redis,
             key: key,
             storage_key: namespaced(key),
             payload: payload,
@@ -90,18 +98,26 @@ module Smith
             ttl: ttl
           ).call
         end
+      rescue *self.class.transient_errors => e
+        raise Smith::PersistenceIOError.new(operation: :store_versioned, cause: e)
+      end
+
+      def replace_exact(key, payload, expected_payload:, ttl: Smith.config.persistence_ttl)
+        without_reconnection do |redis|
+          RedisExactWrite.new(
+            client: redis,
+            key: key,
+            storage_key: namespaced(key),
+            payload: payload,
+            expected_payload: expected_payload,
+            ttl: ttl
+          ).call
+        end
+      rescue *self.class.transient_errors => e
+        raise Smith::PersistenceIOError.new(operation: :replace_exact, cause: e)
       end
 
       private
-
-      def client
-        @client ||= begin
-          resolved = @redis_source.respond_to?(:call) ? @redis_source.call : @redis_source
-          raise ArgumentError, "Redis client is required" unless resolved
-
-          resolved
-        end
-      end
 
       def namespaced(key)
         [@namespace, key].compact.join(":")

@@ -122,8 +122,8 @@ These helpers do not make Smith a job system or durable runtime. They only remov
 
 ### Host-Coordinated Step Boundaries
 
-Hosts can split one strict transition into explicit prepare, execute, and
-checkpoint phases:
+Hosts can split one strict transition into explicit prepare, optional exact
+dispatch claim, execute, and checkpoint phases:
 
 ```ruby
 def execute_one_step(workflow, key, adapter)
@@ -145,6 +145,17 @@ def execute_one_step(workflow, key, adapter)
   return unless transition_name
 
   workflow.confirm_prepared_step!
+
+  if workflow.class.definition_digest
+    dispatch = nil
+    ApplicationRecord.transaction do
+      dispatch = workflow.claim_prepared_step_dispatch!
+      HostAttempt.find_by!(operation_token: workflow.prepared_persisted_step.token)
+        .update!(status: "dispatch_claimed", dispatch_receipt: dispatch.to_h)
+    end
+    workflow.confirm_prepared_step_dispatch!
+  end
+
   step = workflow.execute_prepared_step! # provider/tool work; no host transaction
 
   ApplicationRecord.transaction do
@@ -187,8 +198,47 @@ its own correlated record atomically. The adapter's exact transaction identity
 is authoritative even when a host propagates that transaction context across
 fibers or executors. The descriptor is a correlation witness, not proof that the
 transaction subsequently committed.
-`execute_prepared_step!` re-verifies the exact durable preparation and permits
-one execution attempt. Preparation also takes an O(S) defensive snapshot of
+Use `Smith::Workflow::PreparedStep.deserialize` to restore a descriptor from a
+Hash or bounded JSON object. The decoder rejects missing, duplicated, and
+unknown attributes; direct `Dry::Struct` construction is not a transport
+decoder.
+
+For a workflow declaring `definition_digest`,
+`claim_prepared_step_dispatch!` atomically replaces the exact `prepared`
+payload with a `dispatching` payload through the adapter's `replace_exact`
+capability. The logical `persistence_version` does not change during this claim.
+Memory uses its monitor, Redis uses WATCH/MULTI/EXEC within the client's native
+no-reconnect scope, and Active Record uses one conditional SQL update while
+advancing its optimistic-lock column. The method
+performs no transition, provider, or tool work,
+so an Active Record host can commit its own attempt-ledger state in the same
+transaction without holding that transaction across external work. After that
+transaction commits, `confirm_prepared_step_dispatch!` verifies the exact
+durable claim. A rolled-back claim restores the known preparation; a missing,
+modified, concurrently claimed, or ambiguously acknowledged payload fails
+closed. `execute_prepared_step!` then re-verifies the exact durable claim and
+permits one execution attempt. Only the exact-payload winner may enter provider,
+tool, or deterministic step work.
+
+Active Record exact replacement is deliberately a low-level persistence write.
+It does not instantiate the model, run callbacks or validations, or update
+timestamp columns; the payload and locking columns must therefore be treated as
+infrastructure-owned state. Values still use Active Record type casting and
+serialization. This matches Rails' documented
+[`update_all`](https://api.rubyonrails.org/v8.1.1/classes/ActiveRecord/Relation.html#method-i-update_all)
+contract and keeps the comparison and replacement in one SQL statement.
+Smith supplies byte-exact predicates for PostgreSQL, SQLite, MySQL, and Trilogy
+Active Record adapters and fails closed before mutation on an unknown adapter.
+The payload column must be `text` or `string`; JSON/JSONB columns normalize
+representation and therefore cannot satisfy this byte-identity contract.
+
+The claim returns an immutable `Smith::Workflow::PreparedStepDispatch` receipt
+containing the prepared-step descriptor, an opaque dispatch token, and the
+canonical dispatch-payload digest. Persist `receipt.to_h` with the host attempt
+record. Use `PreparedStepDispatch.deserialize` for a bounded Hash/JSON transport
+round-trip; direct `Dry::Struct` construction is not a transport decoder.
+
+Preparation also takes an O(S) defensive snapshot of
 mutable workflow execution state, where S is the serialized state size. This
 is the necessary ownership boundary: aliases held before preparation cannot
 change what the accepted transition later consumes, and public mutable-state
@@ -208,6 +258,98 @@ before clearing the marker and releasing the process-local boundary, and
 likewise refuses to run while the adapter reports an open transaction.
 `prepared_persisted_step?` exposes whether the one execution attempt remains
 available without revealing transition internals.
+
+#### Restart-Safe Prepared Recovery
+
+Cross-process recovery is opt-in. The workflow class must declare a lowercase
+SHA-256 `definition_digest` covering the complete executable definition:
+workflow topology, deterministic code assets, effective agents, prompts,
+models, tools, schemas, and guardrails. Smith validates this digest but does not
+derive it from Ruby reflection. `Proc#source_location` exposes only a filename
+and line, while `RubyVM::InstructionSequence` is MRI-specific,
+version-sensitive, and not portable across machines or Ruby versions. See the
+official [Proc documentation](https://docs.ruby-lang.org/en/master/Proc.html)
+and [InstructionSequence documentation](https://ruby-doc.org/3.2/RubyVM/InstructionSequence.html).
+
+```ruby
+class GeneratedWorkflow < Smith::Workflow
+  definition_digest signed_package.digest
+  idempotency_mode :strict
+  # states and transitions...
+end
+
+
+adapter = Smith::PersistenceAdapters::ActiveRecordStore.new(
+  model: WorkflowState,
+  identity: "primary:workflow-states"
+)
+
+descriptor = Smith::Workflow::PreparedStep.deserialize(host_receipt.fetch(:prepared_step))
+decision = Smith::Workflow::PreparedStepRecovery.not_started(descriptor)
+workflow = GeneratedWorkflow.recover_prepared_step(decision, adapter: adapter)
+dispatch = workflow.claim_prepared_step_dispatch!
+step = workflow.execute_prepared_step!
+
+# A replacement worker may continue a committed claim only when the host's
+# exclusive attempt ledger proves transition/provider/tool execution did not start.
+dispatch = Smith::Workflow::PreparedStepDispatch.deserialize(host_receipt.fetch(:dispatch_receipt))
+decision = Smith::Workflow::PreparedStepRecovery.not_started(dispatch)
+workflow = GeneratedWorkflow.recover_prepared_step(decision, adapter: adapter)
+step = workflow.execute_prepared_step!
+```
+
+The host may construct `not_started` only after acquiring exclusive recovery
+authority and proving from its durable attempt ledger that provider/tool
+dispatch never started. Smith does not own leases, queues, attempt records, or
+that fact. Recovery performs one fetch, validates the exact canonical payload,
+class name, schema, definition digest, adapter identity, transition, origin,
+step number, token, key, and version, then reconstructs a guarded process-local
+boundary. It refuses an open adapter transaction and never migrates an
+in-progress payload. Ordinary `restore` remains fail-closed.
+
+Restart-safe preparation additionally requires a non-expiring adapter exposing
+both `replace_exact` and a stable, bounded `persistence_identity`. Configure the
+same non-secret identity for every process connected to one durable storage
+domain. Memory's generated identity is process-local and is suitable only for
+same-process tests. Cache adapters do not provide exact CAS and are unsupported
+for restart-safe prepared recovery.
+
+Recovery authorizes a payload already marked `dispatching` only when the host
+supplies the exact committed `PreparedStepDispatch` receipt and an explicit
+`not_started` decision. The host may make that decision only while holding
+exclusive recovery authority and after its durable attempt ledger proves that
+transition/provider/tool execution never started. Without that proof, a crash
+or lost acknowledgement after the exact claim has an uncertain external
+outcome. Smith never rewinds or executes it on its own.
+
+When claim and host-attempt writes share an Active Record transaction,
+`claim_prepared_step_dispatch!` leaves execution unavailable until
+`confirm_prepared_step_dispatch!` runs after commit. A rollback restores the
+known prepared boundary and permits a new exact claim. Any other confirmation
+result remains uncertain and cannot execute.
+
+The definition digest is pinned when preparation authority is acquired. Smith
+rejects claim or execution if the workflow class changes that digest before the
+boundary completes, including a class that adds a digest after preparing a
+legacy boundary.
+
+Exact replacement is a current-value compare-and-swap, not a historical fencing
+ledger. A restart-safe workflow key must be exclusively owned by Smith's
+versioned/exact persistence path. Hosts must not call unconditional `store`,
+delete/recreate the key, or restore an earlier byte-identical payload while a
+boundary is active. Such an out-of-band A-to-B-to-A rewrite is
+information-theoretically indistinguishable from the original value without a
+separate monotonic storage generation. Hosts that permit other writers must
+fence them in their own durable attempt/storage ledger; Smith does not absorb
+that host policy.
+
+Redis versioned and exact CAS require a client-native reconnect-disabling
+scope around WATCH/MULTI/EXEC. redis-rb 5.4 exposes `without_reconnect`, while
+newer clients may expose `disable_reconnection`; Smith accepts either and
+refuses CAS before WATCH when neither exists. This follows redis-rb's official
+[reconnection contract](https://github.com/redis/redis-rb#reconnections) and
+prevents a transaction from being replayed after connection-scoped WATCH state
+has been lost.
 
 Workflow classes are part of the execution contract once preparation begins.
 Hosts must not add or prepend methods to that class until the boundary is
@@ -285,7 +427,7 @@ standard optimistic-locking column:
 ```ruby
 create_table :workflow_states do |t|
   t.string :key, null: false, index: { unique: true }
-  t.jsonb :payload, null: false
+  t.text :payload, null: false
   t.integer :lock_version, null: false, default: 0
   t.timestamps
 end
@@ -295,7 +437,10 @@ end
 
 Smith.configure do |config|
   config.persistence_adapter = :active_record
-  config.persistence_options = { model: WorkflowState }
+  config.persistence_options = {
+    model: WorkflowState,
+    identity: "primary:workflow-states"
+  }
 end
 ```
 
@@ -320,8 +465,14 @@ Smith.configure do |config|
 end
 ```
 
-The unique key must be enforced by the database. Initial creation uses Rails'
-native `create_or_find_by!` savepoint path, so a concurrent key insert does not
+The unique key must be enforced by the database. Before every exact write,
+Smith verifies from database metadata that the configured key is the database
+primary key or has its own unconditional single-column unique index. Model-only
+primary-key declarations, partial indexes, and composite indexes are not
+accepted. Smith uses Active Record's table-keyed schema cache; a cold check is
+`O(I)` in the table's index count and never scans workflow rows. Initial
+creation uses Rails' native
+`create_or_find_by!` savepoint path, so a concurrent key insert does not
 invalidate a PostgreSQL caller transaction. A collision on another unique
 constraint is not misreported as a key-version conflict.
 

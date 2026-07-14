@@ -14,6 +14,7 @@ require_relative "workflow/usage_entry"
 module Smith
   class Workflow
     include DSL
+    include DefinitionIdentity
     include Persistence
     include Durability
     prepend SplitStepPersistence

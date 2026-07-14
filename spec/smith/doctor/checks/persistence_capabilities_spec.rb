@@ -67,7 +67,10 @@ RSpec.describe Smith::Doctor::Checks::PersistenceCapabilities do
 
     check = report.checks.find { |c| c.name == "persistence.capabilities" }
     expect(check.status).to eq(:warn)
-    expect(check.message).to match(/missing optional capabilities: store_versioned, record_heartbeat, last_heartbeat/)
+    expect(check.message).to include(
+      "missing optional capabilities: store_versioned, replace_exact, persistence_identity, " \
+      "record_heartbeat, last_heartbeat"
+    )
     expect(check.detail).to include("payload updated_at parsing")
     expect(check.detail).to include("commit-aware split-step confirmation is unavailable")
   end
@@ -90,8 +93,22 @@ RSpec.describe Smith::Doctor::Checks::PersistenceCapabilities do
 
     check = report.checks.find { |c| c.name == "persistence.capabilities" }
     expect(check.status).to eq(:warn)
-    expect(check.message).to match(/missing optional capabilities: record_heartbeat, last_heartbeat/)
+    expect(check.message).to include("replace_exact, persistence_identity, record_heartbeat, last_heartbeat")
     expect(check.message).not_to include("store_versioned,")
+  end
+
+  it "warns when an identity method does not return a usable identity" do
+    Smith.configure do |config|
+      config.persistence_adapter = Smith::PersistenceAdapters::RedisStore.new(redis: Object.new)
+      config.test_mode = false
+    end
+
+    report = Smith::Doctor::Report.new
+    described_class.run(report)
+
+    check = report.checks.find { |item| item.name == "persistence.capabilities" }
+    expect(check.status).to eq(:warn)
+    expect(check.message).to include("persistence_identity")
   end
 
   it "explains the conditional transaction identity requirement" do

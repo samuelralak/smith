@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "monitor"
+require "securerandom"
 
 module Smith
   module PersistenceAdapters
@@ -15,7 +16,10 @@ module Smith
     # Smith.config.persistence_adapter is nil AND Smith.config.test_mode
     # is true (typically set in spec_helper.rb).
     class Memory
-      def initialize
+      attr_reader :persistence_identity
+
+      def initialize(identity: "memory:#{SecureRandom.uuid}")
+        @persistence_identity = identity.to_s.dup.freeze
         @store = {}
         @heartbeats = {}
         @monitor = Monitor.new
@@ -87,6 +91,16 @@ module Smith
           end
           @store[key] = entry_for(payload, ttl)
         end
+      end
+
+      def replace_exact(key, payload, expected_payload:, ttl: Smith.config.persistence_ttl)
+        @monitor.synchronize do
+          entry = live_entry(key)
+          raise PersistencePayloadConflict.new(key:) unless entry && entry[:payload] == expected_payload
+
+          @store[key] = entry_for(payload, ttl)
+        end
+        payload
       end
 
       def clear!

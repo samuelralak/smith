@@ -1187,6 +1187,7 @@ Documented contracts covered:
 - resumed workflows continue reserving and reconciling budget from restored ledger state
 - persisted `next_transition_name` preserves the selected resume path across restore
 - persisted `total_cost` and `total_tokens` preserve cumulative best-known workflow totals across restore
+- optional `definition_digest` binds persisted state to a host-supplied executable workflow definition
 - JSON-serializable state payload
 - host-style JSON round-trip restore via `JSON.generate` / `JSON.parse` preserves executable state, selected next transition, persisted context, session history, restored budget state, and persisted cumulative totals
 
@@ -1205,8 +1206,9 @@ Documented contracts covered:
 
 - preparation persists `step_in_progress` and returns the pending transition
   without consuming it
-- execution requires a prepared strict workflow, re-verifies durable
-  preparation, and advances exactly one transition
+- legacy execution requires a prepared strict workflow and re-verifies durable
+  preparation; restart-safe execution additionally requires a confirmed exact
+  dispatch claim before advancing exactly one transition
 - prepared execution state is detached from external mutable aliases and must
   still match the exact prepared payload before execution
 - serialized state exposed after preparation is detached, so mutating it after
@@ -1223,6 +1225,16 @@ Documented contracts covered:
 - split-step execution rejects non-versioned adapters, adapters whose
   `store_versioned` method cannot accept explicit `ttl:`, and expiring
   persistence
+- restart-safe split steps additionally require exact-payload `replace_exact`
+  and a bounded stable `persistence_identity`
+- exact dispatch claiming is a public work-free phase, retains the logical
+  workflow version, and permits only one original or recovered process to enter
+  transition work
+- transactional dispatch claims remain non-executable until commit
+  confirmation; exact rollback restores the prepared boundary while any other
+  confirmation result fails closed
+- ambiguous exact-claim acknowledgement remains durable `dispatching` state
+  and cannot be recovered as `not_started`
 - non-expiring persistence is pinned across preparation and checkpoint even if
   global persistence TTL configuration changes mid-boundary
 - subclass execution entry points cannot bypass an active boundary, and
@@ -1278,6 +1290,39 @@ Documented contracts covered:
   granting transition authority to subclass or prepended wrappers
 - commit verification uses the exact payload serialized by the persistence
   write, including workflows with stateful serializers
+
+### `spec/smith/workflow/prepared_step_recovery_spec.rb`
+
+Purpose:
+
+- pins opt-in cross-process reconstruction of an exact committed preparation
+  without making Smith a scheduler, lease manager, or attempt ledger
+
+Documented contracts covered:
+
+- strict bounded descriptor deserialization rejects malformed, missing,
+  duplicated, and unknown transport fields
+- recovery requires a typed `not_started` decision, exact named class and
+  schema, matching executable definition digest, exact descriptor identity,
+  and the same persistence domain
+- ordinary strict restore remains fail-closed and in-progress state cannot be
+  migrated before marker validation
+- original and reconstructed objects contend through one exact durable claim;
+  only one transition body executes
+- restart-safe execution rejects an unclaimed preparation; exact claim and
+  execution are separate public phases so hosts can atomically correlate their
+  attempt ledger before transition work
+- exact claim returns an immutable bounded `PreparedStepDispatch` receipt;
+  matching durable `dispatching` state can be reconstructed only from that
+  receipt plus the host's typed `not_started` decision
+- definition identity is pinned at preparation/recovery and drift is rejected
+  before claim or execution
+- losing same-object claim and confirmation contenders cannot revoke the
+  winner's state
+- a transaction-coordinated claim is unavailable for execution until confirmed
+  after commit, and exact rollback permits a new claim
+- missing or same-version-mutated payloads fail closed, and ambiguous dispatch
+  acknowledgement cannot be replayed
 - a failed post-step checkpoint remains guarded and requires reconciliation;
   an exact durable preparation permits one unchanged retry
 - concurrent post-step checkpointing permits exactly one claimant
@@ -2625,10 +2670,13 @@ Covered behaviors:
 
 - warns (`persistence.capabilities`, status `:warn`) when `Smith.persistence_adapter` returns nil (no adapter configured and `test_mode` false)
 - passes when the configured adapter supports all `OPTIONAL_METHODS`
-  (`store_versioned`, `record_heartbeat`, `last_heartbeat`,
-  `transaction_open?`, `transaction_identity`); `Memory` and
-  `RedisStore` qualify
+  (`store_versioned`, `replace_exact`, `persistence_identity`,
+  `record_heartbeat`, `last_heartbeat`,
+  `transaction_open?`, `transaction_identity`); `Memory` qualifies directly,
+  while `RedisStore` requires an explicit bounded `persistence_identity`
 - warns with actionable detail when the adapter is missing optional capabilities, naming the missing capabilities and explaining the fallback semantics
+- warns when `persistence_identity` exists as a method but its value is not a
+  bounded, non-empty string
 
 Notes:
 
@@ -2650,7 +2698,8 @@ Covered behaviors:
 - invalid custom adapter classes fail contract validation
 - unknown adapter symbols fail clearly
 - `Smith::PersistenceAdapters::OPTIONAL_METHODS` includes `store_versioned`,
-  heartbeat methods, `transaction_open?`, and `transaction_identity`, all
+  `replace_exact`, `persistence_identity`, heartbeat methods,
+  `transaction_open?`, and `transaction_identity`, all
   introspected via `supports?(adapter, capability)`
 - `warn_missing_versioning(adapter)` issues a one-time per-adapter-class warning when an adapter does not implement `store_versioned`; subsequent calls are no-ops within the same Smith boot (Monitor-synchronized via class-level Set)
 
@@ -2689,6 +2738,8 @@ Documented contracts covered:
 - legacy syntactically malformed payloads retain the established version-zero
   behavior while valid JSON scalars fail closed
 - writes participate in an outer Active Record transaction/savepoint
+- restart-safe dispatch claims participate in that transaction, remain
+  non-executable before commit confirmation, and recover an exact rollback
 - workflow persist/restore rejects a stale restored writer without advancing its
   in-memory persistence version
 - custom host locking columns work when model and adapter agree
@@ -2697,6 +2748,8 @@ Documented contracts covered:
   the caller's transaction
 - key uniqueness validations are translated while unrelated unique constraints
   and callback rollbacks preserve their original Active Record meaning
+- exact replacement validates key uniqueness before mutation and compares
+  payload bytes independently of database text collation
 - connection failures are translated without replaying the uncertain versioned
   write below the host-owned transaction boundary
 
@@ -2721,6 +2774,11 @@ Documented contracts covered:
 
 - a missing key rejects nonzero expected versions before `MULTI` and reports
   `Smith::PersistenceVersionConflict` with `actual: :missing`
+- versioned and exact replacement use WATCH/MULTI/EXEC within the client's
+  native no-reconnect scope, reject stale or concurrently changed payloads, and
+  never replay an ambiguously acknowledged write
+- callable Redis command clients are not mistaken for factories; clients that
+  cannot disable reconnection fail before WATCH
 
 ### `spec/smith/persistence_adapters/payload_version_spec.rb`
 
@@ -2739,7 +2797,7 @@ Documented contracts covered:
 
 Purpose:
 
-- pins the in-process Memory adapter contract: REQUIRED_METHODS compliance, TTL via stamped expiry, optional `store_versioned` via Monitor-synchronized version compare, thread-safety, and `Smith.persistence_adapter` test_mode auto-detect
+- pins the in-process Memory adapter contract: REQUIRED_METHODS compliance, TTL via stamped expiry, optional `store_versioned` and exact-payload `replace_exact` via Monitor synchronization, process-local persistence identity, thread-safety, and `Smith.persistence_adapter` test_mode auto-detect
 
 Architecture basis:
 
@@ -2758,6 +2816,8 @@ Documented contracts covered:
 - stored and fetched payload strings are copied, preventing caller mutation from
   bypassing the adapter monitor and optimistic version check
 - missing entries reject nonzero expected versions with `actual: :missing`
+- `replace_exact` changes only byte-identical current payloads and rejects
+  missing, stale, and same-version-mutated values
 - thread safety: concurrent writes serialize via Monitor; reads observe coherent state (no torn writes / nil races)
 - `Smith::PersistenceAdapters.resolve(:memory)` returns a Memory instance
 - `Smith.persistence_adapter` auto-detects: returns Memory when persistence_adapter nil + `test_mode` true; returns nil when persistence_adapter nil + test_mode false

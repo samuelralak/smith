@@ -3,14 +3,17 @@
 module Smith
   module PersistenceAdapters
     class ActiveRecordStore
+      include ActiveRecordExactStore
+
       # AR transient errors resolved via class-name guard so Smith
       # doesn't require activerecord at load time. Hosts that use this
       # adapter already have activerecord in their dep tree.
-      def initialize(model:, key_column: :key, payload_column: :payload, version_column: :lock_version)
+      def initialize(model:, key_column: :key, payload_column: :payload, version_column: :lock_version, identity: nil)
         @model_source = model.is_a?(String) ? model.dup.freeze : model
         @key_column = normalize_column(key_column)
         @payload_column = normalize_column(payload_column)
         @version_column = normalize_column(version_column)
+        @persistence_identity = identity.to_s.dup.freeze if identity
       end
 
       def store(key, payload, ttl: nil) # rubocop:disable Lint/UnusedMethodArgument

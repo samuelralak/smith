@@ -16,6 +16,7 @@ RSpec.describe "Smith::Workflow contract" do
       context_manager
       seed_messages
       persistence_key
+      definition_digest
     ].each do |dsl|
       expect(workflow_class).to respond_to(dsl), "expected Smith::Workflow to implement .#{dsl}"
     end
@@ -35,6 +36,8 @@ RSpec.describe "Smith::Workflow contract" do
     expect(workflow).to respond_to(:prepare_persisted_step!)
     expect(workflow).to respond_to(:confirm_prepared_step!)
     expect(workflow).to respond_to(:execute_prepared_step!)
+    expect(workflow).to respond_to(:claim_prepared_step_dispatch!)
+    expect(workflow).to respond_to(:confirm_prepared_step_dispatch!)
     expect(workflow).to respond_to(:prepared_persisted_step)
     expect(workflow).to respond_to(:prepared_persisted_step?)
     expect(workflow).to respond_to(:complete_persisted_step!)
@@ -46,6 +49,7 @@ RSpec.describe "Smith::Workflow contract" do
     expect(workflow_class).to respond_to(:restore_or_initialize)
     expect(workflow_class).to respond_to(:run_persisted!)
     expect(workflow_class).to respond_to(:from_state)
+    expect(workflow_class).to respond_to(:recover_prepared_step)
   end
 
   it "indexes pending transitions without changing declaration order" do

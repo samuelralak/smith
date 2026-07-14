@@ -3,11 +3,14 @@
 require "monitor"
 require_relative "persistence_adapters/active_record_connection_errors"
 require_relative "persistence_adapters/active_record_initial_write"
+require_relative "persistence_adapters/active_record_exact_write"
+require_relative "persistence_adapters/active_record_exact_store"
 require_relative "persistence_adapters/payload_version"
 require_relative "persistence_adapters/version_expectation"
 require_relative "persistence_adapters/cache_store"
 require_relative "persistence_adapters/rails_cache"
 require_relative "persistence_adapters/redis_versioned_write"
+require_relative "persistence_adapters/redis_exact_write"
 require_relative "persistence_adapters/redis_store"
 require_relative "persistence_adapters/active_record_store"
 require_relative "persistence_adapters/memory"
@@ -29,7 +32,8 @@ module Smith
     # gracefully (e.g., Workflow#persist! warns once and uses plain
     # `store` when `store_versioned` is missing).
     OPTIONAL_METHODS = %i[
-      store_versioned record_heartbeat last_heartbeat transaction_open? transaction_identity
+      store_versioned replace_exact persistence_identity record_heartbeat last_heartbeat
+      transaction_open? transaction_identity
     ].freeze
 
     def self.resolve(adapter, **options)
@@ -61,7 +65,7 @@ module Smith
       when :rails_cache, :solid_cache then RailsCache.new(**options)
       when :redis then RedisStore.new(**options)
       when :active_record then ActiveRecordStore.new(**options)
-      when :memory then Memory.new
+      when :memory then Memory.new(**options)
       else raise ArgumentError, "Unknown persistence adapter #{adapter.inspect}"
       end
     end

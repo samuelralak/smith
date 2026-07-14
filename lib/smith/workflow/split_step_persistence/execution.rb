@@ -9,7 +9,7 @@ module Smith
           step = nil
           claim_split_step_execution_verification!
           begin
-            verify_split_step_preparation_available!
+            verify_claimed_split_step_execution!
             activate_split_step_execution!
             execution_started = true
             step = execute_claimed_split_step_transition!
@@ -19,27 +19,14 @@ module Smith
           step
         end
 
-        def prepared_persisted_step? = @split_step_mutex.synchronize { @split_step_phase == :prepared }
-
-        private
-
-        def claim_split_step_execution_verification!
+        def prepared_persisted_step?
           @split_step_mutex.synchronize do
-            raise WorkflowError, "no persisted step is prepared" unless @split_step_phase == :prepared
-            raise WorkflowError, "the prepared transition no longer matches the workflow" unless
-              prepared_split_step_transition_matches?
-
-            @split_step_phase = :verifying_execution
+            expected = restart_safe_split_step? ? :dispatch_claimed : :prepared
+            @split_step_phase == expected
           end
         end
 
-        def prepared_split_step_transition_matches?
-          transition = pending_split_step_transition
-          transition_name = @next_transition_name || transition&.name
-          transition_name == @split_step_transition_name &&
-            transition.equal?(@split_step_transition) &&
-            split_step_transition_signature(transition) == @split_step_transition_signature
-        end
+        private
 
         def activate_split_step_execution!
           @split_step_mutex.synchronize do
@@ -48,6 +35,7 @@ module Smith
             end
 
             @split_step_phase = :executing
+            @split_step_execution_previous_phase = nil
             @split_step_execution_thread = Thread.current
             @split_step_advance_permit = true
           end
@@ -55,24 +43,11 @@ module Smith
 
         def restore_unverified_execution!
           @split_step_mutex.synchronize do
-            @split_step_phase = :prepared if @split_step_phase == :verifying_execution
+            if @split_step_phase == :verifying_execution
+              @split_step_phase = @split_step_execution_previous_phase
+              @split_step_execution_previous_phase = nil
+            end
           end
-        end
-
-        def verify_split_step_preparation_available!
-          payload = @split_step_adapter.fetch(@split_step_persistence_key)
-          durable = persisted_split_step_payload?(payload, @split_step_preparation_payload)
-          live = persisted_split_step_payload?(current_split_step_preparation_payload, @split_step_preparation_payload)
-          stable = split_step_transition_signature(@split_step_transition) == @split_step_transition_signature
-          return if durable && live && stable
-
-          raise WorkflowError, "the persisted split-step preparation is no longer available"
-        end
-
-        def current_split_step_preparation_payload
-          split_step_preparation_payload(
-            JSON.generate(to_state.merge(persistence_version: @persistence_version))
-          )
         end
 
         def execute_claimed_split_step_transition!
@@ -86,6 +61,7 @@ module Smith
           @split_step_mutex.synchronize do
             @split_step_execution_thread = nil
             @split_step_advance_permit = false
+            @split_step_execution_previous_phase = nil
             @split_step_phase = step ? :executed : :attempted
           end
         end

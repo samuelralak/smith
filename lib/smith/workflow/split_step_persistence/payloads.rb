@@ -38,6 +38,10 @@ module Smith
         def split_step_preparation_payload(payload)
           document = JSON.parse(payload)
           document["split_step_token"] = @split_step_token
+          if restart_safe_split_step?
+            document["split_step_phase"] = "prepared"
+            document["split_step_persistence_identity"] = @split_step_adapter.persistence_identity
+          end
           JSON.generate(document)
         end
 

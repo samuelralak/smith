@@ -8,6 +8,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Added
 
+- Add opt-in restart-safe prepared-step recovery. Workflow classes bind a
+  host-supplied executable `definition_digest`; hosts submit an immutable typed
+  `PreparedStepRecovery.not_started` decision; Smith verifies the exact
+  committed preparation before reconstructing a guarded boundary.
+- Add exact-payload `replace_exact` and bounded `persistence_identity` adapter
+  capabilities. Restart-safe execution atomically advances the durable payload
+  from `prepared` to `dispatching` before transition work, preventing original
+  and recovered processes from both dispatching the same operation.
+- Separate restart-safe dispatch claim, commit confirmation, and transition
+  execution so transactional hosts can atomically correlate their attempt
+  ledger before any provider, tool, or deterministic step work begins.
+- Add immutable, bounded `PreparedStepDispatch` receipts. An exclusive host that
+  durably proves execution never started can reconstruct an exact committed
+  `dispatching` boundary without replaying its claim.
+- Add strict bounded `PreparedStep.deserialize` transport decoding and the
+  typed `Sha256Hex` scalar.
+
 - Expose `Workflow#pending_transition_name` so hosts can inspect the exact next
   transition without serializing workflow state or traversing the graph.
 - Expose an immutable `Smith::Workflow::PreparedStep` descriptor for an active
@@ -25,6 +42,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Changed
 
+- Reject strict in-progress payloads before schema migration so a migration
+  cannot clear the uncertainty marker and replay a transition.
+- Keep an ambiguously acknowledged exact dispatch claim fail-closed in durable
+  `dispatching` state. Smith does not infer or replay an uncertain external
+  outcome.
+- Run Redis versioned and exact-payload CAS inside redis-rb's native
+  no-reconnect scope and do not replay either write after a transient
+  connection failure; a lost acknowledgement is outcome-unknown and must be
+  reconciled.
+- Pin the executable definition digest for the complete split-step boundary and
+  reject class digest drift before claim or execution.
+- Make Active Record exact replacement one conditional SQL update over key and
+  byte-exact payload while incrementing its optimistic-lock column. Validate
+  the database primary key or an unconditional single-column unique key index
+  through Active Record's table-keyed schema cache before each exact write.
+- Resolve callable Redis command clients as clients rather than factories, and
+  require a native reconnect-disabling scope before any Redis CAS begins.
+- Treat a persistence identity as available in doctor diagnostics only when its
+  value satisfies the same bounded non-empty contract used at runtime.
+
 - Maintain a declaration-time outgoing-transition index. First-transition and
   terminal checks are constant-time; enumerating transitions from one state is
   proportional to that state's outdegree. Stable declaration precedence,
@@ -33,6 +70,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   `transaction_identity` for strict split-step preparation. This intentionally
   tightens the 0.4.5 boolean transaction contract so later unrelated
   transactions cannot re-authorize a rolled-back descriptor.
+
+### Verification
+
+- Default suite: 1,116 examples, 0 failures.
+- Focused prepared-recovery, persistence-adapter, and doctor suite: 104 examples,
+  0 failures; new implementation files and focused changed files pass RuboCop and
+  `git diff --check`.
+- Practical gem execution: 30 restart-safe scenarios covering serialized
+  preparation and dispatch recovery, exact-claim contention, corruption,
+  definition drift, ambiguous acknowledgements, and Active Record
+  commit/rollback coordination; a real redis-rb 5.4.1 run additionally proved
+  direct-client and factory resolution plus bounded multi-client exact-claim
+  contention.
+- Smith Runtime host regression against the local Smith checkout: 712 tests,
+  3,728 assertions, 0 failures.
 
 ## [0.4.5] - 2026-07-11
 

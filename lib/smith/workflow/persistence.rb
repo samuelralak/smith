@@ -38,6 +38,11 @@ module Smith
           # stored value lags the workflow's current
           # persistence_schema_version.
           schema_version: self.class.persistence_schema_version,
+          # Host-supplied digest of the complete executable workflow
+          # definition. Smith does not derive this from Ruby Proc or VM
+          # internals; hosts that need restart-safe prepared-step recovery
+          # must bind it to their immutable code/package identity.
+          definition_digest: effective_definition_digest,
           # SHA256 digest of the seed_messages produced at this
           # workflow's construction. Stays stable across persist/restore
           # cycles so seed_validation can detect when the seed builder
@@ -59,7 +64,9 @@ module Smith
 
       private
 
-      def restore_state(hash)
+      def restore_state(hash, allow_step_in_progress: false)
+        validate_raw_step_in_progress!(hash) if
+          self.class.idempotency_mode == :strict && !allow_step_in_progress
         migrated = migrate_if_needed(hash)
         normalized = normalize_persisted_state(migrated)
         persistence_version = validated_persistence_version(normalized)
@@ -89,6 +96,7 @@ module Smith
         # so the first persist! after restore expects version 0 (matches
         # the original store from the legacy adapter contract).
         @persistence_version = persistence_version
+        validate_definition_digest!(normalized)
         # Preserve the seed digest from the persisted payload so it
         # round-trips on subsequent persists. validate_seed_digest!
         # compares this against a fresh evaluation of the seed builder
@@ -100,7 +108,8 @@ module Smith
         # mode by raising if the marker is set on restore.
         @step_in_progress = normalized[:step_in_progress] || false
         @split_step_mutex = Mutex.new
-        validate_step_in_progress!(normalized) if self.class.idempotency_mode == :strict
+        validate_step_in_progress!(normalized) if
+          self.class.idempotency_mode == :strict && !allow_step_in_progress
       end
 
       def validated_persistence_version(normalized)
@@ -111,6 +120,18 @@ module Smith
               "persisted workflow persistence_version must be a non-negative integer, got #{version.inspect}"
       end
 
+      def validate_definition_digest!(normalized)
+        stored = normalized[:definition_digest]
+        return if stored.nil?
+
+        unless Smith::Types::Sha256Hex.valid?(stored)
+          raise Smith::SerializationError, "persisted workflow definition_digest must be a SHA-256 hex digest"
+        end
+        return if stored == self.class.definition_digest
+
+        raise Smith::WorkflowError, "persisted workflow definition does not match the current workflow class"
+      end
+
       def validate_step_in_progress!(normalized)
         return unless normalized[:step_in_progress] == true
 
@@ -118,6 +139,14 @@ module Smith
           workflow: self.class.name,
           persistence_key: normalized[:persistence_key]
         )
+      end
+
+      def validate_raw_step_in_progress!(state)
+        return unless state.is_a?(Hash)
+
+        marker = state[:step_in_progress] || state["step_in_progress"]
+        persistence_key = state[:persistence_key] || state["persistence_key"]
+        validate_step_in_progress!(step_in_progress: marker, persistence_key:)
       end
 
       def validate_seed_digest!(normalized)

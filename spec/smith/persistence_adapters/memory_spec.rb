@@ -126,6 +126,38 @@ RSpec.describe Smith::PersistenceAdapters::Memory do
     end
   end
 
+  describe "replace_exact (optional capability)" do
+    it "replaces only the exact current payload without changing its logical version" do
+      original = JSON.generate(persistence_version: 1, phase: "prepared")
+      claimed = JSON.generate(persistence_version: 1, phase: "dispatching")
+      adapter.store_versioned("claim", original, expected_version: 0)
+
+      expect(adapter.replace_exact("claim", claimed, expected_payload: original, ttl: nil)).to eq(claimed)
+      expect(adapter.fetch("claim")).to eq(claimed)
+    end
+
+    it "rejects missing, stale, and same-version mutated payloads" do
+      original = JSON.generate(persistence_version: 1, phase: "prepared")
+      mutated = JSON.generate(persistence_version: 1, phase: "mutated")
+      claimed = JSON.generate(persistence_version: 1, phase: "dispatching")
+      adapter.store("claim", mutated, ttl: nil)
+
+      expect do
+        adapter.replace_exact("claim", claimed, expected_payload: original, ttl: nil)
+      end.to raise_error(Smith::PersistencePayloadConflict)
+      expect do
+        adapter.replace_exact("missing", claimed, expected_payload: original, ttl: nil)
+      end.to raise_error(Smith::PersistencePayloadConflict)
+      expect(adapter.fetch("claim")).to eq(mutated)
+    end
+
+    it "exposes a stable bounded identity for one adapter instance" do
+      expect(adapter.persistence_identity).to match(/\Amemory:/)
+      expect(adapter.persistence_identity).to be_frozen
+      expect(described_class.new.persistence_identity).not_to eq(adapter.persistence_identity)
+    end
+  end
+
   describe "thread safety" do
     it "serializes concurrent writes via Monitor" do
       results = []
@@ -144,6 +176,12 @@ RSpec.describe Smith::PersistenceAdapters::Memory do
   describe "Smith::PersistenceAdapters.resolve(:memory)" do
     it "returns a Memory instance" do
       expect(Smith::PersistenceAdapters.resolve(:memory)).to be_a(described_class)
+    end
+
+    it "forwards an explicit persistence identity" do
+      resolved = Smith::PersistenceAdapters.resolve(:memory, identity: "memory:configured")
+
+      expect(resolved.persistence_identity).to eq("memory:configured")
     end
   end
 

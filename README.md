@@ -203,7 +203,9 @@ result = ReplyWorkflow.run_persisted!(
 ```
 
 Built-in adapters (all support TTL where the backend allows; `Redis`,
-`ActiveRecord`, and `Memory` support optimistic locking via `store_versioned`;
+`ActiveRecord`, and `Memory` support optimistic locking via `store_versioned`
+and exact dispatch claims via `replace_exact`; `ActiveRecord` participates in
+the caller's transaction for host-record coordination;
 `Redis` and `Memory` also support heartbeat probes via `record_heartbeat` /
 `last_heartbeat`):
 
@@ -214,7 +216,9 @@ Built-in adapters (all support TTL where the backend allows; `Redis`,
 - `:active_record` — keyed ActiveRecord model with an enabled optimistic-locking
   column for row-level CAS; Smith's logical version remains in the JSON payload
 
-See [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md) for schema versioning, seed-drift validation, and the `idempotency_mode :strict` step-in-progress contract.
+See [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md) for schema versioning,
+seed-drift validation, the `idempotency_mode :strict` step-in-progress contract,
+and opt-in restart-safe prepared recovery.
 
 ## Tools and Guardrails
 

@@ -6,7 +6,9 @@ module Smith
       module Preparation
         DESCRIPTOR_PHASES = %i[
           prepared_uncommitted prepared verifying_execution executing executed attempted
-          checkpointing checkpoint_retryable checkpoint_unknown checkpointed confirming_checkpoint
+          dispatch_claimed_uncommitted dispatch_claimed dispatch_rejected dispatch_unknown
+          confirming_dispatch checkpointing checkpoint_retryable checkpoint_unknown
+          checkpointed confirming_checkpoint
         ].freeze
         private_constant :DESCRIPTOR_PHASES
 
@@ -103,6 +105,7 @@ module Smith
             raise WorkflowError, "split-step persistence requires an adapter with store_versioned"
           end
 
+          validate_restart_safe_adapter!(adapter)
           unless split_step_adapter_accepts_explicit_ttl?(adapter)
             raise WorkflowError, "split-step persistence requires store_versioned to accept ttl:"
           end

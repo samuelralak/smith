@@ -148,6 +148,7 @@ end
 # Leaf modules (no internal dependencies)
 require_relative "smith/types"
 require_relative "smith/errors"
+require_relative "smith/persistence_payload_conflict"
 
 # Event system (depends on Types)
 require_relative "smith/event"
@@ -239,6 +240,8 @@ require_relative "smith/workflow/optimization_state"
 require_relative "smith/workflow/orchestration_state"
 require_relative "smith/workflow/worker_execution"
 require_relative "smith/workflow/dsl"
+require_relative "smith/workflow/definition_identity"
+require_relative "smith/workflow/prepared_step_dispatch"
 require_relative "smith/workflow/persistence"
 require_relative "smith/workflow/durability"
 require_relative "smith/workflow/split_step_persistence"

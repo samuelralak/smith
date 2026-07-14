@@ -59,13 +59,27 @@ RSpec.describe "Smith::Workflow step_in_progress idempotency marker" do
   end
 
   describe ":strict mode" do
+    it "rejects a raw in-progress marker before schema migration can clear it" do
+      migrating = workflow_class(mode: :strict)
+      migrating.persistence_schema_version(2)
+      migrating.migrate_from(1) do |payload|
+        payload.merge(schema_version: 2, step_in_progress: false)
+      end
+      state = migrating.new.to_state.merge(schema_version: 1, step_in_progress: true)
+
+      expect do
+        migrating.from_state(state)
+      end.to raise_error(Smith::StepInProgressOnRestore)
+    end
+
     it "raises Smith::StepInProgressOnRestore when the restored payload has the marker set" do
       klass = workflow_class(mode: :strict)
       workflow = klass.new
       workflow.instance_variable_set(:@step_in_progress, true)
       workflow.persist!("workflow:idempotency-test", adapter: adapter)
 
-      expect { klass.restore("workflow:idempotency-test", adapter: adapter) }.to raise_error(Smith::StepInProgressOnRestore) do |err|
+      expectation = expect { klass.restore("workflow:idempotency-test", adapter: adapter) }
+      expectation.to raise_error(Smith::StepInProgressOnRestore) do |err|
         expect(err.persistence_key).to eq("workflow:idempotency-test")
       end
     end
@@ -212,7 +226,7 @@ RSpec.describe "Smith::Workflow step_in_progress idempotency marker" do
       tool_results: [], outcome: nil, usage_entries: [],
       last_output: nil, last_failed_step: nil,
       persistence_version: 1, schema_version: 1, seed_digest: nil
-      # Note: no :step_in_progress key
+      # NOTE: no :step_in_progress key
     }
     adapter.store("workflow:idempotency-test", JSON.generate(legacy_payload))
 
@@ -228,11 +242,11 @@ RSpec.describe "Smith::Workflow step_in_progress idempotency marker" do
 
   describe "DSL validation" do
     it "rejects unknown idempotency_mode values" do
-      expect {
+      expect do
         Class.new(Smith::Workflow) do
           idempotency_mode :paranoid
         end
-      }.to raise_error(ArgumentError, /must be :strict or :lax/)
+      end.to raise_error(ArgumentError, /must be :strict or :lax/)
     end
   end
 end

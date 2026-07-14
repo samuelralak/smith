@@ -24,6 +24,7 @@ RSpec.describe "smith architecture contract" do
     %w[
       Smith::Types::String
       Smith::Types::Integer
+      Smith::Types::Sha256Hex
     ].each do |path|
       expect(fetch_const(path)).not_to be_nil, "expected #{path} to be defined"
     end
@@ -37,6 +38,9 @@ RSpec.describe "smith architecture contract" do
       Smith::Workflow::Graph
       Smith::Workflow::Graph::RuntimeReadinessReport
       Smith::Workflow::Persistence
+      Smith::Workflow::PreparedStep
+      Smith::Workflow::PreparedStepDispatch
+      Smith::Workflow::PreparedStepRecovery
     ].each do |path|
       expect(fetch_const(path)).not_to be_nil, "expected #{path} to be defined"
     end

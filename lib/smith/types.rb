@@ -12,5 +12,6 @@ module Smith
     # the constants we need as direct module constants.
     const_set(:String, const_get(:String))
     const_set(:Integer, const_get(:Integer))
+    const_set(:Sha256Hex, const_get(:String).constrained(format: /\A[0-9a-f]{64}\z/))
   end
 end

@@ -11,13 +11,20 @@ RSpec.describe "Smith::Workflow state serialization shape" do
       initial_state :idle
     end.new(context: { branch_count: 6, metadata: { topic: "history" } })
 
-    workflow.persist!("workflow:6", adapter: Class.new {
+    workflow.persist!("workflow:6", adapter: Class.new do
       def store(_key, _payload); end
-    }.new)
+    end.new)
 
     state = workflow.to_state
 
-    expect(state.keys).to eq(%i[class state persistence_key context budget_consumed step_count execution_namespace created_at updated_at next_transition_name session_messages total_cost total_tokens tool_results outcome usage_entries last_output last_failed_step persistence_version schema_version seed_digest step_in_progress persisted_keys])
+    expect(state.keys).to eq(
+      %i[
+        class state persistence_key context budget_consumed step_count execution_namespace created_at updated_at
+        next_transition_name session_messages total_cost total_tokens tool_results outcome usage_entries last_output
+        last_failed_step persistence_version schema_version definition_digest seed_digest step_in_progress
+        persisted_keys
+      ]
+    )
     expect(state[:class]).to eq("SpecStateWorkflow")
     expect(state[:state]).to eq(:idle)
     expect(state[:persistence_key]).to eq("workflow:6")
@@ -29,6 +36,7 @@ RSpec.describe "Smith::Workflow state serialization shape" do
     expect(state[:total_cost]).to eq(0.0)
     expect(state[:total_tokens]).to eq(0)
     expect(state[:tool_results]).to eq([])
+    expect(state[:definition_digest]).to be_nil
     expect(state[:outcome]).to be_nil
     expect(state[:usage_entries]).to eq([])
     expect(state[:last_output]).to be_nil
@@ -41,9 +49,9 @@ RSpec.describe "Smith::Workflow state serialization shape" do
       initial_state :idle
     end.new(context: { branch_count: 3 })
 
-    workflow.persist!("workflow:3", adapter: Class.new {
+    workflow.persist!("workflow:3", adapter: Class.new do
       def store(_key, _payload); end
-    }.new)
+    end.new)
 
     restored = workflow.class.from_state(workflow.to_state)
 

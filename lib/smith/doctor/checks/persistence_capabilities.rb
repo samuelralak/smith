@@ -20,7 +20,7 @@ module Smith
           adapter = resolve_adapter
           return report_missing_adapter(report) if adapter.nil?
 
-          missing = OPTIONAL_CAPABILITIES.reject { |cap| Smith::PersistenceAdapters.supports?(adapter, cap) }
+          missing = OPTIONAL_CAPABILITIES.reject { |cap| capability_available?(adapter, cap) }
           return report_supported_capabilities(report, adapter) if missing.empty?
 
           report_missing_capabilities(report, adapter, missing)
@@ -30,6 +30,16 @@ module Smith
           Smith.persistence_adapter
         rescue StandardError
           nil
+        end
+
+        def capability_available?(adapter, capability)
+          return false unless Smith::PersistenceAdapters.supports?(adapter, capability)
+          return true unless capability == :persistence_identity
+
+          identity = adapter.persistence_identity
+          identity.is_a?(String) && !identity.empty? && identity.bytesize <= 256
+        rescue StandardError
+          false
         end
 
         def report_missing_adapter(report)
@@ -62,8 +72,9 @@ module Smith
                     "split-step confirmation is unavailable. " \
                     "If transaction_open? returns true, transaction_identity is required and " \
                     "split-step preparation fails before writing when it is missing. " \
-                    "Use RedisStore or Memory for full versioning and heartbeat coverage; " \
-                    "ActiveRecordStore covers optimistic locking and exact transaction identity."
+                    "Use RedisStore with an explicit persistence identity or Memory for full versioning " \
+                    "and heartbeat coverage; ActiveRecordStore covers optimistic locking and exact " \
+                    "transaction identity when configured with an identity."
           )
         end
       end
