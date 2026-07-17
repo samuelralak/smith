@@ -41,6 +41,14 @@ module Smith
         @execution_bindings.fetch!(...)
       end
 
+      def each_agent_binding(&block)
+        ensure_binding_access!
+        raise ArgumentError, "a block is required to inspect captured agent bindings" unless block
+
+        @execution_bindings.each_agent_binding(&block)
+        self
+      end
+
       def verify_workflow!(workflow_class)
         ensure_active_execution!
         @execution_bindings.verify_workflow!(workflow_class)

@@ -353,6 +353,9 @@ RSpec.describe Smith::Workflow::PreparedStepExecutionAuthorization do
       role: :agent
     )
     expect(binding).to equal(agent)
+    captured = []
+    expect(authorization.each_agent_binding { |name, klass| captured << [name, klass] }).to equal(authorization)
+    expect(captured).to eq([["scoped_binding_agent", agent]])
     expect(workflow.execute_authorized_prepared_step!(authorization)).to be_succeeded
     expect do
       authorization.fetch_agent!(
@@ -362,6 +365,52 @@ RSpec.describe Smith::Workflow::PreparedStepExecutionAuthorization do
         role: :agent
       )
     end.to raise_error(Smith::WorkflowError, /outside its binding access scope/)
+    expect do
+      authorization.each_agent_binding { nil }
+    end.to raise_error(Smith::WorkflowError, /outside its binding access scope/)
+  end
+
+  it "does not return a deferred captured-binding enumerator" do
+    workflow = claimed_workflow
+    authorization = workflow.authorize_prepared_step_execution!
+
+    expect do
+      authorization.each_agent_binding
+    end.to raise_error(ArgumentError, /block is required/)
+  ensure
+    workflow&.release_prepared_step_execution!(authorization) if authorization
+  end
+
+  it "enumerates heterogeneous fanout bindings from the captured authorization" do
+    first = Class.new(Smith::Agent)
+    second = Class.new(Smith::Agent)
+    Smith::Agent::Registry.register(:captured_first, first)
+    Smith::Agent::Registry.register(:captured_second, second)
+    fanout_workflow = Class.new(Smith::Workflow) do
+      definition_digest Digest::SHA256.hexdigest("captured-fanout-bindings")
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+      transition :review, from: :idle, to: :done do
+        fan_out branches: { first: :captured_first, second: :captured_second }
+      end
+    end
+    workflow = claimed_workflow(fanout_workflow, "#{key}:captured-fanout")
+    authorization = workflow.authorize_prepared_step_execution!
+    captured = []
+
+    authorization.each_agent_binding { |name, klass| captured << [name, klass] }
+
+    expect(captured).to eq(
+      [
+        ["captured_first", first],
+        ["captured_second", second]
+      ]
+    )
+  ensure
+    workflow&.release_prepared_step_execution!(authorization) if authorization
+    Smith::Agent::Registry.delete(:captured_first)
+    Smith::Agent::Registry.delete(:captured_second)
   end
 
   it "passes a root-resolved captured binding into prepared parallel branches" do

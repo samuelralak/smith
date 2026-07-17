@@ -28,6 +28,10 @@ module Smith
           end
         end
 
+        def each(&)
+          @bindings.each(&)
+        end
+
         def freeze
           @bindings.freeze
           super

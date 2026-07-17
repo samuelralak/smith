@@ -38,6 +38,10 @@ module Smith
           @bindings.fetch!(name, workflow_class:, transition_name:, role:)
         end
 
+        def each_agent_binding(&)
+          @bindings.each(&)
+        end
+
         def verify_workflow!(workflow_class)
           snapshot = @workflow_snapshots.fetch(workflow_class) do
             raise WorkflowError, "execution authorization does not contain nested workflow #{workflow_class}"
