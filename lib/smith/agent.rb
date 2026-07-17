@@ -56,10 +56,19 @@ module Smith
         @fallback_models_list = entries.uniq
       end
 
-      def register_as(name = nil)
+      def register_as(name = nil, publish: true)
         return @registered_name if name.nil?
 
-        @registered_name = name
+        raise ArgumentError, "publish must be true or false" unless [true, false].include?(publish)
+
+        @registered_name = canonical_registration_name(name)
+        publish ? publish_registration! : self
+      end
+
+      def publish_registration!
+        name = @registered_name
+        raise Smith::AgentRegistryError, "agent registration identity is not configured" unless name
+
         Registry.ensure_registered(name.to_sym, self)
       end
 
@@ -108,6 +117,19 @@ module Smith
       end
 
       attr_reader :model_block
+
+      private
+
+      def canonical_registration_name(name)
+        symbol = name.to_sym
+        raise TypeError, "agent registration name must convert to a Symbol" unless symbol.is_a?(Symbol)
+
+        name.is_a?(String) ? name.dup.freeze : symbol
+      rescue NoMethodError
+        raise TypeError, "agent registration name must respond to #to_sym"
+      end
+
+      public
 
       # Whether this agent class has any model configured (static or block).
       # Smith::Workflow::Execution uses this as a precondition for invoking

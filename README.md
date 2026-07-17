@@ -254,6 +254,14 @@ During authorized execution, Smith also seals its private execution path against
 workflow subclass method-name collisions, including nested child workflows.
 Ordinary non-authorized runs retain normal Ruby override behavior.
 
+Hosts that generate agent classes dynamically may call
+`register_as :name, publish: false` while constructing the class. This records
+the class identity without exposing it through `Smith::Agent::Registry`. After
+the host has validated and sealed the class, it may publish the exact class with
+`agent_class.publish_registration!`. Publication always uses the staged,
+immutable identity; callers cannot provide a second key. Registry collision and
+mutation epoch guarantees remain unchanged.
+
 Hosts that persist or cache generated executable definitions should include
 `Smith::EXECUTION_SEMANTICS_VERSION` in their definition identity. The gem
 version describes the package release; the execution-semantics version changes

@@ -29,6 +29,122 @@ RSpec.describe "Smith::Agent registry contract" do
     expect(concrete).to be < agent_class
   end
 
+  it "supports staging a registration name before atomic publication" do
+    concrete = make_agent("Test::StagedAgent")
+
+    result = concrete.register_as(:staged_agent, publish: false)
+
+    expect(result).to equal(concrete)
+    expect(concrete.register_as).to eq(:staged_agent)
+    expect(registry.find(:staged_agent)).to be_nil
+
+    concrete.freeze
+    concrete.publish_registration!
+
+    expect(registry.find(:staged_agent)).to equal(concrete)
+  end
+
+  it "owns an immutable staged string identity" do
+    concrete = make_agent("Test::StringStagedAgent")
+    source_name = String.new("string_staged_agent")
+
+    concrete.register_as(source_name, publish: false)
+    source_name.replace("different_agent")
+
+    expect(concrete.register_as).to eq("string_staged_agent")
+    expect(concrete.register_as).to be_frozen
+    concrete.freeze
+    expect { concrete.register_as << "_changed" }.to raise_error(FrozenError)
+
+    concrete.publish_registration!
+
+    expect(registry.find(:string_staged_agent)).to equal(concrete)
+    expect(registry.find(:different_agent)).to be_nil
+  end
+
+  it "publishes only the staged identity" do
+    concrete = make_agent("Test::ExactStagedAgent")
+    concrete.register_as(:exact_staged_agent, publish: false)
+    concrete.freeze
+
+    concrete.publish_registration!
+
+    expect(registry.find(:exact_staged_agent)).to equal(concrete)
+    expect(registry.find(:different_staged_agent)).to be_nil
+  end
+
+  it "preserves the existing binding when staged publication collides" do
+    existing = make_agent("Test::ExistingStagedAgent")
+    candidate = make_agent("Test::CollidingStagedAgent")
+    existing.register_as(:staged_collision)
+    candidate.register_as(:staged_collision, publish: false)
+    candidate.freeze
+
+    expect { candidate.publish_registration! }
+      .to raise_error(Smith::AgentRegistryError, /collision/)
+    expect(registry.find(:staged_collision)).to equal(existing)
+  end
+
+  it "atomically resolves competing staged publications" do
+    candidates = [
+      make_agent("Test::ConcurrentStagedAgentA"),
+      make_agent("Test::ConcurrentStagedAgentB")
+    ]
+    candidates.each do |candidate|
+      candidate.register_as(:concurrent_staged_agent, publish: false)
+      candidate.freeze
+    end
+
+    ready = Queue.new
+    start = Queue.new
+    results = Queue.new
+    threads = candidates.map do |candidate|
+      Thread.new do
+        ready << true
+        start.pop
+        candidate.publish_registration!
+        results << candidate
+      rescue Smith::AgentRegistryError => e
+        results << e
+      end
+    end
+
+    candidates.size.times { ready.pop }
+    candidates.size.times { start << true }
+    threads.each(&:join)
+    outcomes = candidates.size.times.map { results.pop }
+    published = outcomes.grep(Class)
+
+    expect(published.size).to eq(1)
+    expect(outcomes.grep(Smith::AgentRegistryError).size).to eq(1)
+    expect(registry.find(:concurrent_staged_agent)).to equal(published.first)
+    expect(registry.find(:concurrent_staged_agent)).to be_frozen
+  end
+
+  it "requires a staged identity before publication" do
+    concrete = make_agent("Test::UnstagedAgent")
+
+    expect { concrete.publish_registration! }
+      .to raise_error(Smith::AgentRegistryError, "agent registration identity is not configured")
+  end
+
+  it "validates staged registration names before storing them" do
+    concrete = make_agent("Test::InvalidRegistrationNameAgent")
+
+    expect { concrete.register_as(Object.new, publish: false) }
+      .to raise_error(TypeError, "agent registration name must respond to #to_sym")
+    expect(concrete.register_as).to be_nil
+  end
+
+  it "rejects an ambiguous staged publication flag" do
+    concrete = make_agent("Test::InvalidStagedAgent")
+
+    expect { concrete.register_as(:invalid_staged_agent, publish: nil) }
+      .to raise_error(ArgumentError, "publish must be true or false")
+    expect(concrete.register_as).to be_nil
+    expect(registry.find(:invalid_staged_agent)).to be_nil
+  end
+
   it "supports clearing registered bindings for isolated runtimes" do
     with_stubbed_class("SpecClearableRegisteredAgent", agent_class) do
       register_as :spec_clearable_registered_agent
