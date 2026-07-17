@@ -1131,6 +1131,36 @@ RSpec.describe "Smith::Workflow split-step persistence" do
     expect(original.execute_prepared_step!).to include(transition: :finish, to: :done)
   end
 
+  it "fences copied authority when the source completes during session detachment" do
+    persistence_adapter = adapter
+    persistence_key = key
+    racing_class = Class.new(workflow_class) do
+      define_method(:instance_variable_get) do |name|
+        value = super(name)
+        if name == :@session_messages && @complete_during_copy
+          @complete_during_copy = false
+          execute_prepared_step!
+          persist!(persistence_key, adapter: persistence_adapter)
+          complete_persisted_step!
+        end
+        value
+      end
+    end
+    original = racing_class.new
+    original.append_session_messages!(role: :user, content: "retain safely")
+    original.prepare_persisted_step!(key, adapter: adapter)
+    original.instance_variable_set(:@complete_during_copy, true)
+
+    copy = original.dup
+
+    expect(copy.prepared_persisted_step).to be_nil
+    expect do
+      copy.execute_prepared_step!
+    end.to raise_error(Smith::WorkflowError, /no persisted step is prepared/)
+    expect(copy.session_messages).to eq([{ "content" => "retain safely", "role" => "user" }])
+    expect(original).to be_done
+  end
+
   it "rejects duplicate preparation without another persistence write" do
     workflow = workflow_class.new
     workflow.prepare_persisted_step!(key, adapter: adapter)

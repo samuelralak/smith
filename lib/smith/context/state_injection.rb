@@ -9,7 +9,7 @@ module Smith
         content = "#{MARKER}\n#{formatter.call(persisted)}"
 
         existing_index = messages.index do |message|
-          message_content = message[:content]
+          message_content = message[:content] || message["content"]
           message_content.is_a?(String) && message_content.start_with?(MARKER)
         end
 

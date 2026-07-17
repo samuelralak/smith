@@ -77,11 +77,7 @@ module Smith
 
       def run_worker_with_schema(worker_class, task, worker_output_schema)
         input = [{ role: :user, content: task.to_json }]
-        original_schema = worker_class.output_schema
-        worker_class.output_schema(worker_output_schema)
-        invoke_agent_with_budget(worker_class, input)
-      ensure
-        worker_class.output_schema(original_schema)
+        invoke_agent_with_budget(worker_class, input, output_schema: worker_output_schema)
       end
 
       def prepare_orchestrator_input(prepared_input, round, worker_results)

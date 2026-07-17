@@ -21,10 +21,19 @@ module Smith
 
         def initialize_copy(source)
           super
-          @split_step_mutex = Mutex.new
-          return unless source.instance_variable_get(:@split_step_phase)
+          copied_split_step_phase = @split_step_phase
+          detach_copied_runtime_state!(source)
+          return unless copied_split_step_phase
 
           @split_step_phase = :copied_boundary
+          reset_copied_execution_state!
+          reset_copied_dispatch_state!
+        end
+        private :initialize_copy
+
+        private
+
+        def reset_copied_execution_state!
           @split_step_token = nil
           @split_step_prepared_descriptor = nil
           @split_step_transaction_identity = nil
@@ -32,20 +41,30 @@ module Smith
           @split_step_active_execution_authorization = nil
           @split_step_execution_result = nil
           @split_step_advance_permit = false
+          clear_split_step_execution_verification!
+          clear_split_step_execution_authorization!
+        end
+
+        def reset_copied_dispatch_state!
           @split_step_dispatch_token = nil
           @split_step_dispatch_descriptor = nil
           @split_step_attempted_dispatch_descriptor = nil
           @split_step_dispatch_thread = nil
           @split_step_pre_dispatch_payload = nil
           @split_step_attempted_dispatch_payload = nil
-          clear_split_step_execution_verification!
-          clear_split_step_execution_authorization!
           @split_step_preparation_thread = nil
           @split_step_persist_permit = false
         end
-        private :initialize_copy
 
-        private
+        def detach_copied_runtime_state!(source)
+          source_messages = source.instance_variable_get(:@session_messages)
+          @split_step_mutex = Mutex.new
+          @persisted_keys_mutex = Mutex.new
+          @tool_results_mutex = Mutex.new
+          @usage_mutex = Mutex.new
+          detach_split_step_execution_state!
+          @session_messages = snapshot_value(source_messages || [])
+        end
 
         def ensure_split_step_execution_allowed!
           @split_step_mutex.synchronize do

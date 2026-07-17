@@ -8,6 +8,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Added
 
+- Add bounded host-coordinated session-message admission through
+  `Workflow#append_session_messages!`. Smith owns a canonical immutable copy,
+  serializes append against workflow execution, and returns an immutable
+  `MessageAdmission` digest witness while leaving persistence, idempotency,
+  session identity, and resume policy with the host.
 - Add opt-in restart-safe prepared-step recovery. Workflow classes bind a
   host-supplied executable `definition_digest`; hosts submit an immutable typed
   `PreparedStepRecovery.not_started` decision; Smith verifies the exact
@@ -51,6 +56,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Changed
 
+- Restore persisted workflow state without mutating caller-owned nested outcome
+  data while preserving Smith's symbolized runtime outcome contract.
 - Reject strict in-progress payloads before schema migration so a migration
   cannot clear the uncertainty marker and replay a transition.
 - Keep an ambiguously acknowledged exact dispatch claim fail-closed in durable
@@ -123,7 +130,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Verification
 
-- Default suite: 1,175 examples, 0 failures.
+- Default suite: 1,194 examples, 0 failures.
+- Message-admission and restore-input suite: 30 examples, 0 failures. A
+  44-scenario public-API matrix covered canonicalization, alias isolation,
+  bounded rejection, lifecycle contention, persistence round trips, and a
+  90,000-value near-limit message.
 - Focused graph, execution-authorization, binding-snapshot, typed-result, and
   restored-message suite: 71 examples, 0 failures. All newly added files pass RuboCop;
   the changed surface passes after excluding the repository's pre-existing

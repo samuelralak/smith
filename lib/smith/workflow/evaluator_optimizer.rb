@@ -143,28 +143,24 @@ module Smith
       end
 
       def invoke_with_evaluator_schema(evaluator_class, schema, input)
-        original_schema = evaluator_class.output_schema
-        evaluator_class.output_schema(schema)
-        invoke_agent_with_budget(evaluator_class, input)
-      ensure
-        evaluator_class.output_schema(original_schema)
+        invoke_agent_with_budget(evaluator_class, input, output_schema: schema)
       end
 
-      def invoke_agent_with_budget(agent_class, prepared_input)
+      def invoke_agent_with_budget(agent_class, prepared_input, output_schema: agent_class.output_schema)
         Thread.current[:smith_last_agent_result] = nil
         clear_failed_billable_attempts
         with_agent_context(agent_class) do
-          invoke_with_call_ledger(agent_class, prepared_input)
+          invoke_with_call_ledger(agent_class, prepared_input, output_schema:)
         end
       ensure
         clear_failed_billable_attempts
       end
 
-      def invoke_with_call_ledger(agent_class, prepared_input)
+      def invoke_with_call_ledger(agent_class, prepared_input, output_schema:)
         ledger = effective_call_ledger
         reserved = reserve_serial_budget(ledger, agent_budget: agent_class&.budget)
         begin
-          result = invoke_agent(agent_class, prepared_input)
+          result = invoke_agent(agent_class, prepared_input, output_schema:)
           agent_result = result.is_a?(AgentResult) ? result : nil
           reconcile_branch_budget(ledger, reserved, agent_result: agent_result)
           reserved = nil

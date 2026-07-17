@@ -21,9 +21,9 @@ module Smith
         instance.after_completion(result, context)
       end
 
-      def invoke_agent(agent_class, prepared_input)
+      def invoke_agent(agent_class, prepared_input, output_schema: agent_class.output_schema)
         check_deadline!
-        response, model_used = complete_with_provider(agent_class, prepared_input)
+        response, model_used = complete_with_provider(agent_class, prepared_input, output_schema:)
         snapshot_and_finalize(agent_class, response, model_used)
       end
 
@@ -33,12 +33,12 @@ module Smith
       # parallel fan-out, two branches sharing the workflow could race
       # and attribute the wrong model to the wrong response. Local data
       # eliminates the race entirely.
-      def complete_with_provider(agent_class, prepared_input)
+      def complete_with_provider(agent_class, prepared_input, output_schema:)
         models = build_model_chain(agent_class)
 
         models.each_with_index do |model_id, index|
           check_deadline! if index.positive?
-          response = attempt_model(agent_class, prepared_input, model_id)
+          response = attempt_model(agent_class, prepared_input, model_id, output_schema:)
           return [response, model_id]
         rescue Smith::Error
           raise
@@ -71,10 +71,10 @@ module Smith
               "model block for #{agent_class} must return a non-empty string; got #{result.inspect}"
       end
 
-      def attempt_model(agent_class, prepared_input, model_id)
+      def attempt_model(agent_class, prepared_input, model_id, output_schema:)
         chat = agent_class.chat(model: model_id, **bridge_workflow_inputs(agent_class))
         add_prepared_input(chat, prepared_input)
-        chat = chat.with_schema(agent_class.output_schema) if agent_class.output_schema
+        chat = chat.with_schema(output_schema) if output_schema
         chat.complete
       end
 

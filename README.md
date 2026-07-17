@@ -200,7 +200,16 @@ result = ReplyWorkflow.run_persisted!(
   key: "ticket:T-1042",
   adapter: Smith.persistence_adapter
 )
+
+# Admit host-supplied conversation input at a stable workflow boundary.
+workflow = ReplyWorkflow.restore("ticket:T-1042", adapter: Smith.persistence_adapter)
+admission = workflow.append_session_messages!(role: :user, content: "Continue")
 ```
+
+`append_session_messages!` validates and owns a bounded canonical copy of the
+message batch, appends it under Smith's workflow lifecycle lock, and returns an
+immutable digest witness. The host still owns session identity, transaction
+coordination, persistence, idempotency, and resume policy.
 
 Built-in adapters (all support TTL where the backend allows; `Redis`,
 `ActiveRecord`, and `Memory` support optimistic locking via `store_versioned`
@@ -218,7 +227,7 @@ the caller's transaction for host-record coordination;
 
 See [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md) for schema versioning,
 seed-drift validation, the `idempotency_mode :strict` step-in-progress contract,
-and opt-in restart-safe prepared recovery.
+host-coordinated message admission, and opt-in restart-safe prepared recovery.
 Hosts that need to commit a durable attempt before provider or tool work can
 separate verification from execution with
 `authorize_prepared_step_execution!`, commit their own attempt ledger, and then

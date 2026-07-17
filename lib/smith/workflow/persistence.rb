@@ -10,17 +10,17 @@ module Smith
           class: self.class.name,
           state: @state,
           persistence_key: @persistence_key,
-          context: persisted_context,
+          context: snapshot_value(persisted_context),
           budget_consumed: ledger_consumed,
           step_count: @step_count,
           execution_namespace: @execution_namespace,
           created_at: @created_at,
           updated_at: @updated_at,
           next_transition_name: @next_transition_name,
-          session_messages: @session_messages || [],
+          session_messages: snapshot_session_messages,
           total_cost: @total_cost || 0.0,
           total_tokens: @total_tokens || 0,
-          tool_results: @tool_results || [],
+          tool_results: snapshot_value(@tool_results || []),
           outcome: snapshot_outcome,
           # Durable usage fields. All wrapped in
           # snapshot_value so non-JSON-safe runtime values (e.g.
@@ -285,13 +285,13 @@ module Smith
       end
 
       def normalize_persisted_state(hash)
-        normalized = hash.transform_keys { |k| k.is_a?(String) ? k.to_sym : k }
+        normalized = snapshot_value(hash).transform_keys { |k| k.is_a?(String) ? k.to_sym : k }
+        normalized[:outcome] = symbolize_value(normalized[:outcome]) if normalized[:outcome].is_a?(Hash)
         normalize_symbol_fields!(normalized)
         normalize_nested_hashes!(normalized)
         normalize_session_messages!(normalized)
         normalize_tool_results!(normalized)
         normalize_usage_entries!(normalized)
-        normalized[:outcome] = symbolize_value(normalized[:outcome]) if normalized[:outcome].is_a?(Hash)
         normalized
       end
 
@@ -347,7 +347,7 @@ module Smith
         return unless normalized[:session_messages].is_a?(Array)
 
         normalized[:session_messages] = normalized[:session_messages].map do |msg|
-          msg.is_a?(Hash) ? symbolize_keys(msg) : msg
+          msg.is_a?(Hash) ? symbolize_keys(snapshot_value(msg)) : snapshot_value(msg)
         end
       end
 

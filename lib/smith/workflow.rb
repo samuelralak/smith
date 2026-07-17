@@ -9,6 +9,7 @@ require "time"
 require_relative "workflow/agent_result"
 require_relative "workflow/branch_env"
 require_relative "workflow/run_result"
+require_relative "workflow/string_snapshot"
 require_relative "workflow/usage_entry"
 
 module Smith
@@ -18,6 +19,7 @@ module Smith
     include Persistence
     include Durability
     prepend SplitStepPersistence
+    include MessageAdmissionBoundary
     include GuardrailIntegration
     include BudgetIntegration
     include EventIntegration
@@ -67,7 +69,11 @@ module Smith
     RETRYABLE_BEARING_FAMILIES = %w[deterministic_step_failure tool_guardrail_failed].freeze
     private_constant :RETRYABLE_BEARING_FAMILIES
 
-    attr_reader :state, :last_prepared_input, :session_messages, :ledger
+    attr_reader :state, :last_prepared_input, :ledger
+
+    def session_messages
+      snapshot_session_messages
+    end
 
     def initialize(context: {}, ledger: nil, created_at: nil)
       @state = self.class.initial_state
@@ -459,7 +465,7 @@ module Smith
       when Array
         value.map { |nested| snapshot_value(nested) }
       when String
-        value.dup
+        StringSnapshot.copy(value)
       else
         value.dup
       end

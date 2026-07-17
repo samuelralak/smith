@@ -23,8 +23,8 @@ module Smith
       def last_output
         return @last_output if defined?(@last_output)
 
-        msg = session_messages.reverse.find { |m| m[:role] == :assistant || m[:role] == "assistant" }
-        @last_output = msg&.dig(:content)
+        msg = session_messages.reverse.find { |m| m[:role] == :assistant || m["role"] == "assistant" }
+        @last_output = msg && (msg[:content] || msg["content"])
       end
 
       alias_method :output, :last_output

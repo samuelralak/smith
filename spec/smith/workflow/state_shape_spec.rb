@@ -85,6 +85,27 @@ RSpec.describe "Smith::Workflow state serialization shape" do
     expect(result.steps.map { |step| step[:transition] }).to eq([:finish])
   end
 
+  it "does not mutate the caller's persisted state while restoring it" do
+    workflow = with_stubbed_class("SpecImmutableRestoreInputWorkflow", workflow_class) do
+      initial_state :waiting
+    end.new
+
+    document = JSON.parse(JSON.generate(workflow.to_state))
+    document["outcome"] = {
+      "kind" => "waiting",
+      "payload" => { "questions" => [{ "name" => "location" }] }
+    }
+    original = JSON.parse(JSON.generate(document))
+
+    restored = workflow.class.from_state(document)
+
+    expect(document).to eq(original)
+    expect(restored.to_state[:outcome]).to eq(
+      kind: :waiting,
+      payload: { questions: [{ name: "location" }] }
+    )
+  end
+
   it "preserves non-empty tool_results across JSON round-trip" do
     workflow = with_stubbed_class("SpecToolResultsRoundTripWorkflow", workflow_class) do
       initial_state :idle
@@ -100,6 +121,31 @@ RSpec.describe "Smith::Workflow state serialization shape" do
     expect(restored.to_state[:tool_results].length).to eq(1)
     expect(restored.to_state[:tool_results].first[:tool]).to eq("web_search")
     expect(restored.to_state[:tool_results].first[:captured]).to eq("urls" => ["https://example.com"])
+  end
+
+  it "does not expose live context or tool evidence through persistence documents" do
+    workflow = workflow_class.new(context: { nested: { value: "Original" } })
+    workflow.instance_variable_get(:@tool_results) << { captured: { value: "Original" } }
+
+    document = workflow.to_state
+    document.dig(:context, :nested, :value).replace("Changed")
+    document.dig(:tool_results, 0, :captured, :value).replace("Changed")
+
+    expect(workflow.to_state[:context]).to eq(nested: { value: "Original" })
+    expect(workflow.to_state[:tool_results]).to eq([{ captured: { value: "Original" } }])
+  end
+
+  it "does not retain live context or tool evidence from restored documents" do
+    document = workflow_class.new.to_state
+    document[:context] = { nested: { value: "Original".dup } }
+    document[:tool_results] = [{ captured: { value: "Original".dup } }]
+
+    restored = workflow_class.from_state(document)
+    document.dig(:context, :nested, :value).replace("Changed")
+    document.dig(:tool_results, 0, :captured, :value).replace("Changed")
+
+    expect(restored.to_state[:context]).to eq(nested: { value: "Original" })
+    expect(restored.to_state[:tool_results]).to eq([{ captured: { value: "Original" } }])
   end
 
   it "preserves the execution namespace across serialization after workflow execution" do

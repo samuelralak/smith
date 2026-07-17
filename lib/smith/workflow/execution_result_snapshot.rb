@@ -3,6 +3,7 @@
 require "dry-initializer"
 
 require_relative "../errors"
+require_relative "string_snapshot"
 
 module Smith
   class Workflow
@@ -91,12 +92,11 @@ module Smith
       end
 
       def copy_string(string)
-        @bytes += string.bytesize
+        @bytes += StringSnapshot.bytesize(string)
         raise WorkflowError, "prepared-step execution result exceeds maximum bytes #{MAX_BYTES}" if
           @bytes > MAX_BYTES
 
-        copy = string.dup
-        freeze_copy ? copy.freeze : copy
+        StringSnapshot.copy(string, freeze: freeze_copy)
       end
 
       def copy_float(float)

@@ -96,6 +96,67 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
     expect(result.output).to eq({ summary: "complete" })
   end
 
+  it "applies the worker schema without mutating a sealed agent class" do
+    observed_schemas = []
+    call_index = Concurrent::AtomicFixnum.new(-1)
+    orchestrator = with_stubbed_class("SpecOwSealedOrchestrator", agent_class) do
+      register_as :spec_ow_sealed_orchestrator
+      model "gpt-5-mini"
+      define_singleton_method(:chat) do |**|
+        content = if call_index.increment.zero?
+                    { tasks: [{ task_id: "one", input: "inspect" }] }
+                  else
+                    { final: { summary: "complete" } }
+                  end
+        Object.new.tap do |chat|
+          chat.define_singleton_method(:add_message) { |_message| nil }
+          chat.define_singleton_method(:complete) do
+            Struct.new(:content, :input_tokens, :output_tokens).new(content, 5, 3)
+          end
+        end
+      end
+    end
+    worker = with_stubbed_class("SpecOwSealedWorker", agent_class) do
+      register_as :spec_ow_sealed_worker
+      model "gpt-5-mini"
+      define_singleton_method(:chat) do |**|
+        Object.new.tap do |chat|
+          chat.define_singleton_method(:add_message) { |_message| nil }
+          chat.define_singleton_method(:with_schema) do |value|
+            observed_schemas << value
+            self
+          end
+          chat.define_singleton_method(:complete) do
+            Struct.new(:content, :input_tokens, :output_tokens).new({ finding: "done" }, 5, 3)
+          end
+        end
+      end
+    end
+    orchestrator.freeze
+    worker.freeze
+
+    workflow = with_stubbed_class("SpecOwSealedWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      transition :research, from: :idle, to: :done do
+        orchestrate orchestrator: :spec_ow_sealed_orchestrator,
+                    worker: :spec_ow_sealed_worker,
+                    max_workers: 2,
+                    max_delegation_rounds: 2,
+                    task_schema: SpecOwTaskSchema,
+                    worker_output_schema: SpecOwWorkerOutputSchema,
+                    final_output_schema: SpecOwFinalOutputSchema
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    expect(result.output).to eq({ summary: "complete" })
+    expect(observed_schemas).to eq([SpecOwWorkerOutputSchema])
+    expect(worker.output_schema).to be_nil
+  end
+
   it "fails when max_delegation_rounds exhausted without final output" do
     orchestrator = with_stubbed_class("SpecOwOrch3", agent_class) do
       register_as :spec_ow_orch_3

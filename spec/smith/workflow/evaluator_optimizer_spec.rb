@@ -66,6 +66,55 @@ RSpec.describe "Smith::Workflow::EvaluatorOptimizer runtime behavior" do
     expect(result.steps.length).to eq(1)
   end
 
+  it "applies the evaluator schema without mutating a sealed agent class" do
+    schema = Class.new
+    observed_schemas = []
+    chat_for = lambda do |content, schemas: nil|
+      Object.new.tap do |chat|
+        chat.define_singleton_method(:add_message) { |_message| nil }
+        chat.define_singleton_method(:with_schema) do |value|
+          schemas << value if schemas
+          self
+        end
+        chat.define_singleton_method(:complete) do
+          Struct.new(:content, :input_tokens, :output_tokens).new(content, 5, 3)
+        end
+      end
+    end
+    generator = with_stubbed_class("SpecOptSealedGenerator", agent_class) do
+      register_as :spec_opt_sealed_generator
+      model "gpt-5-mini"
+      define_singleton_method(:chat) { |**| chat_for.call("candidate") }
+    end
+    evaluator = with_stubbed_class("SpecOptSealedEvaluator", agent_class) do
+      register_as :spec_opt_sealed_evaluator
+      model "gpt-5-mini"
+      define_singleton_method(:chat) do |**|
+        chat_for.call({ accept: true, feedback: nil }, schemas: observed_schemas)
+      end
+    end
+    generator.freeze
+    evaluator.freeze
+
+    workflow = with_stubbed_class("SpecOptSealedWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      transition :improve, from: :idle, to: :done do
+        optimize generator: :spec_opt_sealed_generator,
+                 evaluator: :spec_opt_sealed_evaluator,
+                 max_rounds: 2,
+                 evaluator_schema: schema
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    expect(result.output).to eq("candidate")
+    expect(observed_schemas).to eq([schema])
+    expect(evaluator.output_schema).to be_nil
+  end
+
   it "fails the step after max_rounds without acceptance" do
     generator = with_stubbed_class("SpecOptGenExhaust", agent_class) do
       register_as :spec_opt_gen_exhaust

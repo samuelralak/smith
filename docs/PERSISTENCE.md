@@ -120,6 +120,40 @@ workflow.clear_persisted!("ticket:T-1042")
 
 These helpers do not make Smith a job system or durable runtime. They only remove repetitive restore/checkpoint boilerplate around the configured persistence adapter while leaving queueing, projection, and recovery policy with the host app.
 
+### Host-Coordinated Message Admission
+
+At a stable workflow boundary, a host can append one message or a bounded batch
+to the persisted session history:
+
+```ruby
+workflow = ReviewWorkflow.restore("ticket:T-1042", adapter: adapter)
+admission = workflow.append_session_messages!(
+  role: :user,
+  content: { answer: "The order id is 1042" }
+)
+
+workflow.persist!("ticket:T-1042", adapter: adapter)
+```
+
+Smith canonicalizes String and Symbol keys, owns an immutable JSON-like copy,
+appends the batch under the workflow lifecycle mutex, and returns an immutable
+`Smith::Workflow::MessageAdmission`. Its `message_digest` is the SHA-256 digest
+of the canonical message batch and can be correlated with host-owned evidence.
+
+Admission is bounded to 100 messages, 64 levels, 100,000 visited values, and one
+MiB of canonical JSON. Integers must fit a signed 64-bit value, Floats must be
+finite, Hash keys must be String or Symbol values, and cyclic or unsupported
+values fail closed. Work is `O(N + sum(K log K))`, where `N` is the number of
+visited values and each `K` is the key count of one Hash; retained output is
+`O(N)`.
+
+This API deliberately does not persist, resume, schedule, identify a session,
+or provide idempotency. A durable host must lock its run and checkpoint, verify
+the exact before identity, call admission, persist the next Smith version, and
+record its own cause and before/after evidence atomically. Calling the method
+while ordinary execution or a prepared split-step boundary is active is
+rejected.
+
 ### Host-Coordinated Step Boundaries
 
 Hosts can split one strict transition into explicit prepare, optional exact

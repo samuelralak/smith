@@ -11,7 +11,9 @@ module Smith
         window = strategy[:window]
         return messages unless window
 
-        system_msgs, non_system = messages.partition { |m| SYSTEM_ROLES.include?(m[:role]) }
+        system_msgs, non_system = messages.partition do |message|
+          SYSTEM_ROLES.include?(message[:role] || message["role"])
+        end
         system_msgs + non_system.last(window)
       end
     end
