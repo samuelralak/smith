@@ -3,11 +3,15 @@
 require "dry-container"
 require "monitor"
 require_relative "registry_binding"
+require_relative "registry/execution_binding_capture"
+require_relative "registry/mutation_boundary"
 
 module Smith
   class Agent
     module Registry
       extend Dry::Container::Mixin
+      extend ExecutionBindingCapture
+      extend MutationBoundary
 
       def self.normalize_key(name)
         name.to_s
@@ -126,6 +130,10 @@ module Smith
           existing_name == klass_name
       end
       private_class_method :stale_reload_binding?
+
+      class << self
+        private :_container, :config
+      end
     end
   end
 end

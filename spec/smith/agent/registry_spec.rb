@@ -174,6 +174,25 @@ RSpec.describe "Smith::Agent registry contract" do
     end
   end
 
+  describe "registry mutation boundary" do
+    it "does not expose the mutable Dry::Container storage" do
+      expect(registry).not_to respond_to(:_container)
+      expect { registry._container }.to raise_error(NoMethodError)
+    end
+
+    it "preserves merge and namespace behavior" do
+      source = Dry::Container.new
+      source.register(:merged_agent, make_agent("Test::MergedAgent"), call: false)
+      namespaced_agent = make_agent("Test::NamespacedAgent")
+
+      registry.merge(source)
+      registry.namespace(:review) { register(:writer, namespaced_agent) }
+
+      expect(registry.find(:merged_agent).name).to eq("Test::MergedAgent")
+      expect(registry.find("review.writer").name).to eq("Test::NamespacedAgent")
+    end
+  end
+
   describe ".binding_for" do
     it "returns concrete agent bindings without resolving lazy entries" do
       calls = 0

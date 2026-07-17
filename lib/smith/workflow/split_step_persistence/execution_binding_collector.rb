@@ -30,19 +30,9 @@ module Smith
         end
 
         def resolve!
-          Agent::Registry.registry_monitor.synchronize do
-            @requests.each do |key, request|
-              @bindings[key] = Agent::Registry.fetch!(
-                request.fetch(:name),
-                workflow_class: request.fetch(:workflow_class),
-                transition_name: request.fetch(:transition_name),
-                role: request.fetch(:role)
-              )
-            end
-          end
+          @bindings = Agent::Registry.capture_bindings!(@requests.values)
 
           @requests.freeze
-          @bindings.freeze
           self
         end
 

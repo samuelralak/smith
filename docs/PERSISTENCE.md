@@ -322,7 +322,9 @@ return an `Enumerator`, because deferred iteration could outlive the capability
 scope. Smith first discovers binding names through a bounded graph traversal,
 then resolves the complete bounded set while holding one registry monitor epoch.
 Concurrent registry writes cannot split one authorization across old and new
-registry states.
+registry states. The registry-owned bulk capture reads concrete agent bindings
+without invoking lazy container callbacks, and all public registry mutation
+paths share the same monitor.
 
 While that authority is active, Smith's prepended subclass boundary dispatches
 private execution methods through the Smith-owned implementations captured by

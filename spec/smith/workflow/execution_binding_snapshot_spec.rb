@@ -123,8 +123,8 @@ RSpec.describe Smith::Workflow::SplitStepPersistence::ExecutionBindingSnapshot d
     writer_started = Queue.new
     fetch_count = 0
 
-    allow(Smith::Agent::Registry).to receive(:fetch!).and_wrap_original do |original, name, **options|
-      binding = original.call(name, **options)
+    allow(Smith::Agent::RegistryBinding).to receive(:new).and_wrap_original do |original, **options|
+      binding = original.call(**options)
       fetch_count += 1
       if fetch_count == 1
         first_fetch << true
@@ -135,12 +135,12 @@ RSpec.describe Smith::Workflow::SplitStepPersistence::ExecutionBindingSnapshot d
 
     capture = Thread.new { described_class.capture(transition, workflow_class:) }
     first_fetch.pop
+    replacement = Dry::Container.new
+    replacement.register(:branch_a, replacement_a, call: false)
+    replacement.register(:branch_b, replacement_b, call: false)
     writer = Thread.new do
       writer_started << true
-      Smith::Agent::Registry.delete(:branch_a)
-      Smith::Agent::Registry.delete(:branch_b)
-      Smith::Agent::Registry.register(:branch_a, replacement_a)
-      Smith::Agent::Registry.register(:branch_b, replacement_b)
+      Smith::Agent::Registry.merge(replacement) { |_key, _old, new| new }
     end
     writer_started.pop
 
@@ -155,5 +155,21 @@ RSpec.describe Smith::Workflow::SplitStepPersistence::ExecutionBindingSnapshot d
     expect(
       snapshot.fetch!(:branch_b, workflow_class:, transition_name: :fanout, role: :fanout_agent)
     ).to equal(original_b)
+  end
+
+  it "rejects lazy agent bindings without executing their callbacks" do
+    callback_ran = false
+    Smith::Agent::Registry.register(:lazy_branch) do
+      callback_ran = true
+      agent_class
+    end
+    transition = Smith::Workflow::Transition.new(:branch, from: :start, to: :done) do
+      execute :lazy_branch
+    end
+
+    expect do
+      described_class.capture(transition, workflow_class: Class.new(Smith::Workflow))
+    end.to raise_error(Smith::WorkflowError, /unresolved agent :lazy_branch/)
+    expect(callback_ran).to be(false)
   end
 end

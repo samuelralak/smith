@@ -238,7 +238,10 @@ agent bindings reachable by that transition with a bounded `O(V + E)` graph
 walk, then resolves the bounded binding set in one registry epoch. A concurrent
 registry writer therefore cannot produce a mixed authorization containing
 bindings from two registry states or replace a captured binding between
-authorization and work.
+authorization and work. Every public Dry::Container mutation path participates
+in that epoch. Execution authorization accepts only concrete registered
+`Smith::Agent` classes; lazy container callbacks are not executed while
+authority is captured.
 While the capability is active, a host may call `each_agent_binding` with a
 block to inspect the exact captured `(registry_name, agent_class)` pairs before
 external work. Enumeration is process-local, performs no dispatch, and is
