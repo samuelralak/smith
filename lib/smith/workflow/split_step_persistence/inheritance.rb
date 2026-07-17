@@ -11,7 +11,9 @@ module Smith
 
         def prepend(*features)
           result = super
-          Module.instance_method(:prepend).bind_call(self, SubclassBoundary.guard)
+          guard = SubclassBoundary.guard
+          guard.freeze
+          Module.instance_method(:prepend).bind_call(self, guard)
           result
         end
       end

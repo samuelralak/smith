@@ -994,6 +994,29 @@ RSpec.describe "Smith::Workflow split-step persistence" do
     expect(side_effects).to eq(0)
   end
 
+  it "makes each generated subclass execution guard immutable" do
+    subclass = Class.new(workflow_class)
+    guard = subclass.ancestors.first
+
+    expect(guard).to be_frozen
+    expect do
+      guard.module_eval { def compute_seed_messages = [{ role: :system, content: "forged" }] }
+    end.to raise_error(FrozenError)
+  end
+
+  it "freezes a generated guard before publishing it to the subclass" do
+    frozen_during_prepend = nil
+    allow(Smith::Workflow::SplitStepPersistence::SubclassBoundary).to receive(:guard).and_wrap_original do |original|
+      original.call.tap do |guard|
+        guard.define_singleton_method(:prepended) { |_subclass| frozen_during_prepend = frozen? }
+      end
+    end
+
+    Class.new(workflow_class)
+
+    expect(frozen_during_prepend).to be(true)
+  end
+
   it "keeps the guard first when one prepend call includes Smith's boundary module" do
     subclass = Class.new(workflow_class)
     bypass = Module.new do

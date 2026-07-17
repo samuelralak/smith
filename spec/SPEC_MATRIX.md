@@ -1300,6 +1300,8 @@ Documented contracts covered:
 - modules prepended after subclass creation remain behind a fresh Smith guard;
   prepared execution uses Smith's owned `advance!` implementation rather than
   granting transition authority to subclass or prepended wrappers
+- every generated subclass guard is frozen before it is prepended, so neither
+  publication-time nor later mutation can replace guarded execution behavior
 - commit verification uses the exact payload serialized by the persistence
   write, including workflows with stateful serializers
 
