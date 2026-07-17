@@ -305,6 +305,22 @@ and JSON serialization hooks. It is bound by object identity to one workflow
 instance and by process id to the issuing Ruby process, so a forked child cannot
 consume inherited authority. It is not a lease, cross-process fence, or durable
 attempt receipt.
+Before consuming the capability, a host may inspect the exact captured agent
+bindings with a block:
+
+```ruby
+authorization.each_agent_binding do |registry_name, agent_class|
+  verify_host_execution_identity!(registry_name, agent_class)
+end
+```
+
+This bounded enumeration performs no provider or tool work and exposes the same
+classes Smith will execute. It is available only while the authorization is
+active in its issuing process. Calling it after release or consumption, from a
+forked process, or without a block fails closed. Smith intentionally does not
+return an `Enumerator`, because deferred iteration could outlive the capability
+scope.
+
 While that authority is active, Smith's prepended subclass boundary dispatches
 private execution methods through the Smith-owned implementations captured by
 the runtime. This includes nested child workflows that inherit the same

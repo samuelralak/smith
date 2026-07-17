@@ -236,6 +236,11 @@ consume the exact process-local capability through
 record, scheduler, or unknown-outcome policy. Authorization captures the exact
 agent bindings reachable by that transition with a bounded `O(V + E)` graph
 walk, preventing mutable registry replacement between authorization and work.
+While the capability is active, a host may call `each_agent_binding` with a
+block to inspect the exact captured `(registry_name, agent_class)` pairs before
+external work. Enumeration is process-local, performs no dispatch, and is
+rejected after release or consumption; it deliberately does not return a lazy
+enumerator that could escape the authorization scope.
 Reachable nested workflow transition contracts are captured and revalidated
 before child execution. The typed result owns a bounded snapshot of JSON-like
 Ruby values; unsupported mutable output values fail closed.
