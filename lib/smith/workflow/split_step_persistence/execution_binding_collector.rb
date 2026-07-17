@@ -10,6 +10,7 @@ module Smith
         MAX_BINDINGS = 10_000
 
         def initialize
+          @requests = {}
           @bindings = {}
         end
 
@@ -28,11 +29,29 @@ module Smith
           end
         end
 
+        def resolve!
+          Agent::Registry.registry_monitor.synchronize do
+            @requests.each do |key, request|
+              @bindings[key] = Agent::Registry.fetch!(
+                request.fetch(:name),
+                workflow_class: request.fetch(:workflow_class),
+                transition_name: request.fetch(:transition_name),
+                role: request.fetch(:role)
+              )
+            end
+          end
+
+          @requests.freeze
+          @bindings.freeze
+          self
+        end
+
         def each(&)
           @bindings.each(&)
         end
 
         def freeze
+          @requests.freeze
           @bindings.freeze
           super
         end
@@ -63,17 +82,17 @@ module Smith
           return unless name
 
           key = name.to_s
-          return if @bindings.key?(key)
-          if @bindings.length >= MAX_BINDINGS
+          return if @requests.key?(key)
+          if @requests.length >= MAX_BINDINGS
             raise WorkflowError, "execution authorization exceeds maximum agent bindings #{MAX_BINDINGS}"
           end
 
-          @bindings[key] = Agent::Registry.fetch!(
-            name,
+          @requests[key] = {
+            name:,
             workflow_class:,
             transition_name: transition.name,
             role:
-          )
+          }.freeze
         end
       end
     end

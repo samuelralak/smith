@@ -29,6 +29,7 @@ module Smith
         def capture
           capture_transition(@transition, workflow_class: @workflow_class)
           drain_workflow_queue
+          @bindings.resolve!
           @bindings.freeze
           @workflow_snapshots.freeze
           freeze

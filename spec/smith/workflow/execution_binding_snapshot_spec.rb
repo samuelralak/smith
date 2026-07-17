@@ -106,4 +106,54 @@ RSpec.describe Smith::Workflow::SplitStepPersistence::ExecutionBindingSnapshot d
       snapshot.verify_workflow!(child)
     end.to raise_error(Smith::WorkflowError, /nested workflow definition changed/)
   end
+
+  it "captures composite agent bindings from one registry epoch" do
+    original_a = agent_class
+    original_b = agent_class
+    replacement_a = agent_class
+    replacement_b = agent_class
+    Smith::Agent::Registry.register(:branch_a, original_a)
+    Smith::Agent::Registry.register(:branch_b, original_b)
+    workflow_class = Class.new(Smith::Workflow)
+    transition = Smith::Workflow::Transition.new(:fanout, from: :start, to: :done) do
+      fan_out branches: { a: :branch_a, b: :branch_b }
+    end
+    first_fetch = Queue.new
+    continue_capture = Queue.new
+    writer_started = Queue.new
+    fetch_count = 0
+
+    allow(Smith::Agent::Registry).to receive(:fetch!).and_wrap_original do |original, name, **options|
+      binding = original.call(name, **options)
+      fetch_count += 1
+      if fetch_count == 1
+        first_fetch << true
+        continue_capture.pop
+      end
+      binding
+    end
+
+    capture = Thread.new { described_class.capture(transition, workflow_class:) }
+    first_fetch.pop
+    writer = Thread.new do
+      writer_started << true
+      Smith::Agent::Registry.delete(:branch_a)
+      Smith::Agent::Registry.delete(:branch_b)
+      Smith::Agent::Registry.register(:branch_a, replacement_a)
+      Smith::Agent::Registry.register(:branch_b, replacement_b)
+    end
+    writer_started.pop
+
+    expect(writer.join(0.05)).to be_nil
+    continue_capture << true
+    snapshot = capture.value
+    writer.join
+
+    expect(
+      snapshot.fetch!(:branch_a, workflow_class:, transition_name: :fanout, role: :fanout_agent)
+    ).to equal(original_a)
+    expect(
+      snapshot.fetch!(:branch_b, workflow_class:, transition_name: :fanout, role: :fanout_agent)
+    ).to equal(original_b)
+  end
 end

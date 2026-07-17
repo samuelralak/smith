@@ -319,7 +319,10 @@ classes Smith will execute. It is available only while the authorization is
 active in its issuing process. Calling it after release or consumption, from a
 forked process, or without a block fails closed. Smith intentionally does not
 return an `Enumerator`, because deferred iteration could outlive the capability
-scope.
+scope. Smith first discovers binding names through a bounded graph traversal,
+then resolves the complete bounded set while holding one registry monitor epoch.
+Concurrent registry writes cannot split one authorization across old and new
+registry states.
 
 While that authority is active, Smith's prepended subclass boundary dispatches
 private execution methods through the Smith-owned implementations captured by

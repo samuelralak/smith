@@ -218,7 +218,7 @@ Architecture basis:
 
 Documented contracts covered:
 
-- `Smith::VERSION` is defined
+- `Smith::VERSION` and `Smith::EXECUTION_SEMANTICS_VERSION` are defined
 - `Smith::Error < StandardError`
 
 Notes:

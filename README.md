@@ -233,9 +233,12 @@ separate verification from execution with
 `authorize_prepared_step_execution!`, commit their own attempt ledger, and then
 consume the exact process-local capability through
 `execute_authorized_prepared_step!`. Smith does not own the host lease, attempt
-record, scheduler, or unknown-outcome policy. Authorization captures the exact
+record, scheduler, or unknown-outcome policy. Authorization discovers the exact
 agent bindings reachable by that transition with a bounded `O(V + E)` graph
-walk, preventing mutable registry replacement between authorization and work.
+walk, then resolves the bounded binding set in one registry epoch. A concurrent
+registry writer therefore cannot produce a mixed authorization containing
+bindings from two registry states or replace a captured binding between
+authorization and work.
 While the capability is active, a host may call `each_agent_binding` with a
 block to inspect the exact captured `(registry_name, agent_class)` pairs before
 external work. Enumeration is process-local, performs no dispatch, and is
@@ -247,6 +250,12 @@ Ruby values; unsupported mutable output values fail closed.
 During authorized execution, Smith also seals its private execution path against
 workflow subclass method-name collisions, including nested child workflows.
 Ordinary non-authorized runs retain normal Ruby override behavior.
+
+Hosts that persist or cache generated executable definitions should include
+`Smith::EXECUTION_SEMANTICS_VERSION` in their definition identity. The gem
+version describes the package release; the execution-semantics version changes
+when Smith's executable workflow contract changes and must participate in host
+cache invalidation.
 
 ## Tools and Guardrails
 
