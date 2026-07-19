@@ -26,6 +26,7 @@ module Smith
         option :from
         option :to
         option :kind
+        option :parallel_count, default: proc {}
         option :success_transition, default: proc {}
         option :failure_transition, default: proc {}
         option :routes, default: proc {}
@@ -46,7 +47,8 @@ module Smith
             name: transition.name,
             from: transition.from,
             to: transition.to,
-            kind: kind_for(transition)
+            kind: kind_for(transition),
+            parallel_count: transition.parallel_count
           }.merge(routing_attributes(transition), contract_attributes(transition, workflow_class: workflow_class))
         end
 
@@ -109,6 +111,7 @@ module Smith
             from: from,
             to: to,
             kind: kind,
+            parallel_count: parallel_count,
             success_transition: success_transition,
             failure_transition: failure_transition,
             routes: routes,

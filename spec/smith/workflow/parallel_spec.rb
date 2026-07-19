@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "timeout"
+
 RSpec.describe "Smith::Workflow parallel execution" do
   let(:agent_class) { require_const("Smith::Agent") }
   let(:context_class) { require_const("Smith::Context") }
@@ -94,17 +96,16 @@ RSpec.describe "Smith::Workflow parallel execution" do
   end
 
   it "rejects non-positive parallel branch counts before executing branches" do
-    workflow = with_stubbed_class("SpecParallelZeroCountWorkflow", workflow_class) do
-      initial_state :idle
-      state :done
+    expect do
+      with_stubbed_class("SpecParallelZeroCountWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
 
-      transition :fan_out, from: :idle, to: :done do
-        execute :spec_parallel_agent, parallel: true, count: 0
+        transition :fan_out, from: :idle, to: :done do
+          execute :spec_parallel_agent, parallel: true, count: 0
+        end
       end
-    end.new
-
-    expect { workflow.run! }
-      .to raise_error(workflow_error, /parallel branch count must be a positive integer/)
+    end.to raise_error(workflow_error, /parallel branch count must be a positive integer/)
   end
 
   it "rejects callable parallel branch counts that do not resolve to positive integers" do
@@ -119,6 +120,460 @@ RSpec.describe "Smith::Workflow parallel execution" do
 
     expect { workflow.run! }
       .to raise_error(workflow_error, /parallel branch count must be a positive integer/)
+  end
+
+  it "rejects oversized dynamic branch counts before branch allocation" do
+    original_limit = Smith.config.parallel_branch_limit
+    Smith.config.parallel_branch_limit = 4
+    workflow = with_stubbed_class("SpecParallelOversizedCountWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :fan_out, from: :idle, to: :done do
+        execute :spec_parallel_agent, parallel: true, count: ->(_context) { 1_000_000 }
+      end
+    end.new
+
+    expect { workflow.run! }.to raise_error(workflow_error, /exceeds configured limit 4/)
+  ensure
+    Smith.config.parallel_branch_limit = original_limit
+  end
+
+  it "rejects oversized static branch counts at declaration time" do
+    original_limit = Smith.config.parallel_branch_limit
+    Smith.config.parallel_branch_limit = 4
+
+    expect do
+      Class.new(workflow_class) do
+        initial_state :idle
+        state :done
+        transition :fan_out, from: :idle, to: :done do
+          execute :spec_parallel_agent, parallel: true, count: 1_000_000
+        end
+      end
+    end.to raise_error(workflow_error, /exceeds configured limit 4/)
+  ensure
+    Smith.config.parallel_branch_limit = original_limit
+  end
+
+  it "revalidates static branch counts before resolving runtime bindings" do
+    original_limit = Smith.config.parallel_branch_limit
+    Smith.config.parallel_branch_limit = 3
+    workflow = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+      transition :fan_out, from: :idle, to: :done do
+        execute :missing_parallel_agent, parallel: true, count: 3
+      end
+    end.new
+
+    Smith.config.parallel_branch_limit = 2
+
+    expect { workflow.run! }.to raise_error(workflow_error, /exceeds configured limit 2/)
+  ensure
+    Smith.config.parallel_branch_limit = original_limit
+  end
+
+  it "bounds active branches and preserves declaration order" do
+    original_concurrency = Smith.config.parallel_concurrency
+    Smith.config.parallel_concurrency = 3
+    mutex = Mutex.new
+    active = 0
+    maximum_active = 0
+    branches = Array.new(24) do |index|
+      proc do
+        mutex.synchronize do
+          active += 1
+          maximum_active = [maximum_active, active].max
+        end
+        sleep 0.005
+        index
+      ensure
+        mutex.synchronize { active -= 1 }
+      end
+    end
+
+    expect(Smith::Workflow::Parallel.execute(branches:)).to eq((0...24).to_a)
+    expect(maximum_active).to eq(3)
+  ensure
+    Smith.config.parallel_concurrency = original_concurrency
+  end
+
+  it "does not start queued branch callables after cancellation" do
+    original_concurrency = Smith.config.parallel_concurrency
+    Smith.config.parallel_concurrency = 1
+    started = Queue.new
+    branches = Array.new(25) do |index|
+      proc do
+        started << index
+        raise Smith::WorkflowError, "initiating failure" if index.zero?
+
+        index
+      end
+    end
+
+    expect { Smith::Workflow::Parallel.execute(branches:) }
+      .to raise_error(workflow_error, "initiating failure")
+    expect(started.size).to eq(1)
+  ensure
+    Smith.config.parallel_concurrency = original_concurrency
+  end
+
+  it "surfaces the branch error that initiated cancellation" do
+    original_concurrency = Smith.config.parallel_concurrency
+    Smith.config.parallel_concurrency = 2
+    started = Concurrent::CountDownLatch.new(2)
+    branches = [
+      proc do
+        started.count_down
+        started.wait(1)
+        sleep 0.02
+        raise Smith::WorkflowError, "secondary failure"
+      end,
+      proc do
+        started.count_down
+        started.wait(1)
+        raise Smith::AgentError, "initiating failure"
+      end
+    ]
+
+    expect { Smith::Workflow::Parallel.execute(branches:) }
+      .to raise_error(Smith::AgentError, "initiating failure")
+  ensure
+    Smith.config.parallel_concurrency = original_concurrency
+  end
+
+  it "does not detach in-flight branches when external interruption unwinds execution" do
+    original_concurrency = Smith.config.parallel_concurrency
+    Smith.config.parallel_concurrency = 1
+    started = Queue.new
+    completed = Queue.new
+    branches = Array.new(5) do
+      proc do
+        started << true
+        sleep 0.05
+        completed << true
+      end
+    end
+    started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+    expect do
+      Timeout.timeout(0.02) do
+        Smith::Workflow::Parallel.execute(branches:)
+      end
+    end.to raise_error(Timeout::Error)
+    elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at
+
+    expect(elapsed).to be >= 0.04
+    expect(started.size).to be <= 1
+    expect(completed.size).to eq(started.size)
+  ensure
+    Smith.config.parallel_concurrency = original_concurrency
+  end
+
+  it "records accepted nested helpers before an interrupt can unwind submission" do
+    executor = Concurrent::FixedThreadPool.new(2)
+    submission_accepted = Queue.new
+    release_submission = Queue.new
+    branch_started = Queue.new
+    release_branch = Queue.new
+    branch_completed = Queue.new
+    original_post = executor.method(:post)
+    post_count = 0
+    mutex = Mutex.new
+    executor.define_singleton_method(:post) do |*args, &task|
+      accepted = original_post.call(*args, &task)
+      if mutex.synchronize { post_count += 1 } == 1
+        submission_accepted << true
+        release_submission.pop
+      end
+      accepted
+    end
+    context = Smith::Workflow::Parallel::ExecutionContext.new(
+      executor:,
+      signal: Smith::Workflow::Parallel::CancellationSignal.new,
+      concurrency: 3,
+      nesting_limit: 4,
+      top_level_branch_count: 1
+    )
+    branches = Array.new(2) do
+      proc do
+        branch_started << true
+        release_branch.pop
+        branch_completed << true
+      end
+    end
+    caller = Thread.new do
+      context.within(depth: 0) do
+        Smith::Workflow::Parallel::NestedExecution.new(branches:, context:).call
+      end
+    rescue Interrupt => e
+      e
+    end
+
+    Timeout.timeout(1) { submission_accepted.pop }
+    Timeout.timeout(1) { branch_started.pop }
+    caller.raise(Interrupt, "interrupt after helper acceptance")
+    release_submission << true
+    expect(caller.join(0.05)).to be_nil
+    2.times { release_branch << true }
+    Timeout.timeout(1) { caller.join }
+
+    expect(caller.value).to be_a(Interrupt)
+    expect(branch_completed.size).to eq(1)
+  ensure
+    executor&.shutdown
+    executor&.wait_for_termination(1)
+  end
+
+  it "does not let a second interrupt detach root workers during cleanup" do
+    cleanup_started = Queue.new
+    branch_started = Queue.new
+    release_branch = Queue.new
+    branch_completed = Queue.new
+    allow(Concurrent::FixedThreadPool).to receive(:new).and_wrap_original do |constructor, *args, **kwargs|
+      executor = constructor.call(*args, **kwargs)
+      original_wait = executor.method(:wait_for_termination)
+      executor.define_singleton_method(:wait_for_termination) do |timeout = nil|
+        cleanup_started << true
+        original_wait.call(timeout)
+      end
+      executor
+    end
+    caller = Thread.new do
+      Smith::Workflow::Parallel.execute(
+        branches: [proc do
+          branch_started << true
+          release_branch.pop
+          branch_completed << true
+        end]
+      )
+    rescue Interrupt => e
+      e
+    end
+
+    Timeout.timeout(1) { branch_started.pop }
+    caller.raise(Interrupt, "first interrupt")
+    Timeout.timeout(1) { cleanup_started.pop }
+    caller.raise(Interrupt, "second interrupt during cleanup")
+    expect(caller.join(0.05)).to be_nil
+    release_branch << true
+    Timeout.timeout(1) { caller.join }
+
+    expect(caller.value).to be_a(Interrupt)
+    expect(branch_completed.size).to eq(1)
+  end
+
+  it "keeps nested parallel execution within the active worker scope" do
+    original_concurrency = Smith.config.parallel_concurrency
+    Smith.config.parallel_concurrency = 2
+    worker_threads = Queue.new
+    inner = Array.new(5) do |index|
+      proc do
+        worker_threads << Thread.current.object_id
+        index
+      end
+    end
+    outer = Array.new(2) do
+      proc { Smith::Workflow::Parallel.execute(branches: inner) }
+    end
+
+    expect(Smith::Workflow::Parallel.execute(branches: outer)).to eq([0.upto(4).to_a, 0.upto(4).to_a])
+    observed = []
+    observed << worker_threads.pop until worker_threads.empty?
+    expect(observed.uniq.length).to be <= 2
+  ensure
+    Smith.config.parallel_concurrency = original_concurrency
+  end
+
+  it "bounds nested parallel execution before Ruby stack exhaustion" do
+    original_limit = Smith.config.parallel_nesting_limit
+    Smith.config.parallel_nesting_limit = 3
+    recurse = nil
+    recurse = lambda do |remaining|
+      next :done if remaining.zero?
+
+      Smith::Workflow::Parallel.execute(branches: [proc { recurse.call(remaining - 1) }]).sole
+    end
+
+    expect(Smith::Workflow::Parallel.execute(branches: [proc { recurse.call(3) }])).to eq([:done])
+    expect { Smith::Workflow::Parallel.execute(branches: [proc { recurse.call(4) }]) }
+      .to raise_error(workflow_error, /parallel nesting exceeds configured limit 3/)
+  ensure
+    Smith.config.parallel_nesting_limit = original_limit
+  end
+
+  it "snapshots parallel configuration once for the root execution" do
+    allow(Smith.config).to receive(:parallel_concurrency).and_return(2)
+    allow(Smith.config).to receive(:parallel_nesting_limit).and_return(4)
+    inner = [proc { :inner }]
+    outer = [proc { Smith::Workflow::Parallel.execute(branches: inner) }]
+
+    expect(Smith::Workflow::Parallel.execute(branches: outer)).to eq([[:inner]])
+    expect(Smith.config).to have_received(:parallel_concurrency).once
+    expect(Smith.config).to have_received(:parallel_nesting_limit).once
+  end
+
+  it "uses idle top-level workers for nested fan-out without exceeding the shared bound" do
+    original_concurrency = Smith.config.parallel_concurrency
+    Smith.config.parallel_concurrency = 4
+    mutex = Mutex.new
+    active = 0
+    maximum_active = 0
+    inner = Array.new(12) do |index|
+      proc do
+        mutex.synchronize do
+          active += 1
+          maximum_active = [maximum_active, active].max
+        end
+        sleep 0.005
+        index
+      ensure
+        mutex.synchronize { active -= 1 }
+      end
+    end
+    outer = [proc { Smith::Workflow::Parallel.execute(branches: inner) }]
+
+    expect(Smith::Workflow::Parallel.execute(branches: outer)).to eq([0.upto(11).to_a])
+    expect(maximum_active).to eq(4)
+  ensure
+    Smith.config.parallel_concurrency = original_concurrency
+  end
+
+  it "propagates outer sibling cancellation into nested fan-out" do
+    original_concurrency = Smith.config.parallel_concurrency
+    Smith.config.parallel_concurrency = 2
+    nested_started = Concurrent::CountDownLatch.new(1)
+    inner_starts = Queue.new
+    inner = Array.new(30) do
+      proc do
+        inner_starts << true
+        nested_started.count_down
+        sleep 0.01
+      end
+    end
+    outer = [
+      proc { Smith::Workflow::Parallel.execute(branches: inner) },
+      proc do
+        nested_started.wait(1)
+        raise Smith::AgentError, "outer sibling failed"
+      end
+    ]
+
+    expect { Smith::Workflow::Parallel.execute(branches: outer) }
+      .to raise_error(Smith::AgentError, "outer sibling failed")
+    expect(inner_starts.size).to be <= 1
+  ensure
+    Smith.config.parallel_concurrency = original_concurrency
+  end
+
+  it "keeps fiber-nested parallel execution within the active worker scope" do
+    original_concurrency = Smith.config.parallel_concurrency
+    Smith.config.parallel_concurrency = 2
+    worker_threads = Queue.new
+    inner = Array.new(5) do |index|
+      proc do
+        worker_threads << Thread.current.object_id
+        index
+      end
+    end
+    outer = Array.new(2) do
+      proc { Fiber.new { Smith::Workflow::Parallel.execute(branches: inner) }.resume }
+    end
+
+    expect(Smith::Workflow::Parallel.execute(branches: outer)).to eq([0.upto(4).to_a, 0.upto(4).to_a])
+    observed = []
+    observed << worker_threads.pop until worker_threads.empty?
+    expect(observed.uniq.length).to be <= 2
+  ensure
+    Smith.config.parallel_concurrency = original_concurrency
+  end
+
+  it "inherits execution context into child Fibers without leaking into sibling Fibers" do
+    executor = Concurrent::FixedThreadPool.new(1)
+    context = Smith::Workflow::Parallel::ExecutionContext.new(
+      executor:,
+      signal: Smith::Workflow::Parallel::CancellationSignal.new,
+      concurrency: 1,
+      nesting_limit: 4,
+      top_level_branch_count: 1
+    )
+    child_context = nil
+    owner = Fiber.new do
+      context.within(depth: 2) do
+        child_context = Fiber.new do
+          [Smith::Workflow::Parallel::ExecutionContext.current,
+           Smith::Workflow::Parallel::ExecutionContext.current_depth]
+        end.resume
+        Fiber.yield
+      end
+    end
+
+    owner.resume
+    sibling_context = Fiber.new do
+      [Smith::Workflow::Parallel::ExecutionContext.current,
+       Smith::Workflow::Parallel::ExecutionContext.current_depth]
+    end.resume
+    owner.resume
+
+    expect(child_context).to eq([context, 2])
+    expect(sibling_context).to eq([nil, 0])
+  ensure
+    executor&.shutdown
+    executor&.wait_for_termination(1)
+  end
+
+  it "reclaims capacity when a top-level branch finishes before its sibling starts" do
+    first_completed = Queue.new
+    post_count = 0
+    post_mutex = Mutex.new
+    allow(Concurrent::FixedThreadPool).to receive(:new).and_wrap_original do |constructor, *args, **kwargs|
+      executor = constructor.call(*args, **kwargs)
+      original_post = executor.method(:post)
+      executor.define_singleton_method(:post) do |*post_args, &task|
+        count = post_mutex.synchronize { post_count += 1 }
+        first_completed.pop if count == 2
+        original_post.call(*post_args, &task)
+      end
+      executor
+    end
+    inner_started = Concurrent::CountDownLatch.new(2)
+    branches = [
+      proc do
+        first_completed << true
+        true
+      end,
+      proc do
+        inner = Array.new(2) do
+          proc do
+            inner_started.count_down
+            raise Smith::WorkflowError, "idle worker capacity was lost" unless inner_started.wait(1)
+
+            :inner
+          end
+        end
+        Smith::Workflow::Parallel.execute(branches: inner)
+      end
+    ]
+
+    expect(Smith::Workflow::Parallel.execute(branches:)).to eq([true, %i[inner inner]])
+  end
+
+  it "applies the same branch bound to heterogeneous fan-out declarations" do
+    original_limit = Smith.config.parallel_branch_limit
+    Smith.config.parallel_branch_limit = 2
+
+    expect do
+      Class.new(workflow_class) do
+        initial_state :idle
+        state :done
+        transition :fan_out, from: :idle, to: :done do
+          fan_out branches: { one: :one, two: :two, three: :three }
+        end
+      end
+    end.to raise_error(workflow_error, /fan_out branch count exceeds configured limit 2/)
+  ensure
+    Smith.config.parallel_branch_limit = original_limit
   end
 
   it "routes through on_failure when a parallel branch fails" do
@@ -394,17 +849,17 @@ RSpec.describe "Smith::Workflow parallel execution" do
     observed = Queue.new
     ledger = workflow.ledger
 
-    allow(ledger).to receive(:reserve!).and_wrap_original do |original, key, amount|
-      observed << [:reserve, key, amount]
-      original.call(key, amount)
+    allow(ledger).to receive(:reserve_many!).and_wrap_original do |original, reservations|
+      reservations.each { |key, amount| observed << [:reserve, key, amount] }
+      original.call(reservations)
     end
-    allow(ledger).to receive(:reconcile!).and_wrap_original do |original, key, reserved_amount, actual_amount|
-      observed << [:reconcile, key, reserved_amount, actual_amount]
-      original.call(key, reserved_amount, actual_amount)
+    allow(ledger).to receive(:reconcile_many!).and_wrap_original do |original, reservation, actual:|
+      reservation.amounts.each { |key, amount| observed << [:reconcile, key, amount, actual.fetch(key)] }
+      original.call(reservation, actual:)
     end
-    allow(ledger).to receive(:release!).and_wrap_original do |original, key, amount|
-      observed << [:release, key, amount]
-      original.call(key, amount)
+    allow(ledger).to receive(:release_many!).and_wrap_original do |original, reservation|
+      reservation.amounts.each { |key, amount| observed << [:release, key, amount] }
+      original.call(reservation)
     end
 
     result = workflow.run!
@@ -457,17 +912,17 @@ RSpec.describe "Smith::Workflow parallel execution" do
     observed = Queue.new
     ledger = workflow.ledger
 
-    allow(ledger).to receive(:reserve!).and_wrap_original do |original, key, amount|
-      observed << [:reserve, key, amount]
-      original.call(key, amount)
+    allow(ledger).to receive(:reserve_many!).and_wrap_original do |original, reservations|
+      reservations.each { |key, amount| observed << [:reserve, key, amount] }
+      original.call(reservations)
     end
-    allow(ledger).to receive(:reconcile!).and_wrap_original do |original, key, reserved_amount, actual_amount|
-      observed << [:reconcile, key, reserved_amount, actual_amount]
-      original.call(key, reserved_amount, actual_amount)
+    allow(ledger).to receive(:reconcile_many!).and_wrap_original do |original, reservation, actual:|
+      reservation.amounts.each { |key, amount| observed << [:reconcile, key, amount, actual.fetch(key)] }
+      original.call(reservation, actual:)
     end
-    allow(ledger).to receive(:release!).and_wrap_original do |original, key, amount|
-      observed << [:release, key, amount]
-      original.call(key, amount)
+    allow(ledger).to receive(:release_many!).and_wrap_original do |original, reservation|
+      reservation.amounts.each { |key, amount| observed << [:release, key, amount] }
+      original.call(reservation)
     end
 
     result = workflow.run!
@@ -591,9 +1046,10 @@ RSpec.describe "Smith::Workflow parallel execution" do
     observed = Queue.new
     ledger = workflow.ledger
 
-    allow(ledger).to receive(:reconcile!).and_wrap_original do |original, key, reserved_amount, actual_amount|
+    allow(ledger).to receive(:reconcile!).and_wrap_original do |original, reservation, actual_amount|
+      key, reserved_amount = reservation.amounts.first
       observed << [:reconcile, key, reserved_amount, actual_amount]
-      original.call(key, reserved_amount, actual_amount)
+      original.call(reservation, actual_amount)
     end
 
     result = workflow.run!
@@ -699,9 +1155,10 @@ RSpec.describe "Smith::Workflow parallel execution" do
           observed << [:reserve, ledger.object_id, key, amount]
           inner.call(key, amount)
         end
-        allow(ledger).to receive(:reconcile!).and_wrap_original do |inner, key, reserved_amount, actual_amount|
+        allow(ledger).to receive(:reconcile!).and_wrap_original do |inner, reservation, actual_amount|
+          key, reserved_amount = reservation.amounts.first
           observed << [:reconcile, ledger.object_id, key, reserved_amount, actual_amount]
-          inner.call(key, reserved_amount, actual_amount)
+          inner.call(reservation, actual_amount)
         end
       end
       ledger
@@ -779,9 +1236,10 @@ RSpec.describe "Smith::Workflow parallel execution" do
           observed << [:reserve, ledger.object_id, key, amount]
           inner.call(key, amount)
         end
-        allow(ledger).to receive(:reconcile!).and_wrap_original do |inner, key, reserved_amount, actual_amount|
+        allow(ledger).to receive(:reconcile!).and_wrap_original do |inner, reservation, actual_amount|
+          key, reserved_amount = reservation.amounts.first
           observed << [:reconcile, ledger.object_id, key, reserved_amount, actual_amount]
-          inner.call(key, reserved_amount, actual_amount)
+          inner.call(reservation, actual_amount)
         end
       end
       ledger

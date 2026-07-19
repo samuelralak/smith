@@ -27,6 +27,7 @@ module Smith
         option :deterministic_routes, default: proc {}
         option :deterministic, default: proc { false }
         option :parallel, default: proc { false }
+        option :parallel_count, default: proc {}
 
         def self.from_transition(transition, identifiers:, definition_index:)
           attributes = TransitionContractAttributes.new(transition, identifiers:).to_h

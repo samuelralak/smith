@@ -105,6 +105,10 @@ end
 | `persistence_options` | Per-adapter options (client, namespace, model, columns) | See "Built-In Persistence Adapters" |
 | `persistence_ttl` | Global TTL for persisted state (Integer/Float seconds; nil = no expiry) | Set when long-tail abandoned workflows accumulate in storage |
 | `persistence_retry_policy` | Exponential-backoff policy for transient adapter I/O failures | Defaults to `{ attempts: 3, base_delay: 0.1, max_delay: 1.0 }` |
+| `retry_attempt_limit` | Maximum attempts accepted by workflow and persistence retry policies | Defaults to `100` |
+| `parallel_branch_limit` | Maximum branches accepted by one homogeneous or heterogeneous fan-out | Defaults to `1_000` |
+| `parallel_concurrency` | Maximum active branch threads within one parallel execution | Defaults to `8` |
+| `parallel_nesting_limit` | Maximum re-entrant fan-out depth; hard-capped at `256` | Defaults to `64` |
 | `test_mode` | Auto-select `:memory` adapter when `persistence_adapter` is nil | Enable in `spec_helper.rb` to skip Redis/cache wiring in tests |
 | `openai_api_mode` | `:auto` routes (gpt-5 family + tools + thinking) via `/v1/responses` using Smith's vendored Responses adapter (sync only; streaming over `/v1/responses` is not yet supported); `:off` drops incompatible tools instead | Leave `:auto` (default) unless you need streaming with the (gpt-5 + tools + thinking) combo, in which case set `:off` for graceful tool-dropping |
 | `trace_normalizer` | Emit `:normalizer_decision` trace events from `Smith::Models::Normalizer` | Useful when debugging cross-provider request shaping |
@@ -120,4 +124,3 @@ Add settings in this order:
 4. `config.pricing`
 
 Do not start by configuring every advanced switch at once.
-

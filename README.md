@@ -17,7 +17,7 @@ environment before calling the slice complete.
 
 ```ruby
 # Gemfile
-gem "smith-agents", "0.4.5", require: "smith"
+gem "smith-agents", "0.5.0", require: "smith"
 ```
 
 ```bash
@@ -175,6 +175,12 @@ Smith.configure do |config|
   config.persistence_ttl = 1.day.to_i
   config.persistence_retry_policy = { attempts: 3, base_delay: 0.1, max_delay: 1.0 }
 
+  # Generic runtime resource bounds
+  config.parallel_branch_limit = 1_000
+  config.parallel_concurrency = 8
+  config.parallel_nesting_limit = 64
+  config.retry_attempt_limit = 100
+
   # OpenAI /v1/responses routing for gpt-5 + tools + thinking. :auto (default) or :off.
   config.openai_api_mode = :auto
 
@@ -292,6 +298,30 @@ end
 
 Budgets reserve serially at each step and reconcile after the agent call. Parallel branches reserve scoped envelopes that release back to the parent ledger. The `Workflow::RunResult` carries `total_tokens`, `total_cost`, and per-call `usage_entries`.
 
+Direct ledger integrations settle the exact receipt returned by reservation:
+
+```ruby
+reservation = ledger.reserve_many!(total_tokens: 1_000, total_cost: 0.10)
+ledger.reconcile_many!(reservation, actual: { total_tokens: 640, total_cost: 0.06 })
+```
+
+`release!` / `release_many!` accept the same receipt when work never starts.
+Receipts are ledger-owned and one-shot: another ledger, a replay, or an
+amount-only settlement is rejected.
+
+Budget amounts accept finite, non-negative `Integer` and `Float` values. Smith
+uses an exact `BigDecimal` representation derived from each value's canonical
+decimal text and converts ledger snapshots back to ordinary JSON-safe numerics,
+avoiding cumulative binary Float drift without changing persisted workflow
+state shapes. Ledger arithmetic temporarily uses unlimited decimal precision and
+restores the host's existing `BigDecimal` precision limit before returning.
+
+Budget operations are atomic for normal concurrent callers and synchronous
+exceptions. Smith uses cooperative cancellation and never terminates branch
+threads with `Thread#raise` or `Thread#kill`. Arbitrary asynchronous thread
+termination can make any in-process return value outcome-ambiguous; hosts must
+use cancellation signals, bounded I/O, and process isolation for hard stops.
+
 ## Doctor
 
 After adding Smith, verify the integration:
@@ -347,6 +377,28 @@ end
 When no classes are passed, `retry_on` uses `Smith::Errors.retryable?`.
 This is a bounded local transition retry policy. Durable scheduling, long waits,
 and external idempotency guarantees remain host-owned.
+
+## Runtime Complexity
+
+- Executable graph reachability is iterative `O(V + E)` time and `O(V)` space,
+  using indexed outgoing transitions and runtime-equivalent successor rules.
+- Parallel execution is `O(B)` scheduling and result space for `B` branches,
+  with at most `C = parallel_concurrency` active worker threads per top-level
+  execution. Re-entrant fan-out inherits the same cancellation signal and uses
+  only idle workers from the top-level execution context, falling back to the
+  current worker when no capacity remains. Nested calls fail closed before the
+  configurable nesting bound can exhaust Ruby's stack. Cancellation prevents
+  queued branch bodies from starting;
+  already-running branches are drained before control returns so work is never
+  detached. Branch adapters must use bounded I/O and honor the cancellation
+  signal. Hosts continue to own process-level concurrency and hard deadlines.
+- Reservation and settlement across `L` declared budget dimensions and `D`
+  operation dimensions is `O(L + D)` time and space. Receipt lookup is expected
+  `O(1)`; no operation scans or copies the active receipt registry. Integer and
+  Float amounts use exact decimal arithmetic internally.
+- Retry delay calculation is `O(1)` time and space per attempt. A policy with
+  `A` attempts performs at most `A` guarded operations and never materializes an
+  exponential schedule.
 
 ## Development
 

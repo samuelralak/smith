@@ -8,6 +8,27 @@ require_relative "smith/error"
 module Smith
   extend Dry::Configurable
 
+  positive_integer_setting = lambda do |name|
+    lambda do |value|
+      unless value.is_a?(Integer) && value.positive?
+        raise ArgumentError, "Smith.config.#{name} must be a positive integer, got #{value.inspect}"
+      end
+
+      value
+    end
+  end
+
+  bounded_positive_integer_setting = lambda do |name, maximum|
+    lambda do |value|
+      unless value.is_a?(Integer) && value.positive? && value <= maximum
+        message = "Smith.config.#{name} must be a positive integer no greater than #{maximum}"
+        raise ArgumentError, "#{message}, got #{value.inspect}"
+      end
+
+      value
+    end
+  end
+
   # Artifact store (§4.7)
   setting :artifact_store
   setting :artifact_retention
@@ -44,6 +65,15 @@ module Smith
   #   base_delay:  initial sleep between attempts, doubled each retry
   #   max_delay:   cap on per-retry sleep
   setting :persistence_retry_policy, default: { attempts: 3, base_delay: 0.1, max_delay: 1.0 }
+
+  # Generic runtime resource bounds. Branch concurrency is scoped to one
+  # parallel execution; hosts retain control over process-level concurrency.
+  setting :parallel_branch_limit, default: 1_000, constructor: positive_integer_setting.call(:parallel_branch_limit)
+  setting :parallel_concurrency, default: 8, constructor: positive_integer_setting.call(:parallel_concurrency)
+  setting :parallel_nesting_limit, default: 64, constructor: bounded_positive_integer_setting.call(
+    :parallel_nesting_limit, 256
+  )
+  setting :retry_attempt_limit, default: 100, constructor: positive_integer_setting.call(:retry_attempt_limit)
 
   # Test isolation: when true AND persistence_adapter is nil, Smith
   # auto-selects the in-process Memory adapter. Lets specs avoid wiring
@@ -148,6 +178,7 @@ end
 require_relative "smith/types"
 require_relative "smith/errors"
 require_relative "smith/persistence_payload_conflict"
+require_relative "smith/exponential_backoff"
 
 # Event system (depends on Types)
 require_relative "smith/event"
@@ -230,6 +261,7 @@ require_relative "smith/agent/registry"
 # Workflow (Transition, DSL, Persistence, and Execution must load before Workflow)
 require_relative "smith/workflow/identifier"
 require_relative "smith/workflow/transition"
+require_relative "smith/workflow/transition_actionability"
 require_relative "smith/workflow/graph"
 require_relative "smith/workflow/graph_dsl"
 require_relative "smith/workflow/run_result"

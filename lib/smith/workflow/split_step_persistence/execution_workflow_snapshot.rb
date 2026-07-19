@@ -19,7 +19,7 @@ module Smith
         end
 
         def capture
-          @initial_state = workflow_class.initial_state
+          @initial_state_signature = initial_state_signature
           @transitions = reachable_definition_transitions.map do |transition|
             yield transition if block_given?
             [transition.name, transition, TransitionContract.capture(transition)].freeze
@@ -28,7 +28,7 @@ module Smith
         end
 
         def verify!
-          unless workflow_class.initial_state == @initial_state
+          unless initial_state_signature == @initial_state_signature
             raise WorkflowError, "authorized nested workflow definition changed before execution"
           end
 
@@ -46,11 +46,20 @@ module Smith
         private
 
         def reachable_definition_transitions
-          Graph::Reachability.new(workflow_class.graph).each_transition.map do |transition|
+          workflow_class.graph.reachable_transitions.map do |transition|
             workflow_class.transition_at(transition.definition_index)
           end
         rescue IndexError
           raise WorkflowError, "authorized nested workflow definition changed before execution"
+        end
+
+        def initial_state_signature
+          TransitionContractSignature.new(
+            value: workflow_class.initial_state,
+            max_depth: TransitionContract::MAX_DEPTH,
+            max_nodes: TransitionContract::MAX_NODES,
+            max_bytes: TransitionContract::MAX_BYTES
+          ).call
         end
 
         def verify_transition!(transition, expected)

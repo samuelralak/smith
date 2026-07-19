@@ -22,8 +22,8 @@ module Smith
 
       def commit_tool_call_charges!(ledger, allowance, workflow_active)
         if workflow_active
-          ledger.reserve!(:tool_calls, 1)
-          ledger.reconcile!(:tool_calls, 1, 1)
+          reservation = ledger.reserve!(:tool_calls, 1)
+          ledger.reconcile!(reservation, 1)
         end
 
         allowance[:remaining] -= 1 if allowance

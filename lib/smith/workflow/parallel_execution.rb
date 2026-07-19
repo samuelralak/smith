@@ -9,7 +9,7 @@ module Smith
       private
 
       def execute_parallel_step(transition, prepared_input: nil)
-        count = Parallel.resolve_branch_count(transition, @context)
+        count = @resolved_parallel_branch_count || Parallel.resolve_branch_count(transition, @context)
         agent_class = resolve_agent_class(transition)
         estimates = compute_branch_estimates(@ledger, branch_count: count, agent_budget: agent_class&.budget)
         env = BranchEnv.new(

@@ -465,7 +465,7 @@ RSpec.describe Smith::Workflow::PreparedStepExecutionAuthorization do
   end
 
   it "authorizes nested workflows with mutable topology identifiers" do
-    transition_name = [:answer]
+    transition_name = +"answer"
     child_executions = 0
     child = Class.new(Smith::Workflow) do
       initial_state :start
@@ -479,6 +479,7 @@ RSpec.describe Smith::Workflow::PreparedStepExecutionAuthorization do
       state :done
       transition(:child, from: :start, to: :done) { workflow child }
     end
+    transition_name.replace("changed-after-declaration")
     workflow = claimed_workflow(parent, "#{key}:nested-mutable-identifier")
 
     authorization = workflow.authorize_prepared_step_execution!

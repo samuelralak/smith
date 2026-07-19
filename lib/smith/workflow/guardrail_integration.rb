@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "transition_actionability"
+
 module Smith
   class Workflow
     module GuardrailIntegration
@@ -56,16 +58,7 @@ module Smith
       end
 
       def actionable_failure_transition?(transition)
-        [
-          transition.agent_name,
-          transition.deterministic?,
-          transition.routed?,
-          transition.fanout?,
-          transition.nested?,
-          transition.optimized?,
-          transition.orchestrated?,
-          transition.success_transition
-        ].any?
+        TransitionActionability.call(transition)
       end
 
       def run_workflow_input_guardrails

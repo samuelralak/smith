@@ -235,7 +235,7 @@ module Smith
         private
 
         def own_identifier(identifier)
-          identifier.is_a?(String) ? identifier.dup.freeze : identifier
+          Identifier.normalize(identifier, label: "workflow identifier")
         end
 
         def transitions_by_state

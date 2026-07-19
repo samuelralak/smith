@@ -234,10 +234,17 @@ end
 Why this is valuable:
 
 - Smith treats each branch as a real invocation
+- results preserve branch declaration order while active branch work is bounded by `parallel_concurrency`
 - workflow budgets remain cumulative outer limits
 - agent budgets still narrow each branch call
 - branch failures discard step output and route through normal failure handling
 - prepared input is reused consistently across branches
+- cancellation prevents queued branch bodies from starting and drains any
+  already-running branch before returning; branch adapters should use bounded
+  I/O and honor the cancellation signal
+- nested fan-out shares its top-level execution context and cancellation signal;
+  it uses only idle workers and falls back to its current worker when no capacity
+  remains, preserving the configured concurrency ceiling without pool deadlocks
 
 ## Example 6: Heterogeneous Fan-Out
 

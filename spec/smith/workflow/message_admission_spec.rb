@@ -347,8 +347,8 @@ RSpec.describe Smith::Workflow::MessageAdmission do
       transition(:finish, from: :idle, to: :done) { compute { |_step| :done } }
     end
     original = duplicable_class.new(context: { nested: { value: "Original" } })
-    original.ledger.reserve!(:total_tokens, 10)
-    original.ledger.reconcile!(:total_tokens, 10, 4)
+    original_reservation = original.ledger.reserve!(:total_tokens, 10)
+    original.ledger.reconcile!(original_reservation, 4)
     original.instance_variable_get(:@tool_results) << { captured: { value: "Original" } }
     original.instance_variable_get(:@usage_entries) << Smith::Workflow::UsageEntry.new(
       usage_id: "usage-original",
@@ -359,8 +359,8 @@ RSpec.describe Smith::Workflow::MessageAdmission do
     copy.instance_variable_get(:@context)[:nested][:value].replace("Copy")
     copy.instance_variable_get(:@tool_results).dig(0, :captured, :value).replace("Copy")
     copy.instance_variable_get(:@usage_entries).first.model.replace("model-copy")
-    copy.ledger.reserve!(:total_tokens, 10)
-    copy.ledger.reconcile!(:total_tokens, 10, 6)
+    copy_reservation = copy.ledger.reserve!(:total_tokens, 10)
+    copy.ledger.reconcile!(copy_reservation, 6)
 
     expect(original.to_state[:context]).to eq(nested: { value: "Original" })
     expect(original.to_state[:tool_results]).to eq([{ captured: { value: "Original" } }])

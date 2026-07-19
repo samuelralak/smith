@@ -2,6 +2,7 @@
 
 RSpec.describe "Smith::Workflow graph inspection" do
   let(:workflow_class) { require_const("Smith::Workflow") }
+  let(:workflow_error) { require_const("Smith::WorkflowError") }
 
   it "walks deep reachable graphs iteratively through the outgoing index" do
     workflow = Class.new(workflow_class)
@@ -34,6 +35,86 @@ RSpec.describe "Smith::Workflow graph inspection" do
     expect(Smith::Workflow::Graph::Reachability.new(workflow.graph).transition_names).to eq(%i[finish archive])
   end
 
+  it "follows only the implicit transition that runtime would execute" do
+    workflow = Class.new(workflow_class) do
+      initial_state :idle
+      state :first_done
+      state :second_done
+      transition :first, from: :idle, to: :first_done
+      transition :second, from: :idle, to: :second_done
+    end
+
+    expect(workflow.new.run!.state).to eq(:first_done)
+    expect(Smith::Workflow::Graph::Reachability.new(workflow.graph).transition_names).to eq([:first])
+  end
+
+  it "does not follow an implicit destination when on_success selects a named transition" do
+    workflow = Class.new(workflow_class) do
+      initial_state :idle
+      state :routed
+      state :implicit_done
+      state :explicit_done
+
+      transition :start, from: :idle, to: :routed do
+        on_success :explicit
+      end
+      transition :implicit, from: :routed, to: :implicit_done
+      transition :explicit, from: :routed, to: :explicit_done
+    end
+
+    expect(workflow.new.run!.state).to eq(:explicit_done)
+    expect(Smith::Workflow::Graph::Reachability.new(workflow.graph).transition_names).to eq(%i[start explicit])
+  end
+
+  it "evaluates failure transition origins against the pre-step state" do
+    workflow = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :start, from: :idle, to: :done do
+        on_failure :cleanup
+      end
+      transition :cleanup, from: :idle, to: :failed do
+        compute { |step| step.read_context(:noop) }
+      end
+    end
+
+    report = workflow.validate_graph
+
+    expect(report.warnings.map(&:code)).not_to include(:target_from_state_mismatch)
+    expect(Smith::Workflow::Graph::Reachability.new(workflow.graph).transition_names).to eq(%i[start cleanup])
+  end
+
+  it "skips non-actionable failure markers exactly as runtime does" do
+    workflow = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+      state :recovered
+      state :final
+
+      transition :start, from: :idle, to: :done do
+        compute { raise Smith::WorkflowError, "failed" }
+        on_failure :marker
+      end
+      transition :marker, from: :idle, to: :recovered do
+        on_failure :secondary
+      end
+      transition :secondary, from: :idle, to: :final do
+        execute :missing_unreachable_agent
+      end
+    end
+
+    expect(workflow.new.run!.state).to eq(:recovered)
+    expect(workflow.graph.reachable_transitions.map(&:name)).to eq([:start])
+    expect(workflow.runtime_readiness.runtime_diagnostics).to be_empty
+    unreachable = workflow.validate_graph.warnings
+                          .select { _1.code == :unreachable_transition }
+                          .map(&:transition)
+    expect(unreachable).not_to include(:marker)
+    expect(unreachable).to include(:secondary)
+  end
+
   it "owns mutable String identifiers at declaration and snapshot time" do
     initial = +"idle"
     terminal = +"done"
@@ -54,27 +135,13 @@ RSpec.describe "Smith::Workflow graph inspection" do
     expect(workflow.new.run!.state).to eq("done")
   end
 
-  it "projects mutable topology identifiers without retaining graph aliases" do
-    initial = []
-    terminal = { state: :done }
-    transition_name = ["finish"]
+  it "rejects topology identifiers outside the String and Symbol contract" do
     workflow = Class.new(workflow_class)
-    workflow.initial_state(initial)
-    workflow.state(terminal)
-    workflow.transition(transition_name, from: initial, to: terminal)
-    graph = workflow.graph
-    projected_name = graph.transitions.keys.sole
-    projected_initial = graph.initial_state
-    projected_terminal = graph.transitions.fetch(projected_name).to
 
-    initial << :changed
-    terminal[:state] = :changed
-    transition_name << :changed
-
-    expect(graph.initial_state).to equal(projected_initial)
-    expect(graph.transitions.keys.sole).to equal(projected_name)
-    expect(graph.transitions.fetch(projected_name).to).to equal(projected_terminal)
-    expect(graph.transitions_from(projected_initial).sole.name).to equal(projected_name)
+    expect { workflow.initial_state(false) }.to raise_error(workflow_error, /String or Symbol/)
+    expect { workflow.state([]) }.to raise_error(workflow_error, /String or Symbol/)
+    expect { workflow.transition({}, from: :idle, to: :done) }
+      .to raise_error(workflow_error, /String or Symbol/)
   end
 
   it "owns immutable transition inspection contracts without freezing the workflow definition" do
@@ -121,7 +188,7 @@ RSpec.describe "Smith::Workflow graph inspection" do
     expect(report.metrics).to include(
       states_count: 4,
       transitions_count: 3,
-      reachable_transitions_count: 3
+      reachable_transitions_count: 2
     )
     expect(workflow.new.run!.state).to eq(:done)
   end
@@ -171,12 +238,54 @@ RSpec.describe "Smith::Workflow graph inspection" do
 
     expect(report.status).to eq(:invalid)
     expect(report.errors.map(&:code)).to include(:unresolved_router_target)
-    expect(report.warnings.map(&:code)).to include(:target_from_state_mismatch)
+    expect(report.errors.map(&:code)).to include(:target_from_state_mismatch)
 
-    mismatch = report.warnings.find { |diagnostic| diagnostic.code == :target_from_state_mismatch }
+    mismatch = report.errors.find { |diagnostic| diagnostic.code == :target_from_state_mismatch }
     expect(mismatch.transition).to eq(:classify)
     expect(mismatch.target).to eq(:handle_refund)
     expect(mismatch.message).to include(":handle_refund starts from :idle instead of :triaged")
+  end
+
+  it "fails runtime readiness for every origin-mismatched named target kind" do
+    workflow = Class.new(workflow_class) do
+      initial_state :idle
+      state :routed
+      state :other
+      state :done
+
+      transition :start, from: :idle, to: :routed do
+        compute(routes: [:repair]) { |step| step.read_context(:noop) }
+        on_success :finish
+        on_failure :cleanup
+      end
+      transition :repair, from: :other, to: :done
+      transition :finish, from: :other, to: :done
+      transition :cleanup, from: :other, to: :done
+    end
+
+    report = workflow.runtime_readiness
+    mismatches = report.errors.select { |diagnostic| diagnostic.code == :target_from_state_mismatch }
+
+    expect(report).not_to be_ready
+    expect(mismatches.map(&:target)).to contain_exactly(:repair, :finish, :cleanup)
+  end
+
+  it "terminates runtime-semantic reachability across success and failure loops" do
+    workflow = Class.new(workflow_class) do
+      initial_state :idle
+      state :checking
+
+      transition :start, from: :idle, to: :checking do
+        on_success :repair
+        on_failure :start
+      end
+      transition :repair, from: :checking, to: :idle do
+        on_success :start
+        on_failure :repair
+      end
+    end
+
+    expect(workflow.graph.reachable_transitions.map(&:name)).to eq(%i[start repair])
   end
 
   it "reports deterministic route targets in snapshots, reachability, and diagnostics" do
@@ -201,6 +310,81 @@ RSpec.describe "Smith::Workflow graph inspection" do
     expect(report.transitions.find { |transition| transition.name == :check }.deterministic_routes)
       .to eq(%i[finish missing_repair])
     expect(report.metrics.fetch(:reachable_transitions_count)).to eq(2)
+  end
+
+  it "revalidates inspectable branch counts against the current configured limit" do
+    original_limit = Smith.config.parallel_branch_limit
+    Smith.config.parallel_branch_limit = 4
+    agents = %i[one two three].to_h do |name|
+      klass = Class.new(Smith::Agent) { register_as :"spec_graph_limit_#{name}" }
+      [name, klass]
+    end
+    workflow = Class.new(workflow_class) do
+      initial_state :idle
+      state :joined
+      state :done
+
+      transition :parallel, from: :idle, to: :joined do
+        execute :spec_graph_limit_one, parallel: true, count: 3
+      end
+      transition :fanout, from: :joined, to: :done do
+        fan_out branches: {
+          one: :spec_graph_limit_one,
+          two: :spec_graph_limit_two,
+          three: :spec_graph_limit_three
+        }
+      end
+    end
+
+    expect(workflow.runtime_readiness).to be_ready
+    parallel_snapshot = workflow.validate_graph.transitions.find { _1.name == :parallel }
+    expect(parallel_snapshot.to_h.fetch(:parallel_count)).to eq(3)
+
+    Smith.config.parallel_branch_limit = 2
+    report = workflow.runtime_readiness
+
+    expect(report).not_to be_ready
+    expect(report.errors.count { _1.code == :parallel_branch_limit_exceeded }).to eq(2)
+  ensure
+    Smith.config.parallel_branch_limit = original_limit
+    agents&.each_key { Smith::Agent::Registry.delete(:"spec_graph_limit_#{_1}") }
+  end
+
+  it "leaves callable parallel counts for runtime validation" do
+    workflow = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+      transition :parallel, from: :idle, to: :done do
+        execute :missing_dynamic_agent, parallel: true, count: ->(_context) { 3 }
+      end
+    end
+
+    report = workflow.validate_graph
+
+    expect(report.errors.map(&:code)).not_to include(:parallel_branch_limit_exceeded)
+    expect(workflow.graph.transitions.fetch(:parallel).parallel_count).to be_nil
+  end
+
+  it "revalidates retry attempts against the current configured limit" do
+    original_limit = Smith.config.retry_attempt_limit
+    Smith.config.retry_attempt_limit = 3
+    workflow = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+      transition :retrying, from: :idle, to: :done do
+        compute { :done }
+        retry_on attempts: 3
+      end
+    end
+
+    expect(workflow.runtime_readiness).to be_ready
+    Smith.config.retry_attempt_limit = 2
+
+    report = workflow.runtime_readiness
+    expect(report).not_to be_ready
+    expect(report.errors.map(&:code)).to include(:retry_attempt_limit_exceeded)
+  ensure
+    Smith.config.retry_attempt_limit = original_limit
   end
 
   it "reports undefined states and unreachable transitions" do
@@ -264,6 +448,26 @@ RSpec.describe "Smith::Workflow graph inspection" do
       unresolved_agent_bindings_count: 0,
       modelless_agent_bindings_count: 0
     )
+  end
+
+  it "does not require runtime bindings for transitions runtime cannot select" do
+    workflow = with_stubbed_class("SpecGraphUnreachableBindingWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :unused
+
+      transition :finish, from: :idle, to: :done
+      transition :unreachable, from: :idle, to: :unused do
+        execute :missing_unreachable_agent
+      end
+    end
+
+    report = workflow.runtime_readiness
+
+    expect(report).to be_ready
+    expect(report.runtime_diagnostics).to be_empty
+    expect(report.metrics.fetch(:direct_agent_bindings_count)).to eq(0)
+    expect(report.warnings.map(&:code)).to include(:unreachable_transition)
   end
 
   it "separates topology validity from runtime readiness diagnostics" do
@@ -369,19 +573,19 @@ RSpec.describe "Smith::Workflow graph inspection" do
 
       transition :route_step, from: :idle, to: :routed do
         route :missing_router_agent,
-              routes: { done: :finish },
+              routes: { optimize: :optimize_step },
               confidence_threshold: 0.5,
-              fallback: :finish
+              fallback: :optimize_step
       end
 
-      transition :optimize_step, from: :idle, to: :optimized do
+      transition :optimize_step, from: :routed, to: :optimized do
         optimize generator: :missing_generator_agent,
                  evaluator: :missing_evaluator_agent,
                  max_rounds: 1,
                  evaluator_schema: schema
       end
 
-      transition :orchestrate_step, from: :idle, to: :orchestrated do
+      transition :orchestrate_step, from: :optimized, to: :orchestrated do
         orchestrate orchestrator: :missing_orchestrator_agent,
                     worker: :missing_worker_agent,
                     max_workers: 2,
@@ -391,14 +595,14 @@ RSpec.describe "Smith::Workflow graph inspection" do
                     final_output_schema: schema
       end
 
-      transition :fanout_step, from: :idle, to: :fanned do
+      transition :fanout_step, from: :orchestrated, to: :fanned do
         fan_out branches: {
           research: :missing_research_agent,
           review: :missing_review_agent
         }
       end
 
-      transition :finish, from: :routed, to: :done
+      transition :finish, from: :fanned, to: :done
     end
 
     report = workflow.runtime_readiness
@@ -539,19 +743,19 @@ RSpec.describe "Smith::Workflow graph inspection" do
 
       transition :route_step, from: :idle, to: :routed do
         route :spec_graph_router_no_model_agent,
-              routes: { done: :finish },
+              routes: { optimize: :optimize_step },
               confidence_threshold: 0.5,
-              fallback: :finish
+              fallback: :optimize_step
       end
 
-      transition :optimize_step, from: :idle, to: :optimized do
+      transition :optimize_step, from: :routed, to: :optimized do
         optimize generator: :spec_graph_generator_no_model_agent,
                  evaluator: :spec_graph_evaluator_no_model_agent,
                  max_rounds: 1,
                  evaluator_schema: schema
       end
 
-      transition :orchestrate_step, from: :idle, to: :orchestrated do
+      transition :orchestrate_step, from: :optimized, to: :orchestrated do
         orchestrate orchestrator: :spec_graph_orchestrator_no_model_agent,
                     worker: :spec_graph_worker_no_model_agent,
                     max_workers: 2,
@@ -561,7 +765,7 @@ RSpec.describe "Smith::Workflow graph inspection" do
                     final_output_schema: schema
       end
 
-      transition :finish, from: :routed, to: :done
+      transition :finish, from: :orchestrated, to: :done
     end
 
     report = workflow.runtime_readiness
@@ -656,6 +860,28 @@ RSpec.describe "Smith::Workflow graph inspection" do
 
     expect(report).to be_ready
     expect(report.metrics.fetch(:nested_workflow_count)).to eq(1_200)
+  end
+
+  it "renders deep nested diagnostics without copying prefixes at each level" do
+    nested = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+      transition(:finish, from: :idle, to: :done) { execute :missing_deep_nested_agent }
+    end
+    1_200.times do |index|
+      child = nested
+      nested = Class.new(workflow_class) do
+        initial_state :idle
+        state :done
+        transition(:"nested-error-#{index}", from: :idle, to: :done) { workflow child }
+      end
+    end
+
+    diagnostic = nested.runtime_readiness.errors.sole
+
+    expect(diagnostic.code).to eq(:nested_unresolved_agent_binding)
+    expect(diagnostic.message.scan("Nested workflow").length).to eq(1_200)
+    expect(diagnostic.message.bytesize).to be < 100_000
   end
 
   it "memoizes shared nested workflow reports and diagnoses cycles iteratively" do

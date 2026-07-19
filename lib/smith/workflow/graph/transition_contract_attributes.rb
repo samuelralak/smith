@@ -44,8 +44,16 @@ module Smith
           {
             deterministic_kind: transition.deterministic_kind,
             deterministic: transition.deterministic?,
-            parallel: transition.parallel?
+            parallel: transition.parallel?,
+            parallel_count: static_parallel_count
           }
+        end
+
+        def static_parallel_count
+          return unless transition.parallel?
+
+          count = transition.agent_opts[:count]
+          count.respond_to?(:call) ? nil : (count || 1)
         end
 
         def project_array(array)

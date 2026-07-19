@@ -16,26 +16,38 @@ module Smith
 
       def with_retries(operation:, transient:, policy: Smith.config.persistence_retry_policy,
                        logger: Smith.config.logger)
-        attempts = policy.fetch(:attempts, 3)
-        base = policy.fetch(:base_delay, 0.1)
-        max_delay = policy.fetch(:max_delay, 1.0)
+        schedule = schedule_for(policy)
         last_error = nil
 
-        attempts.times do |i|
+        schedule.attempts.times do |i|
           return yield
         rescue *transient => e
           last_error = e
-          break if i == attempts - 1
+          break if i == schedule.attempts - 1
 
-          delay = [base * (2**i), max_delay].min
-          logger&.warn(
-            "Smith::PersistenceAdapters::Retry #{operation} attempt #{i + 1}/#{attempts} failed: " \
-            "#{e.class}: #{e.message}; sleeping #{delay}s"
-          )
+          delay = schedule.delay(i + 1)
+          log_retry(logger, operation, e, { attempt: i + 1, attempts: schedule.attempts, delay: })
           sleep(delay)
         end
 
         raise Smith::PersistenceIOError.new(operation: operation, cause: last_error)
+      end
+
+      def schedule_for(policy)
+        ExponentialBackoff.new(
+          attempts: policy.fetch(:attempts, 3),
+          base_delay: policy.fetch(:base_delay, 0.1),
+          max_delay: policy.fetch(:max_delay, 1.0),
+          jitter: 0
+        )
+      end
+
+      def log_retry(logger, operation, error, retry_context)
+        logger&.warn(
+          "Smith::PersistenceAdapters::Retry #{operation} " \
+          "attempt #{retry_context.fetch(:attempt)}/#{retry_context.fetch(:attempts)} failed: " \
+          "#{error.class}: #{error.message}; sleeping #{retry_context.fetch(:delay)}s"
+        )
       end
     end
   end

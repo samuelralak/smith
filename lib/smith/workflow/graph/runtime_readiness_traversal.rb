@@ -88,7 +88,7 @@ module Smith
         end
 
         def nested_transitions_for(current_graph)
-          @nested_transitions[current_graph] ||= current_graph.transitions.values.select(&:nested?).freeze
+          @nested_transitions[current_graph] ||= current_graph.reachable_transitions.select(&:nested?).freeze
         end
 
         def mark_cycle(current_graph, transition)

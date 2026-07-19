@@ -52,7 +52,7 @@ module Smith
         end
 
         def nested_workflow_transitions
-          @nested_workflow_transitions ||= graph.transitions.values.select(&:nested?)
+          @nested_workflow_transitions ||= graph.reachable_transitions.select(&:nested?)
         end
 
         def cycle_diagnostic(transition, workflow_class)
@@ -71,14 +71,13 @@ module Smith
 
         def nested_diagnostic(transition, workflow_class, diagnostic)
           label = workflow_label(workflow_class)
+          code = diagnostic.code.to_s.start_with?("nested_") ? diagnostic.code : :"nested_#{diagnostic.code}"
 
-          Diagnostic.new(
-            severity: diagnostic.severity,
-            code: :"nested_#{diagnostic.code}",
+          diagnostic.nested(
+            label: label,
+            code: code,
             transition: transition.name,
-            target: label,
-            message: "Nested workflow #{label}: #{diagnostic.message}",
-            suggestion: diagnostic.suggestion
+            target: label
           )
         end
 

@@ -686,8 +686,9 @@ RSpec.describe "Smith::Workflow split-step persistence" do
       idempotency_mode :strict
       initial_state :idle
       state :done
-      transition :"", from: :idle, to: :done
+      transition :finish, from: :idle, to: :done
     end
+    blank_transition_class.find_transition(:finish).instance_variable_set(:@name, :"")
     workflow = blank_transition_class.new
 
     expect do

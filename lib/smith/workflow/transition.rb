@@ -10,19 +10,27 @@ module Smith
 
       def initialize(name, from:, to:, &)
         @name = own_identifier(name)
-        @from = own_identifier(from)
+        @from = own_identifier(from, allow_nil: true)
         @to = own_identifier(to)
         instance_eval(&) if block_given?
       end
 
       def execute(agent_name, **opts)
-        validate_execute_conflicts!
+        validate_execution_primitive_conflict!("execute")
 
-        @agent_name = normalize_agent_reference!(agent_name, "agent")
+        normalized_agent = normalize_agent_reference!(agent_name, "agent")
+        validate_parallel_options!(opts)
+
+        @agent_name = normalized_agent
         @agent_opts = opts.freeze
+        commit_execution_primitive!("execute")
       end
 
       def on_success(transition_name)
+        if routed?
+          raise WorkflowError, "routed transitions cannot declare on_success; router routes select the next transition"
+        end
+
         @success_transition = own_identifier(transition_name)
       end
 
@@ -31,31 +39,31 @@ module Smith
       end
 
       def route(agent_name, routes:, confidence_threshold:, fallback:)
-        validate_route_conflicts!
+        validate_execution_primitive_conflict!("route")
+        if @success_transition
+          raise WorkflowError, "routed transitions cannot declare on_success; router routes select the next transition"
+        end
 
-        @agent_name = normalize_agent_name!(agent_name, "router")
-        @router_config = {
+        normalized_agent = normalize_agent_name!(agent_name, "router")
+        normalized_config = {
           routes: normalize_router_routes!(routes),
           confidence_threshold: normalize_confidence_threshold!(confidence_threshold),
           fallback: normalize_transition_reference!(fallback, "router fallback")
-        }
+        }.freeze
+
+        @agent_name = normalized_agent
+        @router_config = normalized_config
+        commit_execution_primitive!("route")
       end
 
       def workflow(klass)
         raise WorkflowError, "workflow binding must be a Class" unless klass.is_a?(Class)
         raise WorkflowError, "workflow binding must be a Smith::Workflow subclass" unless klass < Workflow
 
-        validate_conflicts!(
-          "workflow",
-          [
-            ["execute", @agent_name && !@router_config],
-            ["route", @router_config],
-            ["compute/run", @deterministic_block],
-            ["fan_out", @fanout_config]
-          ]
-        )
+        validate_execution_primitive_conflict!("workflow")
 
         @workflow_class = klass
+        commit_execution_primitive!("workflow")
       end
 
       def optimize(generator:, evaluator:, max_rounds:, evaluator_schema:,
@@ -65,14 +73,14 @@ module Smith
                    on_exhaustion: :raise,
                    on_converged: :raise,
                    on_threshold: :raise)
-        validate_optimize_conflicts!
+        validate_execution_primitive_conflict!("optimize")
         validate_optimize_controls!(generator, evaluator, max_rounds, evaluator_schema)
         validate_optimize_exit_modes!(on_exhaustion: on_exhaustion, on_converged: on_converged,
                                       on_threshold: on_threshold)
         validate_optimize_evaluator_context!(evaluator_context)
         validate_optimize_before_eval!(before_eval)
 
-        @optimization_config = {
+        config = {
           generator: normalize_agent_reference!(generator, "optimizer generator"),
           evaluator: normalize_agent_reference!(evaluator, "optimizer evaluator"),
           max_rounds: max_rounds,
@@ -83,44 +91,56 @@ module Smith
           on_converged: on_converged,
           on_threshold: on_threshold
         }.freeze
+
+        @optimization_config = config
+        commit_execution_primitive!("optimize")
       end
 
       def orchestrate(**opts)
-        validate_orchestrate_conflicts!
+        validate_execution_primitive_conflict!("orchestrate")
         validate_orchestrate_controls!(opts)
-        @orchestrator_config = opts.merge(
+        config = opts.merge(
           orchestrator: normalize_agent_reference!(opts.fetch(:orchestrator), "orchestrator"),
           worker: normalize_agent_reference!(opts.fetch(:worker), "orchestrator worker")
         ).freeze
+
+        @orchestrator_config = config
+        commit_execution_primitive!("orchestrate")
       end
 
       def fan_out(branches:)
-        validate_fanout_conflicts!
+        validate_execution_primitive_conflict!("fan_out")
 
-        @fanout_config = { branches: normalize_fanout_branches!(branches) }
+        config = { branches: normalize_fanout_branches!(branches) }.freeze
+
+        @fanout_config = config
+        commit_execution_primitive!("fan_out")
       end
       alias fanout fan_out
 
       def retry_on(*error_classes, attempts:, backoff: 0, max_delay: nil, jitter: 0)
-        validate_retry_controls!(error_classes, attempts:, backoff:, max_delay:, jitter:)
+        policy = normalize_retry_policy!(error_classes, attempts:, backoff:, max_delay:, jitter:)
 
         @retry_config = {
           error_classes: error_classes.freeze,
-          attempts: attempts,
-          backoff: Float(backoff),
-          max_delay: max_delay.nil? ? nil : Float(max_delay),
-          jitter: Float(jitter)
+          attempts: policy.attempts,
+          backoff: policy.base_delay,
+          max_delay: policy.max_delay,
+          jitter: policy.jitter
         }.freeze
       end
 
       %i[compute run].each do |method_name|
         define_method(method_name) do |routes: nil, &block|
-          validate_deterministic_conflicts!
+          validate_execution_primitive_conflict!("compute/run", declaration: method_name.to_s)
           raise WorkflowError, "#{method_name} requires a block" unless block
+
+          normalized_routes = normalize_deterministic_routes!(routes)
 
           @deterministic_block = block
           @deterministic_kind = method_name
-          @deterministic_routes = normalize_deterministic_routes!(routes)
+          @deterministic_routes = normalized_routes
+          commit_execution_primitive!("compute/run", declaration: method_name.to_s)
         end
       end
 
@@ -154,99 +174,40 @@ module Smith
 
       private
 
-      def own_identifier(identifier)
-        identifier.is_a?(String) ? identifier.dup.freeze : identifier
+      def own_identifier(identifier, allow_nil: false)
+        Identifier.normalize(identifier, label: "workflow identifier", allow_nil:)
       end
 
       def normalize_agent_reference!(agent_name, label)
         Identifier.normalize(agent_name, label: "#{label} agent")
       end
 
-      def validate_execute_conflicts!
-        validate_conflicts!(
-          "execute",
-          [
-            ["compute/run", @deterministic_block],
-            ["fan_out", @fanout_config]
-          ]
-        )
+      def validate_execution_primitive_conflict!(primitive, declaration: primitive)
+        return if @execution_primitive.nil?
+
+        return raise_duplicate_execution_primitive!(declaration) if @execution_primitive == primitive
+
+        raise WorkflowError, "transition cannot declare both #{primitive} and #{@execution_primitive}"
       end
 
-      def validate_route_conflicts!
-        validate_conflicts!(
-          "route",
-          [
-            ["compute/run", @deterministic_block],
-            ["fan_out", @fanout_config]
-          ]
-        )
-      end
-
-      def validate_deterministic_conflicts!
-        validate_conflicts!(
-          "compute/run",
-          [
-            ["execute", @agent_name && !@router_config],
-            ["route", @router_config],
-            ["workflow", @workflow_class],
-            ["optimize", @optimization_config],
-            ["orchestrate", @orchestrator_config],
-            ["fan_out", @fanout_config]
-          ]
-        )
-        raise WorkflowError, "transition cannot declare both compute and run" if @deterministic_block
-      end
-
-      def validate_optimize_conflicts!
-        validate_conflicts!(
-          "optimize",
-          [
-            ["execute", @agent_name && !@router_config],
-            ["route", @router_config],
-            ["workflow", @workflow_class],
-            ["compute/run", @deterministic_block],
-            ["fan_out", @fanout_config]
-          ]
-        )
-      end
-
-      def validate_orchestrate_conflicts!
-        validate_conflicts!(
-          "orchestrate",
-          [
-            ["execute", @agent_name && !@router_config],
-            ["route", @router_config],
-            ["workflow", @workflow_class],
-            ["optimize", @optimization_config],
-            ["compute/run", @deterministic_block],
-            ["fan_out", @fanout_config]
-          ]
-        )
-      end
-
-      def validate_fanout_conflicts!
-        validate_conflicts!(
-          "fan_out",
-          [
-            ["execute", @agent_name && !@router_config],
-            ["route", @router_config],
-            ["workflow", @workflow_class],
-            ["optimize", @optimization_config],
-            ["orchestrate", @orchestrator_config],
-            ["compute/run", @deterministic_block]
-          ]
-        )
-      end
-
-      def validate_conflicts!(primitive, conflicts)
-        conflicts.each do |other, present|
-          raise WorkflowError, "transition cannot declare both #{primitive} and #{other}" if present
+      def raise_duplicate_execution_primitive!(declaration)
+        if @execution_primitive == "compute/run" && @execution_declaration != declaration
+          raise WorkflowError, "transition cannot declare both compute and run"
         end
+
+        raise WorkflowError, "transition cannot declare #{declaration} more than once"
+      end
+
+      def commit_execution_primitive!(primitive, declaration: primitive)
+        @execution_primitive = primitive
+        @execution_declaration = declaration
       end
 
       def normalize_fanout_branches!(branches)
         raise WorkflowError, "fan_out branches must be a Hash" unless branches.is_a?(Hash)
         raise WorkflowError, "fan_out requires at least one branch" if branches.empty?
+
+        validate_fanout_size!(branches)
 
         normalized = branches.each_with_object({}) do |(branch_key, agent_name), map|
           key = normalize_fanout_branch_key!(branch_key)
@@ -258,6 +219,28 @@ module Smith
 
         validate_distinct_fanout_agents!(normalized)
         normalized.freeze
+      end
+
+      def validate_fanout_size!(branches)
+        limit = Smith.config.parallel_branch_limit
+        return if branches.length <= limit
+
+        raise WorkflowError, "fan_out branch count exceeds configured limit #{limit}"
+      end
+
+      def validate_parallel_options!(options)
+        return unless options[:parallel] == true
+
+        count = options[:count]
+        return if count.nil? || count.respond_to?(:call)
+        unless count.is_a?(Integer) && count.positive?
+          raise WorkflowError, "parallel branch count must be a positive integer"
+        end
+
+        limit = Smith.config.parallel_branch_limit
+        return if count <= limit
+
+        raise WorkflowError, "parallel branch count exceeds configured limit #{limit}"
       end
 
       def normalize_agent_name!(agent_name, label)
@@ -285,7 +268,7 @@ module Smith
 
       def normalize_confidence_threshold!(threshold)
         numeric = Float(threshold)
-        return numeric if numeric >= 0.0 && numeric <= 1.0
+        return numeric if numeric.between?(0.0, 1.0)
 
         raise WorkflowError, "router confidence_threshold must be a number in 0.0..1.0"
       rescue TypeError, ArgumentError
@@ -330,20 +313,22 @@ module Smith
         raise WorkflowError, "fan_out branch agents must be distinct: #{duplicates.map(&:inspect).join(", ")}"
       end
 
-      def validate_retry_controls!(error_classes, attempts:, backoff:, max_delay:, jitter:)
-        unless attempts.is_a?(Integer) && attempts.positive?
-          raise WorkflowError, "retry_on attempts must be a positive integer"
-        end
-
+      def normalize_retry_policy!(error_classes, attempts:, backoff:, max_delay:, jitter:)
         error_classes.each do |error_class|
           next if error_class.is_a?(Class) && error_class <= StandardError
 
           raise WorkflowError, "retry_on error classes must inherit from StandardError"
         end
 
-        validate_non_negative_numeric!(:backoff, backoff)
-        validate_non_negative_numeric!(:jitter, jitter)
-        validate_non_negative_numeric!(:max_delay, max_delay) unless max_delay.nil?
+        ExponentialBackoff.new(
+          attempts:,
+          base_delay: backoff,
+          max_delay:,
+          jitter:,
+          delay_label: "backoff"
+        )
+      rescue ArgumentError => e
+        raise WorkflowError, "retry_on #{e.message}"
       end
 
       def normalize_deterministic_routes!(routes)
@@ -351,10 +336,12 @@ module Smith
         raise WorkflowError, "deterministic routes must be an Array" unless routes.is_a?(Array)
         raise WorkflowError, "deterministic routes must not be empty" if routes.empty?
 
+        seen = {}
         routes.each_with_object([]) do |route, list|
           name = normalize_deterministic_route!(route)
-          raise WorkflowError, "deterministic route #{name.inspect} is duplicated" if list.include?(name)
+          raise WorkflowError, "deterministic route #{name.inspect} is duplicated" if seen.key?(name)
 
+          seen[name] = true
           list << name
         end.freeze
       end
@@ -373,15 +360,6 @@ module Smith
         else
           raise WorkflowError, "deterministic route names must be String or Symbol"
         end
-      end
-
-      def validate_non_negative_numeric!(name, value)
-        numeric = Float(value)
-        return if numeric >= 0.0
-
-        raise WorkflowError, "retry_on #{name} must be non-negative"
-      rescue TypeError, ArgumentError
-        raise WorkflowError, "retry_on #{name} must be numeric"
       end
 
       def validate_orchestrate_controls!(opts)

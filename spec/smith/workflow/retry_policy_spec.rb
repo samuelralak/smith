@@ -178,6 +178,30 @@ RSpec.describe "Smith::Workflow retry policy" do
         end
       end
     end.to raise_error(workflow_error, /max_delay/)
+
+    [Float::NAN, Float::INFINITY, -Float::INFINITY].each do |invalid_delay|
+      expect do
+        Class.new(workflow_class) do
+          initial_state :idle
+          state :done
+          transition :call_agent, from: :idle, to: :done do
+            execute :spec_retry_agent
+            retry_on attempts: 2, backoff: invalid_delay
+          end
+        end
+      end.to raise_error(workflow_error, /backoff must be finite and non-negative/)
+    end
+
+    expect do
+      Class.new(workflow_class) do
+        initial_state :idle
+        state :done
+        transition :call_agent, from: :idle, to: :done do
+          execute :spec_retry_agent
+          retry_on attempts: 1_000_000
+        end
+      end
+    end.to raise_error(workflow_error, /attempts must not exceed/)
   end
 
   it "keeps retry jitter inside max_delay" do
@@ -194,6 +218,50 @@ RSpec.describe "Smith::Workflow retry policy" do
     allow(workflow).to receive(:rand).and_return(0.75)
 
     expect(workflow.send(:retry_delay, workflow.class.find_transition(:call_agent).retry_config, 1)).to eq(1.0)
+  end
+
+  it "retries through an extreme base delay when the policy supplies a safe cap" do
+    attempts = 0
+    workflow = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+      transition :work, from: :idle, to: :done do
+        execute :spec_retry_agent
+        retry_on Smith::AgentError, attempts: 2, backoff: Float::MAX, max_delay: 0.25
+      end
+    end.new
+    workflow.define_singleton_method(:execute_transition_body) do |_transition, **|
+      attempts += 1
+      raise Smith::AgentError, "temporary" if attempts == 1
+
+      :recovered
+    end
+    allow(workflow).to receive(:sleep)
+
+    result = workflow.run!
+
+    expect(result.output).to eq(:recovered)
+    expect(attempts).to eq(2)
+    expect(workflow).to have_received(:sleep).with(0.25)
+  end
+
+  it "revalidates retry policy before transition work begins" do
+    original_limit = Smith.config.retry_attempt_limit
+    calls = 0
+    workflow = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+      transition :call_agent, from: :idle, to: :done do
+        compute { calls += 1 }
+        retry_on attempts: 3
+      end
+    end.new
+    Smith.config.retry_attempt_limit = 2
+
+    expect { workflow.run! }.to raise_error(ArgumentError, /attempts must not exceed 2/)
+    expect(calls).to eq(0)
+  ensure
+    Smith.config.retry_attempt_limit = original_limit
   end
 
   it "counts failed billable retry attempts against workflow budget" do

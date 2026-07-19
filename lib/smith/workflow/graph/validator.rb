@@ -35,7 +35,7 @@ module Smith
         end
 
         def reachable_transition_names
-          @reachable_transition_names ||= Reachability.new(graph).transition_names
+          @reachable_transition_names ||= graph.reachable_transitions.map(&:name).freeze
         end
 
         def status_for(diagnostics)

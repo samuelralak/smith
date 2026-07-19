@@ -3,17 +3,26 @@
 module Smith
   class Workflow
     class Parallel
-      CancellationSignal = Struct.new(:cancelled, :mutex) do
+      class CancellationSignal
         def initialize
-          super(false, Mutex.new)
+          @cancelled = false
+          @reason = nil
+          @mutex = Mutex.new
         end
 
-        def cancel!
-          mutex.synchronize { self.cancelled = true }
+        def cancel!(error = nil)
+          @mutex.synchronize do
+            @reason ||= error
+            @cancelled = true
+          end
         end
 
         def cancelled?
-          mutex.synchronize { cancelled }
+          @mutex.synchronize { @cancelled }
+        end
+
+        def reason
+          @mutex.synchronize { @reason }
         end
       end
     end

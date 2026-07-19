@@ -9,11 +9,13 @@ module Smith
         def initialize(graph, reachable_transition_names)
           @graph = graph
           @reachable_transition_names = reachable_transition_names
+          @reachable_transition_index = reachable_transition_names.to_h { [_1, true] }.freeze
+          @control_marker_index = control_marker_index
         end
 
         def to_a
           (graph.transitions.keys - reachable_transition_names).filter_map do |transition_name|
-            next if auto_fail_transition?(transition_name)
+            next if auto_fail_transition?(transition_name) || control_marker?(transition_name)
 
             diagnostic_for(transition_name)
           end
@@ -23,6 +25,20 @@ module Smith
 
         def auto_fail_transition?(transition_name)
           transition_name == :fail && graph.transitions[transition_name]&.from.nil?
+        end
+
+        def control_marker?(transition_name)
+          @control_marker_index.key?(transition_name)
+        end
+
+        def control_marker_index
+          successors = ExecutionSuccessors.new(graph)
+          graph.transitions.each_value.with_object({}) do |transition, index|
+            next unless @reachable_transition_index.key?(transition.name)
+
+            marker = successors.failure_control_marker(transition)
+            index[marker.name] = true if marker
+          end.freeze
         end
 
         def diagnostic_for(transition_name)

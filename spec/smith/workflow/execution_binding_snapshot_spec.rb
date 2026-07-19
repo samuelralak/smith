@@ -107,6 +107,25 @@ RSpec.describe Smith::Workflow::SplitStepPersistence::ExecutionBindingSnapshot d
     end.to raise_error(Smith::WorkflowError, /nested workflow definition changed/)
   end
 
+  it "rejects nested workflow initial-state mutation after authorization" do
+    child = Class.new(Smith::Workflow)
+    child.initial_state(:start)
+    child.state(:done)
+    child.transition(:answer, from: :start, to: :done) { compute { "original" } }
+    parent = Class.new(Smith::Workflow) do
+      initial_state :start
+      state :done
+      transition(:child, from: :start, to: :done) { workflow child }
+    end
+    snapshot = described_class.capture(parent.find_transition(:child), workflow_class: parent)
+
+    child.initial_state(:changed)
+
+    expect do
+      snapshot.verify_workflow!(child)
+    end.to raise_error(Smith::WorkflowError, /nested workflow definition changed/)
+  end
+
   it "captures composite agent bindings from one registry epoch" do
     original_a = agent_class
     original_b = agent_class

@@ -946,13 +946,15 @@ RSpec.describe "Smith::Workflow run result contract" do
       observed << [:reserve, key, amount]
       original.call(key, amount)
     end
-    allow(ledger).to receive(:reconcile!).and_wrap_original do |original, key, reserved_amount, actual_amount|
+    allow(ledger).to receive(:reconcile!).and_wrap_original do |original, reservation, actual_amount|
+      key, reserved_amount = reservation.amounts.first
       observed << [:reconcile, key, reserved_amount, actual_amount]
-      original.call(key, reserved_amount, actual_amount)
+      original.call(reservation, actual_amount)
     end
-    allow(ledger).to receive(:release!).and_wrap_original do |original, key, amount|
+    allow(ledger).to receive(:release!).and_wrap_original do |original, reservation|
+      key, amount = reservation.amounts.first
       observed << [:release, key, amount]
-      original.call(key, amount)
+      original.call(reservation)
     end
 
     result = workflow.run!
@@ -1005,13 +1007,15 @@ RSpec.describe "Smith::Workflow run result contract" do
       observed << [:reserve, key, amount]
       original.call(key, amount)
     end
-    allow(ledger).to receive(:reconcile!).and_wrap_original do |original, key, reserved_amount, actual_amount|
+    allow(ledger).to receive(:reconcile!).and_wrap_original do |original, reservation, actual_amount|
+      key, reserved_amount = reservation.amounts.first
       observed << [:reconcile, key, reserved_amount, actual_amount]
-      original.call(key, reserved_amount, actual_amount)
+      original.call(reservation, actual_amount)
     end
-    allow(ledger).to receive(:release!).and_wrap_original do |original, key, amount|
+    allow(ledger).to receive(:release!).and_wrap_original do |original, reservation|
+      key, amount = reservation.amounts.first
       observed << [:release, key, amount]
-      original.call(key, amount)
+      original.call(reservation)
     end
 
     result = workflow.run!
@@ -1068,13 +1072,15 @@ RSpec.describe "Smith::Workflow run result contract" do
       observed << [:reserve, key, amount]
       original.call(key, amount)
     end
-    allow(ledger).to receive(:reconcile!).and_wrap_original do |original, key, reserved_amount, actual_amount|
+    allow(ledger).to receive(:reconcile!).and_wrap_original do |original, reservation, actual_amount|
+      key, reserved_amount = reservation.amounts.first
       observed << [:reconcile, key, reserved_amount, actual_amount]
-      original.call(key, reserved_amount, actual_amount)
+      original.call(reservation, actual_amount)
     end
-    allow(ledger).to receive(:release!).and_wrap_original do |original, key, amount|
+    allow(ledger).to receive(:release!).and_wrap_original do |original, reservation|
+      key, amount = reservation.amounts.first
       observed << [:release, key, amount]
-      original.call(key, amount)
+      original.call(reservation)
     end
 
     result = workflow.run!
@@ -1135,9 +1141,10 @@ RSpec.describe "Smith::Workflow run result contract" do
       observed << [:reserve, key, amount]
       original.call(key, amount)
     end
-    allow(ledger).to receive(:reconcile!).and_wrap_original do |original, key, reserved_amount, actual_amount|
+    allow(ledger).to receive(:reconcile!).and_wrap_original do |original, reservation, actual_amount|
+      key, reserved_amount = reservation.amounts.first
       observed << [:reconcile, key, reserved_amount, actual_amount]
-      original.call(key, reserved_amount, actual_amount)
+      original.call(reservation, actual_amount)
     end
 
     result = workflow.run!

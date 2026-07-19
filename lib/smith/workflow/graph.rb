@@ -35,6 +35,14 @@ module Smith
         @transitions_by_state.fetch(state, EMPTY_TRANSITIONS)
       end
 
+      def first_transition_from(state)
+        transitions_from(state).first
+      end
+
+      def reachable_transitions
+        @reachable_transitions ||= Reachability.new(self).each_transition.to_a.freeze
+      end
+
       def state?(state)
         @state_index.key?(state)
       end
@@ -80,6 +88,8 @@ require_relative "graph/identifier_projection"
 require_relative "graph/transition_contract"
 require_relative "graph/diagnostic"
 require_relative "graph/state_diagnostics"
+require_relative "graph/targets"
+require_relative "graph/execution_successors"
 require_relative "graph/reachability"
 require_relative "graph/reachability_diagnostics"
 require_relative "graph/metrics"
@@ -89,11 +99,11 @@ require_relative "graph/runtime_binding_diagnostic_builder"
 require_relative "graph/runtime_binding_diagnostics"
 require_relative "graph/runtime_readiness_report"
 require_relative "graph/runtime_readiness_metrics"
-require_relative "graph/targets"
 require_relative "graph/fanout_contract"
 require_relative "graph/optimization_contract"
 require_relative "graph/orchestration_contract"
 require_relative "graph/transition_snapshot"
+require_relative "graph/retry_policy_diagnostic"
 require_relative "graph/transition_diagnostics"
 require_relative "graph/validator"
 require_relative "graph/runtime_readiness"

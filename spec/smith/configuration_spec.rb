@@ -21,6 +21,10 @@ RSpec.describe "Smith configuration contract" do
       artifact_tenant_isolation=
       persistence_adapter=
       persistence_options=
+      parallel_branch_limit=
+      parallel_concurrency=
+      parallel_nesting_limit=
+      retry_attempt_limit=
       trace_adapter=
       trace_transitions=
       trace_tool_calls=
@@ -33,6 +37,21 @@ RSpec.describe "Smith configuration contract" do
     ].each do |method_name|
       expect(yielded_config).to respond_to(method_name), "expected config to implement ##{method_name}"
     end
+  end
+
+  it "provides validated generic runtime resource bounds" do
+    expect(Smith.config.parallel_branch_limit).to eq(1_000)
+    expect(Smith.config.parallel_concurrency).to eq(8)
+    expect(Smith.config.parallel_nesting_limit).to eq(64)
+    expect(Smith.config.retry_attempt_limit).to eq(100)
+
+    %i[parallel_branch_limit parallel_concurrency parallel_nesting_limit retry_attempt_limit].each do |setting|
+      expect { Smith.config.public_send(:"#{setting}=", 0) }
+        .to raise_error(ArgumentError, /must be a positive integer/)
+    end
+
+    expect { Smith.config.parallel_nesting_limit = 257 }
+      .to raise_error(ArgumentError, /no greater than 256/)
   end
 
   it "keeps trace content opt-in by default" do

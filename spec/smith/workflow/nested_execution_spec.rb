@@ -240,9 +240,10 @@ RSpec.describe "Smith::Workflow nested execution" do
     observed = Queue.new
     ledger = parent.ledger
     original_reconcile = ledger.method(:reconcile!)
-    ledger.define_singleton_method(:reconcile!) do |key, ra, aa|
-      observed << [:reconcile, key, ra, aa]
-      original_reconcile.call(key, ra, aa)
+    ledger.define_singleton_method(:reconcile!) do |reservation, actual_amount|
+      key, reserved_amount = reservation.amounts.first
+      observed << [:reconcile, key, reserved_amount, actual_amount]
+      original_reconcile.call(reservation, actual_amount)
     end
 
     result = parent.run!

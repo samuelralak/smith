@@ -15,8 +15,7 @@ module Smith
       def reserve_branch_budget(ledger, branch_estimates:)
         return nil unless ledger && branch_estimates
 
-        branch_estimates.each { |dim, amount| ledger.reserve!(dim, amount) }
-        branch_estimates
+        reserve_estimates!(ledger, branch_estimates)
       end
 
       def compute_branch_estimates(ledger, branch_count:, agent_budget: nil)
@@ -29,13 +28,16 @@ module Smith
         end
       end
 
-      def reconcile_branch_budget(ledger, estimates, agent_result: nil)
-        return unless ledger && estimates
+      def reconcile_branch_budget(ledger, reservation, agent_result: nil)
+        return unless ledger && reservation
 
         actuals = extract_actuals(agent_results_for_settlement(agent_result))
-        estimates.each do |dim, amt|
-          ledger.reconcile!(dim, amt, actual_for_dimension(dim, actuals[:tokens], actuals[:cost]))
+        settlement = reservation.amounts.to_h do |dimension, _amount|
+          [dimension, actual_for_dimension(dimension, actuals[:tokens], actuals[:cost])]
         end
+        return ledger.reconcile_many!(reservation, actual: settlement) if settlement.length > 1
+
+        ledger.reconcile!(reservation, settlement.values.first)
       end
 
       def extract_actuals(agent_results)
@@ -66,10 +68,12 @@ module Smith
         0
       end
 
-      def release_branch_budget(ledger, estimates)
-        return unless ledger && estimates
+      def release_branch_budget(ledger, reservation)
+        return unless ledger && reservation
 
-        estimates.each { |dim, amount| ledger.release!(dim, amount) }
+        return ledger.release_many!(reservation) if reservation.amounts.length > 1
+
+        ledger.release!(reservation)
       end
 
       def settle_budget_on_failure(ledger, estimates, agent_result)
@@ -91,8 +95,14 @@ module Smith
           est[dim] = cap ? [remaining, cap].min : remaining
         end
 
-        estimates.each { |dim, amount| ledger.reserve!(dim, amount) }
-        estimates
+        reserve_estimates!(ledger, estimates)
+      end
+
+      def reserve_estimates!(ledger, estimates)
+        return ledger.reserve_many!(estimates) if estimates.length > 1
+
+        dimension, amount = estimates.first
+        ledger.reserve!(dimension, amount)
       end
 
       def finalize_branch(transition, index, result, ledger, reserved)

@@ -6,7 +6,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-19
+
+This release contains intentional pre-1.0 public contract tightening and is a
+minor release rather than a `0.4.x` patch.
+
 ### Added
+
+- Add configurable per-execution parallel branch/concurrency limits and a
+  shared finite exponential-backoff contract for workflow and persistence
+  retries.
+- Keep nested fan-out inside one bounded execution context across Fiber
+  boundaries, inherit outer cancellation, use only idle top-level workers, and
+  drain already-running branch work rather than detaching work or forcibly
+  killing threads with live resources. Add a configurable nesting limit,
+  hard-capped at 256, so recursive host composition fails before Ruby stack
+  exhaustion.
 
 - Add bounded host-coordinated session-message admission through
   `Workflow#append_session_messages!`. Smith owns a canonical immutable copy,
@@ -56,6 +71,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Changed
 
+- Make budget settlement receipt-based and one-shot. Reservation, reconciliation,
+  and release now fail closed on cross-ledger, replayed, unknown-dimension, or
+  amount-only settlement and publish aggregate state atomically. This tightens
+  the pre-1.0 ledger API and requires the next minor release.
+- Define budget scalar inputs as finite, non-negative `Integer` or `Float`
+  values and use exact internal decimal arithmetic so ordinary Float budgets do
+  not strand receipts or reject mathematically valid capacity. Ledger snapshots
+  remain JSON-safe numerics. This intentionally rejects opaque custom numeric
+  objects and non-JSON-safe numeric types at the boundary. Budget arithmetic is
+  isolated from and restores any host-configured `BigDecimal` precision limit;
+  `bigdecimal` is now an explicit runtime dependency.
+- Reject repeated or mixed primary transition declarations instead of silently
+  replacing an earlier execution primitive.
+- Treat named transition target-origin mismatches as graph errors rather than
+  warnings because runtime cannot execute the declared route from that state.
+- Constrain workflow topology identifiers to non-blank String or Symbol values,
+  matching runtime lookup, event, persistence, and graph-inspection semantics.
+- Reject oversized static fan-out declarations, non-finite or unschedulable
+  retry delays, and retry attempt counts above the configurable default limit
+  of 100 before executable work begins. This intentionally tightens previously
+  unbounded pre-1.0 declarations; hosts that require a higher finite attempt
+  bound must configure it before loading workflow classes.
+
 - Restore persisted workflow state without mutating caller-owned nested outcome
   data while preserving Smith's symbolized runtime outcome contract.
 - Reject strict in-progress payloads before schema migration so a migration
@@ -89,9 +127,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   authority is limited to the root execution thread and revoked when that
   execution closes, even when a host retains a child workflow instance.
 - Own String workflow identifiers at declaration time and keep graph snapshots
-  isolated from mutable caller aliases. Arbitrary host topology objects remain
-  unfrozen and are represented by graph-local immutable identity references, so
-  caller mutation cannot corrupt graph keys or indexes. The authorized
+  isolated from mutable caller aliases. Reject other topology object types at
+  the DSL boundary so graph lookup, event, and persistence semantics remain
+  consistent. The authorized
   completion and failure boundaries bind Smith's implementation directly so
   subclass method-name collisions cannot bypass typed result capture.
 - Capture exact direct, fan-out, optimizer, orchestrator, and reachable nested
@@ -130,7 +168,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Verification
 
-- Default suite: 1,194 examples, 0 failures.
+- Default suite: 1,304 examples, 0 failures on the final tree.
+- Runtime-hardening practical suite: 551 scenarios and 33,722 assertions across
+  graph reachability, retry/backoff, nested parallel execution, cancellation,
+  receipt-based budgets, hostile decimal precision, and asynchronous thread
+  interruption.
+- The built gem and its declared dependency set loaded under Ruby 3.2.2 and
+  Ruby 3.2.8; each runtime passed the same 551-scenario practical suite.
+- Downstream verification against the local checkout: Smith Runtime passed
+  1,188 runs and 6,287 assertions with 35 skips, plus 20 practical scenarios;
+  Smith Studio passed 1,848 runs and 13,851 assertions with one skip, plus 20
+  practical scenarios.
 - Message-admission and restore-input suite: 30 examples, 0 failures. A
   44-scenario public-API matrix covered canonicalization, alias isolation,
   bounded rejection, lifecycle contention, persistence round trips, and a

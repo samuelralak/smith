@@ -15,7 +15,7 @@ Style/Documentation:
 Metrics/BlockLength:
   Exclude:
     - "spec/**/*"
-    - "smith.gemspec"
+    - "smith-agents.gemspec"
 
 Metrics/MethodLength:
   Max: 20

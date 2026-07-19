@@ -9,6 +9,7 @@ module Smith
         config = transition.retry_config
         return run_guarded_step(transition) unless config
 
+        schedule = retry_schedule(config)
         attempt = 0
         begin
           attempt += 1
@@ -16,7 +17,7 @@ module Smith
         rescue StandardError => e
           raise unless retry_transition_error?(config, e, attempt)
 
-          sleep_for_retry(config, attempt)
+          sleep_for_retry(schedule, attempt)
           retry
         end
       end
@@ -32,20 +33,28 @@ module Smith
         end
       end
 
-      def sleep_for_retry(config, failed_attempt)
-        delay = retry_delay(config, failed_attempt)
+      def sleep_for_retry(schedule, failed_attempt)
+        delay = retry_delay(schedule, failed_attempt)
         sleep(delay) if delay.positive?
       end
 
-      def retry_delay(config, failed_attempt)
-        delay = config.fetch(:backoff) * (2**[failed_attempt - 1, 0].max)
-        max_delay = config[:max_delay]
-        delay = [delay, max_delay].min if max_delay
+      def retry_delay(config_or_schedule, failed_attempt)
+        schedule = if config_or_schedule.is_a?(ExponentialBackoff)
+                     config_or_schedule
+                   else
+                     retry_schedule(config_or_schedule)
+                   end
+        schedule.delay(failed_attempt, random: method(:rand))
+      end
 
-        jitter = config.fetch(:jitter)
-        delay += rand * jitter if jitter.positive?
-        delay = [delay, max_delay].min if max_delay
-        delay
+      def retry_schedule(config)
+        ExponentialBackoff.new(
+          attempts: config.fetch(:attempts),
+          base_delay: config.fetch(:backoff),
+          max_delay: config[:max_delay],
+          jitter: config.fetch(:jitter),
+          delay_label: "backoff"
+        )
       end
     end
   end

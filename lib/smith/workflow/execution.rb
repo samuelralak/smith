@@ -46,6 +46,7 @@ module Smith
       end
 
       def run_guarded_step(transition)
+        @resolved_parallel_branch_count = preflight_branch_count(transition)
         return dispatch_step(transition) if transition.deterministic?
         return run_guarded_fanout_step(transition) if transition.fanout?
 
@@ -61,6 +62,14 @@ module Smith
         validate_data_volume!(output, agent_class)
         run_output_guardrails(output, agent_class)
         resolve_router_output(transition, output)
+      ensure
+        @resolved_parallel_branch_count = nil
+      end
+
+      def preflight_branch_count(transition)
+        return Parallel.validate_branch_count!(transition.fanout_config.fetch(:branches).length) if transition.fanout?
+
+        Parallel.resolve_branch_count(transition, @context) if transition.parallel?
       end
 
       def resolve_router_output(transition, output)

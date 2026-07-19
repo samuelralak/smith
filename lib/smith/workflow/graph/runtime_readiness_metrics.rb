@@ -75,11 +75,11 @@ module Smith
         end
 
         def fanout_transitions
-          @fanout_transitions ||= graph.transitions.values.select(&:fanout?)
+          @fanout_transitions ||= graph.reachable_transitions.select(&:fanout?)
         end
 
         def direct_nested_workflow_count
-          graph.transitions.values.count(&:nested?)
+          graph.reachable_transitions.count(&:nested?)
         end
       end
     end

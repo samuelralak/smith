@@ -37,7 +37,9 @@ Current contract coverage exists for:
 - guardrail base DSL, attachment points, and built-in URL verifier namespace
 - guardrail runtime ordering, blocking, and failure-routing surface
 - event bus surface, filtering, scoped subscriptions, typed event schema declaration with runtime correlation values, subscription lifecycle behavior, direct dispatch ordering/rescue semantics, and typed workflow success-only event emission surface
-- budget ledger surface with denied-reservation, lower-actual reconciliation, and multi-dimension behavior
+- budget ledger surface with denied-reservation, lower-actual reconciliation,
+  multi-dimension behavior, exact decimal accounting, and isolation from a
+  host-configured `BigDecimal` precision limit
 - context manager DSL, stored runtime configuration, subclass inheritance behavior, persisted-key serialization contract, and workflow seed-message initialization surface
 - tool base class, policy DSL, runtime execute-to-perform delegation, capability metadata declaration, built-in tool namespaces, and pre-dispatch approval/authorization failure policy boundary
 - trace adapter namespaces, runtime transition/tool emission surface, and memory-adapter content policy behavior
@@ -796,7 +798,7 @@ Documented contracts covered:
   - undefined `from` and `to` states
   - unresolved `on_success` and `on_failure` targets
   - unresolved router route/fallback targets
-  - warning-only target state mismatches
+  - error-level target state mismatches that would fail at runtime
   - warning-only unreachable transitions
 - metrics cover:
   - state count
@@ -843,8 +845,9 @@ Notes:
 - Graph inspection is static and diagnostic-only.
 - Runtime readiness is also static and diagnostic-only.
 - This spec intentionally does not introduce host-owned progress projection,
-  durability, retry policy, provider calls, tool execution, or recovery
-  semantics into Smith core.
+  durable retry scheduling, provider calls, tool execution, or recovery
+  semantics into Smith core. Static retry-policy bounds remain part of runtime
+  readiness diagnostics.
 - Runtime loud-failure behavior for unresolved named transitions remains covered in deterministic-step and run-result specs.
 
 ### `spec/smith/workflow/durability_spec.rb`
@@ -1921,9 +1924,13 @@ Architecture basis:
 Documented contracts covered:
 
 - `Smith::Budget::Ledger`
+- `Smith::Budget::Reservation`
 - `#reserve!`
+- `#reserve_many!`
 - `#reconcile!`
+- `#reconcile_many!`
 - `#release!`
+- `#release_many!`
 - `Smith::BudgetExceeded`
 
 Behavior currently asserted:
@@ -1934,6 +1941,13 @@ Behavior currently asserted:
 - denied reservation leaves available capacity unchanged
 - lower actual usage frees the unused reserved portion
 - dimensions are tracked independently
+- reservation receipts are ledger-owned, one-shot, and identity-fenced
+- multi-dimensional reservation, reconciliation, and release publish atomically
+- finite non-negative Integer and Float inputs use exact internal decimal
+  accounting while public and persisted ledger snapshots remain JSON-safe
+- custom Numeric objects and non-JSON-safe numeric classes fail before mutation
+- unknown dimensions and non-finite arithmetic results fail before state changes
+- mutable caller identifiers and numeric objects are not retained directly
 
 Notes:
 
@@ -2919,6 +2933,12 @@ Documented contracts covered:
 
 Notes:
 
+- retry policies are validated before adapter work begins
+- attempts are positive and bounded by `Smith.config.retry_attempt_limit`
+- delay controls are finite, real, and non-negative
+- every realizable delay is bounded by Ruby's supported sleep interval
+- delay calculation is constant-space and `O(1)` per attempt, with overflow-safe
+  capping before exponentiation
 - Backoff is exponential capped by `policy.max_delay`: delay = min(base * 2^attempt, max_delay).
 
 ## Section 9: Tool Result Capture

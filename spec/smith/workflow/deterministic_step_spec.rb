@@ -273,6 +273,19 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
         end
       }.to raise_error(Smith::WorkflowError, /run requires a block/)
     end
+
+    it "detects deterministic route duplicates in normalized linear time" do
+      expect do
+        with_stubbed_class("SpecDuplicateNormalizedRoutesWorkflow", workflow_class) do
+          initial_state :idle
+          state :done
+
+          transition :check, from: :idle, to: :done do
+            compute(routes: %w[finish finish]) { |step| step.read_context(:noop) }
+          end
+        end
+      end.to raise_error(Smith::WorkflowError, /deterministic route "finish" is duplicated/)
+    end
   end
 
   # ---------------------------------------------------------------------------

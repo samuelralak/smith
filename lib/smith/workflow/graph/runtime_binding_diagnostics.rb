@@ -17,9 +17,9 @@ module Smith
         end
 
         def agent_bindings
-          @agent_bindings ||= graph.transitions.values.flat_map do |transition|
+          @agent_bindings ||= graph.reachable_transitions.flat_map do |transition|
             bindings_for_transition(transition)
-          end
+          end.freeze
         end
 
         private
