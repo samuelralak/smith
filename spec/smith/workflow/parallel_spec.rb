@@ -14,6 +14,11 @@ RSpec.describe "Smith::Workflow parallel execution" do
       register_as :spec_parallel_agent
     end
   end
+  let!(:nested_fanout_agent) do
+    with_stubbed_class("SpecParallelNestedFanoutAgent", agent_class) do
+      register_as :spec_parallel_nested_fanout_agent
+    end
+  end
 
   it "returns one branch result per configured branch when a parallel transition succeeds" do
     workflow = with_stubbed_class("SpecParallelWorkflow", workflow_class) do
@@ -93,6 +98,218 @@ RSpec.describe "Smith::Workflow parallel execution" do
     expect(outer_workflow.run!).to be_done
     expect(inner_bindings).to eq([inner_agent])
     expect(inner_bindings).not_to include(outer_agent)
+  end
+
+  it "restores outer execution context after nested branch work" do
+    original = Smith::Workflow.const_get(:ThreadContextSnapshot, false).new
+    outer = {
+      guardrails: Object.new,
+      deadline: Time.now.utc + 60,
+      ledger: Object.new,
+      allowance: { remaining: 4 },
+      collector: proc {},
+      artifacts: Object.new
+    }
+    Smith::Tool.current_guardrails = outer[:guardrails]
+    Smith::Tool.current_deadline = outer[:deadline]
+    Smith::Tool.current_ledger = outer[:ledger]
+    Smith::Tool.current_tool_call_allowance = outer[:allowance]
+    Smith::Tool.current_tool_result_collector = outer[:collector]
+    Smith.scoped_artifacts = outer[:artifacts]
+    env = Smith::Workflow::BranchEnv.new(deadline: Time.now.utc + 10)
+    workflow = Class.new(workflow_class) do
+      initial_state :idle
+    end.new
+
+    workflow.send(:with_branch_context, env, Object.new) { nil }
+
+    expect(Smith::Tool.current_guardrails).to equal(outer[:guardrails])
+    expect(Smith::Tool.current_deadline).to equal(outer[:deadline])
+    expect(Smith::Tool.current_ledger).to equal(outer[:ledger])
+    expect(Smith::Tool.current_tool_call_allowance).to equal(outer[:allowance])
+    expect(Smith::Tool.current_tool_result_collector).to equal(outer[:collector])
+    expect(Smith.scoped_artifacts).to equal(outer[:artifacts])
+  ensure
+    original&.restore!
+  end
+
+  it "preserves the public BranchEnv value-object interface" do
+    deadline = Time.now.utc + 10
+    env = Smith::Workflow::BranchEnv.new(prepared_input: "input", deadline:)
+
+    expect(env.members).to eq(
+      %i[prepared_input guardrail_sources scoped_store branch_estimates deadline agent_class]
+    )
+    expect(env.to_h).to include(prepared_input: "input", deadline:)
+    expect(env).to eq(Smith::Workflow::BranchEnv.new(prepared_input: "input", deadline:))
+    expect { env.deadline = nil }.to change(env, :deadline).from(deadline).to(nil)
+  end
+
+  it "preserves the public BranchEnv thread lifecycle behavior" do
+    guardrails = Object.new
+    deadline = Time.now.utc + 10
+    artifacts = Object.new
+    env = Smith::Workflow::BranchEnv.new(
+      guardrail_sources: guardrails,
+      deadline:,
+      scoped_store: artifacts
+    )
+
+    expect(env.setup_thread).to equal(artifacts)
+    expect(Smith::Tool.current_guardrails).to equal(guardrails)
+    expect(Smith::Tool.current_deadline).to equal(deadline)
+    expect(Smith.scoped_artifacts).to equal(artifacts)
+    expect(env.teardown_thread).to be_nil
+    expect(Smith::Tool.current_guardrails).to be_nil
+    expect(Smith::Tool.current_deadline).to be_nil
+    expect(Smith.scoped_artifacts).to be_nil
+  end
+
+  it "preserves ordinary workflow branch extension points" do
+    calls = Queue.new
+    base = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+      transition :finish, from: :idle, to: :done do
+        execute :spec_parallel_agent, parallel: true, count: 2
+      end
+    end
+    workflow = Class.new(base) do
+      define_method(:run_branch) do |*arguments|
+        calls << :called
+        super(*arguments)
+      end
+      private :run_branch
+    end.new
+
+    expect(workflow.run!).to be_done
+    expect(calls.size).to eq(2)
+  end
+
+  it "restores complete branch context across nested parallel and fan-out workflows" do
+    capture = lambda do
+      {
+        guardrails: Smith::Tool.current_guardrails,
+        deadline: Smith::Tool.current_deadline,
+        ledger: Smith::Tool.current_ledger,
+        allowance: Smith::Tool.current_tool_call_allowance,
+        collector: Smith::Tool.current_tool_result_collector,
+        artifacts: Smith.scoped_artifacts,
+        call_deadline: Thread.current[:smith_call_deadline],
+        call_ledger: Thread.current[:smith_call_ledger],
+        failed_results: Thread.current[:smith_failed_agent_results],
+        last_result: Thread.current[:smith_last_agent_result],
+        parallel_binding: Thread.current[:smith_parallel_agent_binding]
+      }
+    end
+    inner_parallel = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+      transition :finish, from: :idle, to: :done do
+        execute :spec_parallel_agent, parallel: true, count: 1
+      end
+    end
+    inner_fanout = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+      transition :finish, from: :idle, to: :done do
+        fan_out branches: {
+          first: :spec_parallel_agent,
+          second: :spec_parallel_nested_fanout_agent
+        }
+      end
+    end
+
+    [inner_parallel, inner_fanout].each do |inner|
+      observations = Queue.new
+      outer = Class.new(workflow_class) do
+        initial_state :idle
+        state :done
+        transition :finish, from: :idle, to: :done do
+          execute :spec_parallel_agent, parallel: true, count: 2
+        end
+      end.new
+      outer.define_singleton_method(:execute_transition_body) do |_transition, prepared_input: nil|
+        before = capture.call
+        inner.new.run!
+        observations << [before, capture.call]
+        prepared_input
+      end
+
+      expect(outer.run!).to be_done
+      2.times do
+        before, after = observations.pop
+        expect(after).to eq(before)
+      end
+    end
+  end
+
+  it "restores worker context after branch failure and cooperative cancellation" do
+    capture = lambda do
+      [
+        Smith::Tool.current_guardrails,
+        Smith::Tool.current_deadline,
+        Smith::Tool.current_ledger,
+        Smith::Tool.current_tool_call_allowance,
+        Smith::Tool.current_tool_result_collector,
+        Smith.scoped_artifacts,
+        Thread.current[:smith_call_deadline],
+        Thread.current[:smith_call_ledger],
+        Thread.current[:smith_failed_agent_results],
+        Thread.current[:smith_last_agent_result],
+        Thread.current[:smith_parallel_agent_binding]
+      ]
+    end
+    install = lambda do
+      Smith::Tool.current_guardrails = Object.new
+      Smith::Tool.current_deadline = Time.now.utc + 60
+      Smith::Tool.current_ledger = Object.new
+      Smith::Tool.current_tool_call_allowance = { remaining: 7 }
+      Smith::Tool.current_tool_result_collector = proc {}
+      Smith.scoped_artifacts = Object.new
+      Thread.current[:smith_call_deadline] = Time.now.utc + 30
+      Thread.current[:smith_call_ledger] = Object.new
+      Thread.current[:smith_failed_agent_results] = [Object.new]
+      Thread.current[:smith_last_agent_result] = Object.new
+      Thread.current[:smith_parallel_agent_binding] = Object.new
+    end
+    observations = Queue.new
+    attempts = 0
+    mutex = Mutex.new
+    started = Concurrent::CountDownLatch.new(2)
+    base = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+      transition :finish, from: :idle, to: :done do
+        execute :spec_parallel_agent, parallel: true, count: 2
+        on_failure :fail
+      end
+    end
+    workflow = Class.new(base) do
+      define_method(:run_branch) do |*arguments|
+        install.call
+        before = capture.call
+        super(*arguments)
+      ensure
+        observations << [before, capture.call]
+      end
+    end.new
+    workflow.define_singleton_method(:guarded_branch_call) do |_transition, _env, signal|
+      attempt = mutex.synchronize { attempts += 1 }
+      started.count_down
+      started.wait(1)
+      raise Smith::AgentError, "initiating failure" if attempt == 1
+
+      sleep 0.05
+      check_cancellation!(signal)
+    end
+
+    expect(workflow.run!.state).to eq(:failed)
+    2.times do
+      before, after = observations.pop
+      expect(after).to eq(before)
+    end
   end
 
   it "rejects non-positive parallel branch counts before executing branches" do

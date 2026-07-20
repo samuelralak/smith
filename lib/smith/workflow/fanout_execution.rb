@@ -35,29 +35,32 @@ module Smith
         )
 
         branch_calls = branches.map do |branch_key, agent_name|
-          proc do |signal|
-            run_fanout_branch(branch_key, agent_name, branch_agent_classes.fetch(branch_key), env, signal)
-          end
+          PreparedBranchExecution.instance_method(:prepared_branch).bind_call(
+            self,
+            FanoutExecution.instance_method(:run_fanout_branch),
+            branch_key,
+            agent_name,
+            branch_agent_classes.fetch(branch_key),
+            env
+          )
         end
 
         Parallel.execute(branches: branch_calls)
       end
 
       def run_fanout_branch(branch_key, agent_name, agent_class, env, signal)
-        setup_fanout_branch_context(env, @ledger, agent_class)
-
-        with_agent_context(agent_class) do
-          branch_ledger = effective_call_ledger
-          reserved = reserve_fanout_branch_call(branch_ledger, env.branch_estimates[branch_key], agent_class)
-          begin
-            result = guarded_fanout_branch_call(agent_class, env, signal)
-            finalize_named_branch(branch_key, agent_name, result, branch_ledger, reserved).tap { reserved = nil }
-          ensure
-            settle_budget_on_failure(branch_ledger, reserved, Thread.current[:smith_last_agent_result]) if reserved
+        with_branch_context(env, @ledger, agent_class:) do
+          with_agent_context(agent_class) do
+            branch_ledger = effective_call_ledger
+            reserved = reserve_fanout_branch_call(branch_ledger, env.branch_estimates[branch_key], agent_class)
+            begin
+              result = guarded_fanout_branch_call(agent_class, env, signal)
+              finalize_named_branch(branch_key, agent_name, result, branch_ledger, reserved).tap { reserved = nil }
+            ensure
+              settle_budget_on_failure(branch_ledger, reserved, Thread.current[:smith_last_agent_result]) if reserved
+            end
           end
         end
-      ensure
-        teardown_branch_context(env)
       end
 
       def guarded_fanout_branch_call(agent_class, env, signal)
@@ -89,9 +92,7 @@ module Smith
       end
 
       def run_fanout_agent_input_guardrails(branch_agent_classes)
-        branch_agent_classes.each_value do |agent_class|
-          run_agent_input_guardrails(agent_class)
-        end
+        branch_agent_classes.each_value { |agent_class| run_agent_input_guardrails(agent_class) }
       end
 
       def fanout_branch_estimates(branches, branch_agent_classes)

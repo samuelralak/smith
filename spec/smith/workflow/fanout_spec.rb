@@ -137,6 +137,121 @@ RSpec.describe "Smith::Workflow heterogeneous fan-out" do
     )
   end
 
+  it "preserves ordinary workflow fanout extension points" do
+    calls = Queue.new
+    base = Class.new(workflow_class) do
+      initial_state :idle
+      state :reviewed
+      transition :review, from: :idle, to: :reviewed do
+        fan_out branches: {
+          static: :spec_fanout_static_agent,
+          security: :spec_fanout_security_agent
+        }
+      end
+    end
+    workflow = Class.new(base) do
+      define_method(:run_fanout_branch) do |*arguments|
+        calls << :called
+        super(*arguments)
+      end
+      private :run_fanout_branch
+    end.new
+
+    expect(workflow.run!.state).to eq(:reviewed)
+    expect(calls.size).to eq(2)
+  end
+
+  it "preserves bindings installed by fanout setup extensions" do
+    marker = Object.new
+    observed = Queue.new
+    base = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+      transition :review, from: :idle, to: :done do
+        fan_out branches: { static: :spec_fanout_static_agent }
+      end
+    end
+    extended = Class.new(base) do
+      define_method(:setup_fanout_branch_context) do |environment, ledger, agent|
+        super(environment, ledger, agent)
+        Thread.current[:smith_parallel_agent_binding] = marker
+      end
+
+      define_method(:guarded_fanout_branch_call) do |*arguments|
+        observed << Thread.current[:smith_parallel_agent_binding]
+        super(*arguments)
+      end
+
+      private :setup_fanout_branch_context, :guarded_fanout_branch_call
+    end
+
+    expect(extended.new.run!).to be_done
+    expect(observed.pop).to equal(marker)
+  end
+
+  it "restores complete branch context across nested parallel and fan-out workflows" do
+    capture = lambda do
+      {
+        guardrails: Smith::Tool.current_guardrails,
+        deadline: Smith::Tool.current_deadline,
+        ledger: Smith::Tool.current_ledger,
+        allowance: Smith::Tool.current_tool_call_allowance,
+        collector: Smith::Tool.current_tool_result_collector,
+        artifacts: Smith.scoped_artifacts,
+        call_deadline: Thread.current[:smith_call_deadline],
+        call_ledger: Thread.current[:smith_call_ledger],
+        failed_results: Thread.current[:smith_failed_agent_results],
+        last_result: Thread.current[:smith_last_agent_result],
+        parallel_binding: Thread.current[:smith_parallel_agent_binding]
+      }
+    end
+    inner_parallel = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+      transition :finish, from: :idle, to: :done do
+        execute :spec_fanout_static_agent, parallel: true, count: 1
+      end
+    end
+    inner_fanout = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+      transition :finish, from: :idle, to: :done do
+        fan_out branches: {
+          static: :spec_fanout_static_agent,
+          security: :spec_fanout_security_agent
+        }
+      end
+    end
+
+    [inner_parallel, inner_fanout].each do |inner|
+      observations = Queue.new
+      outer = Class.new(workflow_class) do
+        initial_state :idle
+        state :done
+        transition :finish, from: :idle, to: :done do
+          fan_out branches: {
+            static: :spec_fanout_static_agent,
+            security: :spec_fanout_security_agent
+          }
+        end
+      end.new
+      outer.define_singleton_method(:guarded_fanout_branch_call) do |_agent_class, env, signal|
+        check_cancellation!(signal)
+        before = capture.call
+        inner.new.run!
+        observations << [before, capture.call]
+        check_cancellation!(signal)
+        env.prepared_input
+      end
+
+      expect(outer.run!.state).to eq(:done)
+      2.times do
+        before, after = observations.pop
+        expect(after).to eq(before)
+      end
+    end
+  end
+
   it "routes through on_failure when any branch fails" do
     workflow = with_stubbed_class("SpecFanoutFailureWorkflow", workflow_class) do
       initial_state :idle

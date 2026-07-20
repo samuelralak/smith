@@ -18,17 +18,19 @@ module Smith
 
         def release_prepared_step_execution!(authorization)
           authorization = validate_split_step_execution_authorization!(authorization)
-          @split_step_mutex.synchronize do
-            unless active_split_step_execution_authorization?(authorization)
-              raise WorkflowError, "the prepared-step execution authorization is no longer active"
-            end
+          Thread.handle_interrupt(Object => :never) do
+            @split_step_mutex.synchronize do
+              unless active_split_step_execution_authorization?(authorization)
+                raise WorkflowError, "the prepared-step execution authorization is no longer active"
+              end
 
-            @split_step_phase = @split_step_execution_previous_phase
-            clear_split_step_execution_authorization!
+              @split_step_phase = @split_step_execution_previous_phase
+              clear_split_step_execution_authorization!
+            end
+            PreparedStepExecutionAuthorization
+              .instance_method(:close_execution!)
+              .bind_call(authorization)
           end
-          PreparedStepExecutionAuthorization
-            .instance_method(:close_execution!)
-            .bind_call(authorization)
           self
         end
 

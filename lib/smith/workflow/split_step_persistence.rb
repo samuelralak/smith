@@ -37,6 +37,7 @@ require_relative "split_step_persistence/execution_verification"
 require_relative "split_step_persistence/execution_binding_snapshot"
 require_relative "split_step_persistence/execution_authorization"
 require_relative "split_step_persistence/execution_result_capture"
+require_relative "split_step_persistence/execution_lifecycle"
 require_relative "split_step_persistence/execution"
 require_relative "split_step_persistence/checkpoint_state"
 require_relative "split_step_persistence/checkpoint"
@@ -70,6 +71,7 @@ module Smith
       include ExecutionVerification
       include ExecutionAuthorization
       include ExecutionResultCapture
+      include ExecutionLifecycle
       include Execution
       include CheckpointState
       include Checkpoint

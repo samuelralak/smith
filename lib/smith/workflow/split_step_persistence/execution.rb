@@ -18,11 +18,13 @@ module Smith
           result = nil
           execution_thread = Thread.current
           execution_active = false
-          begin
+          Thread.handle_interrupt(Object => :never) do
             activate_split_step_execution!(authorization, execution_thread)
             execution_active = true
-            step = execute_claimed_split_step_transition!
-            result = consume_split_step_execution_result!(execution_thread)
+            Thread.handle_interrupt(Object => :immediate) do
+              step = execute_claimed_split_step_transition!
+              result = consume_split_step_execution_result!(execution_thread)
+            end
           ensure
             finish_split_step_execution!(step, authorization, execution_thread) if execution_active
           end
@@ -37,26 +39,6 @@ module Smith
         end
 
         private
-
-        def activate_split_step_execution!(authorization, execution_thread)
-          @split_step_mutex.synchronize do
-            unless active_split_step_execution_authorization?(authorization)
-              raise WorkflowError, "the prepared-step execution authorization is no longer active"
-            end
-
-            ensure_split_step_definition_current!
-            ensure_prepared_split_step_transition_matches!
-            PreparedStepExecutionAuthorization.instance_method(:activate_execution!)
-                                              .bind_call(authorization, execution_thread)
-
-            @split_step_active_execution_authorization = authorization
-            @split_step_execution_result = nil
-            @split_step_phase = :executing
-            clear_split_step_execution_authorization!
-            @split_step_execution_thread = execution_thread
-            @split_step_advance_permit = true
-          end
-        end
 
         def restore_unverified_execution!(verification_token)
           @split_step_mutex.synchronize do
@@ -73,23 +55,6 @@ module Smith
           return step if accepted_split_step_result?(step)
 
           raise WorkflowError, "prepared execution did not return the claimed transition"
-        end
-
-        def finish_split_step_execution!(step, authorization, execution_thread)
-          @split_step_mutex.synchronize do
-            next unless @split_step_phase == :executing &&
-                        @split_step_execution_thread.equal?(execution_thread)
-
-            @split_step_execution_thread = nil
-            @split_step_advance_permit = false
-            @split_step_execution_previous_phase = nil
-            @split_step_active_execution_authorization = nil
-            @split_step_execution_result = nil
-            @split_step_phase = step ? :executed : :attempted
-          end
-        ensure
-          PreparedStepExecutionAuthorization.instance_method(:close_execution!)
-                                            .bind_call(authorization, execution_thread)
         end
 
         def resolve_split_step_advance_transition

@@ -2,6 +2,8 @@
 
 require "time"
 
+require_relative "thread_context_snapshot"
+
 module Smith
   class Workflow
     module DeadlineEnforcement
@@ -19,17 +21,32 @@ module Smith
         [wall_clock_deadline, call_dl].compact.min
       end
 
-      def with_agent_context(agent_class)
+      def with_agent_context(agent_class, &block)
         saved_deadline = Tool.current_deadline
         saved_call_ledger = Thread.current[:smith_call_ledger]
+        snapshot = ThreadContextSnapshot.new(
+          tool_attributes: %i[current_deadline current_tool_call_allowance],
+          thread_keys: %i[smith_call_deadline smith_call_ledger],
+          scoped_artifacts: false
+        )
+        snapshot.around do
+          apply_agent_context(agent_class)
+          Thread.handle_interrupt(Object => :immediate, &block)
+        ensure
+          restore_agent_context(saved_deadline, saved_call_ledger)
+        end
+      end
+
+      def apply_agent_context(agent_class)
         apply_agent_deadline(agent_class)
         narrow_tool_deadline!
         apply_agent_tool_calls(agent_class)
         apply_agent_call_ledger(agent_class)
-        yield
-      ensure
-        Tool.current_deadline = saved_deadline
-        Thread.current[:smith_call_ledger] = saved_call_ledger
+      end
+
+      def restore_agent_context(deadline, call_ledger)
+        Tool.current_deadline = deadline
+        Thread.current[:smith_call_ledger] = call_ledger
         clear_agent_deadline
         clear_agent_tool_calls
       end

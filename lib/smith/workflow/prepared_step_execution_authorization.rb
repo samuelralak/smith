@@ -3,12 +3,15 @@
 require_relative "prepared_step"
 require_relative "prepared_step_dispatch"
 require_relative "prepared_step_execution_scope"
+require_relative "process_local"
 require_relative "split_step_persistence/execution_binding_snapshot"
 require_relative "../errors"
 
 module Smith
   class Workflow
     class PreparedStepExecutionAuthorization
+      include ProcessLocal
+
       attr_reader :prepared_step, :dispatch_claim
 
       def initialize(prepared_step:, dispatch_claim:, execution_bindings:)
@@ -55,42 +58,23 @@ module Smith
       end
 
       def active_in_current_execution?
-        issued_in_current_process? && @execution_scope.active_for?(Thread.current)
-      end
-
-      def initialize_copy(_source)
-        raise TypeError, "prepared-step execution authorizations cannot be copied"
-      end
-
-      def _dump(_depth)
-        raise TypeError, "prepared-step execution authorizations cannot be serialized"
-      end
-
-      def encode_with(_coder)
-        raise TypeError, "prepared-step execution authorizations cannot be serialized"
-      end
-
-      def init_with(_coder)
-        raise TypeError, "prepared-step execution authorizations cannot be deserialized"
-      end
-
-      def as_json(*)
-        raise TypeError, "prepared-step execution authorizations cannot be serialized"
-      end
-
-      def to_json(*)
-        raise TypeError, "prepared-step execution authorizations cannot be serialized"
+        issued_in_current_process? && @execution_scope.active_for?(Thread.current, Fiber.current)
       end
 
       private
 
-      def activate_execution!(thread)
+      def within_branch_execution!(&)
         ensure_current_process!
-        @execution_scope.activate!(thread)
+        @execution_scope.within_branch(&)
       end
 
-      def close_execution!(thread = nil)
-        @execution_scope.close!(thread)
+      def activate_execution!
+        ensure_current_process!
+        @execution_scope.activate!(Thread.current, Fiber.current)
+      end
+
+      def close_execution!
+        @execution_scope.close!(Thread.current, Fiber.current)
       end
 
       def ensure_active_execution!
@@ -100,7 +84,8 @@ module Smith
       end
 
       def ensure_binding_access!
-        accessible = issued_in_current_process? && @execution_scope.binding_accessible_for?(Thread.current)
+        accessible = issued_in_current_process? &&
+                     @execution_scope.binding_accessible_for?(Thread.current, Fiber.current)
         return if accessible
 
         raise WorkflowError, "prepared-step execution authorization is outside its binding access scope"

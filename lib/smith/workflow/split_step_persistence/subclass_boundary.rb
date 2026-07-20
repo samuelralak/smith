@@ -71,10 +71,6 @@ module Smith
         private
 
         def smith_prepared_execution_active?
-          root_execution = @split_step_phase == :executing &&
-                           @split_step_execution_thread.equal?(Thread.current)
-          return true if root_execution
-
           authorization = @split_step_active_execution_authorization
           authorization&.active_in_current_execution? == true
         end

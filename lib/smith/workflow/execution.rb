@@ -2,13 +2,17 @@
 
 require_relative "agent_result"
 require_relative "execution_binding_resolution"
+require_relative "prepared_branch_execution"
 require_relative "step_completion"
+require_relative "step_context"
 
 module Smith
   class Workflow
     module Execution
       include ExecutionBindingResolution
+      include PreparedBranchExecution
       include StepCompletion
+      include StepContext
       include Agent::Lifecycle
       include NestedExecution
       include EvaluatorOptimizer
@@ -21,28 +25,18 @@ module Smith
       private
 
       def execute_step(transition)
-        setup_step_context
+        with_step_context(transition) { execute_step_body(transition) }
+      end
+
+      def execute_step_body(transition)
         output = with_scoped_artifacts { run_with_retry_policy(transition) }
         StepCompletion.instance_method(:complete_step).bind_call(self, transition, output)
-      rescue StandardError => e
-        @outcome = nil
-        GuardrailIntegration.instance_method(:handle_step_failure).bind_call(self, transition, e)
-      ensure
-        teardown_step_context
       end
 
       def setup_step_context
         Tool.current_deadline = wall_clock_deadline
         Tool.current_ledger = @ledger
         Tool.current_tool_result_collector = tool_result_collector
-      end
-
-      def teardown_step_context
-        Tool.current_guardrails = nil
-        Tool.current_deadline = nil
-        Tool.current_ledger = nil
-        Tool.current_tool_result_collector = nil
-        Smith.scoped_artifacts = nil
       end
 
       def run_guarded_step(transition)

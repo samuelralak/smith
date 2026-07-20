@@ -6,6 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve complete workflow, agent, and branch execution context across
+  nested parallel and heterogeneous fan-out work without leaking thread- or
+  Fiber-local Smith state.
+- Keep ordinary subclass setup and teardown extension points intact while
+  prepared execution seals framework-owned branch dispatch against subclass
+  replacement.
+- Restrict prepared execution authority to the exact coordinator or registered
+  branch Fiber, reject copied or serialized process-local authority, and make
+  activation, cleanup, and context restoration safe against asynchronous Ruby
+  thread interruption.
+
 ## [0.5.0] - 2026-07-19
 
 This release contains intentional pre-1.0 public contract tightening and is a

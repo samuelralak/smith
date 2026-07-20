@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "timeout"
+
 RSpec.describe Smith::Workflow::PreparedStepExecutionAuthorization do
   let(:adapter) { Smith::PersistenceAdapters::Memory.new }
   let(:key) { "workflow:execution-authorization" }
@@ -30,6 +32,10 @@ RSpec.describe Smith::Workflow::PreparedStepExecutionAuthorization do
       workflow.class.find_transition(:finish),
       workflow_class: workflow.class
     )
+  end
+
+  def wait_for(queue)
+    Timeout.timeout(2) { queue.pop }
   end
 
   it "authorizes an exact committed dispatch without executing it" do
@@ -433,6 +439,365 @@ RSpec.describe Smith::Workflow::PreparedStepExecutionAuthorization do
     expect(result).to include(transition: :finish, to: :done)
     outputs = workflow.to_state.fetch(:last_output).map { _1.fetch(:output) }
     expect(outputs).to eq(%w[done done done])
+  end
+
+  it "keeps prepared same-agent branch workers inside the execution membrane" do
+    agent = Class.new(Smith::Agent)
+    Smith::Agent::Registry.register(:membrane_parallel_agent, agent)
+    calls = Queue.new
+    base = Class.new(Smith::Workflow) do
+      definition_digest Digest::SHA256.hexdigest("membrane-parallel")
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+      transition :finish, from: :idle, to: :done do
+        execute :membrane_parallel_agent, parallel: true, count: 2
+      end
+    end
+    workflow_class = Class.new(base) do
+      define_method(:guarded_branch_call) do |*arguments|
+        calls << arguments
+        super(*arguments)
+      end
+      private :guarded_branch_call
+    end
+    workflow = claimed_workflow(workflow_class, "#{key}:membrane-parallel")
+
+    expect(workflow.execute_prepared_step!).to include(transition: :finish, to: :done)
+    expect(calls).to be_empty
+  ensure
+    Smith::Agent::Registry.delete(:membrane_parallel_agent)
+  end
+
+  it "keeps prepared heterogeneous branch workers inside the execution membrane" do
+    Smith::Agent::Registry.register(:membrane_first_agent, Class.new(Smith::Agent))
+    Smith::Agent::Registry.register(:membrane_second_agent, Class.new(Smith::Agent))
+    calls = Queue.new
+    base = Class.new(Smith::Workflow) do
+      definition_digest Digest::SHA256.hexdigest("membrane-fanout")
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+      transition :finish, from: :idle, to: :done do
+        fan_out branches: { first: :membrane_first_agent, second: :membrane_second_agent }
+      end
+    end
+    workflow_class = Class.new(base) do
+      define_method(:guarded_fanout_branch_call) do |*arguments|
+        calls << arguments
+        super(*arguments)
+      end
+      private :guarded_fanout_branch_call
+    end
+    workflow = claimed_workflow(workflow_class, "#{key}:membrane-fanout")
+
+    expect(workflow.execute_prepared_step!).to include(transition: :finish, to: :done)
+    expect(calls).to be_empty
+  ensure
+    Smith::Agent::Registry.delete(:membrane_first_agent)
+    Smith::Agent::Registry.delete(:membrane_second_agent)
+  end
+
+  it "cleans branch authority when a worker is interrupted" do
+    scope = Smith::Workflow::PreparedStepExecutionScope.new
+    scope.activate!(Thread.current, Fiber.current)
+    entered = Queue.new
+    worker = Thread.new do
+      scope.within_branch do
+        entered << true
+        sleep
+      end
+    end
+    worker.report_on_exception = false
+    wait_for(entered)
+
+    worker.raise(RuntimeError, "interrupt branch")
+    expect { Timeout.timeout(2) { worker.value } }.to raise_error(RuntimeError, "interrupt branch")
+    expect { scope.close!(Thread.current, Fiber.current) }.not_to raise_error
+  ensure
+    worker&.kill
+    begin
+      worker&.value
+    rescue RuntimeError
+      nil
+    end
+  end
+
+  it "arms cleanup before asynchronous interruption can escape activation" do
+    workflow = claimed_workflow(workflow_class, "#{key}:activation-interrupt")
+    authorization = workflow.authorize_prepared_step_execution!
+    activated = Queue.new
+    release_activation = Queue.new
+    error = Queue.new
+    worker = nil
+    allow(workflow).to receive(:activate_split_step_execution!).and_wrap_original do |original, *arguments|
+      original.call(*arguments)
+      activated << true
+      release_activation.pop
+    end
+
+    worker = Thread.new do
+      workflow.execute_authorized_prepared_step!(authorization)
+    rescue Interrupt => e
+      error << e
+    end
+    worker.report_on_exception = false
+
+    wait_for(activated)
+    worker.raise(Interrupt, "interrupt activation")
+    Timeout.timeout(2) { Thread.pass until worker.pending_interrupt?(Interrupt) }
+    release_activation << true
+    Timeout.timeout(2) { worker.join }
+
+    expect(wait_for(error).message).to eq("interrupt activation")
+    expect(workflow.instance_variable_get(:@split_step_phase)).to eq(:attempted)
+    expect(workflow.instance_variable_get(:@split_step_active_execution_authorization)).to be_nil
+    expect(workflow.instance_variable_get(:@split_step_execution_thread)).to be_nil
+  ensure
+    worker&.kill
+  end
+
+  it "finishes lifecycle cleanup before delivering an asynchronous interruption" do
+    workflow = claimed_workflow(workflow_class, "#{key}:finish-interrupt")
+    authorization = workflow.authorize_prepared_step_execution!
+    finishing = Queue.new
+    release_finish = Queue.new
+    error = Queue.new
+    worker = nil
+    allow(workflow).to receive(:finish_split_step_execution!).and_wrap_original do |original, *arguments|
+      finishing << true
+      release_finish.pop
+      original.call(*arguments)
+    end
+
+    worker = Thread.new do
+      workflow.execute_authorized_prepared_step!(authorization)
+    rescue Interrupt => e
+      error << e
+    end
+    worker.report_on_exception = false
+
+    wait_for(finishing)
+    worker.raise(Interrupt, "interrupt finish")
+    Timeout.timeout(2) { Thread.pass until worker.pending_interrupt?(Interrupt) }
+    release_finish << true
+    Timeout.timeout(2) { worker.join }
+
+    expect(wait_for(error).message).to eq("interrupt finish")
+    expect(workflow.state).to eq(:done)
+    expect(workflow.instance_variable_get(:@split_step_phase)).to eq(:executed)
+    expect(workflow.instance_variable_get(:@split_step_active_execution_authorization)).to be_nil
+    expect(workflow.instance_variable_get(:@split_step_execution_thread)).to be_nil
+  ensure
+    worker&.kill
+  end
+
+  it "limits prepared execution authority to explicitly registered fibers" do
+    scope = Smith::Workflow::PreparedStepExecutionScope.new
+    owner_thread = Thread.current
+    scope.activate!(owner_thread)
+
+    expect(scope.active_for?(owner_thread)).to be(true)
+    sibling_active = Fiber.new { scope.active_for?(Thread.current, Fiber.current) }.resume
+    registered_active = Fiber.new do
+      scope.within_branch { scope.active_for?(Thread.current, Fiber.current) }
+    end.resume
+
+    expect(sibling_active).to be(false)
+    expect(registered_active).to be(true)
+    expect { scope.dup }.to raise_error(TypeError, /cannot be copied/)
+    expect { scope.close!(owner_thread) }.not_to raise_error
+  end
+
+  it "does not seal framework hooks in an unregistered sibling fiber" do
+    workflow = nil
+    observed = []
+    base = Class.new(Smith::Workflow) do
+      definition_digest Digest::SHA256.hexdigest("sibling-fiber-boundary")
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+      transition :finish, from: :idle, to: :done do
+        compute do
+          transition = workflow.class.find_transition(:finish)
+          observed << Fiber.new do
+            workflow.send(:resolve_router_output, transition, :base)
+          end.resume
+        end
+      end
+    end
+    workflow_class = Class.new(base) do
+      define_method(:resolve_router_output) { |_transition, _output| :override }
+      private :resolve_router_output
+    end
+    workflow = claimed_workflow(workflow_class, "#{key}:sibling-fiber-boundary")
+
+    result = workflow.execute_prepared_step!
+
+    expect(result).to include(transition: :finish, to: :done)
+    expect(observed).to eq([:override])
+  end
+
+  it "does not transfer thread context snapshots" do
+    snapshot = Smith::Workflow.const_get(:ThreadContextSnapshot, false).new
+    result = Queue.new
+    Thread.new do
+      snapshot.restore!
+    rescue StandardError => e
+      result << e
+    end.join
+
+    expect(result.pop).to be_a(Smith::WorkflowError)
+    expect { snapshot.dup }.to raise_error(TypeError, /cannot be copied/)
+    expect(snapshot.restore!).to equal(snapshot)
+  end
+
+  it "does not transfer thread context snapshots across fibers" do
+    snapshot = Smith::Workflow.const_get(:ThreadContextSnapshot, false).new
+    error = Fiber.new do
+      snapshot.restore!
+    rescue StandardError => e
+      e
+    end.resume
+
+    expect(error).to be_a(Smith::WorkflowError)
+    expect(error.message).to include("another process, thread, or fiber")
+    expect(snapshot.restore!).to equal(snapshot)
+  end
+
+  it "restores complete context when interrupted during protected setup" do
+    outer_guardrails = Object.new
+    replacement_guardrails = Object.new
+    setup_started = Queue.new
+    release_setup = Queue.new
+    result = Queue.new
+    worker = nil
+    intercept_setup = Concurrent::AtomicBoolean.new(false)
+    allow(Smith::Tool).to receive(:current_guardrails=).and_wrap_original do |writer, value|
+      writer.call(value)
+      next unless intercept_setup.true? && value.equal?(replacement_guardrails)
+
+      setup_started << true
+      release_setup.pop
+    end
+
+    worker = Thread.new do
+      Smith::Tool.current_guardrails = outer_guardrails
+      outer_deadline = Time.now.utc + 60
+      outer_result = Object.new
+      outer_artifacts = Object.new
+      Smith::Tool.current_deadline = outer_deadline
+      Thread.current[:smith_last_agent_result] = outer_result
+      Smith.scoped_artifacts = outer_artifacts
+      snapshot = Smith::Workflow.const_get(:ThreadContextSnapshot, false).new
+      intercept_setup.make_true
+      begin
+        snapshot.around do
+          Smith::Tool.current_guardrails = replacement_guardrails
+          Smith::Tool.current_deadline = Time.now.utc + 10
+          Thread.current[:smith_last_agent_result] = Object.new
+          Smith.scoped_artifacts = Object.new
+          Thread.handle_interrupt(Object => :immediate) { nil }
+        end
+      rescue Interrupt => e
+        result << [
+          e,
+          Smith::Tool.current_guardrails,
+          Smith::Tool.current_deadline,
+          Thread.current[:smith_last_agent_result],
+          Smith.scoped_artifacts,
+          outer_deadline,
+          outer_result,
+          outer_artifacts
+        ]
+      end
+    end
+    worker.report_on_exception = false
+
+    wait_for(setup_started)
+    worker.raise(Interrupt, "interrupt setup")
+    Timeout.timeout(1) { Thread.pass until worker.pending_interrupt?(Interrupt) }
+    release_setup << true
+    Timeout.timeout(2) { worker.join }
+
+    error, guardrails, deadline, last_result, artifacts,
+      outer_deadline, outer_result, outer_artifacts = wait_for(result)
+    expect(error.message).to eq("interrupt setup")
+    expect(guardrails).to equal(outer_guardrails)
+    expect(deadline).to equal(outer_deadline)
+    expect(last_result).to equal(outer_result)
+    expect(artifacts).to equal(outer_artifacts)
+  ensure
+    worker&.kill
+  end
+
+  it "restores complete context before delivering an interrupt raised during restoration" do
+    outer_guardrails = Object.new
+    restoration_started = Queue.new
+    release_restoration = Queue.new
+    result = Queue.new
+    worker = nil
+    intercept_restoration = Concurrent::AtomicBoolean.new(false)
+    allow(Smith::Tool).to receive(:current_guardrails=).and_wrap_original do |writer, value|
+      writer.call(value)
+      next unless intercept_restoration.true? && value.equal?(outer_guardrails)
+
+      restoration_started << true
+      release_restoration.pop
+    end
+
+    worker = Thread.new do
+      Smith::Tool.current_guardrails = outer_guardrails
+      outer_deadline = Time.now.utc + 60
+      outer_ledger = Object.new
+      outer_result = Object.new
+      outer_artifacts = Object.new
+      Smith::Tool.current_deadline = outer_deadline
+      Smith::Tool.current_ledger = outer_ledger
+      Thread.current[:smith_last_agent_result] = outer_result
+      Smith.scoped_artifacts = outer_artifacts
+      snapshot = Smith::Workflow.const_get(:ThreadContextSnapshot, false).new
+      Smith::Tool.current_guardrails = Object.new
+      Smith::Tool.current_deadline = Time.now.utc + 10
+      Smith::Tool.current_ledger = Object.new
+      Thread.current[:smith_last_agent_result] = Object.new
+      Smith.scoped_artifacts = Object.new
+      intercept_restoration.make_true
+      begin
+        snapshot.restore!
+      rescue Interrupt => e
+        result << [
+          e,
+          Smith::Tool.current_guardrails,
+          Smith::Tool.current_deadline,
+          Smith::Tool.current_ledger,
+          Thread.current[:smith_last_agent_result],
+          Smith.scoped_artifacts,
+          outer_deadline,
+          outer_ledger,
+          outer_result,
+          outer_artifacts
+        ]
+      end
+    end
+    worker.report_on_exception = false
+
+    wait_for(restoration_started)
+    worker.raise(Interrupt, "interrupt restoration")
+    Timeout.timeout(1) { Thread.pass until worker.pending_interrupt?(Interrupt) }
+    release_restoration << true
+    Timeout.timeout(2) { worker.join }
+
+    error, guardrails, deadline, ledger, last_result, artifacts,
+      outer_deadline, outer_ledger, outer_result, outer_artifacts = wait_for(result)
+    expect(error.message).to eq("interrupt restoration")
+    expect(guardrails).to equal(outer_guardrails)
+    expect(deadline).to equal(outer_deadline)
+    expect(ledger).to equal(outer_ledger)
+    expect(last_result).to equal(outer_result)
+    expect(artifacts).to equal(outer_artifacts)
+  ensure
+    worker&.kill
   end
 
   it "rejects nested workflow definition drift before child work" do

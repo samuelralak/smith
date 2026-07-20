@@ -1334,6 +1334,28 @@ Documented contracts covered:
 - mutable registry replacement cannot change the exact authorized agent class
 - legacy strict workflows and the compatible one-call execution API retain
   their existing behavior
+- prepared parallel and heterogeneous branch workers use the exact captured
+  bindings while ordinary subclass branch extension points remain available
+- coordinator authority is exact to process, thread, and Fiber; only explicitly
+  registered branch Fibers enter the prepared execution membrane
+- activation, branch registration, full context restoration, and lifecycle
+  cleanup complete before asynchronous `Thread#raise` delivery
+- copied or serialized execution scopes and context snapshots are rejected
+- all four nested parallel/fan-out pairings restore tool, deadline, ledger,
+  result, binding, and artifact context after success, failure, or cancellation
+
+### `spec/smith/workflow/execution_context_spec.rb`
+
+Purpose:
+
+- pins compatibility of the ordinary workflow execution-context lifecycle
+  while prepared execution adds stronger isolation
+
+Documented contracts covered:
+
+- setup failures still route through declared transition failure handling
+- step and branch teardown hooks run even when their matching setup raises
+- agent deadline and tool-call cleanup extension points remain observable
 
 ### `spec/smith/workflow/prepared_step_execution_result_spec.rb`
 
