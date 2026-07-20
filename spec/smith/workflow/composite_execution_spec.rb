@@ -22,6 +22,13 @@ RSpec.describe "Smith::Workflow durable composite execution" do
     workflow_class.recover_prepared_step(recovery, adapter: adapter)
   end
 
+  def expect_recovered_plan_to_match(workflow_class, key)
+    dispatch, initial = prepare_composite(workflow_class, key)
+    recovered = recover(workflow_class, dispatch).prepare_composite_step!
+
+    expect(recovered).to eq(initial)
+  end
+
   def execute_branches(workflow_class, dispatch, preparation)
     preparation.plan.branches.map do |branch|
       workflow = recover(workflow_class, dispatch)
@@ -114,6 +121,106 @@ RSpec.describe "Smith::Workflow durable composite execution" do
     expect(transition).not_to respond_to(:fetch_fanout_agent!)
     expect(transition).not_to respond_to(:fetch_fanout_branch!)
     expect(transition.private_methods).to include(:fetch_fanout_agent!, :fetch_fanout_branch!)
+  end
+
+  it "reproduces the same-agent composite plan after durable recovery" do
+    register_composite_agent(:recoverable_parallel_agent)
+    workflow_class = stub_const("RecoverableParallelWorkflow", Class.new(Smith::Workflow) do
+      definition_digest Digest::SHA256.hexdigest("recoverable-parallel")
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+      transition(:finish, from: :idle, to: :done) do
+        execute :recoverable_parallel_agent, parallel: true, count: 4
+      end
+    end)
+
+    expect_recovered_plan_to_match(workflow_class, "composite:recoverable-parallel")
+  end
+
+  it "reproduces the heterogeneous fan-out plan after durable recovery" do
+    register_composite_agent(:recoverable_fanout_researcher)
+    register_composite_agent(:recoverable_fanout_reviewer)
+    workflow_class = stub_const("RecoverableFanoutWorkflow", Class.new(Smith::Workflow) do
+      definition_digest Digest::SHA256.hexdigest("recoverable-fanout")
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+      transition(:finish, from: :idle, to: :done) do
+        fan_out branches: {
+          research: :recoverable_fanout_researcher,
+          review: :recoverable_fanout_reviewer
+        }
+      end
+    end)
+
+    expect_recovered_plan_to_match(workflow_class, "composite:recoverable-fanout")
+  end
+
+  it "pins composite namespace preparation against subclass method collisions" do
+    register_composite_agent(:colliding_namespace_agent)
+    workflow_class = stub_const("CollidingCompositeNamespaceWorkflow", Class.new(Smith::Workflow) do
+      definition_digest Digest::SHA256.hexdigest("colliding-composite-namespace")
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+      transition(:finish, from: :idle, to: :done) do
+        execute :colliding_namespace_agent, parallel: true, count: 2
+      end
+
+      private
+
+      def prepare_composite_execution_namespace!(*) = raise("subclass collision")
+      def execution_namespace = SecureRandom.uuid
+    end)
+
+    expect_recovered_plan_to_match(workflow_class, "composite:colliding-namespace")
+  end
+
+  it "does not invoke composite namespace hooks for an ordinary persisted step" do
+    workflow_class = stub_const("CollidingSerialNamespaceWorkflow", Class.new(Smith::Workflow) do
+      definition_digest Digest::SHA256.hexdigest("colliding-serial-namespace")
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+      transition(:finish, from: :idle, to: :done) { run { "done" } }
+
+      private
+
+      def prepare_composite_execution_namespace! = raise("subclass collision")
+    end)
+    workflow = workflow_class.new
+
+    expect do
+      workflow.prepare_persisted_step!("serial:colliding-namespace", adapter: adapter)
+    end.not_to raise_error
+    expect(workflow.prepared_persisted_step).to be_a(Smith::Workflow::PreparedStep)
+  end
+
+  it "releases a composite preparation when namespace generation fails" do
+    register_composite_agent(:failing_namespace_agent)
+    workflow_class = stub_const("FailingCompositeNamespaceWorkflow", Class.new(Smith::Workflow) do
+      definition_digest Digest::SHA256.hexdigest("failing-composite-namespace")
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+      transition(:finish, from: :idle, to: :done) do
+        execute :failing_namespace_agent, parallel: true, count: 2
+      end
+    end)
+    workflow = workflow_class.new
+    allow(SecureRandom).to receive(:uuid).and_raise("entropy unavailable")
+
+    expect do
+      workflow.prepare_persisted_step!("composite:failing-namespace", adapter: adapter)
+    end.to raise_error(RuntimeError, "entropy unavailable")
+    expect(workflow.prepared_persisted_step).to be_nil
+    expect(workflow.to_state.fetch(:step_in_progress)).to be(false)
+
+    allow(SecureRandom).to receive(:uuid).and_call_original
+    expect do
+      workflow.prepare_persisted_step!("composite:failing-namespace", adapter: adapter)
+    end.not_to raise_error
   end
 
   it "round-trips and executes an ordered same-agent composite" do

@@ -33,6 +33,8 @@ module Smith
         def finalize_split_step_preparation!(transition, transition_name, key, adapter, persistence_ttl)
           transaction_identity = TransactionIdentity.capture(adapter)
           transition_signature = TransitionContract.capture(transition)
+          namespace_preparer = PreparationClaim.instance_method(:prepare_composite_execution_namespace!)
+          namespace_preparer.bind_call(self, transition)
           @split_step_mutex.synchronize do
             unless active_split_step_preparation_claim?
               raise WorkflowError, "the split-step preparation claim is no longer active"
@@ -63,6 +65,12 @@ module Smith
         def active_split_step_preparation_claim?
           @split_step_phase == :claiming_preparation &&
             @split_step_preparation_thread.equal?(Thread.current)
+        end
+
+        def prepare_composite_execution_namespace!(transition)
+          return unless transition&.parallel? || transition&.fanout?
+
+          ArtifactIntegration.instance_method(:execution_namespace).bind_call(self)
         end
 
         def mark_split_step_prepared!(_adapter)

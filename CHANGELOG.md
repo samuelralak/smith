@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+### Fixed
+
+- Persist a composite transition's execution namespace with its prepared
+  split-step snapshot so prepared- and dispatch-state recovery reproduce the
+  exact same plan.
+- Pin composite namespace preparation to Smith-owned implementations so
+  subclass method collisions cannot bypass durable plan identity, and release
+  the preparation claim cleanly when namespace generation fails.
+
 ## [0.6.0] - 2026-07-20
 
 ### Added
