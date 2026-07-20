@@ -40,7 +40,15 @@ module Smith
       end
 
       def run_guarded_step(transition)
+        return apply_composite_reduction!(transition) if @composite_reduction
+
         @resolved_parallel_branch_count = preflight_branch_count(transition)
+        run_standard_guarded_step(transition)
+      ensure
+        @resolved_parallel_branch_count = nil
+      end
+
+      def run_standard_guarded_step(transition)
         return dispatch_step(transition) if transition.deterministic?
         return run_guarded_fanout_step(transition) if transition.fanout?
 
@@ -56,8 +64,6 @@ module Smith
         validate_data_volume!(output, agent_class)
         run_output_guardrails(output, agent_class)
         resolve_router_output(transition, output)
-      ensure
-        @resolved_parallel_branch_count = nil
       end
 
       def preflight_branch_count(transition)

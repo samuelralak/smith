@@ -19,6 +19,15 @@ module Smith
         end
       end
 
+      def within_raw_step_context(&block)
+        ThreadContextSnapshot.new.around do
+          setup_step_context
+          Thread.handle_interrupt(Object => :immediate, &block)
+        ensure
+          teardown_step_context
+        end
+      end
+
       def setup_step_context
         Tool.current_deadline = wall_clock_deadline
         Tool.current_ledger = @ledger

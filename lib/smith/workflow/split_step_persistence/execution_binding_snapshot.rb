@@ -14,9 +14,14 @@ module Smith
           new(transition, workflow_class:).capture
         end
 
-        def initialize(transition, workflow_class:)
+        def self.capture_agent(transition, workflow_class:, name:, role:)
+          new(transition, workflow_class:, selected_agent: { name:, role: }).capture
+        end
+
+        def initialize(transition, workflow_class:, selected_agent: nil)
           @transition = transition
           @workflow_class = workflow_class
+          @selected_agent = selected_agent
           @bindings = ExecutionBindingCollector.new
           @visited_workflows = {}.compare_by_identity
           @visited_workflows[workflow_class] = true
@@ -27,8 +32,17 @@ module Smith
         end
 
         def capture
-          capture_transition(@transition, workflow_class: @workflow_class)
-          drain_workflow_queue
+          if @selected_agent
+            @bindings.capture_agent(
+              @selected_agent.fetch(:name),
+              workflow_class: @workflow_class,
+              transition: @transition,
+              role: @selected_agent.fetch(:role)
+            )
+          else
+            capture_transition(@transition, workflow_class: @workflow_class)
+            drain_workflow_queue
+          end
           @bindings.resolve!
           @bindings.freeze
           @workflow_snapshots.freeze

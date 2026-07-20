@@ -260,6 +260,89 @@ During authorized execution, Smith also seals its private execution path against
 workflow subclass method-name collisions, including nested child workflows.
 Ordinary non-authorized runs retain normal Ruby override behavior.
 
+For `parallel: true` and `fan_out` transitions, a host can split one confirmed
+dispatch into independently scheduled branch operations without invoking agent
+classes outside Smith:
+
+```ruby
+preparation = workflow.prepare_composite_step!
+
+# Persist preparation.plan and preparation.input in host-owned records.
+# Each worker recovers the same confirmed dispatch and receives one descriptor.
+branch = preparation.plan.branches.fetch(0)
+execution = preparation.plan.execution_for(branch)
+outcome = branch_workflow.execute_prepared_composite_branch!(
+  execution:,
+  input: preparation.input
+)
+
+# After every branch has a terminal outcome, use another fresh recovery to
+# complete the Smith transition exactly once.
+result = reducer_workflow.reduce_prepared_composite_step!(
+  plan: preparation.plan,
+  input: preparation.input,
+  outcomes: ordered_or_unordered_complete_outcome_set,
+  primary_failure: host_committed_failed_branch_key
+)
+```
+
+Plans bind the exact prepared dispatch, host-supplied complete workflow
+`definition_digest`, execution-semantics version, prepared input digest, budget
+baseline, one shared artifact execution namespace, ordered branch identities,
+and explicit policies. Each plan, input, outcome, or effect payload is
+canonical, immutable, bounded to 1 MiB after JSON encoding, rejects missing or
+unknown fields, and redacts exception messages and backtraces.
+Reduction additionally bounds cumulative effects to 1 MiB and final aggregate
+output to 4 MiB before consuming execution authority. Reduction accepts either
+an `Array` or an `Enumerator`, validates each outcome incrementally, and stops
+as soon as a cumulative bound is crossed. The transport hard limit is 10,000
+branches; every recovered worker also enforces the current
+`Smith.config.parallel_branch_limit` before work.
+
+Planning is `O(B * D)`, where `D` is the bounded number of budget dimensions.
+The coordinator derives a compact selected-branch execution envelope in
+`O(D)` without copying the full branch collection. The scoped branch execution
+entry point captures and validates one selected binding in `O(D)` and constant
+time with respect to total branch count; the reducer validates the complete plan
+once. Reduction is `O(B + P log P)` in
+the worst case because canonical nested Hash ownership sorts keys, and uses
+`O(B + P)` bounded space.
+Smith does not persist plans or outcomes, select scheduling slots, claim work,
+choose an uncertain-outcome policy, or infer the primary failure. The host
+durably owns those decisions, gives each branch and reduction a separately
+recovered workflow instance, and must pass a complete outcome set. Transport or
+encoding faults become typed branch failures when Smith can preserve accounting
+evidence; otherwise the host must treat the worker result as uncertain and must
+not infer safe retry. Resume policy is incomplete branches only; per-branch
+retry is intentionally unsupported in this contract version.
+Composite payload digests prove canonical content integrity, not worker
+authenticity. Before reduction, the host must authenticate every outcome against
+its own claimed operation identity and current fencing token; those durable
+receipts remain outside Smith.
+
+The supported composite API is the three scoped workflow methods above plus the
+immutable transport values they return or accept: `Preparation`, `Plan`,
+`Input`, `Branch`, `BranchExecution`, `BranchOutcome`, `BranchFailure`, `Error`,
+`Effects`, and `Reduction`. Other constants under `Workflow::Composite` are
+implementation collaborators, not extension points or compatibility promises.
+
+Every agent used by this durable composite boundary must declare a stable
+host-computed SHA-256 execution identity. The identity represents the exact
+sealed executable asset the host intends to dispatch; Smith records it in the
+branch descriptor and rejects registry replacement after planning. Identities
+are deliberately not inherited because a subclass is a distinct executable
+implementation.
+
+```ruby
+class Researcher < Smith::Agent
+  execution_identity Digest::SHA256.hexdigest(generated_asset_manifest)
+  register_as :researcher, publish: false
+end
+
+Researcher.freeze
+Researcher.publish_registration!
+```
+
 Hosts that generate agent classes dynamically may call
 `register_as :name, publish: false` while constructing the class. This records
 the class identity without exposing it through `Smith::Agent::Registry`. After

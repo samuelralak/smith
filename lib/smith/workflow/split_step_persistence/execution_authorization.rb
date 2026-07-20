@@ -4,18 +4,6 @@ module Smith
   class Workflow
     module SplitStepPersistence
       module ExecutionAuthorization
-        def authorize_prepared_step_execution!
-          verification_token = claim_split_step_execution_verification!
-          authorized = false
-          verify_claimed_split_step_execution!(verification_token)
-          authorization = build_split_step_execution_authorization
-          activate_split_step_execution_authorization!(authorization, verification_token)
-          authorized = true
-          authorization
-        ensure
-          restore_unverified_execution!(verification_token) if verification_token && !authorized
-        end
-
         def release_prepared_step_execution!(authorization)
           authorization = validate_split_step_execution_authorization!(authorization)
           Thread.handle_interrupt(Object => :never) do
@@ -35,6 +23,36 @@ module Smith
         end
 
         private
+
+        def authorize_claimed_prepared_step_execution!(verification_token)
+          ExecutionVerification
+            .instance_method(:verify_claimed_split_step_execution!)
+            .bind_call(self, verification_token)
+          authorization = ExecutionAuthorization
+                          .instance_method(:build_split_step_execution_authorization)
+                          .bind_call(self)
+          ExecutionAuthorization
+            .instance_method(:activate_split_step_execution_authorization!)
+            .bind_call(self, authorization, verification_token)
+          authorization
+        end
+
+        def claim_framework_execution_verification!
+          ExecutionVerification
+            .instance_method(:claim_split_step_execution_verification!)
+            .bind_call(self)
+        end
+
+        def restore_framework_execution_verification!(verification_token)
+          return unless verification_token
+
+          active = ExecutionAuthorization
+                   .instance_method(:active_split_step_execution_verification?)
+                   .bind_call(self, verification_token)
+          return unless active
+
+          Execution.instance_method(:restore_unverified_execution!).bind_call(self, verification_token)
+        end
 
         def build_split_step_execution_authorization
           PreparedStepExecutionAuthorization.new(

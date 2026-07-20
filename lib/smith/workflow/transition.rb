@@ -111,7 +111,11 @@ module Smith
       def fan_out(branches:)
         validate_execution_primitive_conflict!("fan_out")
 
-        config = { branches: normalize_fanout_branches!(branches) }.freeze
+        normalized = normalize_fanout_branches!(branches)
+        @fanout_branch_lookup = normalized.to_h do |key, agent|
+          [key.to_s.freeze, [key, agent].freeze]
+        end.freeze
+        config = { branches: normalized }.freeze
 
         @fanout_config = config
         commit_execution_primitive!("fan_out")
@@ -155,6 +159,17 @@ module Smith
       def fanout?
         !@fanout_config.nil?
       end
+
+      def fetch_fanout_agent!(branch_key)
+        fetch_fanout_branch!(branch_key).last
+      end
+
+      def fetch_fanout_branch!(branch_key)
+        @fanout_branch_lookup.fetch(branch_key.to_s) do
+          raise WorkflowError, "fan_out branch #{branch_key.inspect} is not declared"
+        end
+      end
+      private :fetch_fanout_agent!, :fetch_fanout_branch!
 
       def optimized?
         !@optimization_config.nil?

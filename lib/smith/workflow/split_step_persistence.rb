@@ -36,8 +36,14 @@ require_relative "split_step_persistence/dispatch_confirmation"
 require_relative "split_step_persistence/execution_verification"
 require_relative "split_step_persistence/execution_binding_snapshot"
 require_relative "split_step_persistence/execution_authorization"
+require_relative "split_step_persistence/execution_authorization_issuance"
 require_relative "split_step_persistence/execution_result_capture"
 require_relative "split_step_persistence/execution_lifecycle"
+require_relative "split_step_persistence/composite_preparation"
+require_relative "split_step_persistence/composite_branch_authorization"
+require_relative "split_step_persistence/composite_branch_execution"
+require_relative "split_step_persistence/composite_reduction_execution"
+require_relative "split_step_persistence/composite_execution"
 require_relative "split_step_persistence/execution"
 require_relative "split_step_persistence/checkpoint_state"
 require_relative "split_step_persistence/checkpoint"
@@ -70,8 +76,14 @@ module Smith
       include DispatchConfirmation
       include ExecutionVerification
       include ExecutionAuthorization
+      include ExecutionAuthorizationIssuance
       include ExecutionResultCapture
       include ExecutionLifecycle
+      include CompositePreparation
+      include CompositeBranchAuthorization
+      include CompositeBranchExecution
+      include CompositeReductionExecution
+      include CompositeExecution
       include Execution
       include CheckpointState
       include Checkpoint

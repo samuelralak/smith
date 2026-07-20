@@ -29,6 +29,11 @@ module Smith
           end
         end
 
+        def capture_agent(name, workflow_class:, transition:, role:)
+          capture_binding(name, workflow_class:, transition:, role:)
+          self
+        end
+
         def resolve!
           @bindings = Agent::Registry.capture_bindings!(@requests.values)
 

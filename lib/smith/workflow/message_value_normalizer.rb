@@ -19,6 +19,7 @@ module Smith
       extend Dry::Initializer
 
       param :value
+      option :label, default: proc { "session message" }
 
       def call
         @active = {}.compare_by_identity
@@ -50,12 +51,12 @@ module Smith
         when Float then copy_float(item)
         when true, false, nil then item
         else
-          reject!("session message contains unsupported value #{item.class}")
+          reject!("#{label} contains unsupported value #{item.class}")
         end
       end
 
       def copy_container(source)
-        reject!("session message contains a cyclic value") if @active.key?(source)
+        reject!("#{label} contains a cyclic value") if @active.key?(source)
 
         @active[source] = true
         yield
@@ -77,8 +78,8 @@ module Smith
         pairs = []
         remaining_nodes = MAX_NODES - @nodes
         HASH_EACH_PAIR.bind_call(source) do |key, nested|
-          reject!("session message batch exceeds maximum size #{MAX_NODES}") if pairs.length == remaining_nodes
-          reject!("session message Hash keys must be strings or symbols") unless key.is_a?(String) || key.is_a?(Symbol)
+          reject!("#{label} exceeds maximum size #{MAX_NODES}") if pairs.length == remaining_nodes
+          reject!("#{label} Hash keys must be strings or symbols") unless key.is_a?(String) || key.is_a?(Symbol)
 
           pairs << [copy_string(key.to_s), nested]
         end
@@ -88,7 +89,7 @@ module Smith
       def validate_unique_keys!(pairs)
         return unless pairs.each_cons(2).any? { |left, right| left.first == right.first }
 
-        reject!("session message contains duplicate canonical Hash keys")
+        reject!("#{label} contains duplicate canonical Hash keys")
       end
 
       def copy_array(source, depth:)
@@ -99,7 +100,7 @@ module Smith
 
       def copy_string(string)
         @bytes += StringSnapshot.bytesize(string)
-        reject!("session message batch exceeds maximum bytes #{MAX_BYTES}") if @bytes > MAX_BYTES
+        reject!("#{label} exceeds maximum bytes #{MAX_BYTES}") if @bytes > MAX_BYTES
 
         StringSnapshot.copy(string, freeze: true)
       end
@@ -107,22 +108,22 @@ module Smith
       def copy_integer(integer)
         return integer if INTEGER_RANGE.cover?(integer)
 
-        reject!("session message integers must fit a signed 64-bit value")
+        reject!("#{label} integers must fit a signed 64-bit value")
       end
 
       def copy_float(float)
         return float if float.finite?
 
-        reject!("session message contains a non-finite Float")
+        reject!("#{label} contains a non-finite Float")
       end
 
       def visit!(depth)
-        reject!("session message batch exceeds maximum depth #{MAX_DEPTH}") if depth > MAX_DEPTH
+        reject!("#{label} exceeds maximum depth #{MAX_DEPTH}") if depth > MAX_DEPTH
 
         @nodes += 1
         return if @nodes <= MAX_NODES
 
-        reject!("session message batch exceeds maximum size #{MAX_NODES}")
+        reject!("#{label} exceeds maximum size #{MAX_NODES}")
       end
 
       def reject!(message)

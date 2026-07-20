@@ -68,11 +68,31 @@ module Smith
           super
         end
 
+        def authorize_prepared_step_execution!(...)
+          ExecutionAuthorizationIssuance.instance_method(:authorize_prepared_step_execution!).bind_call(self, ...)
+        end
+
+        def prepare_composite_step!(...)
+          CompositeExecution.instance_method(:prepare_composite_step!).bind_call(self, ...)
+        end
+
+        def execute_prepared_composite_branch!(...)
+          CompositeExecution.instance_method(:execute_prepared_composite_branch!).bind_call(self, ...)
+        end
+
+        def reduce_prepared_composite_step!(...)
+          CompositeExecution.instance_method(:reduce_prepared_composite_step!).bind_call(self, ...)
+        end
+
         private
 
         def smith_prepared_execution_active?
           authorization = @split_step_active_execution_authorization
-          authorization&.active_in_current_execution? == true
+          return true if authorization&.active_in_current_execution? == true
+
+          authorization = @split_step_execution_authorization
+          @split_step_phase == :execution_authorized &&
+            authorization&.issued_in_current_process? == true
         end
 
         def effective_persistence_ttl

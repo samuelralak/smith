@@ -5,30 +5,19 @@ module Smith
     module SplitStepPersistence
       module Execution
         def execute_prepared_step!
-          authorization = ExecutionAuthorization
-                          .instance_method(:authorize_prepared_step_execution!)
-                          .bind_call(self)
-          result = Execution.instance_method(:execute_authorized_prepared_step!).bind_call(self, authorization)
+          result = ExecutionAuthorizationIssuance
+                   .instance_method(:with_prepared_step_execution_authorization)
+                   .bind_call(self) do |authorization|
+            Execution.instance_method(:execute_authorized_prepared_step!).bind_call(self, authorization)
+          end
           result.step_snapshot
         end
 
         def execute_authorized_prepared_step!(authorization)
-          authorization = validate_split_step_execution_authorization!(authorization)
-          step = nil
-          result = nil
-          execution_thread = Thread.current
-          execution_active = false
-          Thread.handle_interrupt(Object => :never) do
-            activate_split_step_execution!(authorization, execution_thread)
-            execution_active = true
-            Thread.handle_interrupt(Object => :immediate) do
-              step = execute_claimed_split_step_transition!
-              result = consume_split_step_execution_result!(execution_thread)
-            end
-          ensure
-            finish_split_step_execution!(step, authorization, execution_thread) if execution_active
+          perform_authorized_prepared_step_execution!(authorization) do |execution_thread|
+            step = execute_claimed_split_step_transition!
+            [step, consume_split_step_execution_result!(execution_thread)]
           end
-          result
         end
 
         def prepared_persisted_step?

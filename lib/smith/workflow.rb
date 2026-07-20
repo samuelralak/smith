@@ -52,6 +52,9 @@ module Smith
       "Smith::AgentError"        => ->(s) { Smith::AgentError.new(s[:error_message]) },
       "Smith::DeadlineExceeded"  => ->(s) { Smith::DeadlineExceeded.new(s[:error_message]) },
       "Smith::WorkflowError"     => ->(s) { Smith::WorkflowError.new(s[:error_message]) },
+      "Smith::Workflow::Composite::BranchFailure" => lambda { |s|
+        Smith::Workflow::Composite::BranchFailure.from_details(s[:error_details])
+      },
       # Smith errors with non-message constructors map to compatible
       # superclass — message preserved, original metadata (agent_name,
       # model_used, requested_name, workflow_class, origin_state) lossy
@@ -493,5 +496,22 @@ Smith::Workflow::SplitStepPersistence::SubclassBoundary.protect_execution_path!(
   Smith::Workflow::EventIntegration,
   Smith::Workflow::ArtifactIntegration,
   Smith::Workflow::DataVolumePolicy,
-  Smith::Workflow::DeadlineEnforcement
+  Smith::Workflow::DeadlineEnforcement,
+  Smith::Workflow::SplitStepPersistence::DefinitionBoundary,
+  Smith::Workflow::SplitStepPersistence::ExecutionVerification,
+  Smith::Workflow::SplitStepPersistence::ExecutionAuthorization,
+  Smith::Workflow::SplitStepPersistence::ExecutionAuthorizationIssuance,
+  Smith::Workflow::SplitStepPersistence::ExecutionLifecycle,
+  Smith::Workflow::Composite::Contract,
+  Smith::Workflow::Composite::BranchContract,
+  Smith::Workflow::Composite::FanoutBranchContract,
+  Smith::Workflow::Composite::BranchBudgetContract,
+  Smith::Workflow::Composite::ExecutionContract,
+  Smith::Workflow::SplitStepPersistence::CompositeBranchEffects,
+  Smith::Workflow::SplitStepPersistence::CompositeBranchOutcome,
+  Smith::Workflow::SplitStepPersistence::CompositePreparation,
+  Smith::Workflow::SplitStepPersistence::CompositeBranchAuthorization,
+  Smith::Workflow::SplitStepPersistence::CompositeBranchExecution,
+  Smith::Workflow::SplitStepPersistence::CompositeReductionExecution,
+  Smith::Workflow::SplitStepPersistence::CompositeExecution
 )

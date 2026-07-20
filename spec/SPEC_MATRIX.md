@@ -1357,6 +1357,76 @@ Documented contracts covered:
 - step and branch teardown hooks run even when their matching setup raises
 - agent deadline and tool-call cleanup extension points remain observable
 
+### `spec/smith/workflow/composite_execution_spec.rb`
+
+Purpose:
+
+- pins the host-neutral split execution and ordered reduction contract for one
+  prepared same-agent parallel or heterogeneous fan-out transition
+
+Documented contracts covered:
+
+- planning prepares session input once and returns immutable, exact,
+  transport-bounded plan and input values tied to the confirmed dispatch,
+  executable definition digest, execution-semantics version, and budget baseline
+- every branch worker recovers the same dispatch, obtains a fresh process-local
+  authorization, revalidates the current branch limit and selected captured
+  binding in constant time with respect to branch count, and emits a typed
+  success or redacted failure when accounting evidence remains representable
+- reduction accepts a complete outcome set in any arrival order, rejects
+  missing, duplicated, mismatched, malformed, or replayed evidence, and emits
+  canonical aggregate output in declaration order in `O(B + P log P)` worst-case
+  time and `O(B + P)` bounded space, with cumulative effects and output rejected
+  before authority consumption
+- usage, tool captures, budget consumption, and prepared session history merge
+  exactly once; duplicate usage cannot partially apply another effect; decimal
+  precision, token/cost overflow, and invalid tool captures fail closed
+- the host must commit the primary failed branch; per-branch retry is explicitly
+  unsupported and Smith does not own scheduling, claims, fences, or persistence
+- transport decoders reject unknown fields, excessive size/depth/count, hostile
+  Hash/Array traversal overrides, invalid numerics, and branch counts above both
+  the transport ceiling and current runtime configuration
+- selected branch authorization captures one exact binding in `O(1)` with
+  respect to branch count, and the first preparation binds one artifact
+  execution namespace shared by every worker and the reducer
+- composite execution remains sealed against subclass method collisions,
+  arbitrary exceptions cannot forge retryability, failure identity survives JSON
+  persistence, and live aggregate output has the same shape as its restored form
+- payload construction enforces complete canonical fields and encoded JSON byte
+  limits; aggregate budget overrun, known usage replay, and cumulative accounting
+  overflow fail before one-shot reduction authority is consumed
+- the supported public lifecycle uses scoped prepare, branch execution, and
+  reduction calls; authorization-bearing composite methods remain private and
+  subclass collisions cannot replace the public framework boundary
+
+### `spec/smith/workflow/composite_hardening_spec.rb`
+
+Purpose:
+
+- pins the adversarial durability and resource-bound guarantees around the
+  host-neutral composite lifecycle
+
+Documented contracts covered:
+
+- process-local branch authority binds one exact compact execution envelope and
+  cannot be reused for another branch
+- stable host-declared agent execution identity rejects implementation
+  replacement after planning and is not inherited by distinct subclasses
+- restart-safe durable dispatch verification cannot be bypassed through a
+  subclass private-method collision
+- unknown transport keys do not intern symbols, and arbitrary exceptions cannot
+  inject trusted error kind or retryability evidence
+- unknown transport enum values do not intern symbols, incomplete persisted
+  branch failures fail closed, and cumulative encoded effects stop streamed
+  outcome consumption before the complete input is materialized
+- asynchronous interruption between branch authorization activation and scoped
+  execution releases the exact process-local authority before control unwinds
+- enumerated outcomes stop at the first cumulative bound violation rather than
+  materializing the remaining stream
+- selected worker payload size is independent of the total branch collection
+- scalar accounting overflow is rejected before host tool evidence is
+  snapshotted
+
 ### `spec/smith/workflow/prepared_step_execution_result_spec.rb`
 
 Purpose:

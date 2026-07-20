@@ -15,6 +15,10 @@ module Smith
     def self.retryable?(error)
       return false if error.nil?
 
+      composite_failure = defined?(Smith::Workflow::Composite::BranchFailure) &&
+                          error.is_a?(Smith::Workflow::Composite::BranchFailure)
+      return false if composite_failure
+
       case error
       when Smith::DeterministicStepFailure, Smith::ToolGuardrailFailed
         error.retryable == true

@@ -4,6 +4,9 @@ require "ruby_llm"
 
 module Smith
   class Agent < RubyLLM::Agent
+    EXECUTION_IDENTITY_UNSET = Object.new.freeze
+    private_constant :EXECUTION_IDENTITY_UNSET
+
     # Reserved input names auto-injected by the normalizer into
     # runtime_context. User-side `inputs :name` calls cannot redeclare
     # these names; the override raises Smith::AgentError if they try.
@@ -20,7 +23,17 @@ module Smith
         subclass.instance_variable_set(:@data_volume, @data_volume)
         subclass.instance_variable_set(:@fallback_models_list, @fallback_models_list&.dup)
         subclass.instance_variable_set(:@model_block, @model_block)
+        subclass.instance_variable_set(:@execution_identity, nil)
         subclass.instance_variable_set(:@registered_name, nil)
+      end
+
+      def execution_identity(value = EXECUTION_IDENTITY_UNSET)
+        return @execution_identity if value.equal?(EXECUTION_IDENTITY_UNSET)
+        unless value.is_a?(String) && /\A[0-9a-f]{64}\z/.match?(value)
+          raise ArgumentError, "execution_identity must be a lowercase SHA-256 hex digest"
+        end
+
+        @execution_identity = value.dup.freeze
       end
 
       def budget(**opts)

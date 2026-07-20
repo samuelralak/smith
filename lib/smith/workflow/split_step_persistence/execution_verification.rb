@@ -8,11 +8,18 @@ module Smith
 
         def claim_split_step_execution_verification!
           @split_step_mutex.synchronize do
-            ensure_split_step_definition_current!
-            expected = restart_safe_split_step? ? :dispatch_claimed : :prepared
+            DefinitionBoundary
+              .instance_method(:ensure_split_step_definition_current!)
+              .bind_call(self)
+            restart_safe = DefinitionBoundary
+                           .instance_method(:restart_safe_split_step?)
+                           .bind_call(self)
+            expected = restart_safe ? :dispatch_claimed : :prepared
             raise WorkflowError, "no persisted step is prepared for execution" unless @split_step_phase == expected
 
-            ensure_prepared_split_step_transition_matches!
+            ExecutionVerification
+              .instance_method(:ensure_prepared_split_step_transition_matches!)
+              .bind_call(self)
 
             token = Object.new.freeze
             @split_step_execution_previous_phase = expected
@@ -23,8 +30,13 @@ module Smith
         end
 
         def verify_claimed_split_step_execution!(verification_token)
-          if restart_safe_split_step?
-            verify_split_step_dispatch_available!(verification_token)
+          restart_safe = DefinitionBoundary
+                         .instance_method(:restart_safe_split_step?)
+                         .bind_call(self)
+          if restart_safe
+            DispatchVerification
+              .instance_method(:verify_split_step_dispatch_available!)
+              .bind_call(self, verification_token)
           else
             verify_split_step_preparation_available!
           end

@@ -6,6 +6,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+### Added
+
+- Add a host-neutral durable composite lifecycle for same-agent parallel and
+  heterogeneous fan-out transitions. Smith emits immutable bounded plans and
+  inputs, executes one authorized branch through captured agent bindings, and
+  deterministically reduces a complete ordered outcome set through the normal
+  transition completion and failure paths.
+- Add exact transport contracts for ordered branch descriptors, redacted branch
+  failures, usage/tool/budget effects, and host-committed primary failure
+  selection. Composite branch retries remain explicitly unsupported; hosts own
+  scheduling, persistence, claims, fences, and incomplete-branch resumption.
+- Add compact selected-branch execution envelopes and stable host-declared agent
+  execution identities so workers do not receive the full plan and registry
+  replacement after planning fails closed.
+- Add scoped prepare, selected-branch execution, and reduction entry points so
+  process-local authority never crosses the supported public composite API.
+
+### Changed
+
+- Bump `Smith::EXECUTION_SEMANTICS_VERSION` to `2` so hosts invalidate generated
+  executable definitions when adopting the composite lifecycle.
+- Canonicalize aggregate branch output to the same JSON-compatible shape before
+  and after persistence.
+
 ### Fixed
 
 - Preserve complete workflow, agent, and branch execution context across
@@ -18,6 +42,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   branch Fiber, reject copied or serialized process-local authority, and make
   activation, cleanup, and context restoration safe against asynchronous Ruby
   thread interruption.
+- Keep composite planning and full-run validation linear in branch count, make
+  individual branch binding capture and validation constant-time in branch
+  count, reject the hard transport ceiling before descriptor allocation, and
+  incrementally enforce cumulative effect/output envelopes before consuming
+  execution authority.
+- Isolate decimal aggregation from host `BigDecimal` precision, reject aggregate
+  usage overflow, and preserve composite branch identity and retry
+  classification across persistence.
+- Bind one artifact execution namespace into every branch and the reducer,
+  reject aggregate budget overrun and known usage replay before consuming
+  authority, and validate cumulative persisted token/cost accounting.
+- Enforce complete canonical payload fields and encoded JSON byte limits before
+  returning transport values.
+- Allocate disjoint branch budget envelopes without exceeding the parent,
+  reconcile usage against branch-local token/cost consumption, bind branch
+  authority to one exact execution envelope, and prevent subclass collisions
+  from bypassing durable dispatch verification.
+- Reject forged retryability, untrusted error metadata, and unknown transport
+  keys without symbol interning; validate scalar and replay failures before
+  snapshotting tool effects.
+- Reject unknown transport enum values without symbol interning, reject corrupt
+  persisted branch-failure evidence instead of inventing defaults, enforce
+  cumulative encoded-effect bounds while streaming outcomes, and close active
+  branch authority before asynchronous interruption can escape a scoped call.
 
 ## [0.5.0] - 2026-07-19
 
