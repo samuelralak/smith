@@ -6,13 +6,20 @@ module Smith
       private
 
       def prepared_branch(implementation, *arguments)
+        tool_context = Tool::ScopedContext.capture
         unless @split_step_active_execution_authorization
-          return proc { |signal| __send__(implementation.name, *arguments, signal) }
+          return proc do |signal|
+            Tool::ScopedContext.around(tool_context) do
+              __send__(implementation.name, *arguments, signal)
+            end
+          end
         end
 
         proc do |signal|
           run = proc { implementation.bind_call(self, *arguments, signal) }
-          PreparedBranchExecution.instance_method(:within_prepared_branch_execution).bind_call(self, &run)
+          Tool::ScopedContext.around(tool_context) do
+            PreparedBranchExecution.instance_method(:within_prepared_branch_execution).bind_call(self, &run)
+          end
         end
       end
 

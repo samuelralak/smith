@@ -16,6 +16,22 @@ RSpec.describe "Smith::Agent.chat() direct-call normalization" do
     end
   end
 
+  it "scopes tool execution on Smith-created chats without changing raw RubyLLM chats" do
+    tool_class = Class.new(Smith::Tool) do
+      def perform(**_kwargs) = :ok
+    end
+    agent_class = Class.new(Smith::Agent) do
+      model "gpt-5-mini"
+      tools tool_class
+    end
+
+    smith_chat = agent_class.chat
+    raw_chat = RubyLLM.chat(model: "gpt-5-mini")
+
+    expect(smith_chat.singleton_class).to be < Smith::Tool::ChatExecutionContext
+    expect(raw_chat.singleton_class).not_to be < Smith::Tool::ChatExecutionContext
+  end
+
   describe "Opus 4.7 (adaptive thinking, no temperature)" do
     let(:agent_class) do
       Class.new(Smith::Agent) do

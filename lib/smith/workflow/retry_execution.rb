@@ -24,6 +24,7 @@ module Smith
 
       def retry_transition_error?(config, error, attempt)
         return false if attempt >= config.fetch(:attempts)
+        return false if error.is_a?(ToolCaptureFailed)
 
         classes = config.fetch(:error_classes)
         if classes.any?

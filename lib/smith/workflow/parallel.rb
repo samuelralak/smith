@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../errors"
+require_relative "../tool_capture_failed"
 require_relative "parallel/cancellation"
 require_relative "parallel/cancellation_signal"
 require_relative "parallel/execution_context"
@@ -36,7 +38,10 @@ module Smith
 
       def self.preferred_error(reasons)
         errors = Array(reasons).compact
-        errors.find { |error| !error.is_a?(Cancellation) } || errors.first
+        errors.find { |error| !error.is_a?(StandardError) } ||
+          errors.find { |error| error.is_a?(ToolCaptureFailed) } ||
+          errors.find { |error| !error.is_a?(Cancellation) } ||
+          errors.first
       end
     end
   end

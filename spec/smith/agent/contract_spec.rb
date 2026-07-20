@@ -14,7 +14,7 @@ RSpec.describe "Smith::Agent contract" do
   end
 
   it "retains the RubyLLM agent class API surface" do
-    %i[chat_model model tools instructions temperature thinking schema find create chat].each do |dsl|
+    %i[chat_model model tools instructions temperature thinking schema find create create! chat].each do |dsl|
       expect(agent_class).to respond_to(dsl), "expected Smith::Agent to retain RubyLLM .#{dsl}"
     end
   end

@@ -4,7 +4,42 @@ All notable changes to Smith are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Smith is pre-1.0 and under active development; expect occasional contract tightening between minor versions until 1.0.
 
-## [Unreleased]
+## [0.7.0] - 2026-07-21
+
+### Added
+
+- Add an opaque host invocation context for tool adapters, propagated through
+  Smith parallel/fan-out branches and concurrent tools on individual chats
+  created by `Smith::Agent` without globally changing RubyLLM behavior. Durable
+  workers receive it only when the host installs a fresh process-local context.
+- Add opt-in strict tool-result capture with typed failure diagnostics and
+  persistence-safe reconstruction.
+
+### Changed
+
+- Bump `Smith::EXECUTION_SEMANTICS_VERSION` to `3` because composite branch
+  failure transport now preserves strict tool-capture uncertainty and its
+  typed tool metadata across persistence.
+- Support RubyLLM `>= 1.15, < 1.17`; Smith's per-chat concurrent tool context
+  integration is verified against those execution interfaces and fails closed
+  when the required chat hook is unavailable.
+
+### Fixed
+
+- Make agent tool-call allowance atomic across concurrent tool calls.
+- Install Smith's tool execution boundary on direct and persisted agent chat
+  entry points (`chat`, `create`, `create!`, and `find`) without modifying raw
+  RubyLLM chats globally, and capture invocation context independently for each
+  tool execution batch.
+- Give strict capture uncertainty precedence over sibling concurrent failures,
+  reject unusable collectors before host hooks or tool execution, and prevent
+  transition retries from replaying an uncertain tool outcome.
+- Preserve process-fatal failures across concurrent tool callbacks and root
+  workflow branches regardless of sibling completion order.
+- Reject malformed or future strict-capture diagnostics at persistence
+  boundaries, while preserving legacy non-capture composite error transport.
+- Preserve the existing per-concrete-class `capture_result` opt-in behavior and
+  the public `BranchEnv` member shape.
 
 ## [0.6.1] - 2026-07-20
 

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../tool_capture_failed"
+
 module Smith
   class Workflow
     class Transition
@@ -333,6 +335,10 @@ module Smith
           next if error_class.is_a?(Class) && error_class <= StandardError
 
           raise WorkflowError, "retry_on error classes must inherit from StandardError"
+        end
+        if error_classes.any? { |error_class| error_class <= ToolCaptureFailed }
+          message = "retry_on cannot retry Smith::ToolCaptureFailed because the tool outcome may be uncertain"
+          raise WorkflowError, message
         end
 
         ExponentialBackoff.new(

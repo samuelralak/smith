@@ -74,7 +74,7 @@ module Smith
 
       def apply_agent_tool_calls(agent_class)
         agent_tc = agent_class&.budget&.dig(:tool_calls)
-        Tool.current_tool_call_allowance = agent_tc ? { remaining: agent_tc } : nil
+        Tool.current_tool_call_allowance = agent_tc ? Tool::CallAllowance.new(agent_tc) : nil
       end
 
       def clear_agent_tool_calls

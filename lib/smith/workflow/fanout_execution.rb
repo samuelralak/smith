@@ -1,11 +1,19 @@
 # frozen_string_literal: true
 
-require_relative "branch_env"
-
 module Smith
   class Workflow
     module FanoutExecution
       private
+
+      def fanout_branch_environment(branches, branch_agent_classes, prepared_input)
+        BranchEnv.new(
+          prepared_input:,
+          guardrail_sources: nil,
+          scoped_store: propagate_scoped_artifacts,
+          branch_estimates: fanout_branch_estimates(branches, branch_agent_classes),
+          deadline: wall_clock_deadline
+        )
+      end
 
       def run_guarded_fanout_step(transition)
         branches = transition.fanout_config.fetch(:branches)
@@ -26,13 +34,7 @@ module Smith
       def execute_fanout_step(transition, branches: nil, branch_agent_classes: nil, prepared_input: nil)
         branches ||= transition.fanout_config.fetch(:branches)
         branch_agent_classes ||= fanout_agent_classes(transition, branches)
-        env = BranchEnv.new(
-          prepared_input: prepared_input,
-          guardrail_sources: nil,
-          scoped_store: propagate_scoped_artifacts,
-          branch_estimates: fanout_branch_estimates(branches, branch_agent_classes),
-          deadline: wall_clock_deadline
-        )
+        env = fanout_branch_environment(branches, branch_agent_classes, prepared_input)
 
         branch_calls = branches.map do |branch_key, agent_name|
           PreparedBranchExecution.instance_method(:prepared_branch).bind_call(
@@ -98,12 +100,11 @@ module Smith
       def fanout_branch_estimates(branches, branch_agent_classes)
         return {} unless @ledger
 
-        branch_count = branches.length
         branches.each_with_object({}) do |(branch_key, _agent_name), map|
           agent_class = branch_agent_classes.fetch(branch_key)
           map[branch_key] = compute_branch_estimates(
             @ledger,
-            branch_count: branch_count,
+            branch_count: branches.length,
             agent_budget: agent_class&.budget
           )
         end

@@ -118,6 +118,43 @@ RSpec.describe "Smith::Workflow retry policy" do
     expect(attempts).to eq(2)
   end
 
+  it "rejects explicit retries for post-execution tool capture uncertainty" do
+    expect do
+      with_stubbed_class("SpecRetryCaptureFailureWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+
+        transition :call_agent, from: :idle, to: :done do
+          execute :spec_retry_agent
+          retry_on Smith::ToolCaptureFailed, attempts: 2
+        end
+      end
+    end.to raise_error(
+      workflow_error,
+      "retry_on cannot retry Smith::ToolCaptureFailed because the tool outcome may be uncertain"
+    )
+  end
+
+  it "does not let broad explicit retry classes override capture uncertainty" do
+    attempts = 0
+    workflow = Class.new(workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :call_agent, from: :idle, to: :done do
+        execute :spec_retry_agent
+        retry_on StandardError, attempts: 3
+      end
+    end.new
+    workflow.define_singleton_method(:execute_transition_body) do |_transition, **|
+      attempts += 1
+      raise Smith::ToolCaptureFailed.new(tool_name: :search, reason: :collector_failed)
+    end
+
+    expect { workflow.run! }.to raise_error(Smith::ToolCaptureFailed)
+    expect(attempts).to eq(1)
+  end
+
   it "validates retry controls at declaration time" do
     expect do
       with_stubbed_class("SpecRetryInvalidAttemptsWorkflow", workflow_class) do

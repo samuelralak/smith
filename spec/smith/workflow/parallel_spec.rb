@@ -108,6 +108,7 @@ RSpec.describe "Smith::Workflow parallel execution" do
       ledger: Object.new,
       allowance: { remaining: 4 },
       collector: proc {},
+      invocation_context: Object.new,
       artifacts: Object.new
     }
     Smith::Tool.current_guardrails = outer[:guardrails]
@@ -115,6 +116,7 @@ RSpec.describe "Smith::Workflow parallel execution" do
     Smith::Tool.current_ledger = outer[:ledger]
     Smith::Tool.current_tool_call_allowance = outer[:allowance]
     Smith::Tool.current_tool_result_collector = outer[:collector]
+    Smith::Tool.current_invocation_context = outer[:invocation_context]
     Smith.scoped_artifacts = outer[:artifacts]
     env = Smith::Workflow::BranchEnv.new(deadline: Time.now.utc + 10)
     workflow = Class.new(workflow_class) do
@@ -128,6 +130,7 @@ RSpec.describe "Smith::Workflow parallel execution" do
     expect(Smith::Tool.current_ledger).to equal(outer[:ledger])
     expect(Smith::Tool.current_tool_call_allowance).to equal(outer[:allowance])
     expect(Smith::Tool.current_tool_result_collector).to equal(outer[:collector])
+    expect(Smith::Tool.current_invocation_context).to equal(outer[:invocation_context])
     expect(Smith.scoped_artifacts).to equal(outer[:artifacts])
   ensure
     original&.restore!
@@ -186,6 +189,28 @@ RSpec.describe "Smith::Workflow parallel execution" do
     expect(calls.size).to eq(2)
   end
 
+  it "propagates opaque invocation context to every same-agent parallel branch" do
+    invocation_context = Object.new
+    observed = Queue.new
+    workflow = with_stubbed_class("SpecParallelInvocationContextWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :fan_out, from: :idle, to: :done do
+        execute :spec_parallel_agent, parallel: true, count: 3
+      end
+    end.new
+    workflow.define_singleton_method(:execute_transition_body) do |_transition, prepared_input: nil|
+      observed << Smith::Tool.current_invocation_context
+      prepared_input
+    end
+
+    Smith::Tool.with_invocation_context(invocation_context) { workflow.run! }
+
+    expect(3.times.map { observed.pop }).to all(equal(invocation_context))
+    expect(Smith::Tool.current_invocation_context).to be_nil
+  end
+
   it "restores complete branch context across nested parallel and fan-out workflows" do
     capture = lambda do
       {
@@ -194,6 +219,7 @@ RSpec.describe "Smith::Workflow parallel execution" do
         ledger: Smith::Tool.current_ledger,
         allowance: Smith::Tool.current_tool_call_allowance,
         collector: Smith::Tool.current_tool_result_collector,
+        invocation_context: Smith::Tool.current_invocation_context,
         artifacts: Smith.scoped_artifacts,
         call_deadline: Thread.current[:smith_call_deadline],
         call_ledger: Thread.current[:smith_call_ledger],
@@ -252,6 +278,7 @@ RSpec.describe "Smith::Workflow parallel execution" do
         Smith::Tool.current_ledger,
         Smith::Tool.current_tool_call_allowance,
         Smith::Tool.current_tool_result_collector,
+        Smith::Tool.current_invocation_context,
         Smith.scoped_artifacts,
         Thread.current[:smith_call_deadline],
         Thread.current[:smith_call_ledger],
@@ -266,6 +293,7 @@ RSpec.describe "Smith::Workflow parallel execution" do
       Smith::Tool.current_ledger = Object.new
       Smith::Tool.current_tool_call_allowance = { remaining: 7 }
       Smith::Tool.current_tool_result_collector = proc {}
+      Smith::Tool.current_invocation_context = Object.new
       Smith.scoped_artifacts = Object.new
       Thread.current[:smith_call_deadline] = Time.now.utc + 30
       Thread.current[:smith_call_ledger] = Object.new
@@ -1585,6 +1613,112 @@ RSpec.describe "Smith::Workflow parallel execution" do
 
     captured_branches = result.tool_results.map { |tr| tr[:captured][:branch] }.sort
     expect(captured_branches).to eq([1, 2, 3])
+  end
+
+  it "gives strict capture uncertainty precedence over a retryable sibling failure" do
+    effects = Concurrent::AtomicFixnum.new(0)
+    calls = Concurrent::AtomicFixnum.new(0)
+    barrier = Concurrent::CyclicBarrier.new(2)
+    uncertain_tool = with_stubbed_class("SpecParallelUncertainCaptureTool", tool_class) do
+      capture_result(strict: true) { raise "projection failed" }
+      define_method(:perform) do |**_kwargs|
+        effects.increment
+        :performed
+      end
+    end
+    agent = with_stubbed_class("SpecParallelUncertainCaptureAgent", agent_class) do
+      register_as :spec_parallel_uncertain_capture_agent
+      model "gpt-5-mini"
+    end
+    allow(agent).to receive(:chat) do
+      branch = calls.increment
+      Object.new.tap do |chat|
+        chat.define_singleton_method(:add_message) { |_message| nil }
+        chat.define_singleton_method(:complete) do
+          barrier.wait
+          raise Smith::AgentError, "sibling failed first" if branch == 1
+
+          sleep(0.02)
+          uncertain_tool.new.execute
+        end
+      end
+    end
+    workflow = with_stubbed_class("SpecParallelUncertainCaptureWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+      transition :review, from: :idle, to: :done do
+        execute :spec_parallel_uncertain_capture_agent, parallel: true, count: 2
+        retry_on StandardError, attempts: 2
+        on_failure :fail
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result).to be_failed
+    expect(result.last_error).to be_a(Smith::ToolCaptureFailed)
+    expect(effects.value).to eq(1)
+    expect(calls.value).to eq(2)
+  end
+
+  it "preserves strict capture uncertainty through nested parallel arbitration" do
+    barrier = Concurrent::CyclicBarrier.new(2)
+    uncertainty = Smith::ToolCaptureFailed.new(tool_name: :nested, reason: :collector_failed)
+    nested = proc do |_outer_signal|
+      Smith::Workflow::Parallel.execute(
+        branches: [
+          proc do |_signal|
+            barrier.wait
+            raise Smith::AgentError, "nested sibling failed"
+          end,
+          proc do |_signal|
+            barrier.wait
+            sleep(0.02)
+            raise uncertainty
+          end
+        ]
+      )
+    end
+
+    expect do
+      Smith::Workflow::Parallel.execute(branches: [nested, proc { |_signal| :ok }])
+    end.to raise_error(Smith::ToolCaptureFailed, uncertainty.message)
+  end
+
+  [
+    ["fatal before ordinary", 0, 0.02, Smith::AgentError.new("ordinary")],
+    ["fatal after ordinary", 0.02, 0, Smith::AgentError.new("ordinary")],
+    [
+      "fatal before strict capture uncertainty",
+      0,
+      0.02,
+      Smith::ToolCaptureFailed.new(tool_name: :search, reason: :collector_failed)
+    ],
+    [
+      "fatal after strict capture uncertainty",
+      0.02,
+      0,
+      Smith::ToolCaptureFailed.new(tool_name: :search, reason: :collector_failed)
+    ]
+  ].each do |description, fatal_delay, sibling_delay, sibling_error|
+    it "preserves a process-fatal root branch #{description}" do
+      barrier = Concurrent::CyclicBarrier.new(2)
+      fatal_branch = proc do |_signal|
+        barrier.wait
+        sleep(fatal_delay)
+        raise Interrupt, "shutdown"
+      end
+      sibling_branch = proc do |_signal|
+        barrier.wait
+        sleep(sibling_delay)
+        raise sibling_error
+      end
+
+      expect do
+        Smith::Workflow::Parallel.execute(branches: [fatal_branch, sibling_branch])
+      end.to raise_error(Interrupt, "shutdown")
+    end
   end
 
   it "captures all entries from 50 parallel branches without loss" do

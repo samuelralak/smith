@@ -16,6 +16,7 @@ module Smith
         current_ledger
         current_tool_call_allowance
         current_tool_result_collector
+        current_invocation_context
       ].freeze
       THREAD_KEYS = %i[
         smith_call_deadline

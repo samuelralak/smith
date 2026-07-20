@@ -3051,6 +3051,73 @@ Covered behaviors:
 - Tool without capture_result does not append to collector
 - Capture block that raises is logged and does not fail tool execution
 - No collector active (outside workflow) — capture silently skipped
+- Strict capture fails when the collector is absent
+- Strict capture fails when the capture block or collector raises
+- Strict capture fails when the capture block returns nil
+- Strict capture preflights collector presence before perform
+- Strict capture rejects a non-callable collector before host hooks or perform
+- Collector nil/false return values are accepted; raising rejects delivery
+- Capture remains opt-in per concrete subclass for backward compatibility
+- Opaque host invocation context is nested, restored, and exception safe
+- Incomplete scoped context is rejected before any current value is mutated
+
+### `spec/smith/tools/chat_execution_context_spec.rb`
+
+Covered behaviors:
+
+- Opaque invocation context and strict collectors propagate through concurrent
+  tool calls on a Smith-scoped chat
+- Tools attached after Smith creates a chat receive the same scoped context
+- Strict capture uncertainty takes precedence over concurrent sibling errors
+- Concurrent batches on one chat isolate capture failures from one another
+- Process-fatal sibling failures are not replaced by strict capture uncertainty,
+  regardless of sibling completion order
+- A callback-level process-fatal exception escaping the concurrent executor is
+  not replaced by queued strict-capture uncertainty
+- Reused chats capture invocation context per execution and cannot retain an
+  earlier execution's context
+- Smith fails closed when a RubyLLM chat lacks the required tool execution hook
+- Raw RubyLLM chat instances remain unmodified
+
+### `spec/smith/agent/persisted_chat_execution_context_spec.rb`
+
+Covered behaviors:
+
+- Persisted chat entry points `create`, `create!`, and `find` install Smith's
+  per-chat tool execution boundary while returning the original record
+- Real RubyLLM `acts_as_chat` records preserve instruction persistence, cached
+  chat identity, message reset behavior, and tool configuration across those
+  entry points without provider calls
+
+### `spec/smith/tools/call_allowance_spec.rb`
+
+Covered behaviors:
+
+- Concurrent tool calls atomically admit exactly the configured allowance
+- Legacy hash allowance assignment remains compatible and synchronized
+- Independent legacy allowances do not serialize each other's tool execution
+- Waiting-thread cancellation cannot consume an allowance slot
+- Zero is a valid allowance that denies the first actual tool call
+- Legacy hash-compatible `[:remaining]` reads return the current allowance
+- A rejected enclosed ledger charge does not consume agent allowance
+- Invalid allowance bounds fail before publication
+
+### `spec/smith/tools/load_spec.rb`
+
+Covered behaviors:
+
+- `require "smith/tool_capture_failed"` loads its base error dependency directly
+
+### `spec/smith/tools/tool_capture_failed_spec.rb`
+
+Covered behaviors:
+
+- persisted capture details require the exact bounded tool-name/reason schema
+- malformed, duplicate, missing, future, and oversized values fail closed
+- anonymous dynamic tools receive a stable bounded diagnostic name at runtime
+- invalid runtime tool identities are represented by a UTF-8-safe digest label
+- composite transport accepts only canonical strict-capture metadata
+- legacy outcome digests cannot authenticate newly introduced capture metadata
 
 ### `spec/smith/workflow/run_result_spec.rb`
 
@@ -3078,6 +3145,34 @@ Covered behaviors:
 Covered behaviors:
 
 - parallel branches capture tool results without loss
+- strict capture uncertainty outranks retryable sibling agent failures and is
+  not replayed by broad transition retry policies
+- nested parallel arbitration preserves strict capture uncertainty
+- root parallel arbitration preserves process-fatal failures in both completion
+  orders against ordinary and strict-capture sibling failures
+
+### `spec/smith/workflow/fanout_spec.rb`
+
+Covered behaviors:
+
+- heterogeneous fan-out preserves strict capture uncertainty over a retryable
+  sibling agent failure without replaying the external tool outcome
+
+### `spec/smith/workflow/composite_execution_spec.rb`
+
+Covered behaviors:
+
+- strict capture error family, tool name, and reason survive composite JSON
+  transport and reconstruct as typed branch failure evidence
+- legacy non-capture error and failed branch-outcome JSON remains readable when
+  optional tool metadata is absent
+
+### `spec/smith/workflow/execution_context_spec.rb`
+
+Covered behaviors:
+
+- a zero-call agent budget permits model execution with no tools and denies the
+  first actual tool invocation before `perform`
 
 Notes:
 
@@ -3087,7 +3182,24 @@ Notes:
 - Collector thread-local (Tool.current_tool_result_collector) is a synchronized proc wired through execution and parallel contexts
 - tool_results is persisted via to_state/from_state and restored on durable resume
 - Smith does not interpret captured payloads — host owns all projection
-- Capture is best-effort: failures logged, tool execution unaffected
+- Capture is best-effort by default: failures logged, tool execution unaffected
+- Strict capture is per-concrete-class opt-in and raises Smith::ToolCaptureFailed rather than
+  permitting a checkpoint without required evidence
+- Strict capture is post-result evidence, not an operation transaction; its
+  failure is terminal; direct retry declarations are rejected and broad retry
+  classes cannot override the classification, preventing Smith transition
+  replay; side-effecting hosts still require operation receipts and
+  reconciliation
+- Invocation context is opaque, process-local, not persisted, and propagated to
+  Smith-managed same-agent and heterogeneous parallel branches and concurrent
+  tools on chats returned by Smith agent `chat`, `create`, `create!`, and `find`
+  entry points. Durable workers receive context only when the host installs a
+  fresh process-local scope; reused chats capture that scope per execution
+- Raw RubyLLM chats and host-created threads/fibers remain host-owned and must
+  install their own scope
+- Agent tool-call allowance is an O(1), mutex-protected admission boundary
+- Execution semantics version 3 fences persisted composite failure transport
+  that preserves typed strict-capture metadata
 - Collector uses a synchronized proc, not raw array mutation, for thread safety beyond MRI
 - Smith normalizes envelope keys (tool, captured) but preserves host payload internals as opaque JSON-safe data
 - tool_results is for compact structured evidence; large raw payloads belong in artifacts

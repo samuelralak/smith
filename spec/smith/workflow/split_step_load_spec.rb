@@ -143,7 +143,7 @@ RSpec.describe "Smith split-step aggregate loading" do
         Smith::Workflow::Composite::BranchOutcome
         Smith::Workflow::Composite::Plan
         Smith::Workflow::Composite::BranchFailure
-        2
+        3
         1
         0
       ]

@@ -82,6 +82,12 @@ module Smith
           def serializable(values)
             values.merge(error: values[:error]&.to_h, effects: values.fetch(:effects).to_h)
           end
+
+          def legacy_serializable(values)
+            serializable(values).tap do |payload|
+              payload[:error] = payload[:error]&.except(:tool_name, :reason)
+            end
+          end
         end
 
         def initialize(attributes)
@@ -89,14 +95,25 @@ module Smith
           owned[:output] = self.class.send(:normalize_output, owned[:output])
           super(owned)
           validate_shape!
-          expected = PayloadDigest.call(self.class.send(:serializable, to_h.except(:digest)))
-          raise ArgumentError, "composite branch outcome digest does not match" unless digest == expected
+          validate_digest!
         end
 
         def succeeded? = status == :succeeded
         def failed? = status == :failed
 
         private
+
+        def validate_digest!
+          values = to_h.except(:digest)
+          payloads = [self.class.send(:serializable, values)]
+          payloads << self.class.send(:legacy_serializable, values) if legacy_digest_allowed?
+          expected = payloads.map { PayloadDigest.call(_1) }
+          raise ArgumentError, "composite branch outcome digest does not match" unless expected.include?(digest)
+        end
+
+        def legacy_digest_allowed?
+          error.nil? || (error.tool_name.nil? && error.reason.nil?)
+        end
 
         def validate_shape!
           valid = succeeded? ? error.nil? : error && output.nil?

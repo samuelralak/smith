@@ -62,6 +62,69 @@ RSpec.describe "Smith::Workflow execution context lifecycle" do
     Smith::Agent::Registry.delete(:context_lifecycle_agent)
   end
 
+  it "allows a zero-call agent budget when the agent invokes no tools" do
+    agent = Class.new(Smith::Agent) do
+      register_as :zero_tool_call_agent
+      model "gpt-5-mini"
+      budget tool_calls: 0
+    end
+    allow(agent).to receive(:chat) do
+      Object.new.tap do |chat|
+        chat.define_singleton_method(:add_message) { |_message| nil }
+        chat.define_singleton_method(:complete) do
+          Struct.new(:content, :input_tokens, :output_tokens).new("done", 1, 1)
+        end
+      end
+    end
+    workflow = Class.new(Smith::Workflow) do
+      initial_state :idle
+      state :done
+      transition(:finish, from: :idle, to: :done) { execute :zero_tool_call_agent }
+    end.new
+
+    expect(workflow.run!).to be_done
+  ensure
+    Smith::Agent::Registry.delete(:zero_tool_call_agent)
+  end
+
+  it "denies an actual tool invocation under a zero-call agent budget" do
+    executed = false
+    tool = Class.new(Smith::Tool) do
+      define_method(:perform) do |**_kwargs|
+        executed = true
+        :unreachable
+      end
+    end.new
+    agent = Class.new(Smith::Agent) do
+      register_as :zero_tool_call_denial_agent
+      model "gpt-5-mini"
+      budget tool_calls: 0
+    end
+    allow(agent).to receive(:chat) do
+      Object.new.tap do |chat|
+        chat.define_singleton_method(:add_message) { |_message| nil }
+        chat.define_singleton_method(:complete) { tool.execute }
+      end
+    end
+    workflow = Class.new(Smith::Workflow) do
+      initial_state :idle
+      state :done
+      state :failed
+      transition :finish, from: :idle, to: :done do
+        execute :zero_tool_call_denial_agent
+        on_failure :fail
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result).to be_failed
+    expect(result.last_error).to be_a(Smith::BudgetExceeded)
+    expect(executed).to eq(false)
+  ensure
+    Smith::Agent::Registry.delete(:zero_tool_call_denial_agent)
+  end
+
   it "tears down a branch when branch setup raises" do
     events = []
     Smith::Agent::Registry.register(:branch_lifecycle_agent, Class.new(Smith::Agent))

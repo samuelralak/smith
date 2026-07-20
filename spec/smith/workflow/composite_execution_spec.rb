@@ -260,6 +260,136 @@ RSpec.describe "Smith::Workflow durable composite execution" do
     Smith::Agent::Registry.delete(:composite_parallel_agent)
   end
 
+  it "installs fresh host invocation context in a recovered composite worker" do
+    observed = Queue.new
+    context = Object.new.freeze
+    tool = with_stubbed_class("SpecRecoveredCompositeContextTool", Smith::Tool) do
+      define_method(:perform) do |**_kwargs|
+        observed << self.class.current_invocation_context
+        :ok
+      end
+    end.new
+    agent = Class.new(Smith::Agent) { model "gpt-5-mini" }
+    register_composite_agent(:composite_invocation_context_agent, agent)
+    allow(agent).to receive(:chat) do
+      Object.new.tap do |chat|
+        chat.define_singleton_method(:add_message) { |_message| nil }
+        chat.define_singleton_method(:complete) do
+          tool.execute
+          Struct.new(:content, :input_tokens, :output_tokens).new("ok", 1, 1)
+        end
+      end
+    end
+    workflow_class = stub_const("SpecCompositeInvocationContextWorkflow", Class.new(Smith::Workflow) do
+      definition_digest Digest::SHA256.hexdigest("composite-invocation-context")
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+      transition(:finish, from: :idle, to: :done) do
+        execute :composite_invocation_context_agent, parallel: true, count: 1
+      end
+    end)
+    dispatch, preparation = prepare_composite(workflow_class, "composite:invocation-context")
+
+    outcomes = Smith::Tool.with_invocation_context(context) do
+      execute_branches(workflow_class, dispatch, preparation)
+    end
+
+    expect(outcomes.sole).to be_succeeded
+    expect(observed.pop).to equal(context)
+    expect(Smith::Tool.current_invocation_context).to be_nil
+  ensure
+    Smith::Agent::Registry.delete(:composite_invocation_context_agent)
+  end
+
+  it "installs one host invocation context across recovered heterogeneous branches" do
+    observed = Queue.new
+    context = Object.new.freeze
+    tool = with_stubbed_class("SpecRecoveredFanoutContextTool", Smith::Tool) do
+      define_method(:perform) do |**_kwargs|
+        observed << self.class.current_invocation_context
+        :ok
+      end
+    end.new
+    agents = %i[research review].to_h do |branch|
+      agent = Class.new(Smith::Agent) { model "gpt-5-mini" }
+      register_composite_agent(:"composite_context_#{branch}", agent)
+      allow(agent).to receive(:chat) do
+        Object.new.tap do |chat|
+          chat.define_singleton_method(:add_message) { |_message| nil }
+          chat.define_singleton_method(:complete) do
+            tool.execute
+            Struct.new(:content, :input_tokens, :output_tokens).new(branch.to_s, 1, 1)
+          end
+        end
+      end
+      [branch, agent]
+    end
+    workflow_class = stub_const("SpecCompositeFanoutInvocationContextWorkflow", Class.new(Smith::Workflow) do
+      definition_digest Digest::SHA256.hexdigest("composite-fanout-invocation-context")
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+      transition(:finish, from: :idle, to: :done) do
+        fan_out branches: {
+          research: :composite_context_research,
+          review: :composite_context_review
+        }
+      end
+    end)
+    dispatch, preparation = prepare_composite(workflow_class, "composite:fanout-invocation-context")
+
+    outcomes = Smith::Tool.with_invocation_context(context) do
+      execute_branches(workflow_class, dispatch, preparation)
+    end
+
+    expect(outcomes).to all(be_succeeded)
+    expect(2.times.map { observed.pop }).to all(equal(context))
+    expect(Smith::Tool.current_invocation_context).to be_nil
+  ensure
+    agents&.each_key { Smith::Agent::Registry.delete(:"composite_context_#{_1}") }
+  end
+
+  it "lets a recovered adapter fail closed when the host installs no invocation context" do
+    tool = with_stubbed_class("SpecMissingCompositeContextTool", Smith::Tool) do
+      def perform(**_kwargs)
+        return :ok if self.class.current_invocation_context
+
+        raise Smith::ToolPolicyDenied, "host invocation context is required"
+      end
+    end.new
+    agent = Class.new(Smith::Agent) { model "gpt-5-mini" }
+    register_composite_agent(:composite_missing_context_agent, agent)
+    allow(agent).to receive(:chat) do
+      Object.new.tap do |chat|
+        chat.define_singleton_method(:add_message) { |_message| nil }
+        chat.define_singleton_method(:complete) do
+          tool.execute
+          Struct.new(:content, :input_tokens, :output_tokens).new("unreachable", 1, 1)
+        end
+      end
+    end
+    workflow_class = stub_const("SpecCompositeMissingContextWorkflow", Class.new(Smith::Workflow) do
+      definition_digest Digest::SHA256.hexdigest("composite-missing-context")
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+      transition(:finish, from: :idle, to: :done) do
+        execute :composite_missing_context_agent, parallel: true, count: 1
+      end
+    end)
+    dispatch, preparation = prepare_composite(workflow_class, "composite:missing-context")
+
+    outcome = execute_branches(workflow_class, dispatch, preparation).sole
+
+    expect(outcome).to be_failed
+    expect(outcome.error.class_name).to eq("Smith::ToolPolicyDenied")
+    expect(outcome.error.retryable).to eq(false)
+    expect(Smith::Tool.current_invocation_context).to be_nil
+  ensure
+    Smith::Agent::Registry.delete(:composite_missing_context_agent)
+  end
+
   it "preserves declared heterogeneous fanout order" do
     %i[zeta alpha middle].each do |name|
       register_composite_agent(:"composite_#{name}")
@@ -820,6 +950,105 @@ RSpec.describe "Smith::Workflow durable composite execution" do
     expect(custom.retryable).to be(false)
     expect(custom.kind).to be_nil
     expect(Smith::Errors.retryable?(failure)).to be(false)
+  end
+
+  it "preserves strict capture diagnostics through branch transport and reconstruction" do
+    original = Smith::ToolCaptureFailed.new(tool_name: "catalog_search", reason: :collector_failed)
+    evidence = Smith::Workflow::Composite::ErrorEvidence.call(original)
+    transported = Smith::Workflow::Composite::Error.deserialize(JSON.parse(evidence.serialize))
+    failure = Smith::Workflow::Composite::BranchFailure.new(branch_key: "research", error: transported)
+    reconstructed = Smith::Workflow::Composite::BranchFailure.from_details(
+      JSON.parse(JSON.generate(failure.details))
+    )
+
+    expect(transported.family).to eq("tool_capture_failed")
+    expect(transported.retryable).to eq(false)
+    expect(transported.tool_name).to eq("catalog_search")
+    expect(transported.reason).to eq("collector_failed")
+    expect(reconstructed.error_family).to eq("tool_capture_failed")
+    expect(reconstructed.tool_name).to eq("catalog_search")
+    expect(reconstructed.reason).to eq("collector_failed")
+  end
+
+  it "reads legacy composite errors and failed branch outcomes without optional tool metadata" do
+    legacy_error = {
+      class_name: "Smith::AgentError",
+      family: "agent_error",
+      retryable: true,
+      kind: nil
+    }
+    restored_error = Smith::Workflow::Composite::Error.deserialize(JSON.generate(legacy_error))
+    branch = Smith::Workflow::Composite::Branch.build(
+      ordinal: 0,
+      key: "legacy",
+      agent: "legacy_agent",
+      binding_identity: "a" * 64,
+      budget: {}
+    )
+    outcome = Smith::Workflow::Composite::BranchOutcome.failed(
+      plan_digest: "b" * 64,
+      branch:,
+      error: restored_error,
+      effects: empty_effects
+    )
+    payload = JSON.parse(outcome.serialize)
+    payload.fetch("error").delete("tool_name")
+    payload.fetch("error").delete("reason")
+    digest_class = Smith::Workflow::Composite.const_get(:PayloadDigest, false)
+    payload["digest"] = digest_class.call(payload.except("digest"))
+
+    restored_outcome = Smith::Workflow::Composite::BranchOutcome.deserialize(payload)
+
+    expect(restored_error.tool_name).to be_nil
+    expect(restored_error.reason).to be_nil
+    expect(restored_outcome.error.family).to eq("agent_error")
+    expect(restored_outcome.error.tool_name).to be_nil
+    expect(restored_outcome.error.reason).to be_nil
+  end
+
+  it "does not accept a legacy digest for strict capture metadata" do
+    branch = Smith::Workflow::Composite::Branch.build(
+      ordinal: 0,
+      key: "capture",
+      agent: "capture_agent",
+      binding_identity: "a" * 64,
+      budget: {}
+    )
+    error = Smith::Workflow::Composite::ErrorEvidence.call(
+      Smith::ToolCaptureFailed.new(tool_name: "catalog_search", reason: :collector_failed)
+    )
+    outcome = Smith::Workflow::Composite::BranchOutcome.failed(
+      plan_digest: "b" * 64,
+      branch:,
+      error:,
+      effects: empty_effects
+    )
+    payload = JSON.parse(outcome.serialize)
+    legacy_payload = payload.except("digest")
+    legacy_payload["error"] = legacy_payload.fetch("error").except("tool_name", "reason")
+    digest_class = Smith::Workflow::Composite.const_get(:PayloadDigest, false)
+    payload["digest"] = digest_class.call(legacy_payload)
+    payload.fetch("error")["tool_name"] = "tampered_tool"
+    payload.fetch("error")["reason"] = "capture_empty"
+
+    expect do
+      Smith::Workflow::Composite::BranchOutcome.deserialize(payload)
+    end.to raise_error(ArgumentError, /digest does not match/)
+  end
+
+  it "rejects noncanonical strict capture metadata during composite transport" do
+    payload = {
+      class_name: "Smith::ToolCaptureFailed",
+      family: "tool_capture_failed",
+      retryable: false,
+      kind: nil,
+      tool_name: "catalog_search",
+      reason: "future_reason"
+    }
+
+    expect do
+      Smith::Workflow::Composite::Error.deserialize(payload)
+    end.to raise_error(ArgumentError, /tool metadata does not match/)
   end
 
   it "rejects aggregate token and cost overflow at the effects boundary" do

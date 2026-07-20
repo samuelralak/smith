@@ -41,6 +41,98 @@ RSpec.describe "Smith::Workflow heterogeneous fan-out" do
     )
   end
 
+  it "propagates opaque invocation context to heterogeneous fan-out branches" do
+    invocation_context = Object.new
+    observed = Queue.new
+    first = with_stubbed_class("SpecFanoutContextFirstAgent", agent_class) do
+      register_as :spec_fanout_context_first_agent
+      model "test-model"
+    end
+    second = with_stubbed_class("SpecFanoutContextSecondAgent", agent_class) do
+      register_as :spec_fanout_context_second_agent
+      model "test-model"
+    end
+    workflow = with_stubbed_class("SpecFanoutInvocationContextWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      transition :review, from: :idle, to: :done do
+        fan_out branches: {
+          first: :spec_fanout_context_first_agent,
+          second: :spec_fanout_context_second_agent
+        }
+      end
+    end.new
+    workflow.define_singleton_method(:invoke_agent) do |agent, _prepared_input|
+      observed << [agent, Smith::Tool.current_invocation_context]
+      "done"
+    end
+
+    Smith::Tool.with_invocation_context(invocation_context) { workflow.run! }
+
+    values = 2.times.map { observed.pop }
+    expect(values.map(&:first)).to contain_exactly(first, second)
+    expect(values.map(&:last)).to all(equal(invocation_context))
+    expect(Smith::Tool.current_invocation_context).to be_nil
+  end
+
+  it "gives strict capture uncertainty precedence over a retryable heterogeneous sibling failure" do
+    effects = Concurrent::AtomicFixnum.new(0)
+    barrier = Concurrent::CyclicBarrier.new(2)
+    uncertain_tool = with_stubbed_class("SpecFanoutUncertainCaptureTool", Smith::Tool) do
+      capture_result(strict: true) { raise "projection failed" }
+      define_method(:perform) do |**_kwargs|
+        effects.increment
+        :performed
+      end
+    end
+    failing = with_stubbed_class("SpecFanoutUncertainFailingAgent", agent_class) do
+      register_as :spec_fanout_uncertain_failing_agent
+      model "gpt-5-mini"
+    end
+    uncertain = with_stubbed_class("SpecFanoutUncertainToolAgent", agent_class) do
+      register_as :spec_fanout_uncertain_tool_agent
+      model "gpt-5-mini"
+    end
+    allow(failing).to receive(:chat) do
+      Object.new.tap do |chat|
+        chat.define_singleton_method(:add_message) { |_message| nil }
+        chat.define_singleton_method(:complete) do
+          barrier.wait
+          raise Smith::AgentError, "sibling failed first"
+        end
+      end
+    end
+    allow(uncertain).to receive(:chat) do
+      Object.new.tap do |chat|
+        chat.define_singleton_method(:add_message) { |_message| nil }
+        chat.define_singleton_method(:complete) do
+          barrier.wait
+          sleep(0.02)
+          uncertain_tool.new.execute
+        end
+      end
+    end
+    workflow = with_stubbed_class("SpecFanoutUncertainCaptureWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+      transition :review, from: :idle, to: :done do
+        fan_out branches: {
+          failing: :spec_fanout_uncertain_failing_agent,
+          uncertain: :spec_fanout_uncertain_tool_agent
+        }
+        retry_on StandardError, attempts: 2
+        on_failure :fail
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result).to be_failed
+    expect(result.last_error).to be_a(Smith::ToolCaptureFailed)
+    expect(effects.value).to eq(1)
+  end
+
   it "rejects fan_out mixed with another execution primitive" do
     expect do
       with_stubbed_class("SpecFanoutExecuteConflictWorkflow", workflow_class) do

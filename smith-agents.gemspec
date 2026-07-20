@@ -39,5 +39,5 @@ Gem::Specification.new do |spec|
   spec.add_dependency "dry-initializer", "~> 3.1"
   spec.add_dependency "dry-struct", "~> 1.6"
   spec.add_dependency "dry-types", "~> 1.7"
-  spec.add_dependency "ruby_llm", "~> 1.15"
+  spec.add_dependency "ruby_llm", ">= 1.15", "< 1.17"
 end

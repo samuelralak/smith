@@ -4,15 +4,22 @@ require "ruby_llm"
 
 require_relative "tool/capability_builder"
 require_relative "tool/policy"
+require_relative "tool/call_allowance"
 require_relative "tool/budget_enforcement"
+require_relative "tool_capture_failed"
 require_relative "tool/capture"
+require_relative "tool/capture_configuration"
 require_relative "tool/compatibility"
+require_relative "tool/scoped_context"
+require_relative "tool/chat_execution_context"
 
 module Smith
   class Tool < RubyLLM::Tool
     include Policy
     include BudgetEnforcement
     include Capture
+    extend CaptureConfiguration
+    extend ScopedContext
 
     class << self
       # Tool subclasses inherit the parent's compatible_with spec by
@@ -40,46 +47,6 @@ module Smith
 
       attr_reader :compatible_with_spec
 
-      def current_guardrails
-        Thread.current[:smith_tool_guardrails]
-      end
-
-      def current_guardrails=(value)
-        Thread.current[:smith_tool_guardrails] = value
-      end
-
-      def current_deadline
-        Thread.current[:smith_tool_deadline]
-      end
-
-      def current_deadline=(value)
-        Thread.current[:smith_tool_deadline] = value
-      end
-
-      def current_ledger
-        Thread.current[:smith_tool_ledger]
-      end
-
-      def current_ledger=(value)
-        Thread.current[:smith_tool_ledger] = value
-      end
-
-      def current_tool_call_allowance
-        Thread.current[:smith_tool_call_allowance]
-      end
-
-      def current_tool_call_allowance=(value)
-        Thread.current[:smith_tool_call_allowance] = value
-      end
-
-      def current_tool_result_collector
-        Thread.current[:smith_tool_result_collector]
-      end
-
-      def current_tool_result_collector=(value)
-        Thread.current[:smith_tool_result_collector] = value
-      end
-
       def category(value = nil)
         return @category if value.nil?
 
@@ -105,15 +72,10 @@ module Smith
 
         @before_execute = block
       end
-
-      def capture_result(&block)
-        return @capture_result unless block_given?
-
-        @capture_result = block
-      end
     end
 
     def execute(**kwargs)
+      ensure_capture_ready!
       run_before_execute_hook!(kwargs)
       check_tool_deadline!
       check_privilege!(kwargs)

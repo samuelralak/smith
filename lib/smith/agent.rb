@@ -2,6 +2,8 @@
 
 require "ruby_llm"
 
+require_relative "tool"
+
 module Smith
   class Agent < RubyLLM::Agent
     EXECUTION_IDENTITY_UNSET = Object.new.freeze
@@ -195,9 +197,21 @@ module Smith
         kwargs = inject_reserved_inputs(kwargs, profile)
         kwargs = nil_fill_declared_inputs(kwargs)
 
-        llm_chat = super
+        llm_chat = install_tool_execution_context(super)
         Smith::Models::Normalizer.apply!(llm_chat, profile: profile) if profile
         llm_chat
+      end
+
+      def create(**kwargs)
+        install_tool_execution_context(super)
+      end
+
+      def create!(**kwargs)
+        install_tool_execution_context(super)
+      end
+
+      def find(id, **kwargs)
+        install_tool_execution_context(super)
       end
 
       # Normalizes the |ctx| DSL across RubyLLM's block-form attribute setters.
@@ -254,6 +268,14 @@ module Smith
       end
 
       private
+
+      def install_tool_execution_context(chat_object)
+        return unless chat_object
+
+        llm_chat = chat_object.respond_to?(:to_llm) ? chat_object.to_llm : chat_object
+        Tool::ChatExecutionContext.install(llm_chat)
+        chat_object
+      end
 
       def resolve_profile(model_id)
         return nil unless model_id

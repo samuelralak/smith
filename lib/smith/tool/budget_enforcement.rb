@@ -10,23 +10,21 @@ module Smith
         ledger = self.class.current_ledger
         workflow_active = ledger&.limits&.key?(:tool_calls)
 
-        check_agent_tool_calls!(allowance)
-        commit_tool_call_charges!(ledger, allowance, workflow_active)
-      end
-
-      def check_agent_tool_calls!(allowance)
-        return unless allowance
-
-        raise BudgetExceeded, "agent tool_calls budget exceeded" if allowance[:remaining] <= 0
-      end
-
-      def commit_tool_call_charges!(ledger, allowance, workflow_active)
-        if workflow_active
-          reservation = ledger.reserve!(:tool_calls, 1)
-          ledger.reconcile!(reservation, 1)
+        if allowance.is_a?(CallAllowance)
+          return allowance.charge! { commit_workflow_tool_call!(ledger, workflow_active) }
+        end
+        if allowance.is_a?(Hash)
+          return CallAllowance.charge_legacy!(allowance) { commit_workflow_tool_call!(ledger, workflow_active) }
         end
 
-        allowance[:remaining] -= 1 if allowance
+        commit_workflow_tool_call!(ledger, workflow_active)
+      end
+
+      def commit_workflow_tool_call!(ledger, workflow_active)
+        return unless workflow_active
+
+        reservation = ledger.reserve!(:tool_calls, 1)
+        ledger.reconcile!(reservation, 1)
       end
     end
   end

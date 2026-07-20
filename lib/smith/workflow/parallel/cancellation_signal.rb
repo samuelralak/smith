@@ -12,7 +12,7 @@ module Smith
 
         def cancel!(error = nil)
           @mutex.synchronize do
-            @reason ||= error
+            @reason = Parallel.preferred_error([@reason, error])
             @cancelled = true
           end
         end

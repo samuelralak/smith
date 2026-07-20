@@ -56,6 +56,7 @@ RSpec.describe "smith architecture contract" do
       Smith::GuardrailFailed
       Smith::ToolGuardrailFailed
       Smith::ToolPolicyDenied
+      Smith::ToolCaptureFailed
       Smith::AgentError
       Smith::WorkflowError
       Smith::SerializationError

@@ -68,16 +68,25 @@ module Smith
         def composite_branch_environment(execution, input, agent_class, transition)
           branch = execution.branch
           budget = branch.budget.transform_keys(&:to_sym)
-          branch_key = fetch_composite_fanout_branch(transition, branch.key).first unless execution.kind == :parallel
-          estimates = execution.kind == :parallel ? budget : { branch_key => budget }
           BranchEnv.new(
             prepared_input: input.agent_messages,
             guardrail_sources: Tool.current_guardrails,
             scoped_store: propagate_scoped_artifacts,
-            branch_estimates: estimates,
+            branch_estimates: composite_branch_estimates(execution, transition, budget),
             deadline: wall_clock_deadline,
-            agent_class: execution.kind == :parallel ? agent_class : nil
+            agent_class: composite_parallel_agent(execution, agent_class)
           )
+        end
+
+        def composite_branch_estimates(execution, transition, budget)
+          return budget if execution.kind == :parallel
+
+          branch_key = fetch_composite_fanout_branch(transition, execution.branch.key).first
+          { branch_key => budget }
+        end
+
+        def composite_parallel_agent(execution, agent_class)
+          agent_class if execution.kind == :parallel
         end
 
         def composite_branch_ledger(branch)

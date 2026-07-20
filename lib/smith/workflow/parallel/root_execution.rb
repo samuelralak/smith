@@ -73,7 +73,7 @@ module Smith
 
         def resolve(futures)
           fulfilled, values, reasons = Concurrent::Promises.zip(*futures).result
-          raise(@signal.reason || Parallel.preferred_error(reasons)) unless fulfilled
+          raise(Parallel.preferred_error([@signal.reason, *reasons])) unless fulfilled
 
           values
         end

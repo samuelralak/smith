@@ -12,21 +12,29 @@ module Smith
           "error_class" => :error_class,
           "error_family" => :error_family,
           "retryable" => :retryable,
-          "kind" => :kind
+          "kind" => :kind,
+          "tool_name" => :tool_name,
+          "reason" => :reason
         }.freeze
-        DETAIL_NAMES = DETAIL_KEYS.values.freeze
-        private_constant :DETAIL_KEYS, :DETAIL_NAMES
+        REQUIRED_DETAIL_NAMES = %i[branch_key error_class error_family retryable kind].freeze
+        OPTIONAL_DETAIL_NAMES = %i[tool_name reason].freeze
+        DETAIL_NAMES = (REQUIRED_DETAIL_NAMES + OPTIONAL_DETAIL_NAMES).freeze
+        private_constant :DETAIL_KEYS, :REQUIRED_DETAIL_NAMES, :OPTIONAL_DETAIL_NAMES, :DETAIL_NAMES
 
-        attr_reader :branch_key, :error_class, :error_family, :retryable, :kind, :details
+        attr_reader :branch_key, :error_class, :error_family, :retryable, :kind, :tool_name, :reason, :details
 
         def self.from_details(details)
           values = normalize_details(details)
-          error = Error.new(
+          error_attributes = {
             class_name: values.fetch(:error_class),
             family: values.fetch(:error_family),
             retryable: values.fetch(:retryable),
             kind: values.fetch(:kind)
-          )
+          }
+          OPTIONAL_DETAIL_NAMES.each do |name|
+            error_attributes[name] = values[name] if values.key?(name)
+          end
+          error = Error.new(error_attributes)
           new(branch_key: values.fetch(:branch_key), error:)
         end
 
@@ -42,7 +50,7 @@ module Smith
 
             normalized[name] = value
           end
-          missing = DETAIL_NAMES - normalized.keys
+          missing = REQUIRED_DETAIL_NAMES - normalized.keys
           raise ArgumentError, "composite branch failure details are missing required attributes" if missing.any?
 
           normalized
@@ -60,10 +68,7 @@ module Smith
         def initialize(branch_key:, error:)
           validate_arguments!(branch_key, error)
           @branch_key = branch_key.dup.freeze
-          @error_class = error.class_name.dup.freeze
-          @error_family = error.family.dup.freeze
-          @retryable = error.retryable
-          @kind = error.kind&.dup&.freeze
+          copy_error_attributes(error)
           @details = failure_details
           super("composite branch #{branch_key.inspect} failed")
         end
@@ -76,14 +81,30 @@ module Smith
           raise ArgumentError, "composite branch failure requires typed error evidence" unless error.is_a?(Error)
         end
 
+        def copy_error_attributes(error)
+          @error_class = owned_string(error.class_name)
+          @error_family = owned_string(error.family)
+          @retryable = error.retryable
+          @kind = owned_string(error.kind)
+          @tool_name = owned_string(error.tool_name)
+          @reason = owned_string(error.reason)
+        end
+
+        def owned_string(value)
+          value&.dup&.freeze
+        end
+
         def failure_details
-          {
+          values = {
             branch_key: @branch_key,
             error_class: @error_class,
             error_family: @error_family,
             retryable: @retryable,
             kind: @kind
-          }.freeze
+          }
+          values[:tool_name] = @tool_name if @tool_name
+          values[:reason] = @reason if @reason
+          values.freeze
         end
       end
     end

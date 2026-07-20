@@ -58,6 +58,18 @@ RSpec.describe Smith::Errors do
       expect(described_class.retryable?(Smith::GuardrailFailed.new("guardrail"))).to be false
     end
 
+    it "returns false for post-execution tool capture uncertainty" do
+      tool_name = +"search"
+      error = Smith::ToolCaptureFailed.new(tool_name:, reason: :collector_failed)
+      tool_name << "_mutated"
+
+      expect(described_class.retryable?(error)).to be false
+      expect(error.tool_name).to eq("search")
+      expect(error.tool_name).to be_frozen
+      expect(error.details).to eq(tool_name: "search", reason: :collector_failed)
+      expect(error.details).to be_frozen
+    end
+
     it "returns false for non-Smith errors (host classifier territory)" do
       expect(described_class.retryable?(StandardError.new("foreign"))).to be false
       expect(described_class.retryable?(RuntimeError.new("foreign"))).to be false

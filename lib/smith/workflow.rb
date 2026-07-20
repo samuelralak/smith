@@ -38,6 +38,9 @@ module Smith
     # expose `attr_reader :retryable` only, with no setter, so kwargs
     # MUST flow through `initialize`.
     KNOWN_RECONSTRUCTORS = {
+      "Smith::ToolCaptureFailed" => ->(s) {
+        Smith::ToolCaptureFailed.from_details(s.fetch(:error_details))
+      },
       "Smith::ToolGuardrailFailed" => ->(s) {
         Smith::ToolGuardrailFailed.new(s[:error_message], retryable: s[:error_retryable])
       },
@@ -227,6 +230,7 @@ module Smith
         # so a real DSF doesn't get classified as workflow_error.
         error_family = case err
                        when Smith::DeterministicStepFailure then "deterministic_step_failure"
+                       when Smith::ToolCaptureFailed        then "tool_capture_failed"
                        when Smith::ToolGuardrailFailed      then "tool_guardrail_failed"
                        when Smith::DeadlineExceeded         then "deadline_exceeded"
                        when Smith::AgentError               then "agent_error"
@@ -378,6 +382,8 @@ module Smith
         )
       when "tool_guardrail_failed"
         Smith::ToolGuardrailFailed.new(snap[:error_message], retryable: snap[:error_retryable])
+      when "tool_capture_failed"
+        Smith::ToolCaptureFailed.from_details(snap.fetch(:error_details))
       when "deadline_exceeded" then Smith::DeadlineExceeded.new(snap[:error_message])
       when "agent_error"       then Smith::AgentError.new(snap[:error_message])
       when "workflow_error"    then Smith::WorkflowError.new(snap[:error_message])

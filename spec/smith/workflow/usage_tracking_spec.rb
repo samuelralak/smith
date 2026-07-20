@@ -211,6 +211,34 @@ RSpec.describe "Smith::Workflow usage tracking" do
       expect(result.failure_detail[:transition]).to eq(:run)
     end
 
+    it "preserves a real strict capture failure across terminal restore" do
+      capture_tool = with_stubbed_class("SpecPersistedCaptureFailureTool", Smith::Tool) do
+        capture_result(strict: true) { raise "projection failed" }
+        def perform(**_kwargs) = :performed
+      end.new
+      executed_workflow = with_stubbed_class("SpecPersistedCaptureFailureWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+        state :failed
+        transition :run, from: :idle, to: :done do
+          run { capture_tool.execute }
+          on_failure :fail
+        end
+      end.new
+
+      result = executed_workflow.run!
+      restored = executed_workflow.class.from_state(JSON.parse(JSON.generate(executed_workflow.to_state)))
+      restored_error = restored.send(:build_run_result, []).last_error
+
+      expect(result).to be_failed
+      expect(result.last_error).to be_a(Smith::ToolCaptureFailed)
+      expect(result.last_error.tool_name).to eq("spec_persisted_capture_failure")
+      expect(result.last_error.reason).to eq(:capture_block_failed)
+      expect(restored_error).to be_a(Smith::ToolCaptureFailed)
+      expect(restored_error.tool_name).to eq(result.last_error.tool_name)
+      expect(restored_error.reason).to eq(result.last_error.reason)
+    end
+
     it "uses the family fallback when const_get succeeds but kwargs would be lost (custom DSF subclass)" do
       stub_const("CustomCustomDsf", Class.new(Smith::DeterministicStepFailure) do
         def initialize(msg)

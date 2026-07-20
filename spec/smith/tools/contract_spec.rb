@@ -13,6 +13,11 @@ RSpec.describe "Smith::Tool contract" do
     end
   end
 
+  it "provides the host-neutral invocation context boundary" do
+    expect(tool_class).to respond_to(:current_invocation_context)
+    expect(tool_class).to respond_to(:with_invocation_context)
+  end
+
   it "expects tool authors to define perform rather than execute" do
     concrete = with_stubbed_class("SpecPaymentTool", tool_class) do
       category :action
