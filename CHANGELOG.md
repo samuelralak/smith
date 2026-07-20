@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-07-20
+
 ### Fixed
 
 - Persist a composite transition's execution namespace with its prepared
