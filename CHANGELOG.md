@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-20
+
 ### Added
 
 - Add a host-neutral durable composite lifecycle for same-agent parallel and
