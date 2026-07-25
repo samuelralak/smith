@@ -58,6 +58,22 @@ RSpec.describe Smith::Errors do
       expect(described_class.retryable?(Smith::GuardrailFailed.new("guardrail"))).to be false
     end
 
+    it "returns false for permanent provider failures" do
+      error = Smith::ProviderPermanentFailure.new(
+        "invalid credentials",
+        provider: :openai,
+        model_id: "gpt-example",
+        source_error_class: "RubyLLM::UnauthorizedError"
+      )
+
+      expect(described_class.retryable?(error)).to be false
+    end
+
+    it "returns false for uncertain tool outcomes and bounded completion failures" do
+      expect(described_class.retryable?(Smith::ToolOutcomeUncertain.new("uncertain"))).to be false
+      expect(described_class.retryable?(Smith::BoundedCompletionError.new("invalid"))).to be false
+    end
+
     it "returns false for post-execution tool capture uncertainty" do
       tool_name = +"search"
       error = Smith::ToolCaptureFailed.new(tool_name:, reason: :collector_failed)
@@ -78,6 +94,64 @@ RSpec.describe Smith::Errors do
     it "returns false for PersistenceIOError (host policy decides retry)" do
       err = Smith::PersistenceIOError.new(operation: :store, cause: RuntimeError.new("conn"))
       expect(described_class.retryable?(err)).to be false
+    end
+  end
+
+  describe ".retry_forbidden?" do
+    it "recognizes terminal execution evidence failures" do
+      notification_failure = Smith::ToolFailureNotificationFailed.new(
+        dispatch_error: Smith::AgentError.new("dispatch failed"),
+        notification_error: IOError.new("receipt failed")
+      )
+
+      capture_failure = Smith::ToolCaptureFailed.new(tool_name: :search, reason: :collector_failed)
+
+      expect(described_class.retry_forbidden?(capture_failure)).to be(true)
+      expect(described_class.retry_forbidden?(Smith::ToolOutcomeUncertain.new("unknown"))).to be(true)
+      expect(described_class.retry_forbidden?(Smith::ToolExecutionNotAdmitted.new("unauthorized"))).to be(true)
+      expect(described_class.retry_forbidden?(notification_failure)).to be(true)
+      expect(described_class.retry_forbidden?(Smith::BoundedCompletionError.new("invalid"))).to be(true)
+      expect(described_class.retry_forbidden?(Smith::PersistedFailureInvalid.new("corrupt"))).to be(true)
+    end
+
+    it "does not classify ordinary retryable errors as terminal evidence failures" do
+      expect(described_class.retry_forbidden?(Smith::AgentError.new("temporary"))).to be(false)
+      expect(described_class.retry_forbidden?(nil)).to be(false)
+    end
+
+    it "memoizes one frozen retry-forbidden class list" do
+      first = described_class.retry_forbidden_classes
+
+      expect(first).to be_frozen
+      expect(described_class.retry_forbidden_classes).to equal(first)
+    end
+
+    it "classifies terminal error classes and their subclasses" do
+      expect(described_class.retry_forbidden_class?(Smith::ToolCaptureFailed)).to be(true)
+      expect(described_class.retry_forbidden_class?(Class.new(Smith::ToolOutcomeUncertain))).to be(true)
+      expect(described_class.retry_forbidden_class?(Smith::AgentError)).to be(false)
+    end
+
+    it "does not let an error override terminal family matching" do
+      error = Class.new(Smith::ToolOutcomeUncertain) do
+        def is_a?(*) = false
+      end.new("unknown")
+
+      expect(described_class.retry_forbidden?(error)).to be(true)
+    end
+
+    it "constructs terminal notification evidence without invoking hostile message overrides" do
+      hostile = Class.new(StandardError) do
+        def message = raise("hostile message")
+      end
+      error = Smith::ToolFailureNotificationFailed.new(
+        dispatch_error: hostile.new("dispatch"),
+        notification_error: hostile.new("notification")
+      )
+
+      expect(described_class.retry_forbidden?(error)).to be(true)
+      expect(error.details.fetch(:dispatch_error_message)).to eq("dispatch")
+      expect(error.details.fetch(:notification_error_message)).to eq("notification")
     end
   end
 

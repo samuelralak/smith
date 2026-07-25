@@ -177,6 +177,7 @@ end
 # Leaf modules (no internal dependencies)
 require_relative "smith/types"
 require_relative "smith/errors"
+require_relative "smith/tool_failure_notification_failed"
 require_relative "smith/persistence_payload_conflict"
 require_relative "smith/exponential_backoff"
 
@@ -205,6 +206,7 @@ require_relative "smith/pricing"
 require_relative "smith/models/profile"
 require_relative "smith/models"
 require_relative "smith/models/inference"
+require_relative "smith/models/tool_routing"
 require_relative "smith/models/normalizer"
 
 # OpenAI /v1/responses routing prepend. Dormant until
@@ -254,6 +256,7 @@ require_relative "smith/context/session"
 
 # Agent (depends on RubyLLM::Agent)
 require_relative "smith/agent"
+require_relative "smith/agent/completion"
 require_relative "smith/agent/lifecycle"
 require_relative "smith/agent/registry_binding"
 require_relative "smith/agent/registry"

@@ -1,12 +1,21 @@
 # frozen_string_literal: true
 
 require_relative "error"
+require_relative "persisted_failure_invalid"
+require_relative "pricing_configuration_error"
+require_relative "provider_permanent_failure"
+require_relative "tool_capture_failed"
+require_relative "tool_execution_not_admitted"
+require_relative "tool_failure_notification_failed"
 
 module Smith
   # Classification surface for host retry policies. Smith owns the
   # answer to "should the workflow attempt be retried?" so consumers
   # don't reimplement the case statement in every Execution / Job.
   module Errors
+    MODULE_MATCH = Module.instance_method(:===)
+    private_constant :MODULE_MATCH
+
     # Returns true when the host should retry the workflow attempt.
     # AgentError + DeadlineExceeded are always retryable.
     # DeterministicStepFailure + ToolGuardrailFailed honor their
@@ -16,7 +25,7 @@ module Smith
       return false if error.nil?
 
       composite_failure = defined?(Smith::Workflow::Composite::BranchFailure) &&
-                          error.is_a?(Smith::Workflow::Composite::BranchFailure)
+                          MODULE_MATCH.bind_call(Smith::Workflow::Composite::BranchFailure, error)
       return false if composite_failure
 
       case error
@@ -27,6 +36,27 @@ module Smith
       else
         false
       end
+    end
+
+    def self.retry_forbidden?(error)
+      return false if error.nil?
+
+      retry_forbidden_classes.any? { |error_class| MODULE_MATCH.bind_call(error_class, error) }
+    end
+
+    def self.retry_forbidden_class?(error_class)
+      retry_forbidden_classes.any? { |forbidden| error_class <= forbidden }
+    end
+
+    def self.retry_forbidden_classes
+      @retry_forbidden_classes ||= [
+        Smith::ToolCaptureFailed,
+        Smith::ToolOutcomeUncertain,
+        Smith::ToolExecutionNotAdmitted,
+        Smith::ToolFailureNotificationFailed,
+        Smith::BoundedCompletionError,
+        Smith::PersistedFailureInvalid
+      ].freeze
     end
 
     # Always-retryable error classes for explicit ActiveJob retry_on
@@ -52,6 +82,9 @@ module Smith
   end
 
   class ToolPolicyDenied < Error; end
+  class ToolDispatchRejected < Error; end
+  class BoundedCompletionError < Error; end
+  class ToolOutcomeUncertain < Error; end
   class AgentError < Error; end
 
   class BlankAgentOutputError < AgentError
