@@ -26,6 +26,20 @@ Current contract coverage exists for:
 - declaration-indexed outgoing transition lookup and public pending-transition-name inspection, including subclass and transition-redefinition isolation
 - static workflow graph inspection and validation reports: read-only transition snapshots, unresolved named-target diagnostics, router target validation, undefined state diagnostics, reachability warnings, graph metrics, fan-out join metadata, optimizer/orchestrator contracts, and runtime readiness reports
 - per-agent-call usage facts: `Workflow::UsageEntry` struct shape, JSON-safe to_h/from_h round-trip with symbol coercion, `RunResult#usage_entries` field with deep-copy on population, lifecycle recording from completed AND failed-but-accounted attempts via a single mutex critical section, and parallel-fan-out attribution via local-arg `model_used` (no `@last_attempt_model` ivar)
+- bounded graceful tool completion over the qualified RubyLLM 1.16.0 interface:
+  iterative provider rounds, exact allowance exhaustion, unavailable-call
+  accounting, all-or-nothing agent/workflow batch admission, unused workflow
+  reservation reconciliation, exact-tool admissions, pre-execution `perform`
+  argument validation, forced-choice restoration, long-loop stack safety,
+  chat concurrency/reentry rejection, non-Smith binding rejection, terminal
+  post-tool fallback/retry classification, completed-prefix usage on failure,
+  one immutable provider-batch capture, complete-batch cardinality and metadata
+  bounds, native-container resistance to hostile overrides, expanded shared-DAG
+  argument accounting, coherent native container snapshots, UTF-8 metadata
+  normalization, fail-early aggregate metadata bounds, atomic one-effect dispatch
+  claims, exact managed execution authority, nested/direct execution rejection,
+  linear unsettled receipt settlement, and execution-error precedence over
+  settlement or logger failure
 - nested-workflow usage rollup: child `total_cost` + `total_tokens` + `usage_entries` rolled up into parent BEFORE the failed-step check raises (preserves failed-child accounted work on the parent), with deep-copied entries via `from_h(snapshot_value(...))` so child and parent are fully independent
 - terminal-restore correctness for `RunResult#output` / `#last_error` / `#failure_detail`: persisted `@last_output` and class-aware `@last_failed_step` snapshot drive synthesis when steps are empty on terminal-restore, with backward compat for pre-patch state and value-symbol coercion that matches fresh-run shape
 - usage-aware durability peek API: `Workflow.persisted_state_exists?` (fast key-presence check) and `Workflow.restorable_billing_state?` (only true when restored state has at least one `usage_entries` entry — distinguishes Smith's bare initial-state persist from preserved accounted work)
@@ -42,6 +56,15 @@ Current contract coverage exists for:
   host-configured `BigDecimal` precision limit
 - context manager DSL, stored runtime configuration, subclass inheritance behavior, persisted-key serialization contract, and workflow seed-message initialization surface
 - tool base class, policy DSL, runtime execute-to-perform delegation, capability metadata declaration, built-in tool namespaces, and pre-dispatch approval/authorization failure policy boundary
+- immutable normalized tool-call metadata, execution-scoped monotonic ordinals
+  shared across chats and concurrent thread/fiber dispatch, explicit host resume
+  seeding, private framework-owned metadata mutation, and ensure-based scope
+  restoration
+- persisted terminal tool-notification failure reconstruction, retry-forbidden
+  semantics when original classes disappear, bounded JSON-safe failure evidence,
+  fail-closed class/family/retry integrity validation, rejection of arbitrary
+  persisted constructors, and direct-load coverage for the split execution
+  resources
 - trace adapter namespaces, runtime transition/tool emission surface, and memory-adapter content policy behavior
 - deterministic step primitives (`compute`/`run`): DSL contract, mutual-exclusivity conflict validation (bidirectional for all execution modes), constrained step-object surface, runtime execution (read accessors, write_context with read-after-write coherence via read_context, write_outcome with first-class run-result accessors, route_to with loud failure on unresolved named transitions, fail! with metadata), persistence round-trip, trace lifecycle (started/success/routed/failed plus emitted outcome kind), guardrail boundary enforcement, and mixed agent+deterministic workflow integration
 - named transition validation: unresolved named transitions (from route_to, on_success, or any stored next-transition path) fail loudly with WorkflowError
@@ -50,7 +73,6 @@ Current contract coverage exists for:
 Important contracts from the architecture document that are not yet directly specified:
 
 - richer parallel branch merge or provider-style in-flight semantics beyond the current cooperative cancellation and failure/discard surface
-- workflow / agent `tool_calls` enforcement at the tool boundary
 - agent-only `token_limit` / `cost` enforcement in serial/helper-owned invocation paths
 - any sharper distinction between generic call-boundary deadlines and agent-budget-specific `wall_clock` narrowing
 - see Section 4.5 for the narrower remaining budget-specific direct-coverage gaps
@@ -199,6 +221,7 @@ Architecture basis:
 Why more implementation may be required:
 
 - The architecture now defines fallback as an agent-level ordered model chain with Smith-owned transient-failure classification, shared budget/deadline accounting across attempts, and no fallback by default on policy, schema, or guardrail failures.
+- Provider-reported model unavailability (`404`/`410`) is fallback-eligible before tool execution, while arbitrary provider validation failures remain fail-closed.
 - Current code now includes agent-level `fallback_models`, lifecycle fallback chaining, attempt-aware pricing via `model_used`, and accounting of failed transient attempts when trustworthy usage metadata is present.
 - Remaining future work is richer provider-aware classification or observability, not the core fallback-chain contract.
 
@@ -345,7 +368,7 @@ Notes:
 
 Purpose:
 
-- pins the `Smith::Models` registry contract: stale-reload-safe registration via Dry::Container, application-side `Profile` overrides, and `find_or_infer` graceful fallback to library-shipped pattern rules when no explicit profile exists
+- pins the `Smith::Models` registry contract: provider-qualified registration with explicit collision detection, application-side `Profile` overrides, and `find_or_infer` graceful fallback to library-shipped pattern rules when no explicit profile exists
 
 Architecture basis:
 
@@ -354,11 +377,12 @@ Architecture basis:
 
 Documented contracts covered:
 
-- `Smith::Models.register(profile)` adds a Profile; re-registering the same Profile is idempotent
-- `Smith::Models.register` with a different Profile for the same model_id raises `Smith::Models::CollisionError`
-- `Smith::Models.register` with a same-name but different Profile instance (Rails autoreload swap) replaces silently via `stale_reload_binding?` (mirrors `Smith::Agent::Registry`'s pattern)
-- `Smith::Models.find(model_id)` returns nil for unregistered ids
-- `Smith::Models.find_or_infer(model_id)` consults the explicit registry first, then `Smith::Models::Inference.profile_for`, then a safe default
+- `Smith::Models.register(profile)` keys a Profile by provider and model id; re-registering the same Profile is idempotent
+- `Smith::Models.register` with a different Profile for the same provider/model identity raises `Smith::Models::CollisionError`
+- `Smith::Models.register` rejects a different capability Profile for the same provider/model identity; hosts must clear and rebuild model capability overrides explicitly during reload rather than silently replacing execution semantics
+- `Smith::Models.find(model_id, provider:)` resolves the exact provider/model profile
+- `Smith::Models.find(model_id)` returns nil for unregistered ids, resolves a sole profile, and fails closed with `AmbiguousProfileError` when multiple providers share the id
+- `Smith::Models.find_or_infer(model_id, provider:)` consults only the exact provider-qualified override before inference and safe defaults
 - `Smith::Models.guess_provider(model_id)` matches prefix patterns: claude → :anthropic, gpt/oN → :openai, gemini → :gemini, else → :unknown
 - `Smith::Models.all` returns registered Profiles sorted by model_id
 - `Smith::Models.clear!` resets the registry (test isolation)
@@ -413,10 +437,18 @@ Documented contracts covered:
 - Opus 4.7 profile: nulls `@temperature`, sets `@params[:thinking] = { type: "adaptive" }` + `output_config[:effort]`; nulls `@thinking` so RubyLLM doesn't ALSO emit the legacy budget_tokens shape
 - Opus 4.7 profile preserves prior `with_params` calls (read-merge-write, no replacement)
 - gpt-5.5 profile with `openai_api_mode = :auto`: injects `@params[:openai_api_mode] = :responses`, preserves tools (they run via /v1/responses)
-- gpt-5.5 profile with `openai_api_mode = :off`: drops tools per `Tool::Compatibility` (graceful degradation)
+- gpt-5.5 profile with `openai_api_mode = :off`: drops tools per `Tool::Compatibility` and clears a forced choice that names a dropped tool
+- explicit transport provider overrides model-name inference for endpoint routing; OpenRouter chats cannot be routed through OpenAI Responses
+- a transport-provider override preserves provider-agnostic model capabilities but clears endpoint assumptions inferred for another provider
+- automatic OpenAI endpoint routing selects Responses only when it preserves a strictly larger compatible tool subset; ties preserve the current endpoint
+- a specifically forced tool selects its compatible enabled endpoint before aggregate compatible-tool counts are compared
+- `chat`, `create`, `create!`, and `find` all apply the same normalization and compatibility contract
+- persisted-chat dynamic configuration receives reserved model, provider, and endpoint inputs before evaluation
+- persisted `find` derives those reserved inputs from the stored chat identity rather than a later agent declaration
 - Gemini 2.5+ profile preserves `@thinking` (provider renderer emits budget_tokens natively) and `@temperature`
 - unknown model passes through `find_or_infer`; safe-default profile leaves `@thinking` + `@temperature` unchanged
 - `Smith::Trace.record(type: :normalizer_decision, ...)` fires per mutation; gated by `Smith.config.trace_normalizer`
+- forced-choice reset metadata is attributed only to the selected tool removed by compatibility filtering
 - five Decision kinds: `:temperature_dropped`, `:thinking_dropped`, `:thinking_translated_to_adaptive`, `:routed_via_responses`, `:tool_dropped`
 
 Notes:
@@ -442,6 +474,10 @@ Documented contracts covered:
 - `Tool.inherited` hook dups `@compatible_with_spec` from parent so subclass tool classes inherit compatibility metadata
 - `Compatibility.allows?(spec, profile)` returns true when spec is nil (no DSL declaration on the tool class means universally compatible)
 - `Smith::Tools::Think` declares compatibility with `:anthropic`, `:gemini`, and `openai` on `:responses` only
+- OpenAI Responses-only tools route to `:responses` even when model thinking is
+  inactive; compatibility is an endpoint contract, not a thinking-only hint
+- disabling Responses routing drops a Responses-only OpenAI tool before the
+  provider request
 
 Notes:
 
@@ -653,6 +689,7 @@ Documented contracts covered:
 - fallback model chains are inherited by subclasses
 - agents without `fallback_models` retain single-model behavior
 - fallback model lists deduplicate entries while preserving order
+- provider-qualified fallback entries retain their exact transport provider, while unqualified string entries fail closed during agent configuration
 - successful fallback attempts are priced against the model that actually succeeded
 - failed transient attempts with known usage contribute to aggregate token and best-known cost accounting
 - failed transient attempts with unknown usage remain optimistic and do not fabricate accounting
@@ -1187,12 +1224,14 @@ Documented contracts covered:
   - `usage_entries` (array of `Workflow::UsageEntry` per-call billing facts; `to_h`-serialized for JSON safety)
   - `last_output` (last non-nil step output; terminal-restore fallback for `RunResult#output` when restored steps are empty)
   - `last_failed_step` (class-aware error snapshot; transition + from + to + error_class + error_family + error_message + error_retryable + error_kind + error_details — used for `RunResult#last_error` / `#failure_detail` synthesis on terminal-restore)
+  - `seed_message_count` (validated immutable seed-prefix boundary used by seed-preserving observation masking)
 - round-trip via `.from_state`
 - resolved durability key round-trips through `.from_state`
 - `budget_consumed` is serialized from the live ledger after execution
 - `.from_state` rebuilds a live ledger with the same consumed and remaining budget
 - resumed workflows continue reserving and reconciling budget from restored ledger state
 - persisted `next_transition_name` preserves the selected resume path across restore
+- invalid persisted seed-prefix lengths fail closed; legacy state defaults the boundary to zero
 - persisted `total_cost` and `total_tokens` preserve cumulative best-known workflow totals across restore
 - optional `definition_digest` binds persisted state to a host-supplied executable workflow definition
 - JSON-serializable state payload
@@ -1572,6 +1611,7 @@ Documented contracts covered:
 - `:warn` mode: drift logs via `Smith.config.logger&.warn`; never raises; silent on no drift
 - validation re-evaluates the seed builder against the RESTORED `@context` so context-dependent seeds drift relative to the original construction context
 - `seed_digest` round-trips through JSON.generate / JSON.parse
+- `seed_message_count` round-trips independently of seed drift validation
 - `Workflow.inherited` propagates the seed_validation mode
 
 Notes:
@@ -1724,6 +1764,9 @@ Documented contracts covered:
 - terminal-failed restore synthesizes `RunResult#last_error` from `@last_failed_step` and preserves `Smith::DeterministicStepFailure#retryable` / `#kind` (with `error_details` JSON-normalized — Hash keys + symbol values become strings)
 - custom `Smith::DeterministicStepFailure` subclass with a non-message constructor reconstructs as the parent `DeterministicStepFailure` via the `RETRYABLE_BEARING_FAMILIES` family fallback (preserves retryable + kind even when `const_get` cannot construct the subclass with the snapshot kwargs)
 - `error_class` that cannot be resolved (`NameError`) falls back via `error_family` (e.g., `agent_error` → `Smith::AgentError.new(message)`) so host error-family classification round-trips
+- malformed record shape, class/family metadata, retry policy, failure kind, and known typed failure details are rejected during `from_state` as retry-forbidden `Smith::PersistedFailureInvalid`
+- terminal failure capture uses native class identity and message operations, so hostile `class`, `is_a?`, or `message` overrides cannot erase or weaken a durable failure record
+- bounded UTF-8 failure text and JSON-safe details survive persistence; oversized details become explicit omission evidence instead of unbounded state
 - a workflow that handled a failure and reached `:done` does NOT synthesize a stale error on terminal-restore (`build_run_result` synthesis is gated on `failed? && @last_failed_step`; successful subsequent steps clear the snapshot)
 - `.persisted_state_exists?(key:, context:, adapter:)` peek: returns `false` when no state has been persisted; returns `true` after `persist!`; returns `false` again after `clear_persisted!`. Uses the existing private `resolved_persistence_key` + `fetch_persisted_payload` helpers — no `Smith::PersistenceAdapter` contract change
 - `.restorable_billing_state?(key:, context:, adapter:)` peek (usage-aware): returns `false` for absent state, `false` for bare initial-state persistence (the record Smith writes at the top of `run_persisted!` BEFORE the first `advance!` — zero `usage_entries`), `true` once at least one `UsageEntry` has been recorded (preserved accounted work), `false` again after `clear_persisted!`
@@ -2130,6 +2173,46 @@ Documented contracts covered:
 Notes:
 
 - This spec does not yet assert the approval metadata boundary or retriable-vs-terminal failure behavior.
+
+### `spec/smith/tools/bounded_completion_context_spec.rb`
+
+Purpose:
+
+- proves bounded graceful tool completion through RubyLLM's real 1.16 chat
+  recursion rather than a Smith-owned simulation
+
+Documented contracts covered:
+
+- exact model-request budgets and tool-disabled final synthesis
+- all-or-nothing oversized provider batches with one paired rejection per call
+- unavailable calls consume allowance without executing a Smith tool
+- host-rejected invalid input remains bounded
+- nested Smith tools cannot reuse the outer call admission
+- provider failure restores chat controls and permits an explicit later attempt
+- concurrent completion on one bounded chat fails closed
+- provider snapshots and RubyLLM instrumentation observe the effective tool
+  controls, and the original chat configuration is restored
+- a single-call provider hint is emitted only when the model registry or the
+  selected Responses endpoint supports tool-call cardinality; Smith's local
+  all-or-nothing admission remains authoritative when the hint is omitted
+
+Notes:
+
+- These are in-process protocol guarantees. Durable per-invocation tool-loop
+  recovery remains a host concern.
+
+### `spec/smith/tools/call_allowance_spec.rb`
+
+Purpose:
+
+- proves atomic single-call and complete-batch allowance consumption
+
+Documented contracts covered:
+
+- concurrent callers cannot exceed the configured allowance
+- an oversized batch is not partially consumed
+- cancellation before lock acquisition cannot consume allowance
+- independent legacy allowances do not share a serialization lock
 
 ### `spec/smith/tools/runtime_spec.rb`
 
@@ -3078,6 +3161,40 @@ Covered behaviors:
   earlier execution's context
 - Smith fails closed when a RubyLLM chat lacks the required tool execution hook
 - Raw RubyLLM chat instances remain unmodified
+
+### `spec/smith/tools/execution_authority_spec.rb`
+
+Covered behaviors:
+
+- one execution authority is bound to the exact Smith tool object and exact
+  admitted dispatch claim
+- an authority can be consumed only once and rejects substituted claims
+- nested authority scopes restore their enclosing scope safely
+- the authority implementation is a private Smith tool constant
+
+### `spec/smith/tools/execution_batch_collection_spec.rb`
+
+Covered behaviors:
+
+- provider membership is owned before call protocol readers can influence the
+  caller-owned collection
+- collection protocol checks use native Ruby operations
+
+### `spec/smith/tools/execution_batch_source_call_spec.rb`
+
+Covered behaviors:
+
+- String transport metadata is owned and normalized to bounded UTF-8
+- encoded Symbol names canonicalize to the registered executable Symbol
+- invalid or oversized raw metadata fails before host admission or transcoding
+
+### `spec/smith/workflow/failure_record_text_spec.rb`
+
+Covered behaviors:
+
+- persisted failure text is an owned, frozen, bounded UTF-8 copy
+- hostile String subclasses cannot replace native encoding, size, or copy checks
+- non-UTF-8 and oversized persisted text fails closed
 
 ### `spec/smith/agent/persisted_chat_execution_context_spec.rb`
 

@@ -4,6 +4,232 @@ All notable changes to Smith are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Smith is pre-1.0 and under active development; expect occasional contract tightening between minor versions until 1.0.
 
+## [0.8.0] - 2026-07-25
+
+### Added
+
+- Add opt-in graceful agent tool-budget exhaustion with a finite
+  `tool_calls` budget and `tool_budget_exhaustion :complete`. Smith consumes
+  model-requested calls atomically, rejects oversized batches without partial
+  execution, pairs every rejected call id, and performs one tool-disabled final
+  completion.
+- Add one-use call admissions so an admitted Smith tool is not double charged,
+  while exact tool identity prevents nested tools from stealing an admission.
+- Aggregate trustworthy token usage across every assistant response in a
+  successful RubyLLM tool loop, record one durable usage entry per provider
+  response, and preserve completed-prefix usage when a later provider round
+  fails.
+- Expose immutable normalized tool-call metadata and one execution-scoped,
+  host-seedable invocation sequence across Smith-managed chats, branches,
+  threads, and fibers without introducing host persistence semantics.
+- Add immutable exact tool-call budgets with aggregate and per-tool limits for
+  host-controlled execution scopes.
+- Add a host-neutral whole-batch admission callback and per-invocation dispatch
+  failure callback. Smith snapshots immutable requests, admits the complete
+  Smith-managed subset of the provider batch before dispatch, and never reports
+  failure for a batch whose host admission callback raised.
+- Add a Claude 5+ family inference rule: Fable, Mythos, Opus, Sonnet, and Haiku
+  ids with major version 5 or higher resolve to adaptive thinking, no
+  temperature accepted, and native tools-with-thinking, so an agent-declared
+  `temperature` is stripped instead of being sent to a provider that rejects
+  it. Dotted 4.x ids (for example `claude-haiku-4-5`) keep matching the 4.x
+  budget-tokens rule.
+- Add new public error classes hosts may rescue or allowlist:
+  `Smith::PricingConfigurationError`, `Smith::ProviderPermanentFailure`
+  (carries `provider`, `model_id`, and `source_error_class`),
+  `Smith::Models::AmbiguousProfileError`, `Smith::Models::CollisionError`,
+  `Smith::ToolDispatchRejected`, `Smith::ToolOutcomeUncertain`,
+  `Smith::ToolExecutionNotAdmitted`, `Smith::ToolFailureNotificationFailed`,
+  `Smith::BoundedCompletionError`, and `Smith::PersistedFailureInvalid`.
+  Terminal tool-evidence families surface through
+  `Smith::Errors.retry_forbidden?` / `retry_forbidden_class?` and must never be
+  retried by host jobs.
+- `Smith::Doctor` reports a dedicated failing `models.ambiguity` check when a
+  registered agent declares an unqualified model id registered under multiple
+  providers, instead of aborting the run with `AmbiguousProfileError`, and now
+  validates the assigned pricing catalog (legacy model-only keys, malformed
+  entries, and colliding keys fail the `config.pricing` check).
+- Capture the causal failure classification behind an uncertain tool outcome
+  into the durable failure record: a persisted `Smith::ToolOutcomeUncertain`
+  carries bounded `error_cause_class`, `error_cause_family`, and
+  `error_cause_message` from its cause so a restored host can distinguish a
+  deadline, cancellation, or defect. The three attributes travel as one unit;
+  legacy records omit all three, and a partial or unknown-family set fails
+  closed at state admission.
+
+### Changed
+
+- Bump `Smith::EXECUTION_SEMANTICS_VERSION` from `3` directly to `5` for exact
+  per-tool budgets, shared composite admission, bounded graceful completion,
+  and cumulative tool-loop usage. The value `4` was consumed transiently during
+  development of this slice and is intentionally skipped so a composite plan
+  persisted against an interim build can never read as compatible with the
+  released semantics; consumers compare by exact equality, so every pre-`5`
+  plan is invalidated either way.
+- Key model profiles, fallback candidates, usage telemetry, and pricing by exact
+  provider/model identity. Provider-qualified pricing never falls back to a
+  legacy model-only rate, and fallback declarations must name their provider.
+- Let observation masking preserve the exact immutable seed-message prefix
+  while bounding only later workflow observations. The prefix length is
+  persisted and validated across restart; legacy state defaults to zero.
+- Require the exactly qualified RubyLLM `1.16.0`; graceful completion is
+  isolated behind that verified chat interface and fails closed on incompatible
+  hooks. Future RubyLLM versions require an explicit compatibility pass.
+- Enforce the pricing-catalog key policy at admission time instead of inside
+  accounting: `Smith::Pricing.validate_catalog!` rejects legacy model-only
+  keys, unrecognized key shapes, malformed entries, and post-normalization
+  collisions, and the doctor runs it against the assigned catalog.
+  `Pricing.compute_cost` itself never raises: a provider-qualified lookup reads
+  only provider-qualified entries and returns nil (visibly unpriced) when only
+  a legacy rate exists, so an in-flight accounting path can never mask a
+  provider error with a pricing configuration error.
+- Registering a model profile whose capabilities differ from the profile
+  already registered for the same provider/model identity now raises
+  `Smith::Models::CollisionError`; earlier releases silently replaced the
+  profile on Rails reload. Re-registering a value-identical profile stays
+  idempotent (see Migration notes).
+- `Smith::Models::Normalizer` tool/endpoint routing no longer requires active
+  thinking: endpoint compatibility is evaluated on every chat construction, the
+  endpoint preserving the strictly larger compatible tool subset wins (ties
+  keep the current endpoint; a single forced tool that only one endpoint can
+  carry takes precedence), and each dropped tool records a `:tool_dropped`
+  decision. See docs/TOOLS_AND_GUARDRAILS.md.
+- Agent tool evidence is tracked per transition: once any tool starts inside a
+  transition, a later provider failure in that transition (including one from a
+  concurrently executing parallel branch that never ran a tool itself) refuses
+  model fallback and surfaces `Smith::ToolOutcomeUncertain`. This is
+  deliberately conservative and fail-closed; branch-scoped evidence that
+  restores fallback for provably tool-free sibling branches is planned, and
+  child-workflow tool evidence does not yet mark the parent transition.
+- `from_state` failure-record problems raise `Smith::PersistedFailureInvalid`
+  while other persisted-shape problems keep raising
+  `Smith::SerializationError`; both descend from `Smith::Error`, and hosts
+  rescuing `SerializationError` around restore must handle both.
+- Restored failure records no longer resolve or construct arbitrary error
+  classes named by persisted data: host-defined subclasses reconstruct as their
+  Smith family parent (family `"other"` restores as `RuntimeError`), so
+  exact-class matching against restored `last_error` values must move to family
+  or `is_a?` checks.
+- `Smith::Agent.fallback_models` now returns a frozen array of
+  `Smith::Agent::ModelReference` values (previously raw strings), block-form
+  `model {}` declarations must return a provider-qualified reference (a bare
+  string raises `Smith::AgentError`), permanent provider failures raise
+  `Smith::ProviderPermanentFailure` instead of a retryable `AgentError`,
+  non-provider `StandardError`s raised inside a provider attempt now propagate
+  raw instead of being wrapped, and `Workflow::UsageEntry` is frozen and gained
+  a `:provider` member.
+
+### Fixed
+
+- Preserve the provider and model actually selected by RubyLLM in completion
+  usage, keep inherited fallback configuration immutable, and treat model-level
+  permission failures as model scoped so an eligible fallback on the same
+  provider remains available. Only account-wide authentication and payment
+  failures suppress later candidates from that provider.
+- Prevent unavailable provider tool calls from creating an unbounded correction
+  loop by consuming the model-request allowance before dispatch.
+- Prevent fallback-model restart after a Smith tool begins executing, because a
+  fresh chat would discard tool evidence and violate the provider protocol.
+- Prevent transition retry, including broad explicit retry classes, when any
+  later provider, completion hook, output validation, or guardrail failure occurs
+  after a bound tool dispatch makes the external outcome uncertain.
+- Reserve provider batches atomically against both the agent allowance and the
+  effective workflow tool budget, then reconcile unexecuted calls.
+- Execute bounded tool loops iteratively so finite call allowances do not grow
+  Ruby stack depth, reject concurrent or callback reentry on one bounded chat,
+  and retain RubyLLM's native forced-tool-choice reset.
+- Validate `Smith::Tool#perform` keyword arguments before budget charge and tool
+  execution, reject non-Smith bindings from the opt-in bounded policy, and fail
+  closed when raw provider params try to override reserved tool controls.
+- Keep provider-facing tool controls and RubyLLM instrumentation aligned, and
+  restore tools, call preferences, and concurrency after success or failure.
+- Permit bounded providers to return multiple calls in one response while more
+  than one call remains. Smith retains atomic batch reservation, deterministic
+  sequential execution, and fail-closed oversized-batch handling.
+- Propagate one enclosing tool-call allowance into same-agent parallel and
+  heterogeneous fan-out worker threads so branches cannot multiply a host's
+  signed transition budget.
+- Materialize one immutable admitted dispatch batch before host admission, so
+  later mutation of the provider collection, call identity, or arguments cannot
+  alter which Smith tools execute or the values they receive. The host callback
+  receives immutable source-call evidence while RubyLLM dispatches a separately
+  owned admitted call, and an atomic dispatch claim prevents callback re-entry
+  from executing the same admission twice. Continue to reject registered-tool
+  replacement and classify only guaranteed pre-`perform` failures as
+  `ToolDispatchRejected`.
+- Capture provider batches with native `Hash` operations, bound the complete
+  provider batch to 100 calls and 1 MiB of UTF-8 call metadata, reject malformed
+  call protocol before host admission, and stop aggregate metadata capture as
+  soon as the bound is crossed.
+- Bound immutable argument copying before child allocation, account for expanded
+  serialized occurrences even when a caller reuses a shared object graph,
+  admit each mutable container's native size before one shallow copy, verify the
+  copy retained that size before child allocation, reject hostile container
+  overrides and malformed UTF-8, and keep traversal iterative with linear time
+  and bounded space.
+- Require one exact execution authority for every managed Smith tool dispatch.
+  Direct tool calls from provider callbacks and nested Smith tool calls now fail
+  closed; nested execution requires a future separately admitted primitive.
+- Give terminal tool-evidence failures precedence during parallel arbitration
+  and centralize their non-retryable classification across declaration and
+  execution. Persist and restore terminal notification failures without resolving
+  or constructing arbitrary classes named by persisted data. Bound and normalize
+  failure diagnostics, capture failure class identity with native Ruby operations,
+  and reject inconsistent family/retry metadata or malformed typed failure details
+  at state admission.
+- Cover the split execution files with direct-load contracts so each new file
+  loads standalone; the released artifact's file manifest is verified against
+  `lib/` at release time as part of the release procedure.
+- Fail closed with a typed `Smith::AgentError` when an agent has no executable
+  model candidate (empty model chain), instead of leaking the exhausted
+  candidate sequence into nil destructuring from optimizer and orchestrator
+  paths.
+- Attribute an account-wide authentication or payment failure to the attempted
+  reference's declared provider when the chat is unobservable, so a dead
+  provider account is not billed a second same-provider attempt.
+- Deduplicate model candidates by physical identity, so a provider-unqualified
+  primary and a provider-qualified fallback naming the same model cannot
+  produce a duplicate attempt, and `ModelReference.coerce` now parses the
+  `"provider/model"` string form that `#to_s` emits (the first slash splits, so
+  slashed model ids round-trip).
+- Keep captured and restored failure records symmetric for blank messages:
+  capture substitutes a deterministic placeholder for a blank error message, so
+  a workflow state whose last failed step had an empty message restores instead
+  of raising `Smith::PersistedFailureInvalid` and poisoning crash/resume.
+- Restore legacy failure records whose `error_message` exceeds the 64 KiB
+  diagnostic bound by truncating exactly as capture truncates, instead of
+  rejecting the persisted workflow state for message length alone; non-text and
+  invalid-UTF-8 persisted values still fail closed.
+- Scope an agent `tool_calls` budget under a legacy Hash tool-call allowance to
+  a typed rejection at both call sites instead of an untyped `NoMethodError`
+  mid-transition.
+- Propagate a settled or exhausted batch reservation's refusal through
+  `CallAdmission#claim`, so a post-settlement execution can never run against
+  an already reconciled ledger.
+- Keep a queued process-fatal sibling error ahead of a
+  `ToolFailureNotificationFailed` raised while notifying unsettled batch
+  failures, so notification problems cannot mask fatal arbitration outcomes.
+
+### Migration notes
+
+- Pricing catalogs must move to provider-qualified keys (`%w[provider model]`
+  arrays or `"provider/model"` strings). Legacy model-only keys still price
+  provider-unqualified usage for compatibility, but they fail
+  `Smith::Pricing.validate_catalog!` (now run by the doctor), and
+  provider-qualified usage never reads them: such usage records nil cost until
+  the catalog is qualified.
+- `fallback_models` entries must name their provider (`"provider/model"`, a
+  Hash, or a `ModelReference`); bare model ids fail closed at class definition.
+- Hosts registering `Smith::Models` profiles from reloadable code must move
+  registration to boot-once initializers or restart after editing a profile;
+  value-different re-registration now raises `Smith::Models::CollisionError`.
+- The gem now requires exactly `ruby_llm 1.16.0` (previously `>= 1.15,
+  < 1.17`); hosts on 1.15.x must upgrade together with this release.
+- Hosts that rescued `Smith::AgentError` for permanent provider failures should
+  rescue `Smith::ProviderPermanentFailure`, and restore-time rescues of
+  `Smith::SerializationError` must also handle
+  `Smith::PersistedFailureInvalid`.
+
 ## [0.7.0] - 2026-07-21
 
 ### Added

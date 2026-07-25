@@ -366,8 +366,40 @@ class SearchAgent < Smith::Agent
   register_as :search_agent
   model "claude-opus-4-7"
   tools Smith::Tools::WebSearch, Smith::Tools::UrlFetcher
+  budget tool_calls: 3
+  tool_budget_exhaustion :complete
 end
 ```
+
+Agent tool-call budgets default to raising `Smith::BudgetExceeded` when a tool
+tries to execute beyond the configured limit. Agents that declare
+`tool_budget_exhaustion :complete` must also declare a finite `tool_calls`
+budget. Smith then consumes each model-requested call before dispatch, executes
+only a complete batch admitted against both agent and workflow limits, and
+performs one tool-disabled completion when the allowance is exhausted or the
+provider returns an oversized batch. The bounded provider loop is iterative,
+not recursive. Calls to unavailable tools consume allowance as well, so a
+provider cannot create an unbounded correction loop. Workflow reservations are
+reconciled to actual Smith tool execution.
+
+Hosts may install `Smith::Tool::CallBudget` with exact per-tool limits through
+`Smith::Tool.with_call_budget`. Smith propagates that same root allowance into
+parallel and heterogeneous fan-out worker threads; agent budgets narrow the
+root and all branches share its atomic counters.
+
+Graceful exhaustion is an in-process protocol guarantee, not durable recovery
+for the model/tool loop. If the process exits after a tool begins and before the
+agent completes, the host must treat the outcome as uncertain unless it owns a
+durable per-invocation receipt and reconciliation contract. Smith also refuses
+to start a fresh fallback-model chat after tool execution has begun because that
+would discard the captured evidence and conversation protocol.
+
+Within a host invocation scope, `Smith::Tool.current_invocation` exposes the
+normalized tool-call ID and deterministic execution/batch ordinals. The ID is
+RubyLLM correlation metadata and must not be treated as a provider idempotency
+key. Durable hosts can pass an explicitly seeded
+`Smith::Tool::InvocationSequence` to `with_invocation_context`; Smith itself does
+not persist or reconcile operation receipts.
 
 Guardrails run as input/output gates around agent calls. See [`docs/TOOLS_AND_GUARDRAILS.md`](docs/TOOLS_AND_GUARDRAILS.md).
 
@@ -434,7 +466,25 @@ Smith ships a per-attempt normalizer that translates the request payload to what
 - OpenAI gpt-5 family reasoning_effort with `/v1/responses` routing when tools + thinking are combined
 - Gemini 2.5+ budget_tokens
 
-Override the inferred profile per-app via `Smith::Models.register(Profile.new(...))`. Hosts pin to specific model_ids by registering profiles; Smith never hardcodes model_ids in the library.
+Override the inferred profile per-app via `Smith::Models.register(Profile.new(...))`.
+Profiles are keyed by both provider and model id. Pass `provider:` to
+`Smith::Models.find` or `find_or_infer` whenever an id exists under more than
+one provider; an ambiguous unqualified lookup fails closed. Smith never
+hardcodes model ids in the library.
+
+Provider-qualified fallback entries use the same exact identity:
+
+```ruby
+fallback_models(
+  { model: "claude-sonnet-4-6", provider: :anthropic },
+  { model: "openai/gpt-5", provider: :openrouter }
+)
+```
+
+Fallback entries must include an explicit provider. Smith does not infer a
+fallback provider from the primary model or from a model id because the same id
+may be registered by more than one provider. Unqualified fallback entries fail
+closed during agent configuration.
 
 ## Errors and retry
 
@@ -446,6 +496,9 @@ Smith::Errors.retryable?(error)
 
 Smith::Errors.retryable_classes
 # => [Smith::AgentError, Smith::DeadlineExceeded]  (for ActiveJob retry_on)
+
+Smith::Errors.retry_forbidden?(error)
+# => true for terminal tool-evidence failures that must never be replayed
 ```
 
 Workflow transitions can also declare a bounded local retry policy:
@@ -465,6 +518,23 @@ and external idempotency guarantees remain host-owned.
 
 - Executable graph reachability is iterative `O(V + E)` time and `O(V)` space,
   using indexed outgoing transitions and runtime-equivalent successor rules.
+- Smith-managed tool arguments are copied iteratively in `O(N + B)` time and
+  `O(N + B)` bounded space for `N` expanded JSON value occurrences and `B`
+  expanded encoded bytes. Reused subgraphs are charged for every serialized
+  occurrence, native `Array` and `Hash` operations bypass hostile overrides, and
+  every mutable container's native size is admitted before one shallow copy is
+  made. Smith verifies the copy retained the admitted size before allocating or
+  traversing children. One immutable dispatch collection remains authoritative
+  from host admission through RubyLLM execution. The complete provider batch is
+  bounded to 100 calls and 1 MiB of normalized UTF-8 call metadata. The capture
+  boundary transfers temporary ownership of the provider collection and argument
+  graph to Smith: callers must not mutate them concurrently. Smith detects changed
+  cardinality and fails closed, but Ruby cannot prevent an unrelated writer from
+  growing a caller-owned container between native size admission and the native
+  copy without freezing that caller-owned object.
+- Admitted tool-receipt settlement scans each batch once in `O(B)` time and
+  `O(B)` state for `B` admitted Smith calls, including when an earlier terminal
+  callback fails.
 - Parallel execution is `O(B)` scheduling and result space for `B` branches,
   with at most `C = parallel_concurrency` active worker threads per top-level
   execution. Re-entrant fan-out inherits the same cancellation signal and uses
