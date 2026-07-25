@@ -364,7 +364,7 @@ RSpec.describe "Smith::Workflow::Router runtime behavior" do
     allow(classifier).to receive(:chat) do
       chat = Object.new
       chat.define_singleton_method(:add_message) { |_msg| nil }
-      chat.define_singleton_method(:complete) { raise StandardError, "provider down" }
+      chat.define_singleton_method(:complete) { raise RubyLLM::ServerError, "provider down" }
       chat
     end
 

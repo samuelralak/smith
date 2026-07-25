@@ -286,7 +286,7 @@ RSpec.describe "Smith tracing runtime behavior" do
         sensitivity :low
       end
 
-      def perform(**kwargs)
+      def perform(**_kwargs)
         { ok: "yes" }
       end
     end
@@ -311,7 +311,7 @@ RSpec.describe "Smith tracing runtime behavior" do
         sensitivity :medium
       end
 
-      def perform(**kwargs)
+      def perform(**_kwargs)
         { result: "sensitive" }
       end
     end
@@ -339,7 +339,7 @@ RSpec.describe "Smith tracing runtime behavior" do
         sensitivity :high
       end
 
-      def perform(**kwargs)
+      def perform(**_kwargs)
         { result: "sensitive" }
       end
     end
@@ -439,7 +439,7 @@ RSpec.describe "Smith tracing runtime behavior" do
     end
 
     provider = Object.new
-    provider.define_singleton_method(:tracer) do |name, version|
+    provider.define_singleton_method(:tracer) do |_name, _version|
       tracer
     end
 
@@ -535,7 +535,9 @@ RSpec.describe "Smith tracing runtime behavior" do
 
     token_traces = adapter.traces.select { |t| t[:type] == :token_usage }
     expect(token_traces.length).to eq(1)
-    expect(token_traces.first[:data]).to eq({ input_tokens: 15, output_tokens: 8 })
+    expect(token_traces.first[:data]).to eq(
+      { input_tokens: 15, output_tokens: 8, model: "gpt-5-mini" }
+    )
   end
 
   it "suppresses token_usage emission when trace_token_usage is false" do
@@ -658,7 +660,9 @@ RSpec.describe "Smith tracing runtime behavior" do
 
     token_traces = adapter.traces.select { |t| t[:type] == :token_usage }
     expect(token_traces.length).to eq(1)
-    expect(token_traces.first[:data]).to eq({ input_tokens: 20, output_tokens: 12 })
+    expect(token_traces.first[:data]).to eq(
+      { input_tokens: 20, output_tokens: 12, model: "gpt-5-mini" }
+    )
   end
 
   it "does not emit token_usage when the provider response lacks usage metadata" do

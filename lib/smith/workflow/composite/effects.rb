@@ -13,7 +13,7 @@ module Smith
         attr_reader :total_tokens, :total_cost
 
         USAGE_ATTRIBUTES = %w[
-          usage_id agent_name model input_tokens output_tokens cost attempt_kind recorded_at
+          usage_id agent_name model provider input_tokens output_tokens cost attempt_kind recorded_at
         ].freeze
         TOOL_ATTRIBUTES = %w[tool captured].freeze
         private_constant :USAGE_ATTRIBUTES, :TOOL_ATTRIBUTES
@@ -70,6 +70,8 @@ module Smith
         def validate_usage_identity!(entry)
           validate_usage_id!(entry.fetch("usage_id"))
           validate_agent_name!(entry.fetch("agent_name"))
+          provider = entry.fetch("provider")
+          validate_nonempty_string!(provider, "composite usage entry provider") if provider
           %w[model attempt_kind recorded_at].each do |key|
             validate_nonempty_string!(entry.fetch(key), "composite usage entry #{key}")
           end

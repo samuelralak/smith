@@ -336,6 +336,7 @@ RSpec.describe "Smith::Workflow composite durability hardening" do
           usage_id: SecureRandom.uuid,
           agent_name: "worker",
           model: "test",
+          provider: nil,
           input_tokens: 1,
           output_tokens: 0,
           cost: 0.0,

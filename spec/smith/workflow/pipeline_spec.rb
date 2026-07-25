@@ -109,7 +109,7 @@ RSpec.describe "Smith::Workflow::Pipeline runtime behavior" do
     allow(agent).to receive(:chat) do
       chat = Object.new
       chat.define_singleton_method(:add_message) { |_| nil }
-      chat.define_singleton_method(:complete) { raise StandardError, "provider error" }
+      chat.define_singleton_method(:complete) { raise RubyLLM::ServerError, "provider error" }
       chat
     end
 
@@ -211,7 +211,7 @@ RSpec.describe "Smith::Workflow::Pipeline runtime behavior" do
   end
 
   it "rejects duplicate stage names within a pipeline" do
-    agent = with_stubbed_class("SpecPipelineDupAgent", agent_class) do
+    with_stubbed_class("SpecPipelineDupAgent", agent_class) do
       register_as :spec_pipeline_dup_agent
       model "gpt-5-mini"
     end
@@ -230,7 +230,7 @@ RSpec.describe "Smith::Workflow::Pipeline runtime behavior" do
   end
 
   it "rejects generated transitions that collide with existing transitions" do
-    agent = with_stubbed_class("SpecPipelineCollisionAgent", agent_class) do
+    with_stubbed_class("SpecPipelineCollisionAgent", agent_class) do
       register_as :spec_pipeline_collision_agent
       model "gpt-5-mini"
     end
@@ -250,7 +250,7 @@ RSpec.describe "Smith::Workflow::Pipeline runtime behavior" do
   end
 
   it "generates correct intermediate transitions with on_success chaining" do
-    agent = with_stubbed_class("SpecPipelineChainingAgent", agent_class) do
+    with_stubbed_class("SpecPipelineChainingAgent", agent_class) do
       register_as :spec_pipeline_chaining_agent
       model "gpt-5-mini"
     end

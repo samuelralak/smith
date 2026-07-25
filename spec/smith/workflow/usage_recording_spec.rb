@@ -37,6 +37,45 @@ RSpec.describe "Smith::Workflow usage recording contract" do
   end
 
   describe "completed-attempt entries" do
+    it "records one entry for every provider response in a tool loop" do
+      message_class = Struct.new(:role, :content, :input_tokens, :output_tokens)
+      final = message_class.new(:assistant, "done", 30, 7)
+      completion = Smith::Agent::Completion.from_messages(
+        response: final,
+        messages: [
+          message_class.new(:assistant, nil, 10, 3),
+          message_class.new(:tool, "evidence", nil, nil),
+          final
+        ]
+      )
+
+      workflow.send(:record_completion_usage, agent_class, completion, :completed_attempt, "gpt-5-mini")
+
+      entries = workflow.instance_variable_get(:@usage_entries)
+      expect(entries.map { [_1.input_tokens, _1.output_tokens] }).to eq([[10, 3], [30, 7]])
+      expect(workflow.instance_variable_get(:@total_tokens)).to eq(50)
+      expect(workflow.instance_variable_get(:@total_cost)).to be_within(1e-12).of(entries.map(&:cost).compact.sum)
+    end
+
+    it "retains known response usage when another provider response omits counters" do
+      message_class = Struct.new(:role, :content, :input_tokens, :output_tokens)
+      final = message_class.new(:assistant, "done", nil, nil)
+      completion = Smith::Agent::Completion.from_messages(
+        response: final,
+        messages: [
+          message_class.new(:assistant, nil, 10, 3),
+          final
+        ]
+      )
+
+      workflow.send(:record_completion_usage, agent_class, completion, :completed_attempt, "gpt-5-mini")
+
+      entries = workflow.instance_variable_get(:@usage_entries)
+      expect(entries.map { [_1.input_tokens, _1.output_tokens] }).to eq([[10, 3]])
+      expect(workflow.instance_variable_get(:@total_tokens)).to eq(13)
+      expect(completion.usage_complete).to be(false)
+    end
+
     it "appends a :completed_attempt entry with all the agent's per-call facts" do
       result = agent_result(input: 100, output: 50, cost: 0.00175)
 
@@ -57,8 +96,10 @@ RSpec.describe "Smith::Workflow usage recording contract" do
     end
 
     it "updates @total_tokens and @total_cost in lockstep with the entry append" do
-      workflow.send(:record_usage, agent_class, agent_result(input: 100, output: 50, cost: 0.00175), :completed_attempt, "claude-opus-4-7")
-      workflow.send(:record_usage, agent_class, agent_result(input: 200, output: 100, cost: 0.00350), :completed_attempt, "claude-opus-4-7")
+      workflow.send(:record_usage, agent_class, agent_result(input: 100, output: 50, cost: 0.00175),
+                    :completed_attempt, "claude-opus-4-7")
+      workflow.send(:record_usage, agent_class, agent_result(input: 200, output: 100, cost: 0.00350),
+                    :completed_attempt, "claude-opus-4-7")
 
       expect(workflow.instance_variable_get(:@total_tokens)).to eq(450)
       expect(workflow.instance_variable_get(:@total_cost)).to be_within(1e-9).of(0.00525)
@@ -100,12 +141,13 @@ RSpec.describe "Smith::Workflow usage recording contract" do
   describe "sum invariant (regression guard)" do
     it "keeps total_cost ≈ sum(usage_entries.cost) and total_tokens == sum(input + output) across many calls" do
       [
-        [ 100, 50, 0.001 ],
-        [ 200, 75, 0.0025 ],
-        [ 50, 25, 0.00075 ],
-        [ 0, 200, 0.005 ]
+        [100, 50, 0.001],
+        [200, 75, 0.0025],
+        [50, 25, 0.00075],
+        [0, 200, 0.005]
       ].each do |input, output, cost|
-        workflow.send(:record_usage, agent_class, agent_result(input: input, output: output, cost: cost), :completed_attempt, "model")
+        workflow.send(:record_usage, agent_class, agent_result(input: input, output: output, cost: cost),
+                      :completed_attempt, "model")
       end
 
       entries = workflow.instance_variable_get(:@usage_entries)
@@ -148,7 +190,7 @@ RSpec.describe "Smith::Workflow usage recording contract" do
     end
 
     it "preserves the rollup invariant under concurrent recording" do
-      threads = 20.times.map do |i|
+      threads = 20.times.map do |_i|
         Thread.new do
           workflow.send(
             :record_usage,
@@ -226,7 +268,7 @@ RSpec.describe "Smith::Workflow usage recording contract" do
       child_result = Smith::Workflow::RunResult.new(
         state: :done, output: nil, steps: [], total_cost: 0.001,
         total_tokens: 150, context: {}, session_messages: [],
-        tool_results: [], outcome: nil, usage_entries: [ original_entry ]
+        tool_results: [], outcome: nil, usage_entries: [original_entry]
       )
 
       parent_workflow.send(:roll_up_child_totals, child_result)
@@ -246,7 +288,8 @@ RSpec.describe "Smith::Workflow usage recording contract" do
 
     it "preserves attempt_kind on rollup (failed-but-billable entries from the child stay :failed_attempt)" do
       child_entries = [
-        child_entry(usage_id: "c-fail", model: "fallback-model", attempt_kind: :failed_attempt, input: 50, output: 0, cost: 0.0)
+        child_entry(usage_id: "c-fail", model: "fallback-model", attempt_kind: :failed_attempt, input: 50, output: 0,
+                    cost: 0.0)
       ]
       child_result = Smith::Workflow::RunResult.new(
         state: :failed, output: nil, steps: [], total_cost: 0.0,

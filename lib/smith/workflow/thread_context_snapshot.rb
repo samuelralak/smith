@@ -15,8 +15,11 @@ module Smith
         current_deadline
         current_ledger
         current_tool_call_allowance
+        current_tool_execution_tracker
         current_tool_result_collector
         current_invocation_context
+        current_invocation_sequence
+        current_invocation
       ].freeze
       THREAD_KEYS = %i[
         smith_call_deadline
@@ -68,14 +71,14 @@ module Smith
       def restore_context!
         raise WorkflowError, "thread context snapshot has already been restored" if @restored
 
-        @tool_values.each { |attribute, value| Tool.public_send("#{attribute}=", value) }
+        @tool_values.each { |attribute, value| Tool.send("#{attribute}=", value) }
         @thread_values.each { |key, value| Thread.current[key] = value }
         Smith.scoped_artifacts = @artifact_store if scoped_artifacts
         @restored = true
       end
 
       def capture_tool_values
-        tool_attributes.to_h { |attribute| [attribute, Tool.public_send(attribute)] }.freeze
+        tool_attributes.to_h { |attribute| [attribute, Tool.send(attribute)] }.freeze
       end
 
       def capture_thread_values

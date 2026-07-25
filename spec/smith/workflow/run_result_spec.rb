@@ -14,7 +14,8 @@ RSpec.describe "Smith::Workflow run result contract" do
 
     result = workflow.run!
 
-    %i[state output steps total_cost total_tokens context session_messages tool_results failed_transition failure_detail].each do |method_name|
+    %i[state output steps total_cost total_tokens context session_messages tool_results failed_transition
+       failure_detail].each do |method_name|
       expect(result).to respond_to(method_name), "expected run! result to implement ##{method_name}"
     end
   end
@@ -1167,7 +1168,7 @@ RSpec.describe "Smith::Workflow run result contract" do
 
   it "wraps provider call failures from chat.complete as AgentError" do
     agent_error = require_const("Smith::AgentError")
-    upstream_error = Class.new(StandardError)
+    upstream_error = Class.new(RubyLLM::ServerError)
 
     agent = with_stubbed_class("SpecAgentErrorWrappingAgent", agent_class) do
       register_as :spec_agent_error_wrapping_agent

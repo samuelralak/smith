@@ -2,6 +2,7 @@
 
 require_relative "agent_result"
 require_relative "execution_binding_resolution"
+require_relative "guarded_step_execution"
 require_relative "prepared_branch_execution"
 require_relative "step_completion"
 require_relative "step_context"
@@ -10,6 +11,7 @@ module Smith
   class Workflow
     module Execution
       include ExecutionBindingResolution
+      include GuardedStepExecution
       include PreparedBranchExecution
       include StepCompletion
       include StepContext
@@ -37,15 +39,6 @@ module Smith
         Tool.current_deadline = wall_clock_deadline
         Tool.current_ledger = @ledger
         Tool.current_tool_result_collector = tool_result_collector
-      end
-
-      def run_guarded_step(transition)
-        return apply_composite_reduction!(transition) if @composite_reduction
-
-        @resolved_parallel_branch_count = preflight_branch_count(transition)
-        run_standard_guarded_step(transition)
-      ensure
-        @resolved_parallel_branch_count = nil
       end
 
       def run_standard_guarded_step(transition)

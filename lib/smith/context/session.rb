@@ -5,10 +5,11 @@ module Smith
     class Session
       attr_reader :messages
 
-      def initialize(messages:, context_manager:, persisted_context:)
+      def initialize(messages:, context_manager:, persisted_context:, seed_message_count: 0)
         @messages = messages
         @context_manager = context_manager
         @persisted_context = persisted_context
+        @seed_message_count = seed_message_count
       end
 
       def inject_state!
@@ -26,7 +27,11 @@ module Smith
         return @messages unless @context_manager
 
         strategy = @context_manager.session_strategy
-        ObservationMasking.apply(@messages, strategy: strategy)
+        ObservationMasking.apply(
+          @messages,
+          strategy: strategy,
+          seed_message_count: @seed_message_count
+        )
       end
 
       def prepare!

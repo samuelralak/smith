@@ -88,6 +88,7 @@ RSpec.describe "Smith::Workflow durable composite execution" do
       usage_id:,
       agent_name:,
       model: "test-model",
+      provider: nil,
       input_tokens: 2,
       output_tokens: 3,
       cost: 0.01,

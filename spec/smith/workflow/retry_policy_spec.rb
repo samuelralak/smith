@@ -92,6 +92,88 @@ RSpec.describe "Smith::Workflow retry policy" do
     expect(attempts).to eq(1)
   end
 
+  it "does not replay an uncertain tool outcome even when a superclass is explicitly retryable" do
+    workflow = with_stubbed_class("SpecUncertainToolRetryWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :call_agent, from: :idle, to: :done do
+        execute :spec_retry_agent
+        retry_on Smith::Error, attempts: 3
+        on_failure :fail
+      end
+    end.new
+    attempts = 0
+    workflow.define_singleton_method(:execute_transition_body) do |_transition, **|
+      attempts += 1
+      raise Smith::ToolOutcomeUncertain, "provider acknowledgement unknown"
+    end
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:failed)
+    expect(result.last_error).to be_a(Smith::ToolOutcomeUncertain)
+    expect(attempts).to eq(1)
+  end
+
+  it "does not retry when output validation fails after tool dispatch" do
+    workflow = with_stubbed_class("SpecPostToolValidationRetryWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :call_agent, from: :idle, to: :done do
+        execute :spec_retry_agent
+        retry_on StandardError, attempts: 3
+        on_failure :fail
+      end
+    end.new
+    attempts = 0
+    workflow.define_singleton_method(:execute_transition_body) do |_transition, **|
+      attempts += 1
+      Smith::Tool.current_tool_execution_tracker.mark_started!
+      :answer
+    end
+    workflow.define_singleton_method(:run_output_guardrails) do |_output, _agent_class|
+      raise Smith::BlankAgentOutputError.new(agent_name: :spec_retry_agent, model_used: "test")
+    end
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:failed)
+    expect(result.last_error).to be_a(Smith::ToolOutcomeUncertain)
+    expect(result.last_error.cause).to be_a(Smith::BlankAgentOutputError)
+    expect(attempts).to eq(1)
+  end
+
+  it "does not retry a deadline failure raised after tool dispatch" do
+    workflow = with_stubbed_class("SpecPostToolDeadlineRetryWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :call_agent, from: :idle, to: :done do
+        execute :spec_retry_agent
+        retry_on StandardError, attempts: 3
+        on_failure :fail
+      end
+    end.new
+    attempts = 0
+    workflow.define_singleton_method(:execute_transition_body) do |_transition, **|
+      attempts += 1
+      Smith::Tool.current_tool_execution_tracker.mark_started!
+      raise Smith::DeadlineExceeded, "deadline reached after dispatch"
+    end
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:failed)
+    expect(result.last_error).to be_a(Smith::ToolOutcomeUncertain)
+    expect(result.last_error.cause).to be_a(Smith::DeadlineExceeded)
+    expect(attempts).to eq(1)
+  end
+
   it "honors explicit retry classes" do
     workflow = with_stubbed_class("SpecRetryExplicitClassWorkflow", workflow_class) do
       initial_state :idle
@@ -132,6 +214,46 @@ RSpec.describe "Smith::Workflow retry policy" do
     end.to raise_error(
       workflow_error,
       "retry_on cannot retry Smith::ToolCaptureFailed because the tool outcome may be uncertain"
+    )
+  end
+
+  [
+    Smith::ToolOutcomeUncertain,
+    Smith::ToolFailureNotificationFailed,
+    Smith::BoundedCompletionError
+  ].each do |error_class|
+    it "rejects explicit retries for #{error_class}" do
+      expect do
+        Class.new(workflow_class) do
+          initial_state :idle
+          state :done
+          transition :call_agent, from: :idle, to: :done do
+            execute :spec_retry_agent
+            retry_on error_class, attempts: 2
+          end
+        end
+      end.to raise_error(
+        workflow_error,
+        "retry_on cannot retry #{error_class.name} because the tool outcome may be uncertain"
+      )
+    end
+  end
+
+  it "names anonymous terminal retry classes without an empty diagnostic" do
+    anonymous_error = Class.new(Smith::ToolOutcomeUncertain)
+
+    expect do
+      Class.new(workflow_class) do
+        initial_state :idle
+        state :done
+        transition :call_agent, from: :idle, to: :done do
+          execute :spec_retry_agent
+          retry_on anonymous_error, attempts: 2
+        end
+      end
+    end.to raise_error(
+      workflow_error,
+      "retry_on cannot retry an anonymous terminal tool-evidence error class because the tool outcome may be uncertain"
     )
   end
 
@@ -302,7 +424,7 @@ RSpec.describe "Smith::Workflow retry policy" do
   end
 
   it "counts failed billable retry attempts against workflow budget" do
-    error_class = Class.new(StandardError) do
+    error_class = Class.new(RubyLLM::ServerError) do
       attr_reader :input_tokens, :output_tokens
 
       def initialize(message, input_tokens:, output_tokens:)

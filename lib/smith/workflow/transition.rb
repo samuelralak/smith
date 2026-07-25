@@ -336,10 +336,7 @@ module Smith
 
           raise WorkflowError, "retry_on error classes must inherit from StandardError"
         end
-        if error_classes.any? { |error_class| error_class <= ToolCaptureFailed }
-          message = "retry_on cannot retry Smith::ToolCaptureFailed because the tool outcome may be uncertain"
-          raise WorkflowError, message
-        end
+        reject_retry_forbidden!(error_classes)
 
         ExponentialBackoff.new(
           attempts:,
@@ -350,6 +347,14 @@ module Smith
         )
       rescue ArgumentError => e
         raise WorkflowError, "retry_on #{e.message}"
+      end
+
+      def reject_retry_forbidden!(error_classes)
+        forbidden = error_classes.find { |error_class| Smith::Errors.retry_forbidden_class?(error_class) }
+        return unless forbidden
+
+        label = forbidden.name || "an anonymous terminal tool-evidence error class"
+        raise WorkflowError, "retry_on cannot retry #{label} because the tool outcome may be uncertain"
       end
 
       def normalize_deterministic_routes!(routes)

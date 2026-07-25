@@ -358,10 +358,14 @@ RSpec.describe Smith::Workflow::MessageAdmission do
     copy = original.dup
     copy.instance_variable_get(:@context)[:nested][:value].replace("Copy")
     copy.instance_variable_get(:@tool_results).dig(0, :captured, :value).replace("Copy")
-    copy.instance_variable_get(:@usage_entries).first.model.replace("model-copy")
+    original_usage = original.instance_variable_get(:@usage_entries).first
+    copied_usage = copy.instance_variable_get(:@usage_entries).first
     copy_reservation = copy.ledger.reserve!(:total_tokens, 10)
     copy.ledger.reconcile!(copy_reservation, 6)
 
+    expect(copied_usage).not_to equal(original_usage)
+    expect(copied_usage).to be_frozen
+    expect { copied_usage.model.replace("model-copy") }.to raise_error(FrozenError)
     expect(original.to_state[:context]).to eq(nested: { value: "Original" })
     expect(original.to_state[:tool_results]).to eq([{ captured: { value: "Original" } }])
     expect(original.to_state[:usage_entries].first[:model]).to eq("model-original")

@@ -21,8 +21,8 @@ RSpec.describe "Smith::Workflow state serialization shape" do
       %i[
         class state persistence_key context budget_consumed step_count execution_namespace created_at updated_at
         next_transition_name session_messages total_cost total_tokens tool_results outcome usage_entries last_output
-        last_failed_step persistence_version schema_version definition_digest seed_digest step_in_progress
-        persisted_keys
+        last_failed_step persistence_version schema_version definition_digest seed_digest seed_message_count
+        step_in_progress persisted_keys
       ]
     )
     expect(state[:class]).to eq("SpecStateWorkflow")
@@ -41,6 +41,18 @@ RSpec.describe "Smith::Workflow state serialization shape" do
     expect(state[:usage_entries]).to eq([])
     expect(state[:last_output]).to be_nil
     expect(state[:last_failed_step]).to be_nil
+    expect(state[:seed_message_count]).to eq(0)
+  end
+
+  it "rejects an invalid persisted seed prefix length" do
+    workflow = with_stubbed_class("SpecInvalidSeedCountWorkflow", workflow_class) do
+      initial_state :idle
+    end.new
+
+    state = workflow.to_state.merge(seed_message_count: 1)
+
+    expect { workflow.class.from_state(state) }
+      .to raise_error(Smith::SerializationError, /seed_message_count/)
   end
 
   it "round-trips through from_state without serializing agent instances" do

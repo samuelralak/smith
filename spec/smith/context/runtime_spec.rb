@@ -113,6 +113,40 @@ RSpec.describe "Smith::Context runtime contract" do
     )
   end
 
+  it "preserves seed conversation roles while bounding later workflow observations" do
+    manager = with_stubbed_class("SpecSeedPreservingContext", context_class) do
+      session_strategy :observation_masking, window: 1, preserve_seed: true
+    end
+
+    workflow = with_stubbed_class("SpecSeedPreservingWorkflow", workflow_class) do
+      context_manager manager
+      seed_messages do
+        [
+          { role: :user, content: "original request" },
+          { role: :assistant, content: "prior answer" },
+          { role: :user, content: "active follow-up" }
+        ]
+      end
+      initial_state :idle
+    end.new
+
+    workflow.instance_variable_get(:@session_messages).push(
+      { role: :assistant, content: "planner output" },
+      { role: :assistant, content: "research output" }
+    )
+
+    prepared = workflow.send(:build_session).prepare!
+
+    expect(prepared).to eq(
+      [
+        { role: :user, content: "original request" },
+        { role: :assistant, content: "prior answer" },
+        { role: :user, content: "active follow-up" },
+        { role: :assistant, content: "research output" }
+      ]
+    )
+  end
+
   it "merges injected state into the existing agent instruction system message before provider call" do
     manager = with_stubbed_class("SpecMergedInstructionContext", context_class) do
       session_strategy :observation_masking, window: 1

@@ -24,7 +24,7 @@ module Smith
 
       def retry_transition_error?(config, error, attempt)
         return false if attempt >= config.fetch(:attempts)
-        return false if error.is_a?(ToolCaptureFailed)
+        return false if terminal_retry_error?(error)
 
         classes = config.fetch(:error_classes)
         if classes.any?
@@ -32,6 +32,10 @@ module Smith
         else
           Smith::Errors.retryable?(error)
         end
+      end
+
+      def terminal_retry_error?(error)
+        Smith::Errors.retry_forbidden?(error)
       end
 
       def sleep_for_retry(schedule, failed_attempt)

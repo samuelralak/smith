@@ -33,7 +33,8 @@ module Smith
         Context::Session.new(
           messages: messages,
           context_manager: manager,
-          persisted_context: @context
+          persisted_context: @context,
+          seed_message_count: @seed_message_count || 0
         )
       end
     end

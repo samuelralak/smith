@@ -905,19 +905,17 @@ RSpec.describe "Smith::Workflow parallel execution" do
       started_barrier.count_down
       started_barrier.wait(1)
 
-      if branch == 1
-        raise Smith::WorkflowError, "branch failed"
-      end
+      raise Smith::WorkflowError, "branch failed" if branch == 1
 
       sleep 0.05
       :ok
     end
 
     workflow.define_singleton_method(:check_cancellation!) do |signal|
-      if signal.cancelled?
-        cancellation_observations << Thread.current.object_id
-        raise Smith::WorkflowError, "cancelled"
-      end
+      return unless signal.cancelled?
+
+      cancellation_observations << Thread.current.object_id
+      raise Smith::WorkflowError, "cancelled"
     end
 
     result = workflow.run!
@@ -947,13 +945,11 @@ RSpec.describe "Smith::Workflow parallel execution" do
     workflow.define_singleton_method(:execute_transition_body) do |_transition, prepared_input: nil|
       branch = call_counter.increment
 
-      if branch == 1
-        sleep 0.05
-        branch_outputs << :branch_0_completed
-        :branch_0_result
-      else
-        raise Smith::WorkflowError, "branch failed"
-      end
+      raise Smith::WorkflowError, "branch failed" unless branch == 1
+
+      sleep 0.05
+      branch_outputs << :branch_0_completed
+      :branch_0_result
     end
 
     result = workflow.run!
@@ -1684,6 +1680,28 @@ RSpec.describe "Smith::Workflow parallel execution" do
     expect do
       Smith::Workflow::Parallel.execute(branches: [nested, proc { |_signal| :ok }])
     end.to raise_error(Smith::ToolCaptureFailed, uncertainty.message)
+  end
+
+  it "gives terminal host-notification failure precedence over a retryable sibling" do
+    terminal = Smith::ToolFailureNotificationFailed.new(
+      dispatch_error: Smith::AgentError.new("dispatch failed"),
+      notification_error: IOError.new("receipt store unavailable")
+    )
+
+    expect(
+      Smith::Workflow::Parallel.preferred_error([Smith::AgentError.new("temporary"), terminal])
+    ).to equal(terminal)
+  end
+
+  it "gives terminal host-notification failure precedence over other uncertain outcomes" do
+    terminal = Smith::ToolFailureNotificationFailed.new(
+      dispatch_error: Smith::AgentError.new("dispatch failed"),
+      notification_error: IOError.new("receipt store unavailable")
+    )
+
+    expect(
+      Smith::Workflow::Parallel.preferred_error([Smith::ToolOutcomeUncertain.new("unknown"), terminal])
+    ).to equal(terminal)
   end
 
   [

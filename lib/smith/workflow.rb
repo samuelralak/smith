@@ -3,11 +3,13 @@
 require "digest"
 require "json"
 require "securerandom"
-require "set"
 require "time"
 
 require_relative "workflow/agent_result"
 require_relative "workflow/branch_env"
+require_relative "workflow/failure_record"
+require_relative "workflow/failure_record_restore"
+require_relative "workflow/failure_reconstructor"
 require_relative "workflow/run_result"
 require_relative "workflow/string_snapshot"
 require_relative "workflow/usage_entry"
@@ -29,51 +31,6 @@ module Smith
     include Execution
 
     DEFAULT_MAX_TRANSITIONS = 100
-
-    # Reconstruct Smith error classes from `@last_failed_step` snapshots.
-    # Order matters: more-specific subclasses first, so a real DSF doesn't
-    # get caught by the WorkflowError handler. Each lambda preserves the
-    # billing-critical attributes (`retryable`, `kind`, `details`) by
-    # routing through the original constructor — Smith's retryable errors
-    # expose `attr_reader :retryable` only, with no setter, so kwargs
-    # MUST flow through `initialize`.
-    KNOWN_RECONSTRUCTORS = {
-      "Smith::ToolCaptureFailed" => ->(s) {
-        Smith::ToolCaptureFailed.from_details(s.fetch(:error_details))
-      },
-      "Smith::ToolGuardrailFailed" => ->(s) {
-        Smith::ToolGuardrailFailed.new(s[:error_message], retryable: s[:error_retryable])
-      },
-      "Smith::DeterministicStepFailure" => ->(s) {
-        Smith::DeterministicStepFailure.new(
-          s[:error_message],
-          retryable: s[:error_retryable],
-          kind:      s[:error_kind],
-          details:   s[:error_details]
-        )
-      },
-      "Smith::AgentError"        => ->(s) { Smith::AgentError.new(s[:error_message]) },
-      "Smith::DeadlineExceeded"  => ->(s) { Smith::DeadlineExceeded.new(s[:error_message]) },
-      "Smith::WorkflowError"     => ->(s) { Smith::WorkflowError.new(s[:error_message]) },
-      "Smith::Workflow::Composite::BranchFailure" => lambda { |s|
-        Smith::Workflow::Composite::BranchFailure.from_details(s[:error_details])
-      },
-      # Smith errors with non-message constructors map to compatible
-      # superclass — message preserved, original metadata (agent_name,
-      # model_used, requested_name, workflow_class, origin_state) lossy
-      # but `is_a?` classification round-trips via the superclass.
-      "Smith::BlankAgentOutputError"     => ->(s) { Smith::AgentError.new(s[:error_message]) },
-      "Smith::UnresolvedTransitionError" => ->(s) { Smith::WorkflowError.new(s[:error_message]) }
-    }.freeze
-    private_constant :KNOWN_RECONSTRUCTORS
-
-    # Families whose retryable/kind/details attributes are billing-critical.
-    # For these, the reconstruction path bypasses `const_get(...).new(message)`
-    # (which would succeed for unknown subclasses with message-only
-    # constructors but discard the kwargs) and uses the family fallback
-    # directly so the parent-class constructor preserves the attrs.
-    RETRYABLE_BEARING_FAMILIES = %w[deterministic_step_failure tool_guardrail_failed].freeze
-    private_constant :RETRYABLE_BEARING_FAMILIES
 
     attr_reader :state, :last_prepared_input, :ledger
 
@@ -113,6 +70,7 @@ module Smith
       # seed_validation is :warn or :strict; nil when no seed builder
       # ran or its output was empty.
       @seed_digest = nil
+      @seed_message_count = 0
       # Idempotency marker stamped between persist-before-advance and
       # persist-after-advance under idempotency_mode :strict; restored
       # workflows with the marker set raise
@@ -203,7 +161,7 @@ module Smith
 
     def initial_persist_auto_seed
       manager = self.class.context_manager
-      return [] unless manager && manager.respond_to?(:persist_mode) && manager.persist_mode == :auto
+      return [] unless manager.respond_to?(:persist_mode) && manager.persist_mode == :auto
 
       manager.persist_auto_seed.map(&:to_sym)
     end
@@ -223,31 +181,7 @@ module Smith
       return unless step_result
 
       if step_result[:error]
-        err = step_result[:error]
-        # error_family preserves classification across reconstruction
-        # even when the exact class can't be rebuilt. Order matters:
-        # specific subclasses first (DSF before WorkflowError, etc.)
-        # so a real DSF doesn't get classified as workflow_error.
-        error_family = case err
-                       when Smith::DeterministicStepFailure then "deterministic_step_failure"
-                       when Smith::ToolCaptureFailed        then "tool_capture_failed"
-                       when Smith::ToolGuardrailFailed      then "tool_guardrail_failed"
-                       when Smith::DeadlineExceeded         then "deadline_exceeded"
-                       when Smith::AgentError               then "agent_error"
-                       when Smith::WorkflowError            then "workflow_error"
-                       else                                       "other"
-                       end
-        @last_failed_step = {
-          transition: step_result[:transition],
-          from: step_result[:from],
-          to: step_result[:to],
-          error_class: err.class.name,
-          error_family: error_family,
-          error_message: err.message,
-          error_retryable: err.respond_to?(:retryable) ? err.retryable : nil,
-          error_kind:      err.respond_to?(:kind)      ? err.kind      : nil,
-          error_details:   err.respond_to?(:details)   ? err.details   : nil
-        }
+        @last_failed_step = FailureRecord.capture(step_result)
       else
         # Successful step: clear any prior failed-step snapshot
         # (workflow handled the failure and continued) and capture
@@ -275,7 +209,7 @@ module Smith
         name = @next_transition_name
         @next_transition_name = nil
         transition = self.class.find_transition(name) ||
-          raise(UnresolvedTransitionError.new(name, self.class, @state))
+                     raise(UnresolvedTransitionError.new(name, self.class, @state))
         validate_transition_origin!(transition)
         transition
       else
@@ -316,10 +250,10 @@ module Smith
       # terminal state never produces a synthetic error even if the
       # snapshot wasn't cleared.
       effective_steps = if steps.empty? && failed? && @last_failed_step
-        [reconstruct_failed_step]
-      else
-        steps
-      end
+                          [reconstruct_failed_step]
+                        else
+                          steps
+                        end
 
       RunResult.new(
         state: @state,
@@ -336,59 +270,11 @@ module Smith
     end
 
     def reconstruct_failed_step
-      snap = @last_failed_step
-      builder = KNOWN_RECONSTRUCTORS[snap[:error_class]]
-      error = if builder
-        builder.call(snap)
-      elsif RETRYABLE_BEARING_FAMILIES.include?(snap[:error_family])
-        # Skip const_get for retryable-bearing families. An unknown
-        # subclass with a message-only constructor would const_get
-        # successfully but discard the snapshot's `retryable`/`kind`/
-        # `details` (defaults to nil), and host retry classification
-        # could misclassify a retryable failure as terminal.
-        # Family fallback rebuilds the parent class with kwargs intact.
-        family_fallback(snap)
-      else
-        # Unknown subclass without retryable-bearing semantics. Try
-        # the exact class for shape preservation; fall back via family
-        # if the constructor doesn't accept message-only args (or the
-        # class doesn't exist).
-        begin
-          Kernel.const_get(snap[:error_class]).new(snap[:error_message])
-        rescue NameError, ArgumentError
-          family_fallback(snap)
-        end
-      end
-
-      # Symbol coercion on the way out: live steps carry these as
-      # symbols; JSON round-trip stringifies them; coerce back to
-      # match fresh-run shape exactly.
-      {
-        transition: normalize_transition_name(snap[:transition]),
-        from:       normalize_state_name(snap[:from]),
-        to:         normalize_state_name(snap[:to]),
-        error:      error
-      }
-    end
-
-    def family_fallback(snap)
-      case snap[:error_family]
-      when "deterministic_step_failure"
-        Smith::DeterministicStepFailure.new(
-          snap[:error_message],
-          retryable: snap[:error_retryable],
-          kind:      snap[:error_kind],
-          details:   snap[:error_details]
-        )
-      when "tool_guardrail_failed"
-        Smith::ToolGuardrailFailed.new(snap[:error_message], retryable: snap[:error_retryable])
-      when "tool_capture_failed"
-        Smith::ToolCaptureFailed.from_details(snap.fetch(:error_details))
-      when "deadline_exceeded" then Smith::DeadlineExceeded.new(snap[:error_message])
-      when "agent_error"       then Smith::AgentError.new(snap[:error_message])
-      when "workflow_error"    then Smith::WorkflowError.new(snap[:error_message])
-      else                          RuntimeError.new(snap[:error_message])
-      end
+      FailureReconstructor.new(
+        snapshot: @last_failed_step,
+        transition_normalizer: method(:normalize_transition_name),
+        state_normalizer: method(:normalize_state_name)
+      ).call
     end
 
     def seed_initial_session_messages
@@ -396,6 +282,7 @@ module Smith
       return if messages.nil?
 
       @session_messages = messages
+      @seed_message_count = messages.length
       @seed_digest = compute_seed_digest(messages)
     end
 

@@ -12,7 +12,7 @@ Example:
 class ReviewContext < Smith::Context
   persist :ticket_id, :current_findings, :source_urls
 
-  session_strategy :observation_masking, window: 6
+  session_strategy :observation_masking, window: 6, preserve_seed: true
 
   inject_state do |persisted|
     <<~TEXT
@@ -37,11 +37,21 @@ end
 What Smith does for you:
 
 - prepares masked session input at step boundaries
+- optionally preserves the complete immutable `seed_messages` prefix, with its
+  original roles and order, while bounding only later workflow observations
 - injects a state summary message into that prepared input
 - persists declared workflow context keys
 - persists accepted session history
 - preserves chosen next transitions across persistence
 - supports JSON host round-trips through `to_state` and `.from_state`
+
+`preserve_seed: true` is intended for workflows whose seed is durable external
+conversation and whose later accepted outputs are internal stage handoffs. Smith
+persists and validates the exact seed-prefix length, so restart does not infer
+the boundary from message content. The masking pass is linear in session length
+and retains only the seed prefix, injected system messages, and the configured
+observation tail. Legacy state without `seed_message_count` restores with no
+preserved prefix.
 
 Example host-controlled persistence:
 
@@ -305,6 +315,22 @@ and JSON serialization hooks. It is bound by object identity to one workflow
 instance and by process id to the issuing Ruby process, so a forked child cannot
 consume inherited authority. It is not a lease, cross-process fence, or durable
 attempt receipt.
+
+Persisted workflow failures use an explicit reconstruction registry. Smith does
+not resolve arbitrary class names from persisted data or invoke their
+constructors. Known retry-forbidden families retain their non-retryable
+semantics even when the original class is no longer available; unknown classes
+restore as `RuntimeError`. Failure messages and details are normalized into
+bounded JSON-safe evidence before persistence; invalid or oversized details are
+represented by an explicit omission marker. Inconsistent persisted class,
+family, retry-policy, or known typed-detail evidence fails closed during
+`from_state` as `Smith::PersistedFailureInvalid`. Failure capture uses native
+Ruby class and message operations so an exception cannot override diagnostic
+methods to suppress its durable terminal record. Terminal
+`Smith::ToolFailureNotificationFailed` records preserve bounded diagnostic
+details for both the dispatch failure and the failed host notification and
+restore as the same non-retryable failure family.
+
 Before consuming the capability, a host may inspect the exact captured agent
 bindings with a block:
 

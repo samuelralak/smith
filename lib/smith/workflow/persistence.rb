@@ -48,6 +48,10 @@ module Smith
           # cycles so seed_validation can detect when the seed builder
           # has changed in code since this workflow was persisted.
           seed_digest: @seed_digest,
+          # Number of immutable seed messages at the beginning of session
+          # history. Context strategies may preserve this exact prefix while
+          # masking later workflow observations.
+          seed_message_count: @seed_message_count || 0,
           # Step-in-progress idempotency marker. Set true between
           # persist-before-advance and persist-after-advance when the
           # workflow class opts into idempotency_mode :strict. Restore
@@ -76,6 +80,7 @@ module Smith
         @ledger = rebuild_ledger(normalized[:budget_consumed] || {})
         @next_transition_name = normalized[:next_transition_name]
         @session_messages = normalized[:session_messages] || []
+        @seed_message_count = validated_seed_message_count(normalized)
         @total_cost = normalized[:total_cost] || 0.0
         @total_tokens = normalized[:total_tokens] || 0
         @outcome = normalized[:outcome]
@@ -118,6 +123,14 @@ module Smith
 
         raise Smith::SerializationError,
               "persisted workflow persistence_version must be a non-negative integer, got #{version.inspect}"
+      end
+
+      def validated_seed_message_count(normalized)
+        count = normalized.fetch(:seed_message_count, 0)
+        return count if count.is_a?(Integer) && count >= 0 && count <= @session_messages.length
+
+        raise Smith::SerializationError,
+              "persisted workflow seed_message_count must be between 0 and session message count"
       end
 
       def validate_definition_digest!(normalized)
@@ -200,20 +213,11 @@ module Smith
       # values become strings).
       def restore_last_failed_step(normalized)
         raw = normalized[:last_failed_step]
-        return nil unless raw.is_a?(Hash)
-
-        h = raw.transform_keys { |k| k.is_a?(String) ? k.to_sym : k }
-        {
-          transition: normalize_transition_name(h[:transition]),
-          from: normalize_state_name(h[:from]),
-          to: normalize_state_name(h[:to]),
-          error_class: h[:error_class],
-          error_family: h[:error_family],
-          error_message: h[:error_message],
-          error_retryable: h[:error_retryable],
-          error_kind: h[:error_kind]&.to_sym,
-          error_details: h[:error_details]
-        }
+        FailureRecordRestore.new(
+          raw,
+          transition_normalizer: method(:normalize_transition_name),
+          state_normalizer: method(:normalize_state_name)
+        ).call
       end
 
       def restore_core_fields(normalized)
@@ -234,9 +238,9 @@ module Smith
         end
 
         manager = self.class.context_manager
-        if manager && manager.respond_to?(:persist_mode) && manager.persist_mode == :auto
+        if manager.respond_to?(:persist_mode) && manager.persist_mode == :auto
           ctx = normalized[:context]
-          existing = ctx.is_a?(Hash) ? ctx.keys.map { |k| k.to_sym } : []
+          existing = ctx.is_a?(Hash) ? ctx.keys.map(&:to_sym) : []
           seed = manager.persist_auto_seed.map(&:to_sym)
           @persisted_keys = ::Set.new(existing + seed)
         else
@@ -309,6 +313,7 @@ module Smith
 
       def normalize_transition_name(value)
         return if value.nil?
+
         transition = self.class.find_transition(value)
         return transition.name if transition
         return value unless value.is_a?(String)
@@ -416,9 +421,7 @@ module Smith
         manager = self.class.context_manager
         return nil unless manager
 
-        if manager.respond_to?(:persist_mode) && manager.persist_mode == :auto
-          return :auto
-        end
+        return :auto if manager.respond_to?(:persist_mode) && manager.persist_mode == :auto
 
         keys = manager.persist
         keys.empty? ? nil : keys
