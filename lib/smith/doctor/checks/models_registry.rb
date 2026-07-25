@@ -15,7 +15,12 @@ module Smith
         module_function
 
         def run(report)
-          uncovered = uncovered_models
+          uncovered, ambiguous = classified_model_references
+          report_ambiguous_models(report, ambiguous)
+          report_model_coverage(report, uncovered)
+        end
+
+        def report_model_coverage(report, uncovered)
           if uncovered.empty?
             report.add(
               name: "models.coverage",
@@ -36,23 +41,65 @@ module Smith
           end
         end
 
+        # An unqualified agent model id registered under more than one
+        # provider cannot resolve to a single profile: chat construction
+        # fails closed with AmbiguousProfileError. Doctor must report that
+        # configuration instead of crashing on it.
+        def report_ambiguous_models(report, ambiguous)
+          return if ambiguous.empty?
+
+          descriptions = ambiguous.map { |reference| ambiguous_reference_description(reference) }
+          report.add(
+            name: "models.ambiguity",
+            status: :fail,
+            message: "#{ambiguous.size} agent model id(s) match profiles from multiple registered providers",
+            detail: "Ambiguous: #{descriptions.join("; ")}. Chat construction fails closed for " \
+                    "these agents until each declares an explicit provider (for example " \
+                    "model \"gpt-5\", provider: :openai) selecting exactly one registered profile."
+          )
+        end
+
+        def ambiguous_reference_description(reference)
+          "#{reference.model_id} (providers: #{registered_providers_for(reference).join(", ")})"
+        end
+
+        def registered_providers_for(reference)
+          Smith::Models.all
+                       .select { |profile| profile.model_id == reference.model_id }
+                       .map { |profile| profile.provider.to_s }
+        end
+
         # Walk Smith::Agent::Registry. For each agent, extract every static
         # model id Smith can know at boot: the primary `model "..."` value and
         # any static fallback models. Block-form primary models are skipped
         # because they resolve per-attempt, but their static fallbacks still
         # need coverage checks.
         # Check whether find_or_infer returns a custom (non-default)
-        # Profile — meaning either an explicit override or an inference
-        # rule matched.
-        def uncovered_models
-          return [] unless defined?(Smith::Agent::Registry)
+        # Profile, meaning either an explicit override or an inference
+        # rule matched. Returns [uncovered, ambiguous] reference lists.
+        def classified_model_references
+          return [[], []] unless defined?(Smith::Agent::Registry)
 
-          static_model_ids.uniq.reject { |model_id| covered_model?(model_id) }
+          uncovered = []
+          ambiguous = []
+          static_model_references.uniq(&:key).each do |reference|
+            case model_coverage(reference)
+            when :uncovered then uncovered << reference
+            when :ambiguous then ambiguous << reference
+            end
+          end
+          [uncovered, ambiguous]
         end
 
-        def static_model_ids
-          Smith::Agent::Registry.each.with_object([]) do |(_key, agent), ids|
-            ids.concat(static_model_ids_for(agent)) if inspectable_agent?(agent)
+        def model_coverage(reference)
+          covered_model?(reference) ? :covered : :uncovered
+        rescue Smith::Models::AmbiguousProfileError
+          :ambiguous
+        end
+
+        def static_model_references
+          Smith::Agent::Registry.each.with_object([]) do |(_key, agent), references|
+            references.concat(static_model_references_for(agent)) if inspectable_agent?(agent)
           end
         end
 
@@ -60,16 +107,27 @@ module Smith
           agent.is_a?(Class) && agent.respond_to?(:chat_kwargs)
         end
 
-        def static_model_ids_for(agent)
-          [
-            agent.chat_kwargs[:model],
-            *(agent.respond_to?(:fallback_models) ? agent.fallback_models : nil)
-          ].compact
+        def static_model_references_for(agent)
+          primary = agent.chat_kwargs[:model]
+          references = Array(agent.respond_to?(:fallback_models) ? agent.fallback_models : nil).dup
+          if primary
+            references.unshift(
+              Smith::Agent::ModelReference.coerce(primary, provider: agent.chat_kwargs[:provider])
+            )
+          end
+          references
         end
 
-        def covered_model?(model_id)
-          Smith::Models.find(model_id) ||
-            (defined?(Smith::Models::Inference) && Smith::Models::Inference.profile_for(model_id))
+        def covered_model?(reference)
+          Smith::Models.find(reference.model_id, provider: reference.provider) ||
+            inferred_profile_matches?(reference)
+        end
+
+        def inferred_profile_matches?(reference)
+          return false unless defined?(Smith::Models::Inference)
+
+          profile = Smith::Models::Inference.profile_for(reference.model_id)
+          profile && (reference.provider.nil? || profile.provider.to_sym == reference.provider)
         end
       end
     end

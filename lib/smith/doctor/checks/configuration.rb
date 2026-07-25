@@ -43,11 +43,24 @@ module Smith
 
         def self.check_pricing(report)
           configured = ::Smith.config.pricing.is_a?(Hash) && !::Smith.config.pricing.empty?
+          unless configured
+            report.add(
+              name: "config.pricing",
+              status: :warn,
+              message: "No pricing configured",
+              detail: "RunResult.total_cost will be 0.0"
+            )
+            return
+          end
+
+          ::Smith::Pricing.validate_catalog!
+          report.add(name: "config.pricing", status: :pass, message: "Pricing configured")
+        rescue ::Smith::PricingConfigurationError => e
           report.add(
             name: "config.pricing",
-            status: configured ? :pass : :warn,
-            message: configured ? "Pricing configured" : "No pricing configured",
-            detail: configured ? nil : "RunResult.total_cost will be 0.0"
+            status: :fail,
+            message: "Pricing catalog invalid",
+            detail: e.message
           )
         end
       end

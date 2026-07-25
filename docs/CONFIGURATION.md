@@ -49,6 +49,21 @@ Use workflow classes for orchestration behavior:
 - "How much total budget can the whole workflow consume?" -> workflow budget
 - "Which provider credentials should the app use?" -> RubyLLM, not Smith
 
+### Provider-qualified fallback models
+
+Fallback models are exact model/provider identities:
+
+```ruby
+fallback_models(
+  { model: "claude-sonnet-4-6", provider: :anthropic },
+  { model: "openai/gpt-5", provider: :openrouter }
+)
+```
+
+Every fallback must name its provider. Smith does not inherit the primary
+model's provider or infer one from the model id; an unqualified fallback fails
+closed during agent configuration.
+
 ### Full `Smith.configure` Example
 
 ```ruby
@@ -72,7 +87,7 @@ Smith.configure do |config|
   config.trace_tenant_isolation = false
 
   config.pricing = {
-    "gpt-4.1-nano" => {
+    %w[openai gpt-4.1-nano] => {
       input_cost_per_token: 0.0000001,
       output_cost_per_token: 0.0000004
     }
@@ -81,6 +96,12 @@ Smith.configure do |config|
   config.logger = Logger.new($stdout)
 end
 ```
+
+Provider-qualified model calls require provider-qualified pricing keys. Smith
+also accepts the string form `"openai/gpt-4.1-nano"`. Legacy model-only keys
+remain available only for calls whose provider is genuinely unknown; if Smith
+observes a provider but finds only a model-only rate, it raises
+`Smith::PricingConfigurationError` instead of silently undercounting cost.
 
 ### What Each `Smith.configure` Setting Is For
 

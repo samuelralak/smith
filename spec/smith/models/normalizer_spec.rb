@@ -88,6 +88,200 @@ RSpec.describe Smith::Models::Normalizer do
     end
   end
 
+  describe "tool endpoint compatibility without thinking" do
+    let(:responses_only_tool) do
+      Class.new(Smith::Tool) do
+        compatible_with openai: :responses
+
+        def perform(query:)
+          query
+        end
+      end
+    end
+
+    it "routes an OpenAI tool to Responses when its contract excludes Chat Completions" do
+      original_mode = Smith.config.openai_api_mode
+      Smith.config.openai_api_mode = :auto
+      profile = Smith::Models.find_or_infer("o3")
+      chat = build_chat(model: "o3").with_tool(responses_only_tool)
+
+      decisions = described_class.apply!(chat, profile: profile)
+
+      expect(decisions.map(&:kind)).to include(:routed_via_responses)
+      expect(chat.instance_variable_get(:@params)).to include(openai_api_mode: :responses)
+      expect(chat.tools.values.map(&:class)).to contain_exactly(responses_only_tool)
+    ensure
+      Smith.config.openai_api_mode = original_mode
+    end
+
+    it "drops the incompatible tool when Responses routing is disabled" do
+      original_mode = Smith.config.openai_api_mode
+      Smith.config.openai_api_mode = :off
+      profile = Smith::Models.find_or_infer("o3")
+      chat = build_chat(model: "o3").with_tool(responses_only_tool)
+
+      decisions = described_class.apply!(chat, profile: profile)
+
+      expect(decisions.map(&:kind)).to include(:tool_dropped)
+      expect(chat.tools).to be_empty
+    ensure
+      Smith.config.openai_api_mode = original_mode
+    end
+
+    it "clears a forced choice when its incompatible tool is dropped" do
+      original_mode = Smith.config.openai_api_mode
+      Smith.config.openai_api_mode = :off
+      compatible_tool = stub_const("SpecCompatibleRoutingTool", Class.new(Smith::Tool) do
+        def perform(query:) = query
+      end)
+      forced_tool = stub_const("SpecResponsesOnlyRoutingTool", Class.new(Smith::Tool) do
+        compatible_with openai: :responses
+
+        def perform(query:) = query
+      end)
+      profile = Smith::Models.find_or_infer("o3")
+      chat = build_chat(model: "o3").with_tools(
+        compatible_tool,
+        forced_tool,
+        choice: forced_tool
+      )
+
+      decisions = described_class.apply!(chat, profile: profile)
+
+      expect(chat.tools.values.map(&:class)).to contain_exactly(compatible_tool)
+      expect(chat.tool_prefs[:choice]).to be_nil
+      dropped = decisions.find { |decision| decision.kind == :tool_dropped }
+      expect(dropped.detail[:forced_choice_reset]).to eq(forced_tool.new.name.to_sym)
+    ensure
+      Smith.config.openai_api_mode = original_mode
+    end
+
+    it "routes to the endpoint that preserves the largest compatible tool subset" do
+      original_mode = Smith.config.openai_api_mode
+      Smith.config.openai_api_mode = :auto
+      anthropic_tool = stub_const("SpecAnthropicOnlyRoutingTool", Class.new(Smith::Tool) do
+        compatible_with :anthropic
+        def perform(query:) = query
+      end)
+      responses_tool = stub_const("SpecResponsesSubsetRoutingTool", Class.new(Smith::Tool) do
+        compatible_with openai: :responses
+        def perform(query:) = query
+      end)
+      profile = Smith::Models.find_or_infer("o3")
+      chat = build_chat(model: "o3").with_tools(anthropic_tool, responses_tool)
+
+      decisions = described_class.apply!(chat, profile:)
+
+      expect(decisions.map(&:kind)).to include(:routed_via_responses, :tool_dropped)
+      expect(chat.instance_variable_get(:@params)).to include(openai_api_mode: :responses)
+      expect(chat.tools.values.map(&:class)).to contain_exactly(responses_tool)
+    ensure
+      Smith.config.openai_api_mode = original_mode
+    end
+
+    it "routes to the endpoint required by an explicitly selected compatible tool" do
+      original_mode = Smith.config.openai_api_mode
+      Smith.config.openai_api_mode = :auto
+      chat_tool = stub_const("SpecForcedRoutingChatTool", Class.new(Smith::Tool) do
+        compatible_with openai: :chat_completions
+        def perform(query:) = query
+      end)
+      selected = stub_const("SpecForcedRoutingResponsesTool", Class.new(Smith::Tool) do
+        compatible_with openai: :responses
+        def perform(query:) = query
+      end)
+      profile = Smith::Models.find_or_infer("o3")
+      chat = build_chat(model: "o3").with_tools(chat_tool, chat_tool, selected, choice: selected)
+
+      decisions = described_class.apply!(chat, profile:)
+
+      expect(decisions.map(&:kind)).to include(:routed_via_responses)
+      expect(chat.instance_variable_get(:@params)).to include(openai_api_mode: :responses)
+      expect(chat.tools.values.map(&:class)).to contain_exactly(selected)
+      expect(chat.tool_prefs[:choice]).to eq(selected.new.name.to_sym)
+    ensure
+      Smith.config.openai_api_mode = original_mode
+    end
+
+    it "keeps Chat Completions when an explicitly selected tool requires it" do
+      original_mode = Smith.config.openai_api_mode
+      Smith.config.openai_api_mode = :auto
+      selected = stub_const("SpecForcedRoutingChatOnlyTool", Class.new(Smith::Tool) do
+        compatible_with openai: :chat_completions
+        def perform(query:) = query
+      end)
+      first_responses_tool = stub_const("SpecFirstResponsesRoutingTool", Class.new(Smith::Tool) do
+        compatible_with openai: :responses
+        def perform(query:) = query
+      end)
+      second_responses_tool = stub_const("SpecSecondResponsesRoutingTool", Class.new(Smith::Tool) do
+        compatible_with openai: :responses
+        def perform(query:) = query
+      end)
+      profile = Smith::Models.find_or_infer("o3")
+      chat = build_chat(model: "o3").with_tools(
+        selected,
+        first_responses_tool,
+        second_responses_tool,
+        choice: selected
+      )
+
+      decisions = described_class.apply!(chat, profile:)
+
+      expect(decisions.map(&:kind)).not_to include(:routed_via_responses)
+      expect(chat.instance_variable_get(:@params)).not_to include(openai_api_mode: :responses)
+      expect(chat.tools.values.map(&:class)).to contain_exactly(selected)
+      expect(chat.tool_prefs[:choice]).to eq(selected.new.name.to_sym)
+    ensure
+      Smith.config.openai_api_mode = original_mode
+    end
+
+    it "attributes a forced-choice reset only to the selected dropped tool" do
+      original_mode = Smith.config.openai_api_mode
+      Smith.config.openai_api_mode = :off
+      first = stub_const("SpecFirstDroppedRoutingTool", Class.new(Smith::Tool) do
+        compatible_with openai: :responses
+        def perform(query:) = query
+      end)
+      selected = stub_const("SpecSelectedDroppedRoutingTool", Class.new(Smith::Tool) do
+        compatible_with openai: :responses
+        def perform(query:) = query
+      end)
+      profile = Smith::Models.find_or_infer("o3")
+      chat = build_chat(model: "o3").with_tools(first, selected, choice: selected)
+
+      dropped = described_class.apply!(chat, profile:).select { _1.kind == :tool_dropped }
+
+      expect(dropped.find { _1.detail[:tool] == first.name }.detail).not_to have_key(:forced_choice_reset)
+      expect(dropped.find { _1.detail[:tool] == selected.name }.detail)
+        .to include(forced_choice_reset: selected.new.name.to_sym)
+    ensure
+      Smith.config.openai_api_mode = original_mode
+    end
+
+    it "attributes a required-choice reset once when every tool is dropped" do
+      original_mode = Smith.config.openai_api_mode
+      Smith.config.openai_api_mode = :off
+      first = stub_const("SpecRequiredFirstDroppedTool", Class.new(Smith::Tool) do
+        compatible_with openai: :responses
+        def perform(query:) = query
+      end)
+      second = stub_const("SpecRequiredSecondDroppedTool", Class.new(Smith::Tool) do
+        compatible_with openai: :responses
+        def perform(query:) = query
+      end)
+      profile = Smith::Models.find_or_infer("o3")
+      chat = build_chat(model: "o3").with_tools(first, second, choice: :required)
+
+      dropped = described_class.apply!(chat, profile:).select { _1.kind == :tool_dropped }
+
+      expect(chat.tool_prefs[:choice]).to be_nil
+      expect(dropped.count { _1.detail[:forced_choice_reset] == :required }).to eq(1)
+    ensure
+      Smith.config.openai_api_mode = original_mode
+    end
+  end
+
   describe "models with native budget_tokens (Opus 4.6, Gemini 2.5)" do
     it "leaves @thinking unchanged for Opus 4.6 (RubyLLM emits budget_tokens natively)" do
       profile = Smith::Models.find_or_infer("claude-opus-4-6")
@@ -193,7 +387,7 @@ RSpec.describe Smith::Models::Normalizer do
       Smith.config.openai_api_mode = original_mode
     end
 
-    it "emits :tool_dropped when an incompatible tool is removed (gpt-5 + tools + thinking with openai_api_mode :off)" do
+    it "drops an incompatible tool for gpt-5 tools plus thinking when Responses routing is off" do
       original_mode = Smith.config.openai_api_mode
       Smith.config.openai_api_mode = :off
       profile = Smith::Models.find_or_infer("gpt-5.5")

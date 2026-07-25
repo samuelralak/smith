@@ -2,6 +2,8 @@
 
 require "dry-initializer"
 
+require_relative "tool_routing"
+
 module Smith
   module Models
     # Per-chat-construction request shaper. Mutates a RubyLLM::Chat
@@ -96,73 +98,11 @@ module Smith
       end
 
       def normalize_tools_routing
-        # Stubbed chat objects in tests may not implement .tools; gracefully
-        # skip rather than crash on respond_to? check.
-        return unless chat.respond_to?(:tools)
-
-        tools = chat.tools.values
-        return if tools.empty?
-        return unless thinking_active?
-
-        return if profile.tools_with_thinking_native
-
-        if profile.tools_with_thinking_route == :responses &&
-           Smith.config.openai_api_mode == :auto
-          merge_params(openai_api_mode: :responses)
-          @decisions << Decision.new(kind: :routed_via_responses, model_id: profile.model_id, detail: nil)
-          return
-        end
-
-        drop_incompatible_tools(tools)
-      end
-
-      def thinking_active?
-        thinking = chat.instance_variable_get(:@thinking)
-        return true if thinking&.enabled?
-
-        # Also active if we already translated to adaptive (in which case
-        # @thinking is nil but params carry the thinking spec).
-        params = chat.instance_variable_get(:@params) || {}
-        params.key?(:thinking) || params.key?(:reasoning) || params.key?(:reasoning_effort)
-      end
-
-      def drop_incompatible_tools(tools)
-        effective_endpoint = effective_endpoint_for_compatibility
-        incompatible = tools.reject do |tool|
-          spec = tool.class.respond_to?(:compatible_with_spec) ? tool.class.compatible_with_spec : nil
-          if defined?(Smith::Tool::Compatibility)
-            Smith::Tool::Compatibility.allows?(spec, profile, effective_endpoint: effective_endpoint)
-          else
-            true
-          end
-        end
-        return if incompatible.empty?
-
-        retained = tools - incompatible
-        chat.with_tools(*retained, replace: true)
-
-        incompatible.each do |tool|
-          @decisions << Decision.new(
-            kind: :tool_dropped,
-            model_id: profile.model_id,
-            detail: { tool: tool.class.name }
-          )
-        end
-      end
-
-      # Profile.endpoint_mode reports the INTENDED endpoint (per the
-      # inference rule). Smith.config.openai_api_mode policy can downgrade
-      # the EFFECTIVE endpoint — e.g., a profile with route :responses
-      # actually uses :chat_completions when openai_api_mode is :off.
-      # The compatibility check needs the effective endpoint to make
-      # the right drop/keep decision.
-      def effective_endpoint_for_compatibility
-        if profile.tools_with_thinking_route == :responses &&
-           Smith.config.openai_api_mode != :auto
-          :chat_completions
-        else
-          profile.endpoint_mode
-        end
+        ToolRouting.new(
+          chat: chat,
+          profile: profile,
+          decision_recorder: method(:record_decision)
+        ).call
       end
 
       # with_params REPLACES @params in RubyLLM (chat.rb:96), so the
@@ -171,6 +111,10 @@ module Smith
       def merge_params(**new_params)
         existing = chat.instance_variable_get(:@params) || {}
         chat.with_params(**existing, **new_params)
+      end
+
+      def record_decision(kind, model_id, detail)
+        @decisions << Decision.new(kind: kind, model_id: model_id, detail: detail)
       end
 
       def emit_trace

@@ -1,7 +1,11 @@
 # frozen_string_literal: true
 
 require "dry-container"
-require "monitor"
+
+require_relative "models/profile"
+require_relative "models/ambiguous_profile_error"
+require_relative "models/collision_error"
+require_relative "models/provider_qualified_registry"
 
 module Smith
   # Capability registry for model ids. Decoupled from Smith.config.pricing
@@ -21,97 +25,47 @@ module Smith
   #   3. Safe default (no thinking, accepts temp, no routing)
   module Models
     extend Dry::Container::Mixin
-
-    class CollisionError < Smith::Error; end
+    extend ProviderQualifiedRegistry
 
     def self.normalize_key(model_id)
       model_id.to_s
     end
 
-    def self.find(model_id)
-      registry_monitor.synchronize do
-        key = normalize_key(model_id)
-        key?(key) ? resolve(key) : nil
-      end
-    end
-
     # Application overrides first, then Inference rules, then safe default.
     def self.find_or_infer(model_id, provider: nil)
-      find(model_id) || infer(model_id, provider: provider)
+      find(model_id, provider:) || infer(model_id, provider:)
     end
 
     def self.infer(model_id, provider: nil)
       inferred = Inference.profile_for(model_id) if defined?(Inference)
-      return inferred if inferred
+      return inferred_profile_for_provider(inferred, provider) if inferred
 
       Profile.new(
-        model_id:                   normalize_key(model_id),
-        provider:                   provider || guess_provider(model_id),
-        thinking_shape:             nil,
-        accepts_temperature:        true,
+        model_id: normalize_key(model_id),
+        provider: provider || guess_provider(model_id),
+        thinking_shape: nil,
+        accepts_temperature: true,
         tools_with_thinking_native: false,
-        tools_with_thinking_route:  nil
+        tools_with_thinking_route: nil
       )
     end
 
-    # Register a Profile. Idempotent when re-registering an identical
-    # profile; replaces silently on Rails-reload (same model_id, possibly
-    # different Profile object after autoload swap); raises CollisionError
-    # on a genuinely conflicting registration.
-    #
-    # The stale-reload-binding pattern mirrors Smith::Agent::Registry
-    # (agent/registry.rb:118-124) which solves the same problem for
-    # agent classes during Rails autoreload.
-    def self.register(profile)
-      registry_monitor.synchronize do
-        key = normalize_key(profile.model_id)
-        existing = key?(key) ? resolve(key) : nil
+    def self.inferred_profile_for_provider(profile, provider)
+      return profile unless provider && profile.provider != provider.to_sym
 
-        return profile if existing == profile
-
-        if existing && stale_reload_binding?(existing, profile)
-          # Same model_id, value-unequal Profile — Rails reload swap.
-          # Document trade-off: a host that intentionally re-registers with
-          # different capabilities also gets silent replacement (same
-          # behavior Smith::Agent::Registry chose).
-          _container.delete(key)
-          super(key, profile)
-          return profile
-        end
-
-        if existing
-          raise CollisionError,
-                "model #{key.inspect} already registered with a different profile"
-        end
-
-        super(key, profile)
-        profile
-      end
+      Profile.new(
+        **profile.to_h,
+        provider: provider.to_sym,
+        tools_with_thinking_native: false,
+        tools_with_thinking_route: nil
+      )
     end
-
-    def self.all
-      registry_monitor.synchronize do
-        keys.sort.map { |k| resolve(k) }
-      end
-    end
-
-    def self.clear!
-      registry_monitor.synchronize { @_container&.clear }
-    end
-
-    # Eagerly initialized at module load so concurrent first-callers
-    # cannot race the `||=` lazy-init and end up with separate Monitor
-    # instances (which would partially defeat synchronization).
-    @_registry_monitor = Monitor.new
-
-    def self.registry_monitor
-      @_registry_monitor
-    end
+    private_class_method :inferred_profile_for_provider
 
     PROVIDER_PATTERNS = {
       anthropic: /\Aclaude/i,
-      openai:    /\A(gpt|o\d)/i,
-      gemini:    /\Agemini/i
+      openai: /\A(gpt|o\d)/i,
+      gemini: /\Agemini/i
     }.freeze
     private_constant :PROVIDER_PATTERNS
 
@@ -120,13 +74,5 @@ module Smith
       PROVIDER_PATTERNS.each { |provider, pattern| return provider if key.match?(pattern) }
       :unknown
     end
-
-    # Same model_id but value-unequal Profile objects (e.g., a host
-    # tweaked a built-in profile in config/initializers and Rails
-    # reloaded). Replace silently rather than raise.
-    def self.stale_reload_binding?(existing, profile)
-      existing.model_id == profile.model_id
-    end
-    private_class_method :stale_reload_binding?
   end
 end

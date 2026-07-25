@@ -42,7 +42,20 @@ RSpec.describe Smith::Doctor::Checks::Configuration do
     Smith.configure { |c| c.pricing = original }
   end
 
-  it "passes when config.pricing is a populated Hash" do
+  it "passes when config.pricing is a provider-qualified Hash" do
+    original = Smith.config.pricing
+    Smith.configure { |c| c.pricing = { %w[openai gpt-4.1-nano] => { input_cost_per_token: 0.01 } } }
+
+    report = Smith::Doctor::Report.new
+    described_class.run(report)
+
+    pricing_check = report.checks.find { |c| c.name == "config.pricing" }
+    expect(pricing_check.status).to eq(:pass)
+  ensure
+    Smith.configure { |c| c.pricing = original }
+  end
+
+  it "fails when config.pricing holds a legacy model-only key" do
     original = Smith.config.pricing
     Smith.configure { |c| c.pricing = { "gpt-4.1-nano" => { input_cost_per_token: 0.01 } } }
 
@@ -50,7 +63,8 @@ RSpec.describe Smith::Doctor::Checks::Configuration do
     described_class.run(report)
 
     pricing_check = report.checks.find { |c| c.name == "config.pricing" }
-    expect(pricing_check.status).to eq(:pass)
+    expect(pricing_check.status).to eq(:fail)
+    expect(pricing_check.detail).to include("provider-qualified")
   ensure
     Smith.configure { |c| c.pricing = original }
   end

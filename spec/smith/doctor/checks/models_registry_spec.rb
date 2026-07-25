@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "smith/doctor"
+require "stringio"
 
 RSpec.describe Smith::Doctor::Checks::ModelsRegistry do
   let(:agent_class) { require_const("Smith::Agent") }
@@ -72,7 +73,7 @@ RSpec.describe Smith::Doctor::Checks::ModelsRegistry do
     with_stubbed_class("SpecDoctorUncoveredFallbackModelAgent", agent_class) do
       register_as :spec_doctor_uncovered_fallback_model_agent
       model "claude-sonnet-4-6"
-      fallback_models "unrecognized-provider-fallback-model"
+      fallback_models model: "unrecognized-provider-fallback-model", provider: :custom
     end
 
     report = Smith::Doctor::Report.new
@@ -86,8 +87,8 @@ RSpec.describe Smith::Doctor::Checks::ModelsRegistry do
   it "checks static fallback models even when the primary model is dynamic" do
     with_stubbed_class("SpecDoctorDynamicPrimaryFallbackModelAgent", agent_class) do
       register_as :spec_doctor_dynamic_primary_fallback_model_agent
-      model { |_context| "runtime-selected-model" }
-      fallback_models "unrecognized-provider-dynamic-fallback-model"
+      model { |_context| { model: "runtime-selected-model", provider: :custom } }
+      fallback_models model: "unrecognized-provider-dynamic-fallback-model", provider: :custom
     end
 
     report = Smith::Doctor::Report.new
@@ -96,6 +97,62 @@ RSpec.describe Smith::Doctor::Checks::ModelsRegistry do
     check = report.checks.find { |c| c.name == "models.coverage" }
     expect(check.status).to eq(:warn)
     expect(check.detail).to include("unrecognized-provider-dynamic-fallback-model")
+  end
+
+  it "reports ambiguous unqualified agent models without aborting the doctor run" do
+    %i[anthropic bedrock].each do |provider|
+      Smith::Models.register(
+        Smith::Models::Profile.new(
+          model_id: "spec-doctor-shared-provider-model",
+          provider: provider,
+          thinking_shape: nil,
+          accepts_temperature: true,
+          tools_with_thinking_native: false,
+          tools_with_thinking_route: nil
+        )
+      )
+    end
+
+    with_stubbed_class("SpecDoctorAmbiguousModelAgent", agent_class) do
+      register_as :spec_doctor_ambiguous_model_agent
+      model "spec-doctor-shared-provider-model"
+    end
+
+    report = Smith::Doctor.run(io: StringIO.new)
+
+    ambiguity = report.checks.find { |c| c.name == "models.ambiguity" }
+    expect(ambiguity).not_to be_nil
+    expect(ambiguity.status).to eq(:fail)
+    expect(ambiguity.message).to include("multiple registered providers")
+    expect(ambiguity.detail).to include("spec-doctor-shared-provider-model (providers: anthropic, bedrock)")
+    expect(report.checks.find { |c| c.name == "models.coverage" }).not_to be_nil
+  end
+
+  it "keeps provider-qualified references out of the ambiguity check" do
+    %i[anthropic bedrock].each do |provider|
+      Smith::Models.register(
+        Smith::Models::Profile.new(
+          model_id: "spec-doctor-qualified-shared-model",
+          provider: provider,
+          thinking_shape: nil,
+          accepts_temperature: true,
+          tools_with_thinking_native: false,
+          tools_with_thinking_route: nil
+        )
+      )
+    end
+
+    with_stubbed_class("SpecDoctorQualifiedSharedModelAgent", agent_class) do
+      register_as :spec_doctor_qualified_shared_model_agent
+      model "spec-doctor-qualified-shared-model", provider: :anthropic
+    end
+
+    report = Smith::Doctor::Report.new
+    described_class.run(report)
+
+    expect(report.checks.find { |c| c.name == "models.ambiguity" }).to be_nil
+    check = report.checks.find { |c| c.name == "models.coverage" }
+    expect(check.status).to eq(:pass)
   end
 
   it "skips block-form models because they resolve per workflow attempt" do

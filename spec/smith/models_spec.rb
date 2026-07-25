@@ -7,12 +7,12 @@ RSpec.describe Smith::Models do
   describe "::Profile" do
     let(:profile) do
       Smith::Models::Profile.new(
-        model_id:                   "test-model-1",
-        provider:                   :anthropic,
-        thinking_shape:             :adaptive,
-        accepts_temperature:        false,
+        model_id: "test-model-1",
+        provider: :anthropic,
+        thinking_shape: :adaptive,
+        accepts_temperature: false,
         tools_with_thinking_native: true,
-        tools_with_thinking_route:  nil
+        tools_with_thinking_route: nil
       )
     end
 
@@ -22,12 +22,12 @@ RSpec.describe Smith::Models do
 
     it "exposes :responses endpoint_mode when route is :responses" do
       responses_profile = Smith::Models::Profile.new(
-        model_id:                   "test-gpt-5",
-        provider:                   :openai,
-        thinking_shape:             :reasoning_effort,
-        accepts_temperature:        false,
+        model_id: "test-gpt-5",
+        provider: :openai,
+        thinking_shape: :reasoning_effort,
+        accepts_temperature: false,
         tools_with_thinking_native: false,
-        tools_with_thinking_route:  :responses
+        tools_with_thinking_route: :responses
       )
       expect(responses_profile.endpoint_mode).to eq(:responses)
     end
@@ -41,12 +41,12 @@ RSpec.describe Smith::Models do
   describe ".register" do
     let(:profile) do
       Smith::Models::Profile.new(
-        model_id:                   "test-model-2",
-        provider:                   :anthropic,
-        thinking_shape:             :budget_tokens,
-        accepts_temperature:        true,
+        model_id: "test-model-2",
+        provider: :anthropic,
+        thinking_shape: :budget_tokens,
+        accepts_temperature: true,
         tools_with_thinking_native: true,
-        tools_with_thinking_route:  nil
+        tools_with_thinking_route: nil
       )
     end
 
@@ -61,15 +61,24 @@ RSpec.describe Smith::Models do
       expect(described_class.find("test-model-2")).to eq(profile)
     end
 
-    it "raises CollisionError when re-registering a conflicting profile with a DIFFERENT model_id signature" do
+    it "raises CollisionError when re-registering conflicting capabilities for one provider identity" do
       described_class.register(profile)
       conflicting = Smith::Models::Profile.new(
-        **profile.to_h.merge(thinking_shape: :adaptive)
+        **profile.to_h, thinking_shape: :adaptive
       )
-      # Same model_id, different capabilities — currently treated as
-      # a stale-reload swap (silent replace). See .register docs.
-      expect { described_class.register(conflicting) }.not_to raise_error
-      expect(described_class.find("test-model-2").thinking_shape).to eq(:adaptive)
+
+      expect { described_class.register(conflicting) }
+        .to raise_error(Smith::Models::CollisionError, /model profile collision/)
+      expect(described_class.find("test-model-2")).to eq(profile)
+    end
+
+    it "normalizes provider identities before indexing profiles" do
+      string_provider = Smith::Models::Profile.new(**profile.to_h, provider: "anthropic")
+
+      stored = described_class.register(string_provider)
+
+      expect(stored.provider).to eq(:anthropic)
+      expect(described_class.find("test-model-2", provider: "anthropic")).to eq(stored)
     end
   end
 
@@ -80,28 +89,71 @@ RSpec.describe Smith::Models do
 
     it "accepts both Symbol and String model_ids" do
       profile = Smith::Models::Profile.new(
-        model_id:                   "test-model-3",
-        provider:                   :openai,
-        thinking_shape:             nil,
-        accepts_temperature:        true,
+        model_id: "test-model-3",
+        provider: :openai,
+        thinking_shape: nil,
+        accepts_temperature: true,
         tools_with_thinking_native: false,
-        tools_with_thinking_route:  nil
+        tools_with_thinking_route: nil
       )
       described_class.register(profile)
       expect(described_class.find(:"test-model-3")).to eq(profile)
       expect(described_class.find("test-model-3")).to eq(profile)
+    end
+
+    it "keeps equal model ids from different providers distinct" do
+      openai = Smith::Models::Profile.new(
+        model_id: "shared-model",
+        provider: :openai,
+        thinking_shape: :reasoning_effort,
+        accepts_temperature: false,
+        tools_with_thinking_native: false,
+        tools_with_thinking_route: :responses
+      )
+      openrouter = Smith::Models::Profile.new(
+        model_id: "shared-model",
+        provider: :openrouter,
+        thinking_shape: :reasoning_effort,
+        accepts_temperature: false,
+        tools_with_thinking_native: false,
+        tools_with_thinking_route: nil
+      )
+
+      described_class.register(openai)
+      described_class.register(openrouter)
+
+      expect(described_class.find("shared-model", provider: :openai)).to eq(openai)
+      expect(described_class.find("shared-model", provider: :openrouter)).to eq(openrouter)
+    end
+
+    it "fails closed when an unqualified lookup is ambiguous" do
+      %i[openai openrouter].each do |provider|
+        described_class.register(
+          Smith::Models::Profile.new(
+            model_id: "shared-model",
+            provider:,
+            thinking_shape: nil,
+            accepts_temperature: true,
+            tools_with_thinking_native: false,
+            tools_with_thinking_route: nil
+          )
+        )
+      end
+
+      expect { described_class.find("shared-model") }
+        .to raise_error(Smith::Models::AmbiguousProfileError, /pass provider:/)
     end
   end
 
   describe ".find_or_infer" do
     it "returns a registered profile when present" do
       profile = Smith::Models::Profile.new(
-        model_id:                   "custom-finetune",
-        provider:                   :openai,
-        thinking_shape:             :reasoning_effort,
-        accepts_temperature:        false,
+        model_id: "custom-finetune",
+        provider: :openai,
+        thinking_shape: :reasoning_effort,
+        accepts_temperature: false,
         tools_with_thinking_native: false,
-        tools_with_thinking_route:  :responses
+        tools_with_thinking_route: :responses
       )
       described_class.register(profile)
       expect(described_class.find_or_infer("custom-finetune")).to eq(profile)
@@ -126,6 +178,35 @@ RSpec.describe Smith::Models do
     it "uses provider hint when guess_provider can't infer" do
       result = described_class.find_or_infer("unknown-provider-model", provider: :custom)
       expect(result.provider).to eq(:custom)
+    end
+
+    it "uses the configured transport provider without carrying endpoint assumptions across providers" do
+      result = described_class.find_or_infer("o3", provider: :openrouter)
+
+      expect(result.provider).to eq(:openrouter)
+      expect(result.thinking_shape).to eq(:reasoning_effort)
+      expect(result.tools_with_thinking_native).to be(false)
+      expect(result.tools_with_thinking_route).to be_nil
+    end
+
+    it "does not reuse a profile registered for another provider" do
+      described_class.register(
+        Smith::Models::Profile.new(
+          model_id: "shared-model",
+          provider: :openai,
+          thinking_shape: :reasoning_effort,
+          accepts_temperature: false,
+          tools_with_thinking_native: false,
+          tools_with_thinking_route: :responses
+        )
+      )
+
+      result = described_class.find_or_infer("shared-model", provider: :openrouter)
+
+      expect(result.provider).to eq(:openrouter)
+      expect(result.thinking_shape).to be_nil
+      expect(result.accepts_temperature).to be(true)
+      expect(result.tools_with_thinking_route).to be_nil
     end
   end
 
@@ -157,7 +238,7 @@ RSpec.describe Smith::Models do
   end
 
   describe ".all" do
-    it "returns registered profiles sorted by model_id" do
+    it "returns registered profiles sorted by model id and provider" do
       profiles = %w[zebra alpha middle].map do |id|
         Smith::Models::Profile.new(
           model_id: id, provider: :openai, thinking_shape: nil,
@@ -167,6 +248,24 @@ RSpec.describe Smith::Models do
       end
       profiles.each { |p| described_class.register(p) }
       expect(described_class.all.map(&:model_id)).to eq(%w[alpha middle zebra])
+    end
+
+    it "returns every provider-qualified profile for a shared model id" do
+      profiles = %i[openrouter openai].map do |provider|
+        Smith::Models::Profile.new(
+          model_id: "shared",
+          provider:,
+          thinking_shape: nil,
+          accepts_temperature: true,
+          tools_with_thinking_native: false,
+          tools_with_thinking_route: nil
+        )
+      end
+
+      profiles.each { |profile| described_class.register(profile) }
+
+      expect(described_class.all.map { |profile| [profile.model_id, profile.provider] })
+        .to eq([["shared", :openai], ["shared", :openrouter]])
     end
   end
 end
