@@ -85,4 +85,64 @@ RSpec.describe "Smith::Agent persisted chat execution context" do
   ensure
     RubyLLM.config.openai_api_key = previous_api_key
   end
+
+  it "normalizes endpoint-compatible tools for persisted chats", :ar do
+    previous_api_key = RubyLLM.config.openai_api_key
+    previous_openai_api_mode = Smith.config.openai_api_mode
+    RubyLLM.config.openai_api_key = "offline-persistence-proof"
+    Smith.config.openai_api_mode = :auto
+    tool = stub_const("SpecPersistedResponsesTool", Class.new(Smith::Tool) do
+      compatible_with openai: :responses
+      def perform(query:) = query
+    end)
+    agent = stub_const("SpecPersistedNormalizedAgent", Class.new(Smith::Agent) do
+      chat_model SpecRubyLLMChat
+      model "o3", provider: :openai, assume_model_exists: true
+      tools SpecPersistedResponsesTool
+    end)
+
+    created = agent.create
+    created_bang = agent.create!
+    found = agent.find(created.id)
+
+    [created, created_bang, found].each do |record|
+      chat = record.to_llm
+      expect(chat.instance_variable_get(:@params)).to include(openai_api_mode: :responses)
+      expect(chat.tools.values.map(&:class)).to include(tool)
+    end
+  ensure
+    RubyLLM.config.openai_api_key = previous_api_key
+    Smith.config.openai_api_mode = previous_openai_api_mode
+  end
+
+  it "injects reserved Smith inputs before persisted dynamic configuration is evaluated", :ar do
+    previous_api_key = RubyLLM.config.openai_api_key
+    RubyLLM.config.openai_api_key = "offline-persistence-proof"
+    captured = []
+    tool = stub_const("SpecPersistedDynamicInputTool", Class.new(Smith::Tool) do
+      def perform = :ok
+    end)
+    agent = stub_const("SpecPersistedDynamicInputAgent", Class.new(Smith::Agent) do
+      chat_model SpecRubyLLMChat
+      model "gpt-4.1-mini", provider: :openai, assume_model_exists: true
+      tools do |context|
+        captured << {
+          model_id: context.model_id,
+          provider: context.provider,
+          endpoint_mode: context.endpoint_mode
+        }
+        [tool]
+      end
+    end)
+
+    created = agent.create
+    agent.model "claude-sonnet-4-6", provider: :anthropic, assume_model_exists: true
+    found = agent.find(created.id)
+
+    expect(created.to_llm.tools.values.map(&:class)).to contain_exactly(tool)
+    expect(found.to_llm.tools.values.map(&:class)).to contain_exactly(tool)
+    expect(captured).to all(eq(model_id: "gpt-4.1-mini", provider: :openai, endpoint_mode: :chat_completions))
+  ensure
+    RubyLLM.config.openai_api_key = previous_api_key
+  end
 end

@@ -8,9 +8,26 @@ RSpec.describe "Smith::Agent contract" do
   end
 
   it "exposes the documented Smith DSL additions" do
-    %i[budget guardrails output_schema data_volume register_as].each do |dsl|
+    %i[budget guardrails output_schema data_volume register_as tool_budget_exhaustion].each do |dsl|
       expect(agent_class).to respond_to(dsl), "expected Smith::Agent to implement .#{dsl}"
     end
+  end
+
+  it "defaults tool-budget exhaustion to raising and inherits explicit completion policy" do
+    parent = Class.new(agent_class) do
+      tool_budget_exhaustion :complete
+    end
+    child = Class.new(parent)
+
+    expect(agent_class.tool_budget_exhaustion).to eq(:raise)
+    expect(parent.tool_budget_exhaustion).to eq(:complete)
+    expect(child.tool_budget_exhaustion).to eq(:complete)
+  end
+
+  it "rejects unknown tool-budget exhaustion policies" do
+    expect do
+      Class.new(agent_class) { tool_budget_exhaustion :retry }
+    end.to raise_error(ArgumentError, "tool_budget_exhaustion must be :raise or :complete")
   end
 
   it "retains the RubyLLM agent class API surface" do

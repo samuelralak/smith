@@ -132,6 +132,68 @@ RSpec.describe "Smith::Agent.chat() direct-call normalization" do
     end
   end
 
+  describe "explicit transport providers" do
+    it "does not promote an inferred capability provider into transport selection" do
+      agent_class = Class.new(Smith::Agent) do
+        model "o3", assume_model_exists: true
+      end
+
+      prepared, profile = agent_class.send(:prepare_input_kwargs, model: "o3")
+
+      expect(profile.provider).to eq(:openai)
+      expect(prepared[:provider]).to be_nil
+    end
+
+    it "does not route an OpenRouter chat through OpenAI Responses" do
+      previous_api_key = RubyLLM.config.openrouter_api_key
+      RubyLLM.config.openrouter_api_key = "offline-openrouter-proof"
+      responses_only_tool = Class.new(Smith::Tool) do
+        compatible_with openai: :responses
+
+        def perform(query:) = query
+      end
+      captured_provider = nil
+      agent_class = Class.new(Smith::Agent) do
+        model "o3", provider: :openrouter, assume_model_exists: true
+        thinking effort: "high"
+        tools do |runtime|
+          captured_provider = runtime.provider
+          [responses_only_tool]
+        end
+      end
+
+      chat = agent_class.chat
+
+      expect(chat.instance_variable_get(:@provider).slug).to eq("openrouter")
+      expect(captured_provider).to eq(:openrouter)
+      expect(chat.instance_variable_get(:@params)).not_to include(openai_api_mode: :responses)
+      expect(chat.tools).to be_empty
+    ensure
+      RubyLLM.config.openrouter_api_key = previous_api_key
+    end
+
+    it "honors a per-call OpenRouter provider override" do
+      previous_api_key = RubyLLM.config.openrouter_api_key
+      RubyLLM.config.openrouter_api_key = "offline-openrouter-proof"
+      captured_provider = nil
+      agent_class = Class.new(Smith::Agent) do
+        model "o3", assume_model_exists: true
+        tools do |runtime|
+          captured_provider = runtime.provider
+          []
+        end
+      end
+
+      chat = agent_class.chat(provider: :openrouter)
+
+      expect(chat.instance_variable_get(:@provider).slug).to eq("openrouter")
+      expect(captured_provider).to eq(:openrouter)
+      expect(chat.instance_variable_get(:@params)).not_to include(openai_api_mode: :responses)
+    ensure
+      RubyLLM.config.openrouter_api_key = previous_api_key
+    end
+  end
+
   describe "trace emission on direct chat" do
     let(:agent_class) do
       Class.new(Smith::Agent) do

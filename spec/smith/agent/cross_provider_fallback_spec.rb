@@ -22,8 +22,8 @@ RSpec.describe "cross-provider fallback with model-aware normalization" do
   let(:agent_class) do
     Class.new(Smith::Agent) do
       register_as :cross_provider_writer
-      model "claude-opus-4-7"
-      fallback_models "gpt-5.5"
+      model "claude-opus-4-7", provider: :anthropic
+      fallback_models model: "gpt-5.5", provider: :openai
       temperature 1.0
       thinking effort: "xhigh"
     end
@@ -42,7 +42,7 @@ RSpec.describe "cross-provider fallback with model-aware normalization" do
     end
 
     it "applies gpt-5.5 native shape (reasoning_effort, no temperature) on the FALLBACK attempt" do
-      chat = agent_class.chat(model: "gpt-5.5")
+      chat = agent_class.chat(model: "gpt-5.5", provider: :openai)
 
       # gpt-5.5 profile: accepts_temperature: false → @temperature nulled
       # gpt-5.5 profile: thinking_shape: :reasoning_effort → @thinking
@@ -72,7 +72,7 @@ RSpec.describe "cross-provider fallback with model-aware normalization" do
       end
 
       agent_class.chat(model: "claude-opus-4-7")
-      agent_class.chat(model: "gpt-5.5")
+      agent_class.chat(model: "gpt-5.5", provider: :openai)
 
       # Reserved values are injected before super and reach RubyLLM,
       # which exposes them as singleton methods on runtime_context.
@@ -86,8 +86,8 @@ RSpec.describe "cross-provider fallback with model-aware normalization" do
     let(:agent_with_tools) do
       Class.new(Smith::Agent) do
         register_as :cross_provider_writer_with_tools
-        model "claude-opus-4-7"
-        fallback_models "gpt-5.5"
+        model "claude-opus-4-7", provider: :anthropic
+        fallback_models model: "gpt-5.5", provider: :openai
         temperature 1.0
         thinking effort: "high"
         tools Smith::Tools::Think
@@ -109,7 +109,7 @@ RSpec.describe "cross-provider fallback with model-aware normalization" do
       # normalizer instead routes via /v1/responses where tools+thinking
       # work natively.
       Smith.config.openai_api_mode = :off
-      chat = agent_with_tools.chat(model: "gpt-5.5")
+      chat = agent_with_tools.chat(model: "gpt-5.5", provider: :openai)
       expect(chat.tools).to be_empty
     ensure
       Smith.config.openai_api_mode = :auto

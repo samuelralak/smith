@@ -45,8 +45,11 @@ RSpec.describe "Smith::Agent block-form model DSL" do
       end
 
       workflow = with_stubbed_class("SpecStaticDriveWorkflow", workflow_class) do
-        initial_state :idle; state :done
-        transition :go, from: :idle, to: :done do execute :spec_static_drive end
+        initial_state :idle
+        state :done
+        transition :go, from: :idle, to: :done do
+          execute :spec_static_drive
+        end
       end.new
       result = workflow.run!
 
@@ -58,7 +61,7 @@ RSpec.describe "Smith::Agent block-form model DSL" do
   describe "block-form storage" do
     it "stores the block when model is given a block" do
       agent = with_stubbed_class("SpecBlockStorageAgent", agent_class) do
-        model { |_ctx| "gpt-5.5" }
+        model { |_ctx| { model: "gpt-5.5", provider: :openai } }
       end
 
       expect(agent.model_block).to be_a(Proc)
@@ -75,7 +78,7 @@ RSpec.describe "Smith::Agent block-form model DSL" do
 
     it "redeclaring static after block clears the block" do
       agent = with_stubbed_class("SpecRedeclareStaticAgent", agent_class) do
-        model { |_ctx| "gpt-5.5" }
+        model { |_ctx| { model: "gpt-5.5", provider: :openai } }
         model "gpt-5-mini"
       end
 
@@ -86,7 +89,7 @@ RSpec.describe "Smith::Agent block-form model DSL" do
     it "redeclaring block after static clears the static" do
       agent = with_stubbed_class("SpecRedeclareBlockAgent", agent_class) do
         model "gpt-5-mini"
-        model { |_ctx| "gpt-5.5" }
+        model { |_ctx| { model: "gpt-5.5", provider: :openai } }
       end
 
       expect(agent.model_block).to be_a(Proc)
@@ -98,7 +101,13 @@ RSpec.describe "Smith::Agent block-form model DSL" do
     it "evaluates the block with the workflow's @context and uses the returned model id" do
       agent = with_stubbed_class("SpecResolveContextAgent", agent_class) do
         register_as :spec_resolve_context
-        model { |ctx| ctx[:form_kind] == "article" ? "claude-opus-4-7" : "gpt-5.5" }
+        model do |ctx|
+          if ctx[:form_kind] == "article"
+            { model: "claude-opus-4-7", provider: :anthropic }
+          else
+            { model: "gpt-5.5", provider: :openai }
+          end
+        end
       end
 
       models_tried = []
@@ -108,8 +117,11 @@ RSpec.describe "Smith::Agent block-form model DSL" do
       end
 
       workflow_def = with_stubbed_class("SpecResolveContextWorkflow", workflow_class) do
-        initial_state :idle; state :done
-        transition :go, from: :idle, to: :done do execute :spec_resolve_context end
+        initial_state :idle
+        state :done
+        transition :go, from: :idle, to: :done do
+          execute :spec_resolve_context
+        end
       end
 
       article_workflow = workflow_def.new(context: { form_kind: "article" })
@@ -124,14 +136,17 @@ RSpec.describe "Smith::Agent block-form model DSL" do
     it "treats an empty workflow context (the default) as a Hash so blocks can read keys without NoMethodError" do
       agent = with_stubbed_class("SpecResolveDefaultCtxAgent", agent_class) do
         register_as :spec_resolve_default_ctx
-        model { |ctx| ctx[:override_model] || "gpt-5.5" }
+        model { |ctx| ctx[:override_model] || { model: "gpt-5.5", provider: :openai } }
       end
 
       allow(agent).to receive(:chat) { stubbed_chat("ok") }
 
       workflow = with_stubbed_class("SpecResolveDefaultCtxWorkflow", workflow_class) do
-        initial_state :idle; state :done
-        transition :go, from: :idle, to: :done do execute :spec_resolve_default_ctx end
+        initial_state :idle
+        state :done
+        transition :go, from: :idle, to: :done do
+          execute :spec_resolve_default_ctx
+        end
       end.new
 
       expect { workflow.run! }.not_to raise_error
@@ -144,7 +159,10 @@ RSpec.describe "Smith::Agent block-form model DSL" do
       agent = with_stubbed_class("SpecBlockFallbackAgent", agent_class) do
         register_as :spec_block_fallback
         model { |ctx| ctx[:primary] }
-        fallback_models "gpt-5-mini", "gpt-4.1-mini"
+        fallback_models(
+          { model: "gpt-5-mini", provider: :openai },
+          { model: "gpt-4.1-mini", provider: :openai }
+        )
       end
 
       models_tried = []
@@ -162,12 +180,14 @@ RSpec.describe "Smith::Agent block-form model DSL" do
       end
 
       workflow = with_stubbed_class("SpecBlockFallbackWorkflow", workflow_class) do
-        initial_state :idle; state :done; state :failed
+        initial_state :idle
+        state :done
+        state :failed
         transition :go, from: :idle, to: :done do
           execute :spec_block_fallback
           on_failure :fail
         end
-      end.new(context: { primary: "gpt-5.5" })
+      end.new(context: { primary: { model: "gpt-5.5", provider: :openai } })
 
       workflow.run!
 
@@ -185,15 +205,20 @@ RSpec.describe "Smith::Agent block-form model DSL" do
       allow(agent).to receive(:chat) { stubbed_chat("never reached") }
 
       workflow = with_stubbed_class("SpecBlockNilWorkflow", workflow_class) do
-        initial_state :idle; state :done; state :failed
-        transition :go, from: :idle, to: :done do execute :spec_block_nil; on_failure :fail end
+        initial_state :idle
+        state :done
+        state :failed
+        transition :go, from: :idle, to: :done do
+          execute :spec_block_nil
+          on_failure :fail
+        end
       end.new
 
       result = workflow.run!
 
       expect(result.state).to eq(:failed)
       expect(result.steps.first[:error]).to be_a(agent_error)
-      expect(result.steps.first[:error].message).to match(/non-empty string/)
+      expect(result.steps.first[:error].message).to match(/invalid model block result/)
     end
 
     it "fails the step with Smith::AgentError when the block returns an empty string" do
@@ -205,8 +230,13 @@ RSpec.describe "Smith::Agent block-form model DSL" do
       allow(agent).to receive(:chat) { stubbed_chat("never reached") }
 
       workflow = with_stubbed_class("SpecBlockEmptyWorkflow", workflow_class) do
-        initial_state :idle; state :done; state :failed
-        transition :go, from: :idle, to: :done do execute :spec_block_empty; on_failure :fail end
+        initial_state :idle
+        state :done
+        state :failed
+        transition :go, from: :idle, to: :done do
+          execute :spec_block_empty
+          on_failure :fail
+        end
       end.new
 
       result = workflow.run!
@@ -224,8 +254,13 @@ RSpec.describe "Smith::Agent block-form model DSL" do
       allow(agent).to receive(:chat) { stubbed_chat("never reached") }
 
       workflow = with_stubbed_class("SpecBlockNonStringWorkflow", workflow_class) do
-        initial_state :idle; state :done; state :failed
-        transition :go, from: :idle, to: :done do execute :spec_block_non_string; on_failure :fail end
+        initial_state :idle
+        state :done
+        state :failed
+        transition :go, from: :idle, to: :done do
+          execute :spec_block_non_string
+          on_failure :fail
+        end
       end.new
 
       result = workflow.run!
@@ -233,12 +268,37 @@ RSpec.describe "Smith::Agent block-form model DSL" do
       expect(result.state).to eq(:failed)
       expect(result.steps.first[:error]).to be_a(agent_error)
     end
+
+    it "fails the step when the block returns a provider-unqualified model id" do
+      agent = with_stubbed_class("SpecBlockUnqualifiedAgent", agent_class) do
+        register_as :spec_block_unqualified
+        model { |_ctx| "gpt-5.5" }
+      end
+
+      allow(agent).to receive(:chat) { stubbed_chat("never reached") }
+
+      workflow = with_stubbed_class("SpecBlockUnqualifiedWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+        state :failed
+        transition :go, from: :idle, to: :done do
+          execute :spec_block_unqualified
+          on_failure :fail
+        end
+      end.new
+
+      result = workflow.run!
+
+      expect(result.state).to eq(:failed)
+      expect(result.steps.first[:error]).to be_a(agent_error)
+      expect(result.steps.first[:error].message).to match(/provider-qualified/)
+    end
   end
 
   describe "inheritance" do
     it "subclasses inherit the parent's model_block" do
       parent = with_stubbed_class("SpecBlockInheritParentAgent", agent_class) do
-        model { |_ctx| "gpt-5.5" }
+        model { |_ctx| { model: "gpt-5.5", provider: :openai } }
       end
       child = Class.new(parent)
 
@@ -247,7 +307,7 @@ RSpec.describe "Smith::Agent block-form model DSL" do
 
     it "subclasses can redeclare with a static model, clearing the inherited block" do
       parent = with_stubbed_class("SpecBlockInheritOverrideAgent", agent_class) do
-        model { |_ctx| "gpt-5.5" }
+        model { |_ctx| { model: "gpt-5.5", provider: :openai } }
       end
       child = Class.new(parent)
       child.model "claude-opus-4-7"
