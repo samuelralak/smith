@@ -25,7 +25,7 @@ module Smith
         saved_deadline = Tool.current_deadline
         saved_call_ledger = Thread.current[:smith_call_ledger]
         snapshot = ThreadContextSnapshot.new(
-          tool_attributes: %i[current_deadline current_tool_call_allowance],
+          tool_attributes: %i[current_deadline current_tool_call_allowance current_tool_execution_tracker],
           thread_keys: %i[smith_call_deadline smith_call_ledger],
           scoped_artifacts: false
         )
@@ -41,6 +41,7 @@ module Smith
         apply_agent_deadline(agent_class)
         narrow_tool_deadline!
         apply_agent_tool_calls(agent_class)
+        Tool.current_tool_execution_tracker ||= Tool::ExecutionTracker.new
         apply_agent_call_ledger(agent_class)
       end
 
@@ -49,6 +50,7 @@ module Smith
         Thread.current[:smith_call_ledger] = call_ledger
         clear_agent_deadline
         clear_agent_tool_calls
+        Tool.current_tool_execution_tracker = nil
       end
 
       def effective_call_ledger
@@ -74,7 +76,23 @@ module Smith
 
       def apply_agent_tool_calls(agent_class)
         agent_tc = agent_class&.budget&.dig(:tool_calls)
-        Tool.current_tool_call_allowance = agent_tc ? Tool::CallAllowance.new(agent_tc) : nil
+        if agent_class&.tool_budget_exhaustion == :complete && agent_tc.nil?
+          raise AgentError, "tool_budget_exhaustion :complete requires a finite tool_calls budget"
+        end
+
+        Tool.current_tool_call_allowance = build_agent_tool_call_allowance(agent_class, agent_tc)
+      end
+
+      def build_agent_tool_call_allowance(agent_class, agent_tool_calls)
+        return unless agent_tool_calls
+
+        parent = Tool.current_tool_call_allowance
+        if parent && !parent.is_a?(Tool::CallAllowance)
+          raise AgentError, "agent tool_calls budgets cannot scope a legacy Hash tool call allowance"
+        end
+        return parent.scope(agent_tool_calls, on_exhaustion: agent_class.tool_budget_exhaustion) if parent
+
+        Tool::CallAllowance.new(agent_tool_calls, on_exhaustion: agent_class.tool_budget_exhaustion)
       end
 
       def clear_agent_tool_calls

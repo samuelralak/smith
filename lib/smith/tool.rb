@@ -4,22 +4,67 @@ require "ruby_llm"
 
 require_relative "tool/capability_builder"
 require_relative "tool/policy"
+require_relative "tool/call_budget"
+require_relative "tool/call_batch"
+require_relative "tool/legacy_call_allowance"
+require_relative "tool/call_allowance_counter"
 require_relative "tool/call_allowance"
+require_relative "tool/call_reservation"
+require_relative "tool/call_admission"
+require_relative "tool/execution_authority"
+require_relative "tool/execution_authorization"
+require_relative "tool/execution_tracker"
+require_relative "tool/execution_lifecycle"
+require_relative "tool/invocation"
+require_relative "tool/argument_snapshot_result"
+require_relative "tool/argument_scalar_snapshot"
+require_relative "tool/argument_container_reader"
+require_relative "tool/argument_snapshot_accounting"
+require_relative "tool/argument_snapshot_traversal"
+require_relative "tool/argument_snapshot"
+require_relative "tool/invocation_request"
+require_relative "tool/invocation_sequence"
+require_relative "tool/execution_batch_collection"
+require_relative "tool/execution_batch_invocations"
+require_relative "tool/execution_batch_source_metadata"
+require_relative "tool/execution_batch_source_call"
+require_relative "tool/execution_batch_sources"
+require_relative "tool/execution_batch_state"
+require_relative "tool/execution_batch"
+require_relative "tool/execution_batch_admission"
+require_relative "tool/execution_batch_requests"
+require_relative "tool/execution_batch_builder"
+require_relative "tool/execution_batch_registry"
 require_relative "tool/budget_enforcement"
 require_relative "tool_capture_failed"
 require_relative "tool/capture"
 require_relative "tool/capture_configuration"
 require_relative "tool/compatibility"
 require_relative "tool/scoped_context"
+require_relative "tool/bounded_completion_state"
+require_relative "tool/bounded_completion_guard"
+require_relative "tool/bounded_completion_controls"
+require_relative "tool/fail_fast_completion"
+require_relative "tool/graceful_completion"
+require_relative "tool/bounded_completion_context"
+require_relative "tool/bounded_completion_installation"
+require_relative "tool/execution_failure_handling"
+require_relative "tool/execution_dispatch"
+require_relative "tool/chat_execution_callbacks"
+require_relative "tool/execution_batch_lifecycle"
 require_relative "tool/chat_execution_context"
 
 module Smith
   class Tool < RubyLLM::Tool
     include Policy
+    include ExecutionAuthorization
+    include ExecutionLifecycle
     include BudgetEnforcement
     include Capture
     extend CaptureConfiguration
     extend ScopedContext
+
+    private_constant :ExecutionAuthority
 
     class << self
       # Tool subclasses inherit the parent's compatible_with spec by
@@ -75,22 +120,30 @@ module Smith
     end
 
     def execute(**kwargs)
-      ensure_capture_ready!
-      run_before_execute_hook!(kwargs)
-      check_tool_deadline!
-      check_privilege!(kwargs)
-      check_authorization!(kwargs)
-      run_tool_guardrails!(kwargs)
-      check_tool_deadline!
-      charge_tool_call!
-
-      start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      result = perform(**kwargs)
-      duration = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
+      authorize_tool_execution!
+      kwargs.freeze
+      prepare_tool_execution!(kwargs)
+      result, duration = perform_with_duration(kwargs)
 
       emit_tool_trace(kwargs, result, duration)
       capture_result_if_configured(kwargs, result)
       result
+    end
+
+    protected
+
+    def invocation_argument_error(arguments) = validate_keyword_arguments(normalize_args(arguments))
+
+    def execute_keyword_signature
+      parameters = method(:perform).parameters
+      required_keywords = parameters.filter_map { |kind, name| name if kind == :keyreq }
+      optional_keywords = parameters.filter_map { |kind, name| name if kind == :key }
+      accepts_extra_keywords = parameters.any? { |kind, _| kind == :keyrest }
+      accepts_positional_arguments = parameters.any? do |kind, _|
+        RubyLLM::Tool::POSITIONAL_PARAMETER_KINDS.include?(kind)
+      end
+
+      [required_keywords, optional_keywords, accepts_extra_keywords, accepts_positional_arguments]
     end
 
     private
@@ -124,6 +177,12 @@ module Smith
       return unless deadline
 
       raise DeadlineExceeded, "wall_clock deadline exceeded during tool execution" if Time.now.utc >= deadline
+    end
+
+    def check_dispatch_deadline!
+      check_tool_deadline!
+    rescue DeadlineExceeded
+      raise ToolDispatchRejected, "tool deadline expired before dispatch"
     end
 
     def perform(**kwargs)

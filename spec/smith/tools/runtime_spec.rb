@@ -126,7 +126,8 @@ RSpec.describe "Smith::Tool runtime behavior" do
 
     expect do
       tool.execute(context: { user: :ok, role: :admin }, query: "test")
-    end.to raise_error(require_const("Smith::ToolPolicyDenied"), "privilege :elevated requires context[:role] == :elevated")
+    end.to raise_error(require_const("Smith::ToolPolicyDenied"),
+                       "privilege :elevated requires context[:role] == :elevated")
   end
 
   it "runs authorize after the privilege gate passes" do
@@ -171,7 +172,7 @@ RSpec.describe "Smith::Tool runtime behavior" do
 
     expect do
       tool.execute(context: { user: :ok }, query: "test")
-    end.to raise_error(deadline_exceeded, "wall_clock deadline exceeded during tool execution")
+    end.to raise_error(Smith::ToolDispatchRejected, "tool deadline expired before dispatch")
 
     expect(observed).to eq([])
   ensure
