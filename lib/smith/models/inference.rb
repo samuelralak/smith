@@ -82,6 +82,20 @@ module Smith
         [
           # ----- Anthropic -----
 
+          # Claude 5+ families (Fable/Mythos/Opus/Sonnet/Haiku): adaptive
+          # thinking, no temperature accepted (the API rejects an explicit
+          # temperature with a 400).
+          Rule.new(
+            provider: :anthropic,
+            matcher: lambda { |id|
+              m = id.match(/\Aclaude-(?:fable|mythos|opus|sonnet|haiku)-(\d+)/)
+              m && m[1].to_i >= 5
+            },
+            thinking_shape: :adaptive,
+            accepts_temperature: false,
+            tools_with_thinking_native: true,
+            tools_with_thinking_route: nil
+          ),
           # Opus 4.7+: adaptive thinking, no temperature accepted.
           Rule.new(
             provider: :anthropic,

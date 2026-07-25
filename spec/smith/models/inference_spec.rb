@@ -17,6 +17,29 @@ RSpec.describe Smith::Models::Inference do
       expect(profile.thinking_shape).to eq(:adaptive)
     end
 
+    it "matches Claude 5 family models to adaptive thinking + no temperature" do
+      %w[claude-opus-5 claude-sonnet-5 claude-fable-5 claude-haiku-5].each do |model_id|
+        profile = described_class.profile_for(model_id)
+        expect(profile.provider).to eq(:anthropic)
+        expect(profile.thinking_shape).to eq(:adaptive)
+        expect(profile.accepts_temperature).to be(false)
+        expect(profile.tools_with_thinking_native).to be(true)
+        expect(profile.tools_with_thinking_route).to be_nil
+      end
+    end
+
+    it "matches a hypothetical Claude 6 family to adaptive (version-aware predicate)" do
+      profile = described_class.profile_for("claude-opus-6")
+      expect(profile.thinking_shape).to eq(:adaptive)
+      expect(profile.accepts_temperature).to be(false)
+    end
+
+    it "does not match dotted 4.x ids to the Claude 5 family rule" do
+      profile = described_class.profile_for("claude-haiku-4-5")
+      expect(profile.thinking_shape).to eq(:budget_tokens)
+      expect(profile.accepts_temperature).to be(true)
+    end
+
     it "matches Opus 4.6 to budget_tokens (NOT adaptive)" do
       profile = described_class.profile_for("claude-opus-4-6")
       expect(profile.thinking_shape).to eq(:budget_tokens)
@@ -115,7 +138,7 @@ RSpec.describe Smith::Models::Inference do
     it "yields with the given rules and restores afterward" do
       custom_rule = described_class::Rule.new(
         provider: :anthropic,
-        matcher:  ->(_id) { true },
+        matcher: ->(_id) { true },
         thinking_shape: :adaptive,
         accepts_temperature: false,
         tools_with_thinking_native: true,
@@ -148,7 +171,7 @@ RSpec.describe Smith::Models::Inference do
     it "places the new rule ahead of defaults (higher precedence)" do
       custom_rule = described_class::Rule.new(
         provider: :openai,
-        matcher:  ->(id) { id == "custom-special" },
+        matcher: ->(id) { id == "custom-special" },
         thinking_shape: :reasoning_effort,
         accepts_temperature: false,
         tools_with_thinking_native: true,
@@ -156,7 +179,7 @@ RSpec.describe Smith::Models::Inference do
       )
       described_class.prepend_rule(custom_rule)
       profile = described_class.profile_for("custom-special")
-      expect(profile.tools_with_thinking_native).to be(true)  # custom rule
+      expect(profile.tools_with_thinking_native).to be(true) # custom rule
     end
   end
 end
