@@ -51,7 +51,7 @@ module Smith
       end
 
       def run_fanout_branch(branch_key, agent_name, agent_class, env, signal)
-        with_branch_context(env, @ledger, agent_class:) do
+        with_branch_context(env, @ledger, agent_class:, attribution_overlay: { branch_key: }) do
           with_agent_context(agent_class) do
             branch_ledger = effective_call_ledger
             reserved = reserve_fanout_branch_call(branch_ledger, env.branch_estimates[branch_key], agent_class)

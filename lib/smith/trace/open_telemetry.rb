@@ -7,7 +7,9 @@ module Smith
         transition: :trace_transitions,
         tool_call: :trace_tool_calls,
         token_usage: :trace_token_usage,
-        cost: :trace_cost
+        provider_call: :trace_provider_calls,
+        cost: :trace_cost,
+        normalizer_decision: :trace_normalizer
       }.freeze
 
       CONTENT_KEYS = %i[content prompt response args result].freeze
@@ -23,17 +25,59 @@ module Smith
         )
       end
 
+      # Smith trace events describe operations that already finished, so the
+      # span is created retroactively: when the event carries a duration
+      # (:tool_call seconds, :provider_call milliseconds) the span's start is
+      # backdated by it and the span duration is real; otherwise the span is
+      # an instant. Uses only the documented opentelemetry-api surface
+      # (Tracer#start_span with start_timestamp, Span#finish with
+      # end_timestamp) so any SDK the host installs applies.
       def record(type:, data:)
         return unless @tracer
         return unless type_enabled?(type)
 
         filtered = filter_content(data)
-        @tracer.in_span("smith.#{type}") do |span|
-          filtered.each { |key, value| span.set_attribute("smith.#{key}", value.to_s) }
+        finished_at = Time.now
+        span = @tracer.start_span("smith.#{type}", start_timestamp: span_start(filtered, finished_at))
+        begin
+          apply_attributes(span, filtered)
+        ensure
+          span.finish(end_timestamp: finished_at)
         end
       end
 
       private
+
+      def span_start(data, finished_at)
+        seconds = duration_seconds(data)
+        seconds ? finished_at - seconds : finished_at
+      end
+
+      def duration_seconds(data)
+        return data[:duration].to_f if data[:duration].is_a?(Numeric)
+        return data[:duration_ms] / 1000.0 if data[:duration_ms].is_a?(Numeric)
+
+        nil
+      end
+
+      def apply_attributes(span, data)
+        data.each do |key, value|
+          coerced = attribute_value(value)
+          span.set_attribute("smith.#{key}", coerced) unless coerced.nil?
+        end
+      end
+
+      # OpenTelemetry attributes accept strings, integers, floats, and
+      # booleans; numeric values keep their type instead of arriving as
+      # strings, everything else (symbols included) becomes a string, nil
+      # drops.
+      def attribute_value(value)
+        case value
+        when String, Integer, Float, true, false then value
+        when nil then nil
+        else value.to_s
+        end
+      end
 
       def type_enabled?(type)
         config_key = CONFIG_MAP[type]

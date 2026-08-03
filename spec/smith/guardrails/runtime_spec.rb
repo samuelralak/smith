@@ -84,7 +84,7 @@ RSpec.describe "Smith::Guardrails runtime behavior" do
     expect(result.steps.first[:error]).to be_a(guardrail_failed)
   end
 
-  it "does not emit a success event when a guardrail failure routes the workflow to failure" do
+  it "emits a StepFailed rather than a success event when a guardrail failure routes the workflow to failure" do
     events = require_const("Smith::Events")
     event_class = require_const("Smith::Event")
     observed = []
@@ -115,7 +115,8 @@ RSpec.describe "Smith::Guardrails runtime behavior" do
     result = workflow.run!
 
     expect(result.state).to eq(:failed)
-    expect(observed).to eq([])
+    expect(observed.map(&:class)).to eq([Smith::Events::StepFailed])
+    expect(observed.first.transition).to eq(:start)
   end
 
   it "routes through on_failure when the cooperative wall_clock deadline is exceeded before the agent call" do

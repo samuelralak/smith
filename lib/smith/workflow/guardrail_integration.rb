@@ -24,6 +24,12 @@ module Smith
 
       def handle_step_failure(transition, error)
         step = { transition: transition.name, from: transition.from, to: transition.to, error: error }
+        # Staged, not emitted: this rescue runs under the step snapshot's
+        # interrupt mask, and host StepFailed handlers must not execute
+        # unkillable. with_step_context flushes after the mask closes.
+        # Staged before the split-step capture so a capture invariant
+        # failure still flushes an emission for the original error.
+        @pending_step_failure = step
         SplitStepPersistence
           .instance_method(:capture_split_step_execution_result!)
           .bind_call(self, step)
@@ -50,9 +56,28 @@ module Smith
 
         @outcome = nil
         step = { transition: error.requested_name, from: @state, to: fail_transition.to, error: error }
+
+        # A step body that raised UnresolvedTransitionError was already
+        # captured, staged, and emitted under its real transition identity
+        # by the step-failure path before advance!'s rescue reached here.
+        # Capturing or emitting again would record the same failure twice,
+        # the second time under the requested name, a transition that never
+        # executed. Routing to :fail still happens either way.
+        if error.equal?(@emitted_step_failure_error)
+          @state = fail_transition.to
+          return step
+        end
+
         SplitStepPersistence
           .instance_method(:capture_split_step_execution_result!)
           .bind_call(self, step)
+        # Unlike the step-body path, this handler runs outside any step
+        # context (advance! rescues UnresolvedTransitionError after the step
+        # unwound), so the run identity must be seeded here or the emitted
+        # facts get fallback random ids.
+        Attribution.with(execution_key: @persistence_key, workflow: self.class.name || "anonymous") do
+          emit_step_failed(step)
+        end
         @state = fail_transition.to
         step
       end

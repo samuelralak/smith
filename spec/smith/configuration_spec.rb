@@ -32,8 +32,8 @@ RSpec.describe "Smith configuration contract" do
       trace_cost=
       trace_fields=
       trace_content=
-      trace_retention=
-      trace_tenant_isolation=
+      trace_attribution=
+      trace_provider_calls=
     ].each do |method_name|
       expect(yielded_config).to respond_to(method_name), "expected config to implement ##{method_name}"
     end

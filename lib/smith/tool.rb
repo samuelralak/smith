@@ -165,9 +165,18 @@ module Smith
     end
 
     def emit_tool_trace(kwargs, result, duration)
+      # tool_call_id is the provider's correlation id for this invocation
+      # (present only when the call came from a provider batch); it lets a
+      # host join this trace to its own per-invocation records.
       Smith::Trace.record(
         type: :tool_call,
-        data: { tool: name, args: kwargs, result: result, duration: duration },
+        data: {
+          tool: name,
+          args: kwargs,
+          result: result,
+          duration: duration,
+          tool_call_id: self.class.current_invocation&.tool_call_id
+        }.compact,
         sensitivity: self.class.capabilities&.dig(:sensitivity) || :low
       )
     end

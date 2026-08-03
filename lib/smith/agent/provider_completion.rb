@@ -3,6 +3,7 @@
 require_relative "provider_failure_handling"
 require_relative "invocation_preparation"
 require_relative "provider_attempt"
+require_relative "provider_call_timing"
 require_relative "provider_candidate_sequence"
 
 module Smith
@@ -10,6 +11,7 @@ module Smith
     module ProviderCompletion
       include ProviderFailureHandling
       include InvocationPreparation
+      include ProviderCallTiming
 
       private
 
@@ -17,13 +19,14 @@ module Smith
         candidates = ProviderCandidateSequence.new(build_model_chain(agent_class))
         candidates.each do |model_reference, index|
           check_deadline! if index.positive?
-          attempt = attempt_model(agent_class, prepared_input, model_reference, output_schema:)
-          return [attempt.completion, attempt.model_reference] if attempt.success?
+          attempt = attempt_model(agent_class, prepared_input, model_reference, output_schema:, attempt_index: index)
+          return attempt if attempt.success?
 
           candidates.suppress(account_failed_provider(attempt, model_reference))
           handle_provider_failure!(
             attempt.error, attempt.model_reference, agent_class,
-            fallback_available: candidates.fallback_available?
+            fallback_available: candidates.fallback_available?,
+            attempt_id: attempt.attempt_id
           )
         end
 
@@ -79,20 +82,35 @@ module Smith
         raise Smith::AgentError, "invalid model block result for #{agent_class}: #{e.message}"
       end
 
-      def attempt_model(agent_class, prepared_input, model_reference, output_schema:)
+      # rubocop:disable Metrics/AbcSize -- one provider attempt is a single
+      # cohesive lifecycle (identity, prepared chat, observed model, timed
+      # completion, prefix accounting on failure); splitting it would scatter
+      # the rescue-path accounting away from what it accounts for.
+      def attempt_model(agent_class, prepared_input, model_reference, output_schema:, attempt_index:)
+        attempt_id = SecureRandom.uuid
         chat = prepared_attempt_chat(agent_class, prepared_input, model_reference, output_schema:)
         message_count = chat_message_count(chat)
         observed_reference = observed_model_reference(chat, fallback: model_reference)
-        completion = Completion.from_messages(response: chat.complete, messages: new_chat_messages(chat, message_count))
+        timer = ProviderCallTiming::Timer.start
+        response = chat.complete
+        timer.stop
+        completion = Completion.from_messages(response: response, messages: new_chat_messages(chat, message_count))
 
-        ProviderAttempt.success(completion:, model_reference: observed_reference)
+        attempt = ProviderAttempt.success(
+          completion:, model_reference: observed_reference, attempt_id:, duration_ms: timer.elapsed_ms
+        )
+        record_provider_call_trace(attempt, attempt_index)
+        attempt
       rescue StandardError => e
+        timer&.stop
         observed_reference ||= observed_model_reference(chat, fallback: model_reference)
-        account_completed_prefix(agent_class, observed_reference, new_chat_messages(chat, message_count))
+        account_completed_prefix(agent_class, observed_reference, new_chat_messages(chat, message_count), attempt_id:)
+        attempt = failed_provider_attempt(e, observed_reference, attempt_id, timer, attempt_index)
         raise unless provider_failure?(e)
 
-        ProviderAttempt.failure(error: e, model_reference: observed_reference)
+        attempt
       end
+      # rubocop:enable Metrics/AbcSize
 
       def observed_model_reference(chat, fallback:)
         model = observable_model(chat)

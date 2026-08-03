@@ -60,6 +60,7 @@ module Smith
         ledger,
         parallel_agent_binding: NO_PARALLEL_BINDING,
         agent_class: nil,
+        attribution_overlay: nil,
         &block
       )
         snapshot = ThreadContextSnapshot.new
@@ -69,6 +70,11 @@ module Smith
           else
             setup_branch_context(env, ledger)
           end
+
+          # Restoration is owned by the snapshot above, which tracks the
+          # attribution thread key.
+          Attribution.install(Attribution.ambient.merge(**attribution_overlay)) if attribution_overlay
+
           unless parallel_agent_binding.equal?(NO_PARALLEL_BINDING)
             Thread.current[:smith_parallel_agent_binding] = parallel_agent_binding
           end

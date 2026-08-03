@@ -40,7 +40,15 @@ module Smith
         end
 
         def capture_composite_branch(&block)
-          output = within_raw_step_context { with_scoped_artifacts(&block) }
+          output = within_raw_step_context do
+            # Same ambient attribution the in-process step path installs, so
+            # durably executed branches tag usage and traces identically
+            # (execution key from the restored persistence key, the split
+            # step's transition, then the branch overlay downstream).
+            # Restoration is owned by within_raw_step_context's snapshot.
+            install_step_attribution(@split_step_transition) if @split_step_transition
+            with_scoped_artifacts(&block)
+          end
           [output, nil]
         rescue StandardError => e
           [nil, e]

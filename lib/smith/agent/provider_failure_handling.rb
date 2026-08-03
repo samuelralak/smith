@@ -21,8 +21,8 @@ module Smith
 
       private
 
-      def handle_provider_failure!(error, model_reference, agent_class, fallback_available:)
-        account_failed_attempt(error, model_reference, agent_class)
+      def handle_provider_failure!(error, model_reference, agent_class, fallback_available:, attempt_id: nil)
+        account_failed_attempt(error, model_reference, agent_class, attempt_id:)
         if completed_tool_calls?
           raise Smith::ToolOutcomeUncertain.new(
             "provider failed after tool execution began; retry or fallback could replay an uncertain outcome"

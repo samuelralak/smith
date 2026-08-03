@@ -54,8 +54,16 @@ module Smith
         capture_failure(e, strict, reason: :capture_block_failed)
       end
 
+      # tool_call_id is additive only when present (a provider-batch
+      # invocation is ambient), so captures from direct invocations and
+      # pre-existing persisted payloads keep their exact two-key shape.
       def append_capture(collector, captured, strict)
-        collector.call({ tool: name.to_s, captured: captured }) if strict || captured
+        return unless strict || captured
+
+        entry = { tool: name.to_s, captured: captured }
+        tool_call_id = self.class.current_invocation&.tool_call_id
+        entry[:tool_call_id] = tool_call_id if tool_call_id
+        collector.call(entry)
       rescue StandardError => e
         capture_failure(e, strict, reason: :collector_failed)
       end

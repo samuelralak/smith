@@ -26,7 +26,7 @@ module Smith
           # snapshot_value so non-JSON-safe runtime values (e.g.
           # custom Hash details on DeterministicStepFailure) get the
           # same deep-copy treatment as context/session_messages/etc.
-          usage_entries: snapshot_value((@usage_entries || []).map(&:to_h)),
+          usage_entries: snapshot_value(usage_entries_for_state.map(&:to_h)),
           last_output: snapshot_value(@last_output),
           last_failed_step: snapshot_value(@last_failed_step),
           # Optimistic-locking version. Adapters that support
@@ -190,6 +190,17 @@ module Smith
         return [] if raw.nil? || !raw.is_a?(Array)
 
         raw.map { |h| Workflow::UsageEntry.from_h(h) }
+      end
+
+      # Serialization reads the ledger under the recording mutex so a state
+      # written mid-fan-out never captures a torn array. The mutex can be
+      # absent on an allocated-but-unrestored instance; fall back to the
+      # bare read to_state always tolerated.
+      def usage_entries_for_state
+        mutex = @usage_mutex
+        return (@usage_entries || []).dup unless mutex
+
+        mutex.synchronize { (@usage_entries || []).dup }
       end
 
       # Use key-presence checks (NOT `||`) so a deliberately persisted

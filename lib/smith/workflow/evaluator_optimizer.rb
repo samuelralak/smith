@@ -29,7 +29,9 @@ module Smith
 
       def run_optimization_loop(state)
         state.config[:max_rounds].times do |round|
-          result = run_optimization_round(state, round)
+          # The overlay scopes every trace and usage fact from this round's
+          # generator and evaluator calls to the round that produced them.
+          result = Attribution.with(round: round) { run_optimization_round(state, round) }
           return result if result
         end
 

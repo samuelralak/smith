@@ -7,26 +7,62 @@ module Smith
         transition: :trace_transitions,
         tool_call: :trace_tool_calls,
         token_usage: :trace_token_usage,
+        provider_call: :trace_provider_calls,
         cost: :trace_cost,
         normalizer_decision: :trace_normalizer
       }.freeze
 
       CONTENT_KEYS = %i[content prompt response args result].freeze
 
-      attr_reader :traces
+      # Generous enough that test and development runs never hit it; a bound
+      # exists at all so a long-lived process with parallel branches cannot
+      # grow this adapter without limit.
+      DEFAULT_LIMIT = 10_000
 
-      def initialize
+      attr_reader :traces, :limit
+
+      def initialize(limit: DEFAULT_LIMIT)
+        unless limit.is_a?(Integer) && limit.positive?
+          raise ArgumentError, "Smith::Trace::Memory limit must be a positive integer, got #{limit.inspect}"
+        end
+
+        @limit = limit
         @traces = []
+        @dropped_count = 0
+        @mutex = Mutex.new
       end
 
       def record(type:, data:)
         return unless type_enabled?(type)
 
-        @traces << { type: type, data: filter_content(data) }
+        entry = { type: type, data: filter_content(data) }
+        @mutex.synchronize do
+          if @traces.length >= @limit
+            @dropped_count += 1
+          else
+            @traces << entry
+          end
+        end
+      end
+
+      # Entries rejected because the adapter was full. Zero in any healthy
+      # test run; a growing value means the limit needs raising or the
+      # process needs a clear!.
+      def dropped_count
+        @mutex.synchronize { @dropped_count }
+      end
+
+      # A consistent copy for readers that may race concurrent recording;
+      # #traces stays the live array for compatibility.
+      def snapshot
+        @mutex.synchronize { @traces.dup }
       end
 
       def clear!
-        @traces = []
+        @mutex.synchronize do
+          @traces = []
+          @dropped_count = 0
+        end
       end
 
       private

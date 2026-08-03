@@ -4,6 +4,209 @@ All notable changes to Smith are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Smith is pre-1.0 and under active development; expect occasional contract tightening between minor versions until 1.0.
 
+## [Unreleased]
+
+### Upgrade notes
+
+- Rollback after running fan-out branches under this version is a one-way
+  door for those runs: composite branch effects written with attribution
+  values (usage entries) or batch-correlated `tool_call_id` capture entries
+  fail an older gem's exact-key validation at reduction or recovery.
+  Drain in-flight composite runs before rolling the gem back; plain
+  checkpoint payloads are unaffected (restored pre-attribution documents
+  re-serialize byte-identically, and old readers slice off unknown keys).
+- Hosts with a configured trace adapter see new output on upgrade without
+  any host change: one `:provider_call` line per provider attempt, one
+  `:cost` line per priced completed invocation, failed `:transition` lines
+  marked `outcome: :failed`, and ambient attribution keys (including
+  `execution_key`, the Smith persistence key) merged into every payload.
+  Identifier-only, but plan for the volume and shape change, especially
+  with `Smith::Trace::Logger` in production.
+- Hosts with a `trace_fields` allowlist for `:transition` must add
+  `:outcome` (and the error keys they want) or failed transitions render
+  indistinguishable from successes under the allowlist.
+- `Smith::Trace::Memory` is now bounded (default 10,000 entries, silent
+  drop with `dropped_count`); previously it accumulated without limit.
+
+### Added
+
+- Add `Smith::Attribution`, an immutable thread-local execution attribution
+  context (`execution_key`, `transition`, `from`, `to`, `branch_key`,
+  `round`). Workflow execution installs it per step (the `execution_key`
+  defaults to the persistence key of a persisted run), fan-out carries it
+  into branch threads and overlays the branch key, and evaluator-optimizer
+  rounds overlay the round index. Hosts can seed an outer scope with
+  `Smith::Attribution.with(execution_key: ...)` around non-persisted runs.
+  Restoration inside workflow execution rides `ThreadContextSnapshot`, which
+  now tracks the attribution thread key. Scope overlays are nil-ignoring
+  (`Context#merge`), but the per-step facts (`transition`, `from`, `to`)
+  are replaced verbatim, nil included (`Context#override`): a nested
+  child's `from`-less transition never inherits the parent step's `from`,
+  and the failed `:transition` trace keeps `from`/`to` present even when
+  nil for the same reason.
+- Merge ambient attribution fields into every `Smith::Trace.record` payload.
+  Attribution keys are identifiers, not content: caller-supplied keys win on
+  conflict, the content policy is unaffected, and a configured
+  `trace_fields` allowlist stays authoritative (add attribution keys to an
+  allowlist to receive them). Disable with `Smith.config.trace_attribution =
+  false` (default true).
+- Bound `Smith::Trace::Memory` (default 10,000 entries) with a
+  `dropped_count` reader and a `snapshot` method for readers racing
+  concurrent recording.
+- Tag `Workflow::UsageEntry` with the ambient attribution at recording time:
+  new optional members `transition`, `branch_key`, `round`, and `attempt_id`.
+  All four are nil on entries restored from checkpoints written by earlier
+  Smith versions and are omitted from serialization when nil, so restored
+  pre-attribution documents re-serialize byte-identically (hosts that digest
+  whole persisted documents in exact-mutation proofs depend on this). A
+  rolled-back gem drops the new keys from plain checkpoint payloads
+  (`from_h` slices to known members). Composite branch effects are the
+  exception: effects written by this version from a fan-out branch carry
+  real attribution values, and an older gem's exact-key effects validation
+  rejects them, so see the upgrade notes below before rolling back.
+  `recorded_at` now carries microsecond precision (`iso8601(6)`) on new
+  entries. Recording symbolizes `transition`/`branch_key` Strings exactly
+  as `from_h` does on restore, so a host seeding String attribution through
+  `Smith::Attribution.with` gets entries equal to their restored form.
+- Measure each provider attempt with a monotonic clock around the whole chat
+  completion (including any provider tool loop) and emit one
+  `:provider_call` trace per attempt (success or failure) carrying `model`,
+  `provider`, `duration_ms`, `attempt_id`, `attempt_index`, and `outcome`.
+  Every usage entry the attempt produced shares its `attempt_id` (an attempt
+  with an N-round tool loop records N entries): join there for the attempt's
+  single duration, never sum across entries. Gate with
+  `Smith.config.trace_provider_calls` (default true). `ProviderAttempt`
+  gains optional `attempt_id` and `duration_ms`.
+- Add a public read-only `Workflow#usage_entries` (frozen copy under the
+  recording mutex) so hosts can diff usage across a step boundary without a
+  full `to_state` serialization; `to_state` and `snapshot_usage_entries` now
+  read the ledger under the same mutex, so a state written mid-fan-out never
+  captures a torn array.
+- Thread real correlation identity through events: `Smith::Event#execution_id`
+  and `#trace_id` default to the ambient attribution execution key (the
+  persistence key during persisted runs) instead of a fresh random UUID per
+  event; the random fallback remains for events built outside any execution
+  scope. The `:tool_call` trace gains a nullable `tool_call_id` when the
+  invocation came from a provider batch (the tool-results capture entry
+  gains the same key under a later bullet in this release; composite
+  effects accept the extended shape with bounded value validation).
+
+- Emit from the step-failure paths, closing the success-only observation
+  gap: both `handle_step_failure` and the unresolved-transition handler now
+  record a `:transition` trace with `outcome: :failed` plus bounded
+  classification (`error_class`, `error_family` from FailureRecord's
+  taxonomy, `retryable`) and emit a new `Smith::Events::StepFailed` event.
+  Raw error messages never ride either; an emission failure is logged and
+  can never mask the original step error. The marker key is `outcome`
+  because `result` is a reserved content key in the trace pipeline. An
+  unresolved transition with no `:fail` transition still re-raises without
+  emitting: that path was never treated as a step. The unresolved handler
+  runs outside any step context, so it seeds the run identity explicitly;
+  both failure paths stamp persisted-run events with the persistence key.
+  Emission is terminal-per-step: a step that retries internally and then
+  succeeds emits only its `StepCompleted`; intermediate step-body retry
+  attempts stay dark at the step layer (provider-level failures remain
+  visible as `:provider_call` failure traces). `StepFailed` handlers run
+  outside the step snapshot's interrupt-masked region (emission is staged
+  in the failure rescue and flushed after the mask closes), interruptible
+  exactly like `StepCompleted` handlers. A step body that surfaces Smith's
+  own `UnresolvedTransitionError` emits exactly one `StepFailed` under the
+  real step identity; the unresolved handler recognizes the already-emitted
+  error instead of emitting a second event under the requested (never
+  executed) name.
+- Emit the long-advertised `:cost` trace: one per completed agent
+  invocation, whose value is the sum of that invocation's per-response
+  usage-entry costs. Summing per response is what tiered catalogs actually
+  bill; pricing the aggregate token totals as one call would resolve the
+  wrong tier for multi-response tool loops. Emitted only for fully metered,
+  fully priced invocations (a partially priced or partially metered
+  invocation emits nothing rather than presenting an incomplete figure);
+  gated by the existing `trace_cost` setting (the per-type gates live in
+  the built-in adapters; a custom adapter receives every type). `:cost`
+  traces are not a spend total: billed failed and partial attempts appear
+  only in usage entries. The same per-response sum now becomes
+  `agent_result.cost`, so budget settlement, result surfaces, recorded
+  entries, and the trace all agree on one invocation cost.
+- The OpenTelemetry adapter now creates retroactive spans with real
+  durations (span start backdated by `:tool_call` seconds or
+  `:provider_call` milliseconds; instant spans otherwise), preserves
+  numeric attribute types instead of stringifying everything, and uses only
+  the documented opentelemetry-api surface (`Tracer#start_span` with
+  `start_timestamp`, `Span#finish` with `end_timestamp`).
+
+- Add a `workflow` discriminator to the ambient attribution, every trace
+  payload, usage entries, and the `StepCompleted`/`StepFailed` events: the
+  emitting workflow's class name ("anonymous" when unnamed), so
+  nested-child graph facts are distinguishable from parent facts under the
+  shared root execution identity. Nil-omitted from serialized entries like
+  the other attribution members.
+- Every provider attempt now emits its `:provider_call` trace: `outcome` is
+  `:success`, `:failure` (provider failure, fallback may continue), or
+  `:aborted` (a non-provider error that re-raises), so prefix-accounted
+  usage entries always have their attempt join target.
+- The tool-results capture entry gains `tool_call_id` when the invocation
+  came from a provider batch (omitted otherwise, so direct-invocation and
+  pre-existing payloads keep their exact two-key shape); composite effects
+  accept the extended shape while still rejecting unknown keys.
+- `StepFailed` handlers now run outside the step snapshot's
+  interrupt-masked region: emission is staged in the failure rescue and
+  flushed after the mask closes with explicitly seeded run identity, so a
+  slow host handler can no longer make the workflow thread unkillable and
+  handlers match `StepCompleted`'s interruptibility.
+
+### Fixed
+
+- A user-declared `:fail` transition no longer inherits the early order
+  position of the auto-generated placeholder created by `state :failed`:
+  redeclaring a generated transition takes a fresh declaration position, so
+  it can no longer shadow a same-origin primary transition at run time.
+  Genuine user redefinitions keep their original position, and subclasses
+  inherit the bookkeeping.
+- Budget cost settlement now consumes the per-response priced sum instead
+  of pricing the invocation's aggregate token totals. Under linear pricing
+  the figures are identical; under tiered pricing the aggregate resolved
+  the wrong tier (or missed every tier and settled zero), so a
+  cost-budgeted workflow could keep spending after its real billed cost
+  exceeded the budget.
+
+### Removed
+
+- Remove the never-read `trace_retention` and `trace_tenant_isolation`
+  settings. Both were silent no-ops since introduction; reading or writing
+  them now raises, so a host relying on the illusion fails loudly instead
+  of silently.
+
+### Changed
+
+- Workflow step failure is now observable: subscribers to the events bus
+  receive `StepFailed` where previously failures emitted nothing (the
+  success-only scope is gone), and trace consumers see failed `:transition`
+  payloads distinguished by `outcome: :failed`.
+- `Workflow::Composite::Effects` validates usage-entry keys as
+  required-plus-allowed instead of exact: entries from an older producer
+  (missing the optional attribution keys) stay valid, current entries with
+  attribution pass, and unknown keys still reject. The optional keys are
+  bounded values, not just bounded keys: `transition`, `branch_key`, and
+  `workflow` must be non-empty Strings up to 256 characters, `round` a
+  non-negative Integer, and `attempt_id` a UUID when present. Tool results
+  accept the extended capture shape: `tool_call_id`, when present, must be
+  a non-empty String up to 1024 characters (`tool` keeps its exact prior
+  validation).
+
+
+- `Smith::Events` subscriptions now live in per-class buckets guarded by a
+  mutex: emit touches only the buckets for the event's ancestors instead of
+  scanning every subscription, dispatch order remains registration order,
+  and `is_a?` matching semantics are unchanged (instance-extended modules
+  dispatch through the singleton class; immediate values, which have no
+  singleton class and cannot be extended, dispatch through their class
+  ancestors). `Subscription#cancel` now
+  detaches from the registry, so cancelled subscriptions (including
+  `Events.within` scopes) no longer leak. Handlers run outside the registry
+  lock, so a handler may subscribe or cancel without deadlocking.
+- `Smith::Trace::Memory#record` and `#clear!` are mutex-guarded and safe
+  under parallel fan-out branches.
+
 ## [0.8.0] - 2026-07-25
 
 ### Added

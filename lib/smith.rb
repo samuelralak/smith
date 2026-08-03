@@ -40,11 +40,15 @@ module Smith
   setting :trace_transitions, default: true
   setting :trace_tool_calls, default: true
   setting :trace_token_usage, default: true
+  setting :trace_provider_calls, default: true
   setting :trace_cost, default: true
   setting :trace_fields
   setting :trace_content, default: false
-  setting :trace_retention
-  setting :trace_tenant_isolation, default: false
+  # Merge the ambient Smith::Attribution fields (execution_key, transition,
+  # branch_key, round, ...) into every trace payload. Attribution keys are
+  # identifiers, not content; they still pass through any configured
+  # trace_fields allowlist, and caller-supplied keys win on conflict.
+  setting :trace_attribution, default: true
 
   # Pricing (§4.5 — model-call cost computation)
   setting :pricing, default: nil
@@ -187,6 +191,7 @@ require_relative "smith/events"
 require_relative "smith/events/subscription"
 require_relative "smith/events/bus"
 require_relative "smith/events/step_completed"
+require_relative "smith/events/step_failed"
 
 # Budget (depends on Errors)
 require_relative "smith/budget"

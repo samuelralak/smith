@@ -20,8 +20,10 @@ module Smith
 
       def invoke_agent(agent_class, prepared_input, output_schema: agent_class.output_schema)
         check_deadline!
-        completion, model_used = complete_with_provider(agent_class, prepared_input, output_schema:)
-        snapshot_and_finalize(agent_class, completion, model_used)
+        attempt = complete_with_provider(agent_class, prepared_input, output_schema:)
+        snapshot_and_finalize(
+          agent_class, attempt.completion, attempt.model_reference, attempt_id: attempt.attempt_id
+        )
       end
     end
   end

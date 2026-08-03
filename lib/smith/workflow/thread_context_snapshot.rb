@@ -22,6 +22,7 @@ module Smith
         current_invocation
       ].freeze
       THREAD_KEYS = %i[
+        smith_attribution
         smith_call_deadline
         smith_call_ledger
         smith_failed_agent_results

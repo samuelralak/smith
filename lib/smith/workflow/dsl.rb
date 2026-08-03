@@ -17,6 +17,7 @@ module Smith
             duplicate_transition_index(@transitions_by_state)
           )
           subclass.instance_variable_set(:@transition_order, (@transition_order || {}).dup)
+          subclass.instance_variable_set(:@generated_transitions, (@generated_transitions || []).dup)
           subclass.instance_variable_set(:@transition_sequence, @transition_sequence)
           subclass.instance_variable_set(:@initial_state_name, @initial_state_name)
           subclass.instance_variable_set(:@budget_config, @budget_config&.dup)
@@ -50,7 +51,12 @@ module Smith
           declared = Transition.new(name, from: from, to: to, &)
           name = declared.name
           @transitions ||= {}
-          remove_from_transition_index(@transitions[name]) if @transitions.key?(name)
+
+          if @transitions.key?(name)
+            remove_from_transition_index(@transitions[name])
+            release_generated_transition_order(name)
+          end
+
           @transitions[name] = declared
           insert_into_transition_index(declared)
         end
@@ -279,10 +285,28 @@ module Smith
           transitions_by_state.delete(transition.from) if indexed.empty?
         end
 
+        # A user redeclaration replacing a GENERATED transition takes a fresh
+        # declaration-position order; a genuine user redefinition keeps its
+        # original position (matrix-pinned redefinition semantics). Without
+        # this, the synthetic :fail generated when `state :failed` is
+        # declared keeps its early order number, and a later user-declared
+        # :fail sharing an origin state with a primary transition would sort
+        # ahead of it and shadow it at run time.
+        def release_generated_transition_order(name)
+          return unless generated_transitions.delete(name)
+
+          transition_order.delete(name)
+        end
+
+        def generated_transitions
+          @generated_transitions ||= []
+        end
+
         def generate_fail_transition
           @transitions ||= {}
           return if @transitions.key?(:fail)
 
+          generated_transitions << :fail
           transition(:fail, from: nil, to: :failed)
         end
       end

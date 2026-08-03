@@ -83,8 +83,8 @@ Smith.configure do |config|
     tool_call: %i[tool duration]
   }
   config.trace_content = false
-  config.trace_retention = 86_400
-  config.trace_tenant_isolation = false
+  config.trace_provider_calls = true
+  config.trace_attribution = true
 
   config.pricing = {
     %w[openai gpt-4.1-nano] => {
@@ -115,11 +115,11 @@ observes a provider but finds only a model-only rate, it raises
 | `trace_transitions` | Emit transition traces | Usually leave on |
 | `trace_tool_calls` | Emit tool call traces | Usually leave on |
 | `trace_token_usage` | Emit usage traces | Useful for budget visibility |
-| `trace_cost` | Emit cost traces | Useful once pricing is configured |
+| `trace_provider_calls` | Emit one timed `:provider_call` trace per provider attempt | Usually leave on |
+| `trace_cost` | Emit one `:cost` trace per completed agent invocation | Emits only once pricing is configured |
 | `trace_fields` | Allowlist structural trace fields | Use when you want tighter trace output |
 | `trace_content` | Whether content appears in traces | Leave `false` first |
-| `trace_retention` | Trace retention policy hook | Useful when traces leave memory |
-| `trace_tenant_isolation` | Trace multi-tenant isolation flag | Enable in multi-tenant systems |
+| `trace_attribution` | Merge ambient execution attribution into trace payloads | Usually leave on |
 | `pricing` | Best-known model-call cost catalog | Add once you care about `total_cost` |
 | `logger` | Smith's runtime logger | Usually the first setting to add |
 | `persistence_adapter` | Adapter for durable workflow state | `:redis`, `:rails_cache`, `:active_record`, `:memory`, or a custom object |

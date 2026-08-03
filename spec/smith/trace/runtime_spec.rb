@@ -175,7 +175,7 @@ RSpec.describe "Smith tracing runtime behavior" do
     expect(adapter.traces).to include(
       {
         type: :transition,
-        data: { transition: :finish, from: :idle, to: :done }
+        data: { transition: :finish, from: :idle, to: :done, workflow: "SpecTraceWorkflow" }
       }
     )
   end
@@ -196,7 +196,8 @@ RSpec.describe "Smith tracing runtime behavior" do
       expect(Smith::Trace.resolve_adapter.traces).to include(
         {
           type: :transition,
-          data: { transition: :finish, from: :idle, to: :done }
+          data: { transition: :finish, from: :idle, to: :done,
+                  workflow: "SpecTraceClassAdapterWorkflow" }
         }
       )
     end
@@ -227,7 +228,8 @@ RSpec.describe "Smith tracing runtime behavior" do
                              "[Smith::Trace] transition: #{{
                                transition: :finish,
                                from: :idle,
-                               to: :done
+                               to: :done,
+                               workflow: "SpecTraceLoggerAdapterWorkflow"
                              }.inspect}"
                            ])
   end
@@ -424,29 +426,40 @@ RSpec.describe "Smith tracing runtime behavior" do
     expect(result).to eq("ok")
   end
 
-  it "records traces through the built-in OpenTelemetry adapter when the dependency surface is available" do
-    span = Object.new
-    observed_attributes = []
-    span.define_singleton_method(:set_attribute) do |key, value|
-      observed_attributes << [key, value]
-    end
-
+  # The fake mirrors the documented opentelemetry-api surface the adapter
+  # uses: Tracer#start_span(name, start_timestamp:) and
+  # Span#finish(end_timestamp:).
+  def stub_open_telemetry_tracer(observed_spans)
+    build_span = method(:fake_finished_span)
     tracer = Object.new
-    observed_span_names = []
-    tracer.define_singleton_method(:in_span) do |name, &block|
-      observed_span_names << name
-      block.call(span)
+    tracer.define_singleton_method(:start_span) do |name, start_timestamp: nil|
+      record = { name: name, start_timestamp: start_timestamp, attributes: {} }
+      observed_spans << record
+      build_span.call(record)
     end
 
+    install_open_telemetry_stub(tracer)
+  end
+
+  def install_open_telemetry_stub(tracer)
     provider = Object.new
-    provider.define_singleton_method(:tracer) do |_name, _version|
-      tracer
-    end
-
+    provider.define_singleton_method(:tracer) { |_name, _version| tracer }
     stub_const("OpenTelemetry", Module.new)
     allow(OpenTelemetry).to receive(:tracer_provider).and_return(provider)
     allow_any_instance_of(open_telemetry_trace_class).to receive(:require)
       .with("opentelemetry-api").and_return(true)
+  end
+
+  def fake_finished_span(record)
+    span = Object.new
+    span.define_singleton_method(:set_attribute) { |key, value| record[:attributes][key] = value }
+    span.define_singleton_method(:finish) { |end_timestamp: nil| record[:end_timestamp] = end_timestamp }
+    span
+  end
+
+  it "records traces through the built-in OpenTelemetry adapter when the dependency surface is available" do
+    observed_spans = []
+    stub_open_telemetry_tracer(observed_spans)
 
     workflow = with_stubbed_class("SpecTraceOpenTelemetryWorkflow", workflow_class) do
       initial_state :idle
@@ -460,12 +473,52 @@ RSpec.describe "Smith tracing runtime behavior" do
       expect(result.state).to eq(:done)
     end
 
-    expect(observed_span_names).to eq(["smith.transition"])
-    expect(observed_attributes).to contain_exactly(
-      ["smith.transition", "finish"],
-      ["smith.from", "idle"],
-      ["smith.to", "done"]
+    expect(observed_spans.length).to eq(1)
+    span = observed_spans.first
+    expect(span[:name]).to eq("smith.transition")
+    expect(span[:attributes]).to eq(
+      "smith.transition" => "finish", "smith.from" => "idle", "smith.to" => "done",
+      "smith.workflow" => "SpecTraceOpenTelemetryWorkflow"
     )
+    # A durationless event is an instant span: start equals end.
+    expect(span[:start_timestamp]).to eq(span[:end_timestamp])
+  end
+
+  it "backdates OpenTelemetry span starts by the event duration and keeps numeric attributes" do
+    observed_spans = []
+    stub_open_telemetry_tracer(observed_spans)
+
+    with_trace_adapter(open_telemetry_trace_class) do
+      Smith::Trace.record(type: :provider_call, data: { model: "m", duration_ms: 1500, attempt_index: 0 })
+      Smith::Trace.record(type: :tool_call, data: { tool: "t", duration: 0.25 })
+    end
+
+    provider_span, tool_span = observed_spans
+    expect(provider_span[:end_timestamp] - provider_span[:start_timestamp]).to be_within(0.001).of(1.5)
+    expect(provider_span[:attributes]["smith.duration_ms"]).to eq(1500)
+    expect(provider_span[:attributes]["smith.attempt_index"]).to eq(0)
+    expect(tool_span[:end_timestamp] - tool_span[:start_timestamp]).to be_within(0.001).of(0.25)
+    expect(tool_span[:attributes]["smith.duration"]).to eq(0.25)
+  end
+
+  it "finishes the OpenTelemetry span even when applying attributes raises" do
+    finished = []
+    tracer = Object.new
+    tracer.define_singleton_method(:start_span) do |_name, **|
+      span = Object.new
+      span.define_singleton_method(:set_attribute) { |_key, _value| raise "attribute exploded" }
+      span.define_singleton_method(:finish) { |end_timestamp: nil| finished << end_timestamp }
+      span
+    end
+    install_open_telemetry_stub(tracer)
+
+    # Calling the adapter directly (Smith::Trace.record would rescue and
+    # log) proves the ensure: the span is finished before the error
+    # propagates, so a broken attribute can never leak an open span.
+    adapter = open_telemetry_trace_class.new
+    expect { adapter.record(type: :transition, data: { transition: :x }) }
+      .to raise_error(RuntimeError, "attribute exploded")
+    expect(finished.length).to eq(1)
   end
 
   it "degrades safely when the OpenTelemetry dependency is unavailable" do
@@ -535,8 +588,12 @@ RSpec.describe "Smith tracing runtime behavior" do
 
     token_traces = adapter.traces.select { |t| t[:type] == :token_usage }
     expect(token_traces.length).to eq(1)
+    # Ambient step attribution rides along on every trace payload; a
+    # non-persisted run carries no execution_key.
     expect(token_traces.first[:data]).to eq(
-      { input_tokens: 15, output_tokens: 8, model: "gpt-5-mini" }
+      { input_tokens: 15, output_tokens: 8, model: "gpt-5-mini",
+        transition: :finish, from: :idle, to: :done,
+        workflow: "SpecTraceTokenUsageWorkflow" }
     )
   end
 
@@ -660,8 +717,12 @@ RSpec.describe "Smith tracing runtime behavior" do
 
     token_traces = adapter.traces.select { |t| t[:type] == :token_usage }
     expect(token_traces.length).to eq(1)
+    # Attribution keys survive the failure path too: usage recorded before
+    # after_completion raised still carries the step that produced it.
     expect(token_traces.first[:data]).to eq(
-      { input_tokens: 20, output_tokens: 12, model: "gpt-5-mini" }
+      { input_tokens: 20, output_tokens: 12, model: "gpt-5-mini",
+        transition: :finish, from: :idle, to: :done,
+        workflow: "SpecTraceTokenUsageAfterFailWorkflow" }
     )
   end
 

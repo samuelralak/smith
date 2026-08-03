@@ -157,6 +157,18 @@ module Smith
       end
     end
 
+    # Public, read-only view of the per-provider-call usage ledger, so hosts
+    # can diff usage across a step boundary without paying a full to_state
+    # serialization. The entries themselves are frozen; the returned array is
+    # a frozen copy taken under the recording mutex. Tolerates allocated but
+    # unrestored instances (no mutex yet), which have no entries.
+    def usage_entries
+      mutex = @usage_mutex
+      return [].freeze unless mutex
+
+      mutex.synchronize { @usage_entries.dup.freeze }
+    end
+
     private
 
     def initial_persist_auto_seed
@@ -340,7 +352,8 @@ module Smith
     # Same rule applies to nested-workflow rollup (see
     # `nested_execution.rb`).
     def snapshot_usage_entries
-      @usage_entries.map { |entry| Workflow::UsageEntry.from_h(snapshot_value(entry.to_h)) }
+      entries = @usage_mutex.synchronize { @usage_entries.dup }
+      entries.map { |entry| Workflow::UsageEntry.from_h(snapshot_value(entry.to_h)) }
     end
 
     def tool_result_collector

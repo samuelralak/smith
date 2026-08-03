@@ -159,7 +159,7 @@ RSpec.describe "Smith events runtime contract" do
     expect(typed_observed.first.transition).to eq(:finish)
   end
 
-  it "does not emit a workflow event when a workflow step fails" do
+  it "emits a classified StepFailed instead of a success event when a workflow step fails" do
     observed = []
     workflow = with_stubbed_class("SpecWorkflowEventFailureWorkflow", workflow_class) do
       initial_state :idle
@@ -181,6 +181,12 @@ RSpec.describe "Smith events runtime contract" do
     result = workflow.run!
 
     expect(result.state).to eq(:failed)
-    expect(observed).to eq([])
+    expect(observed.map(&:class)).to eq([Smith::Events::StepFailed])
+    failure = observed.first
+    expect(failure.transition).to eq(:start)
+    expect(failure.error_class).to eq("Smith::WorkflowError")
+    expect(failure.error_family).to eq("workflow_error")
+    # Raw messages never ride events: only bounded classification does.
+    expect(failure.respond_to?(:error_message)).to be(false)
   end
 end
