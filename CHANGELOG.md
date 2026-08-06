@@ -4,6 +4,23 @@ All notable changes to Smith are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Smith is pre-1.0 and under active development; expect occasional contract tightening between minor versions until 1.0.
 
+## [Unreleased]
+
+### Added
+
+- Last-serial-agent-execution attribution. A deterministic (`compute`) step can
+  now read the model and provider that actually served the most recent serial
+  `execute :agent` step via `DeterministicStep#last_agent_model` /
+  `#last_agent_provider` (symmetric with `#last_output`, which returns that
+  step's content). The value is the resolved model/provider after fallback
+  resolution, so a step that failed its primary and completed on a
+  `fallback_models` entry reports the model that actually ran, never the
+  configured primary. It is durable lifecycle state (persisted in `to_state` as
+  `last_agent_execution`, restored across crash/resume), not a trace scrape, and
+  is `nil` until a serial agent step runs. Backward compatible: pre-upgrade
+  states have no `last_agent_execution` key and restore to `nil`; old readers
+  slice off the unknown key.
+
 ## [0.9.0] - 2026-08-03
 
 ### Upgrade notes

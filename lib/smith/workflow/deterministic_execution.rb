@@ -29,7 +29,8 @@ module Smith
           session_messages: snapshot_value(@session_messages || []),
           tool_results: snapshot_value(@tool_results || []),
           state: @state,
-          transition: transition
+          transition: transition,
+          last_agent_execution: snapshot_value(@last_agent_execution)
         )
       end
 

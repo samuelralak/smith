@@ -31,6 +31,10 @@ module Smith
       end
 
       def execute_step_body(transition)
+        # Reset the per-step agent-attribution carrier so only a serial agent
+        # step that actually runs (below) leaves model/provider for complete_step;
+        # a deterministic step never sets it and must not inherit a stale value.
+        @pending_agent_execution = nil
         output = with_scoped_artifacts { run_with_retry_policy(transition) }
         StepCompletion.instance_method(:complete_step).bind_call(self, transition, output)
       end
@@ -93,6 +97,10 @@ module Smith
         begin
           result = execute_transition_body(transition, prepared_input: prepared_input)
           agent_result = result.is_a?(AgentResult) ? result : nil
+          # Capture the model/provider that actually served this serial agent
+          # step (post fallback resolution) for complete_step to fold into the
+          # durable step record. Nil when no agent ran (e.g. unconfigured model).
+          @pending_agent_execution = agent_result && { model: agent_result.model_used, provider: agent_result.provider_used }
           reconcile_branch_budget(ledger, reserved, agent_result: agent_result)
           reserved = nil
           agent_result ? agent_result.content : result

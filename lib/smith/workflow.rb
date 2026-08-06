@@ -58,6 +58,14 @@ module Smith
       @usage_entries = []
       @usage_mutex = Mutex.new
       @last_output = nil
+      # Durable attribution of the most recent serial `execute :agent` step:
+      # { model:, provider: } of the model that actually served it (post
+      # fallback resolution), exposed to the following deterministic step as
+      # `last_agent_model` / `last_agent_provider`. `@pending_agent_execution`
+      # is the transient per-step carrier from `execute_serial_step` to
+      # `complete_step`; it is never persisted.
+      @last_agent_execution = nil
+      @pending_agent_execution = nil
       @last_failed_step = nil
       # Optimistic-locking version. Incremented on each persist!; restored
       # from the persisted payload. Adapters that support store_versioned
@@ -201,6 +209,10 @@ module Smith
         # matches `RunResult#output`'s `.compact.first` semantics).
         @last_failed_step = nil
         @last_output = step_result[:output] if step_result.key?(:output) && !step_result[:output].nil?
+        # Capture serial agent attribution only on steps that carried it (an
+        # `execute :agent` step); deterministic steps have no :model key, so
+        # the last agent execution persists across intervening compute steps.
+        @last_agent_execution = { model: step_result[:model], provider: step_result[:provider] } if step_result.key?(:model)
       end
     end
 

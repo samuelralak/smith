@@ -21,7 +21,7 @@ RSpec.describe "Smith::Workflow state serialization shape" do
       %i[
         class state persistence_key context budget_consumed step_count execution_namespace created_at updated_at
         next_transition_name session_messages total_cost total_tokens tool_results outcome usage_entries last_output
-        last_failed_step persistence_version schema_version definition_digest seed_digest seed_message_count
+        last_agent_execution last_failed_step persistence_version schema_version definition_digest seed_digest seed_message_count
         step_in_progress persisted_keys
       ]
     )
@@ -40,6 +40,7 @@ RSpec.describe "Smith::Workflow state serialization shape" do
     expect(state[:outcome]).to be_nil
     expect(state[:usage_entries]).to eq([])
     expect(state[:last_output]).to be_nil
+    expect(state[:last_agent_execution]).to be_nil
     expect(state[:last_failed_step]).to be_nil
     expect(state[:seed_message_count]).to eq(0)
   end

@@ -15,9 +15,22 @@ module Smith
         @current_state = state
         @transition_name = transition ? transition.name : options.fetch(:transition_name)
         @allowed_routes = snapshot_allowed_routes(transition ? transition.deterministic_routes : options[:allowed_routes])
+        @last_agent_execution = options[:last_agent_execution]
         @context_writes = {}
         @routed_to = nil
         @outcome = nil
+      end
+
+      # The model id / provider that actually served the most recent serial
+      # `execute :agent` step (post fallback resolution), or nil if no serial
+      # agent step has run. Symmetric with `last_output`, which returns that
+      # step's content; use these to attribute an agent output to its model.
+      def last_agent_model
+        @last_agent_execution && @last_agent_execution[:model]
+      end
+
+      def last_agent_provider
+        @last_agent_execution && @last_agent_execution[:provider]
       end
 
       def last_output
@@ -59,7 +72,7 @@ module Smith
       private
 
       def validate_options!(options)
-        unknown = options.keys - %i[transition transition_name allowed_routes]
+        unknown = options.keys - %i[transition transition_name allowed_routes last_agent_execution]
         raise ArgumentError, "unknown keywords: #{unknown.join(", ")}" if unknown.any?
         return if options[:transition] || options.key?(:transition_name)
 

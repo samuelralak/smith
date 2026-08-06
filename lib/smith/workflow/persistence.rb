@@ -28,6 +28,10 @@ module Smith
           # same deep-copy treatment as context/session_messages/etc.
           usage_entries: snapshot_value(usage_entries_for_state.map(&:to_h)),
           last_output: snapshot_value(@last_output),
+          # Durable { model:, provider: } of the most recent serial agent step,
+          # so a deterministic step that resumes after the agent step (across a
+          # crash) still reads its `last_agent_model` / `last_agent_provider`.
+          last_agent_execution: snapshot_value(@last_agent_execution),
           last_failed_step: snapshot_value(@last_failed_step),
           # Optimistic-locking version. Adapters that support
           # store_versioned use this to detect concurrent writes; adapters
@@ -95,6 +99,12 @@ module Smith
         @usage_mutex = Mutex.new
         @usage_entries = restore_usage_entries(normalized)
         @last_output = restore_last_output(normalized)
+        # Backward-compat: pre-patch states have no last_agent_execution key and
+        # restore to nil. @pending_agent_execution is transient (nil between
+        # steps), never persisted, but must be initialized because from_state
+        # allocates and bypasses #initialize.
+        @last_agent_execution = restore_last_agent_execution(normalized)
+        @pending_agent_execution = nil
         @last_failed_step = restore_last_failed_step(normalized)
         # Restore the optimistic-locking version from the persisted payload.
         # Backward-compat: pre-versioning payloads have no key, restore to 0
@@ -213,6 +223,17 @@ module Smith
         elsif normalized.key?("last_output")
           normalized["last_output"]
         end
+      end
+
+      def restore_last_agent_execution(normalized)
+        value = if normalized.key?(:last_agent_execution)
+          normalized[:last_agent_execution]
+        elsif normalized.key?("last_agent_execution")
+          normalized["last_agent_execution"]
+        end
+        return unless value.is_a?(Hash)
+
+        symbolize_keys(value)
       end
 
       # Symbolize ONLY the top-level keys of last_failed_step + the

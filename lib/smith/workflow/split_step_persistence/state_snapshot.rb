@@ -58,6 +58,7 @@ module Smith
 
         def detach_split_step_results!
           @last_output = snapshot_value(@last_output)
+          @last_agent_execution = snapshot_value(@last_agent_execution)
           @last_failed_step = snapshot_value(@last_failed_step)
           @last_prepared_input = snapshot_value(@last_prepared_input)
         end
