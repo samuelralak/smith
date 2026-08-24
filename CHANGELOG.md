@@ -21,6 +21,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   states have no `last_agent_execution` key and restore to `nil`; old readers
   slice off the unknown key.
 
+### Fixed
+
+- Structured agent outputs recorded as session messages (Hash or Array
+  content) are now serialized to JSON at the RubyLLM provider boundary when
+  replayed to a later agent step. RubyLLM treats a Hash message content as
+  attachments and opens each value as a file, so replaying a prior structured
+  output to the next agent in a workflow session raised `Errno::ENOENT`. The
+  session store is unaffected: `last_output` and persisted `session_messages`
+  keep the raw structured value; only the provider-facing copy is serialized.
+
 ## [0.9.0] - 2026-08-03
 
 ### Upgrade notes

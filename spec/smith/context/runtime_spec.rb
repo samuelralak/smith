@@ -351,6 +351,60 @@ RSpec.describe "Smith::Context runtime contract" do
     )
   end
 
+  it "serializes a prior structured output to JSON at the provider boundary while the session keeps the raw value" do
+    first_agent = with_stubbed_class("SpecStructuredHandoffFirstAgent", agent_class) do
+      register_as :spec_structured_handoff_first_agent
+      model "claude-sonnet-4-6"
+    end
+    second_agent = with_stubbed_class("SpecStructuredHandoffSecondAgent", agent_class) do
+      register_as :spec_structured_handoff_second_agent
+      model "claude-sonnet-4-6"
+    end
+
+    structured_output = { "verdict" => "approve", "citations" => [{ "page" => 3 }] }
+    first_messages = []
+    second_messages = []
+    allow(first_agent).to receive(:chat).and_return(fake_chat(first_messages, structured_output))
+    allow(second_agent).to receive(:chat).and_return(fake_chat(second_messages, "final output"))
+
+    workflow = with_stubbed_class("SpecStructuredHandoffWorkflow", workflow_class) do
+      seed_messages { [{ role: :user, content: "initial request" }] }
+      initial_state :idle
+      state :reviewed
+      state :done
+
+      transition :first, from: :idle, to: :reviewed do
+        execute :spec_structured_handoff_first_agent
+        on_success :second
+      end
+
+      transition :second, from: :reviewed, to: :done do
+        execute :spec_structured_handoff_second_agent
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.state).to eq(:done)
+    expect(second_messages).to eq(
+      [
+        { role: :user, content: "initial request" },
+        { role: :assistant, content: JSON.generate(structured_output) },
+        {
+          role: :user,
+          content: "Use the preceding assistant result as input and perform your assigned workflow step."
+        }
+      ]
+    )
+    expect(workflow.session_messages).to eq(
+      [
+        { role: :user, content: "initial request" },
+        { role: :assistant, content: structured_output },
+        { role: :assistant, content: "final output" }
+      ]
+    )
+  end
+
   it "recognizes restored string roles without mutating provider input" do
     workflow = workflow_class.allocate
     prepared_input = [

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "json"
+
 module Smith
   class Agent
     module InvocationPreparation
@@ -82,7 +84,29 @@ module Smith
                      else
                        message
                      end
+        attributes = provider_safe_message(attributes) if attributes.is_a?(Hash)
         chat.add_message(attributes)
+      end
+
+      # A structured agent output recorded as a session message (StepCompletion#append_accepted_output)
+      # carries a Hash/Array content. RubyLLM's Message#normalize_content treats a Hash content as
+      # { text:, ...attachments } and opens each value as a file, so replaying a prior structured
+      # output to the next agent in a workflow session raises Errno::ENOENT. Serialize non-string
+      # content to JSON so the provider sees the prior output as text; the session store keeps the raw
+      # value (last_output stays structured), only this provider-facing copy is serialized. Genuine
+      # multimodal attachments are supplied through the provider's own with: mechanism, never as a bare
+      # Hash message content in a workflow session.
+      def provider_safe_message(attributes)
+        content = attributes[:content]
+        return attributes if content.nil? || content.is_a?(String)
+
+        attributes.merge(content: json_message_content(content))
+      end
+
+      def json_message_content(content)
+        JSON.generate(content)
+      rescue StandardError
+        content.to_s
       end
 
       def message_role(message)
