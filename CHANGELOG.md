@@ -129,6 +129,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   billed needs to tell them apart. Messages never ride the trace. Hosts with a
   `trace_fields` allowlist for `:provider_call` must add `:error_class` and
   `:error_cause_class` to receive them.
+- `inject_state` injects only non-blank text. A formatter returning `nil` or
+  whitespace-only text no longer adds a bare `[smith:injected-state]` system
+  message, and when a formatter that returned text now returns blank, the
+  stale injected-state message is removed from session history. Injection
+  remains one linear scan over the session.
 - Restore and timestamp asymmetries. The `provider` in
   `last_agent_execution`, read by `DeterministicStep#last_agent_provider`,
   restores as the Symbol a live run holds where it restored as a String.

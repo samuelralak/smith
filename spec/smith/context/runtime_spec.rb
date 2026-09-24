@@ -250,6 +250,50 @@ RSpec.describe "Smith::Context runtime contract" do
     )
   end
 
+  describe "blank injected state" do
+    let(:blank_injection_workflow) do
+      manager = with_stubbed_class("SpecBlankInjectionContext", context_class) do
+        inject_state { |persisted| persisted[:summary] }
+      end
+
+      with_stubbed_class("SpecBlankInjectionWorkflow", workflow_class) do
+        context_manager manager
+        initial_state :idle
+        state :done
+
+        transition :finish, from: :idle, to: :done do
+          execute :spec_context_agent
+        end
+      end
+    end
+
+    it "injects nothing when the formatter returns nil or blank text" do
+      [nil, "", " \n\t"].each do |summary|
+        workflow = blank_injection_workflow.new(context: { summary: })
+        workflow.instance_variable_set(:@session_messages, [{ role: :user, content: "latest" }])
+
+        workflow.run!
+
+        expect(workflow.session_messages).to eq([{ role: :user, content: "latest" }])
+        expect(workflow.last_prepared_input).to eq([{ role: :user, content: "latest" }])
+      end
+    end
+
+    it "removes a stale injected-state message when the formatter now returns blank text" do
+      workflow = blank_injection_workflow.new(context: { summary: "summary: first" })
+      workflow.instance_variable_set(:@session_messages, [{ role: :user, content: "latest" }])
+      workflow.run!
+
+      workflow.instance_variable_set(:@state, :idle)
+      workflow.instance_variable_set(:@next_transition_name, nil)
+      workflow.instance_variable_set(:@context, { summary: nil })
+      workflow.run!
+
+      expect(workflow.session_messages).to eq([{ role: :user, content: "latest" }])
+      expect(workflow.last_prepared_input).to eq([{ role: :user, content: "latest" }])
+    end
+  end
+
   it "appends accepted workflow output to stored session messages" do
     agent = with_stubbed_class("SpecAcceptedSessionAgent", agent_class) do
       register_as :spec_accepted_session_agent
