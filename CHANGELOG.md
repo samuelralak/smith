@@ -8,6 +8,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Added
 
+- `fallback_models` accepts a context block, matching the dynamic
+  `model { |context| ... }`. `fallback_models { |context| [...] }` is evaluated
+  once per agent invocation with the workflow context, and its entries pass
+  exactly the static form's validation: every entry needs an explicit
+  provider. An unqualified or invalid entry fails the step with
+  `Smith::WorkflowError` before any provider attempt, and that error is not
+  retried: `Smith::Errors.retryable?` is false for it, so a `retry_on` without
+  error classes, `retry_on Smith::AgentError`, and host retries built on
+  `Smith::Errors.retryable_classes` all leave it failed, unlike an invalid
+  `model` block result, which raises the retryable `Smith::AgentError`. The
+  chain keeps its de-duplication. Declaring entries and a block together raises
+  `ArgumentError`; a later static declaration clears the block and a later
+  block clears the static list; subclasses inherit the block. Graph
+  inspection, runtime readiness, and the doctor model check never call the
+  block: `fallback_models` returns `nil` for the block form and
+  `fallback_models_block` exposes the block. `resolve_fallback_models(context)`
+  evaluates the block, or returns the static qualified list (empty when none
+  is declared) when no block is configured. Resolution is `O(F)` time and
+  space for `F` returned entries. The static form is unchanged.
 - Every `:provider_call` trace carries `agent_name`, the registered name of
   the agent that made the attempt (the value its usage entries carry), so a
   generator and an evaluator sharing one `optimize` round, and so one

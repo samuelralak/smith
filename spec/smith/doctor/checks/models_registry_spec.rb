@@ -167,4 +167,18 @@ RSpec.describe Smith::Doctor::Checks::ModelsRegistry do
     check = report.checks.find { |c| c.name == "models.coverage" }
     expect(check.status).to eq(:pass)
   end
+
+  it "skips block-form fallback models without resolving them" do
+    with_stubbed_class("SpecDoctorDynamicFallbackAgent", agent_class) do
+      register_as :spec_doctor_dynamic_fallback_agent
+      model "claude-sonnet-4-6", provider: :anthropic
+      fallback_models { |_context| raise "fallback block resolved by the doctor" }
+    end
+
+    report = Smith::Doctor::Report.new
+    described_class.run(report)
+
+    check = report.checks.find { |c| c.name == "models.coverage" }
+    expect(check.status).to eq(:pass)
+  end
 end

@@ -30,6 +30,7 @@ module Smith
         subclass.instance_variable_set(:@output_schema_class, @output_schema_class)
         subclass.instance_variable_set(:@data_volume, @data_volume)
         subclass.instance_variable_set(:@fallback_models_list, @fallback_models_list&.dup&.freeze)
+        subclass.instance_variable_set(:@fallback_models_block, @fallback_models_block)
         subclass.instance_variable_set(:@model_block, @model_block)
         subclass.instance_variable_set(:@tool_budget_exhaustion, @tool_budget_exhaustion)
         subclass.instance_variable_set(:@execution_identity, nil)

@@ -68,6 +68,8 @@ module Smith
       end
 
       def fallback_model_references(agent_class)
+        return agent_class.resolve_fallback_models(@context || {}) if agent_class.fallback_models_block
+
         Array(agent_class.fallback_models).map { |model| ModelReference.coerce(model) }
       end
 

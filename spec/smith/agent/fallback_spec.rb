@@ -1189,4 +1189,144 @@ RSpec.describe "Smith::Agent fallback model chains" do
     expect(result.usage_entries.map(&:attempt_kind)).to eq(%i[partial_attempt failed_attempt])
     expect(result.total_tokens).to eq(20)
   end
+
+  describe "block-form fallback_models" do
+    it "stores the block, clears the static list, and passes the block to subclasses" do
+      parent = with_stubbed_class("SpecFallbackBlockStorageAgent", agent_class) do
+        model "gpt-5-mini", provider: :openai
+        fallback_models({ model: "gpt-4.1-mini", provider: :openai })
+        fallback_models { |_ctx| [{ model: "gpt-4.1-nano", provider: :openai }] }
+      end
+      child = Class.new(parent)
+      redeclared = Class.new(parent) { fallback_models({ model: "gpt-4.1-mini", provider: :openai }) }
+
+      expect(parent.fallback_models_block).to be_a(Proc)
+      expect(parent.fallback_models).to be_nil
+      expect(child.fallback_models_block).to equal(parent.fallback_models_block)
+      expect(redeclared.fallback_models_block).to be_nil
+      expect(redeclared.fallback_models.map(&:to_h)).to eq([{ model_id: "gpt-4.1-mini", provider: :openai }])
+    end
+
+    it "resolves to the static qualified list when no block is configured" do
+      static = Class.new(agent_class) { fallback_models("openai/gpt-4.1-mini", "openai/gpt-4.1-mini") }
+      bare = Class.new(agent_class)
+
+      expect(static.resolve_fallback_models({}).map(&:to_h)).to eq([{ model_id: "gpt-4.1-mini", provider: :openai }])
+      expect(bare.resolve_fallback_models({})).to eq([])
+    end
+
+    it "rejects entries and a block in the same declaration" do
+      expect do
+        Class.new(agent_class) { fallback_models("openai/gpt-4.1-mini") { |_ctx| [] } }
+      end.to raise_error(ArgumentError, /entries OR a block/)
+    end
+
+    it "resolves the block with the workflow context at invocation time" do
+      agent = with_stubbed_class("SpecFallbackBlockResolveAgent", agent_class) do
+        register_as :spec_fallback_block_resolve
+        model "gpt-5-mini", provider: :openai
+        fallback_models do |ctx|
+          ctx[:tier] == "premium" ? [{ model: "claude-opus-4-7", provider: :anthropic }] : ["openai/gpt-4.1-nano"]
+        end
+      end
+      models_tried = []
+      allow(agent).to receive(:chat) do |**kwargs|
+        models_tried << [kwargs[:provider], kwargs[:model]]
+        chat = Object.new
+        chat.define_singleton_method(:add_message) { |_| nil }
+        chat.define_singleton_method(:with_schema) { |_| self }
+        if kwargs[:model] == "gpt-5-mini"
+          chat.define_singleton_method(:complete) { raise RubyLLM::ServerError, "primary down" }
+        else
+          chat.define_singleton_method(:complete) do
+            Struct.new(:content, :input_tokens, :output_tokens).new("fallback ok", 5, 3)
+          end
+        end
+        chat
+      end
+      workflow = with_stubbed_class("SpecFallbackBlockResolveWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+        transition :go, from: :idle, to: :done do
+          execute :spec_fallback_block_resolve
+        end
+      end
+
+      outputs = %w[premium standard].map { |tier| workflow.new(context: { tier: }).run!.output }
+
+      expect(outputs).to eq(["fallback ok", "fallback ok"])
+      expect(models_tried).to eq(
+        [
+          [:openai, "gpt-5-mini"], [:anthropic, "claude-opus-4-7"],
+          [:openai, "gpt-5-mini"], [:openai, "gpt-4.1-nano"]
+        ]
+      )
+    end
+
+    it "validates block entries exactly as the static form and fails closed before any attempt" do
+      agent = with_stubbed_class("SpecFallbackBlockUnqualifiedAgent", agent_class) do
+        register_as :spec_fallback_block_unqualified
+        model "gpt-5-mini", provider: :openai
+        fallback_models { |_ctx| ["gpt-4.1-mini"] }
+      end
+      allow(agent).to receive(:chat)
+      workflow = with_stubbed_class("SpecFallbackBlockUnqualifiedWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+        state :failed
+        transition :go, from: :idle, to: :done do
+          execute :spec_fallback_block_unqualified
+          on_failure :fail
+        end
+      end.new
+
+      result = workflow.run!
+
+      expect(result.state).to eq(:failed)
+      expect(result.last_error).to be_a(workflow_error)
+      expect(result.last_error.message).to match(/must include an explicit provider/)
+      expect(agent).not_to have_received(:chat)
+    end
+
+    it "keeps the chain de-duplication for block entries" do
+      agent = with_stubbed_class("SpecFallbackBlockDedupAgent", agent_class) do
+        model "gpt-5-mini"
+        fallback_models do |_ctx|
+          [
+            { model: "gpt-5-mini", provider: :openai },
+            "openai/gpt-4.1-nano",
+            { model: "gpt-4.1-nano", provider: :openai }
+          ]
+        end
+      end
+
+      chain = workflow_class.new.send(:build_model_chain, agent)
+
+      expect(chain.map(&:to_h)).to eq(
+        [
+          { model_id: "gpt-5-mini", provider: nil },
+          { model_id: "gpt-4.1-nano", provider: :openai }
+        ]
+      )
+    end
+
+    it "is never resolved by graph inspection or runtime readiness" do
+      agent = with_stubbed_class("SpecFallbackBlockLazyAgent", agent_class) do
+        register_as :spec_fallback_block_lazy
+        model "claude-sonnet-4-6", provider: :anthropic
+        fallback_models { |_ctx| raise "fallback block resolved during static inspection" }
+      end
+      workflow = with_stubbed_class("SpecFallbackBlockLazyWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+        transition :go, from: :idle, to: :done do
+          execute :spec_fallback_block_lazy
+        end
+      end
+
+      expect(workflow.validate_graph).to be_valid
+      expect(workflow.runtime_readiness).to be_ready
+      expect(agent.fallback_models).to be_nil
+    end
+  end
 end
