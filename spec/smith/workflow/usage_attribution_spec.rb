@@ -235,6 +235,58 @@ RSpec.describe "Smith usage attribution and provider-call timing" do
       expect(provider_calls.first[:data][:attempt_id]).to match(/\A[0-9a-f-]{36}\z/)
     end
 
+    it "records a bounded error class, never the message, on failed and aborted provider_call traces" do
+      long_name = "SpecProviderCallFailure#{"Long" * 150}"
+      stub_const(long_name, Class.new(RubyLLM::ServerError))
+
+      provider_calls_for = lambda do |label, error_class|
+        agent = with_stubbed_class("SpecErrorClass#{label}Agent", agent_class) do
+          register_as :"spec_error_class_#{label.downcase}"
+          model "gpt-5-mini"
+          fallback_models ["anthropic/claude-sonnet-4-6"]
+        end
+        calls = Concurrent::AtomicFixnum.new(0)
+        allow(agent).to receive(:chat) do
+          chat = Object.new
+          chat.define_singleton_method(:add_message) { |_msg| nil }
+          chat.define_singleton_method(:with_schema) { |_s| self }
+          if calls.increment == 1
+            chat.define_singleton_method(:complete) { raise error_class, "secret prompt echo" }
+          else
+            chat.define_singleton_method(:complete) do
+              Struct.new(:content, :input_tokens, :output_tokens).new("recovered", 5, 3)
+            end
+          end
+          chat
+        end
+        workflow = with_stubbed_class("SpecErrorClass#{label}Workflow", workflow_class) do
+          initial_state :idle
+          state :done
+          state :failed
+
+          transition :finish, from: :idle, to: :done do
+            execute :"spec_error_class_#{label.downcase}"
+            on_failure :fail
+          end
+        end.new
+        trace_adapter = memory_trace_class.new
+        with_trace_adapter(trace_adapter) { workflow.run! }
+        trace_adapter.traces.select { |t| t[:type] == :provider_call }.map { |t| t[:data] }
+      end
+
+      failed, succeeded = provider_calls_for.call("Failed", Object.const_get(long_name))
+      aborted, = provider_calls_for.call("Aborted", ArgumentError)
+
+      expect(failed[:outcome]).to eq(:failure)
+      expect(failed[:error_class].bytesize).to eq(512)
+      expect(failed[:error_class]).to start_with("SpecProviderCallFailureLong").and end_with("...[truncated]")
+      expect(succeeded[:outcome]).to eq(:success)
+      expect(succeeded).not_to have_key(:error_class)
+      expect(aborted[:outcome]).to eq(:aborted)
+      expect(aborted[:error_class]).to eq("ArgumentError")
+      expect([failed, succeeded, aborted].flat_map(&:values).map(&:to_s).grep(/secret prompt echo/)).to be_empty
+    end
+
     it "suppresses provider_call traces when trace_provider_calls is false" do
       stubbed = with_stubbed_class("SpecUsageQuietAgent", agent_class) do
         register_as :spec_usage_quiet_agent
@@ -261,6 +313,152 @@ RSpec.describe "Smith usage attribution and provider-call timing" do
       end
 
       expect(trace_adapter.traces.select { |t| t[:type] == :provider_call }).to be_empty
+    end
+  end
+
+  describe "provider_call attempt facts" do
+    def provider_call_data(trace_adapter)
+      trace_adapter.traces.select { |t| t[:type] == :provider_call }.map { |t| t[:data] }
+    end
+
+    def run_traced_step(label, agent_name)
+      workflow = with_stubbed_class("SpecAttemptFacts#{label}Workflow", workflow_class) do
+        initial_state :idle
+        state :done
+
+        transition :finish, from: :idle, to: :done do
+          execute agent_name
+        end
+      end.new
+      trace_adapter = memory_trace_class.new
+      result = nil
+      with_trace_adapter(trace_adapter) { result = workflow.run! }
+      [result, provider_call_data(trace_adapter)]
+    end
+
+    def stub_failing_primary(agent, failure)
+      calls = Concurrent::AtomicFixnum.new(0)
+      allow(agent).to receive(:chat) do
+        chat = Object.new
+        chat.define_singleton_method(:add_message) { |_msg| nil }
+        chat.define_singleton_method(:with_schema) { |_s| self }
+        if calls.increment == 1
+          chat.define_singleton_method(:complete) { failure.call }
+        else
+          chat.define_singleton_method(:complete) do
+            Struct.new(:content, :input_tokens, :output_tokens).new("recovered", 7, 2)
+          end
+        end
+        chat
+      end
+    end
+
+    def run_with_failing_primary(label, failure)
+      agent_name = :"spec_attempt_facts_#{label.downcase}"
+      agent = with_stubbed_class("SpecAttemptFacts#{label}Agent", agent_class) do
+        register_as agent_name
+        model "gpt-5-mini"
+        fallback_models ["anthropic/claude-sonnet-4-6"]
+      end
+      stub_failing_primary(agent, failure)
+      run_traced_step(label, agent_name)
+    end
+
+    def attempt_usage(result, attempt_id)
+      entries = result.usage_entries.select { |entry| entry.attempt_id == attempt_id }
+      [entries.sum(&:input_tokens), entries.sum(&:output_tokens)]
+    end
+
+    it "carries a successful attempt's usage and agent name, which trace_content false does not hide" do
+      agent = with_stubbed_class("SpecAttemptUsageAgent", agent_class) do
+        register_as :spec_attempt_usage_agent
+        model "gpt-5-mini"
+      end
+      stub_chat_agent(agent, input_tokens: 11, output_tokens: 4)
+      original = Smith.config.trace_content
+
+      begin
+        Smith.configure { |config| config.trace_content = false }
+        result, (data, *) = run_traced_step("Usage", :spec_attempt_usage_agent)
+      ensure
+        Smith.configure { |config| config.trace_content = original }
+      end
+
+      expect(data).to include(outcome: :success, agent_name: :spec_attempt_usage_agent, input_tokens: 11,
+                              output_tokens: 4)
+      expect(attempt_usage(result, data[:attempt_id])).to eq([11, 4])
+      expect(data.keys).not_to include(:error_class, :error_cause_class)
+    end
+
+    it "carries the usage a failed attempt reported and omits usage it never reported" do
+      billed_failure = Class.new(RubyLLM::ServerError) do
+        def input_tokens = 13
+        def output_tokens = 0
+      end
+
+      billed_result, (billed, recovered) = run_with_failing_primary("Billed", -> { raise billed_failure, "down" })
+      _, (unbilled, _recovered) = run_with_failing_primary("Unbilled", -> { raise RubyLLM::ServerError, "down" })
+
+      expect(billed).to include(outcome: :failure, agent_name: :spec_attempt_facts_billed, input_tokens: 13,
+                                output_tokens: 0)
+      expect(attempt_usage(billed_result, billed[:attempt_id])).to eq([13, 0])
+      expect(recovered).to include(outcome: :success, input_tokens: 7, output_tokens: 2)
+      expect(unbilled).to include(outcome: :failure, agent_name: :spec_attempt_facts_unbilled)
+      expect(unbilled.keys).not_to include(:input_tokens, :output_tokens)
+    end
+
+    it "names the class of a failed attempt's error cause, never its message" do
+      _, (wrapped, succeeded) = run_with_failing_primary(
+        "Wrapped", -> { raise Faraday::ConnectionFailed, EOFError.new("secret connection text") }
+      )
+      _, (caused, _succeeded) = run_with_failing_primary(
+        "Caused", lambda {
+          begin
+            raise Errno::ECONNRESET, "secret reset text"
+          rescue Errno::ECONNRESET
+            raise RubyLLM::ServerError, "down"
+          end
+        }
+      )
+      _, (uncaused, _succeeded) = run_with_failing_primary("Uncaused", -> { raise RubyLLM::ServerError, "down" })
+
+      expect(wrapped).to include(error_class: "Faraday::ConnectionFailed", error_cause_class: "EOFError")
+      expect(caused).to include(error_class: "RubyLLM::ServerError", error_cause_class: "Errno::ECONNRESET")
+      expect(uncaused).to include(error_class: "RubyLLM::ServerError")
+      expect(uncaused).not_to have_key(:error_cause_class)
+      expect(succeeded.keys).not_to include(:error_class, :error_cause_class)
+      expect([wrapped, caused].flat_map(&:values).map(&:to_s).grep(/secret/)).to be_empty
+    end
+
+    it "names the generator and the evaluator attempts of one optimize round apart" do
+      generator = with_stubbed_class("SpecAttemptGenerator", agent_class) do
+        register_as :spec_attempt_generator
+        model "gpt-5-mini"
+      end
+      evaluator = with_stubbed_class("SpecAttemptEvaluator", agent_class) do
+        register_as :spec_attempt_evaluator
+        model "gpt-5-mini"
+      end
+      stub_chat_agent(generator, content: "draft", input_tokens: 9, output_tokens: 6)
+      stub_chat_agent(evaluator, content: { accept: true, feedback: nil }, input_tokens: 4, output_tokens: 1)
+      schema = Class.new
+      workflow = with_stubbed_class("SpecAttemptOptimizeWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+
+        transition :improve, from: :idle, to: :done do
+          optimize generator: :spec_attempt_generator, evaluator: :spec_attempt_evaluator,
+                   max_rounds: 2, evaluator_schema: schema
+        end
+      end.new
+      trace_adapter = memory_trace_class.new
+
+      with_trace_adapter(trace_adapter) { workflow.run! }
+
+      generated, evaluated = provider_call_data(trace_adapter)
+      expect([generated[:transition], generated[:round]]).to eq([evaluated[:transition], evaluated[:round]])
+      expect(generated).to include(agent_name: :spec_attempt_generator, input_tokens: 9, output_tokens: 6)
+      expect(evaluated).to include(agent_name: :spec_attempt_evaluator, input_tokens: 4, output_tokens: 1)
     end
   end
 

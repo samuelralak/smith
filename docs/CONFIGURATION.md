@@ -135,6 +135,26 @@ observes a provider but finds only a model-only rate, it raises
 | `trace_normalizer` | Emit `:normalizer_decision` trace events from `Smith::Models::Normalizer` | Useful when debugging cross-provider request shaping |
 | `ruby_llm_model_registry` | `:database` to require an AR-backed RubyLLM model registry; `:bundled` for the JSON fallback | Leave at default unless you've migrated to DB-backed |
 
+### The `:provider_call` Trace
+
+With `trace_provider_calls` on, every provider attempt emits one
+`:provider_call` trace when it ends: `model`, `provider`, `attempt_id` (shared
+with the attempt's usage entries), `attempt_index` (its position in the
+fallback chain), `outcome` (`:success`, `:failure`, or `:aborted`), and
+`duration_ms` once the timed call started. `agent_name` is the registered name
+of the agent that made the attempt, so a generator and an evaluator sharing an
+optimize round stay apart. `input_tokens` and `output_tokens` total the
+provider-reported usage that the attempt's usage entries record (a completed
+tool-loop prefix, and a failed attempt's own reported usage); both are omitted
+when the provider reported none. A failed or aborted attempt adds `error_class`,
+and `error_cause_class` for the error's direct cause (`Exception#cause`, else a
+wrapping error's `wrapped_exception`, such as the `EOFError` inside a
+`Faraday::ConnectionFailed`), omitted when there is none. Class names and token
+counts are metadata, never content: `trace_content false` keeps them, messages
+never appear, and a `trace_fields` allowlist for `:provider_call` must name
+each field it wants. Ambient attribution (`transition`, `round`, and so on)
+merges in as for every trace.
+
 ### Recommended First Additions
 
 Add settings in this order:

@@ -27,10 +27,7 @@ module Smith
       EXCEPTION_CAUSE = Exception.instance_method(:cause)
       EXCEPTION_MESSAGE = Exception.instance_method(:message)
       MODULE_MATCH = Module.instance_method(:===)
-      MODULE_NAME = Module.instance_method(:name)
-      OBJECT_CLASS = Object.instance_method(:class)
-      private_constant :ERROR_FAMILIES, :BOOLEAN_VALUES, :EXCEPTION_CAUSE, :EXCEPTION_MESSAGE, :MODULE_MATCH,
-                       :MODULE_NAME, :OBJECT_CLASS
+      private_constant :ERROR_FAMILIES, :BOOLEAN_VALUES, :EXCEPTION_CAUSE, :EXCEPTION_MESSAGE, :MODULE_MATCH
 
       extend Dry::Initializer
 
@@ -52,7 +49,7 @@ module Smith
 
       def error_attributes(error)
         {
-          error_class: DiagnosticText.capture(error_class_name(error), max_bytes: 512),
+          error_class: DiagnosticText.error_class_name(error),
           error_family: error_family(error),
           error_message: error_message(error),
           error_retryable: retryable_value(error),
@@ -70,7 +67,7 @@ module Smith
       def cause_attributes(error)
         cause = uncertainty_cause(error)
         {
-          error_cause_class: cause && DiagnosticText.capture(error_class_name(cause), max_bytes: 512),
+          error_cause_class: cause && DiagnosticText.error_class_name(cause),
           error_cause_family: cause && error_family(cause),
           error_cause_message: cause && error_message(cause)
         }
@@ -87,11 +84,6 @@ module Smith
 
       def error_family(error)
         ERROR_FAMILIES.find { |error_class, _| MODULE_MATCH.bind_call(error_class, error) }&.last || "other"
-      end
-
-      def error_class_name(error)
-        error_class = OBJECT_CLASS.bind_call(error)
-        MODULE_NAME.bind_call(error_class) || "anonymous_error"
       end
 
       # Never captures blank text: restore requires non-empty messages, so

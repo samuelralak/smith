@@ -87,7 +87,7 @@ module Smith
       # completion, prefix accounting on failure); splitting it would scatter
       # the rescue-path accounting away from what it accounts for.
       def attempt_model(agent_class, prepared_input, model_reference, output_schema:, attempt_index:)
-        attempt_id = SecureRandom.uuid
+        facts = { attempt_id: SecureRandom.uuid, attempt_index:, agent_name: agent_class.register_as }
         chat = prepared_attempt_chat(agent_class, prepared_input, model_reference, output_schema:)
         message_count = chat_message_count(chat)
         observed_reference = observed_model_reference(chat, fallback: model_reference)
@@ -96,16 +96,14 @@ module Smith
         timer.stop
         completion = Completion.from_messages(response: response, messages: new_chat_messages(chat, message_count))
 
-        attempt = ProviderAttempt.success(
-          completion:, model_reference: observed_reference, attempt_id:, duration_ms: timer.elapsed_ms
-        )
-        record_provider_call_trace(attempt, attempt_index)
-        attempt
+        completed_provider_attempt(completion, observed_reference, timer, facts)
       rescue StandardError => e
         timer&.stop
         observed_reference ||= observed_model_reference(chat, fallback: model_reference)
-        account_completed_prefix(agent_class, observed_reference, new_chat_messages(chat, message_count), attempt_id:)
-        attempt = failed_provider_attempt(e, observed_reference, attempt_id, timer, attempt_index)
+        prefix_usages = account_completed_prefix(
+          agent_class, observed_reference, new_chat_messages(chat, message_count), attempt_id: facts[:attempt_id]
+        )
+        attempt = failed_provider_attempt(e, observed_reference, timer, facts, prefix_usages)
         raise unless provider_failure?(e)
 
         attempt

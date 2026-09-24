@@ -23,9 +23,12 @@ module Smith
         record_failed_usage(agent_class, model_reference, input, output, attempt_id:)
       end
 
+      # Returns the provider usages it recorded, so the attempt's trace can
+      # carry the same totals its usage entries hold.
       def account_completed_prefix(agent_class, model_reference, messages, attempt_id: nil)
         completion = Completion.from_messages(response: nil, messages: messages)
         record_completion_usage(agent_class, completion, :partial_attempt, model_reference, attempt_id:)
+        completion.provider_usages
       end
 
       def record_failed_usage(agent_class, model_reference, input_tokens, output_tokens, attempt_id: nil)

@@ -4,6 +4,39 @@ All notable changes to Smith are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Smith is pre-1.0 and under active development; expect occasional contract tightening between minor versions until 1.0.
 
+## Unreleased
+
+### Added
+
+- Every `:provider_call` trace carries `agent_name`, the registered name of
+  the agent that made the attempt (the value its usage entries carry), so a
+  generator and an evaluator sharing one `optimize` round, and so one
+  transition and round, stay apart; it is omitted for an unregistered agent.
+  When the provider reported usage, the trace also carries `input_tokens` and
+  `output_tokens`: the totals of the attempt's usage entries, covering a
+  successful completion, a failed attempt's completed tool-loop prefix, and
+  the usage a failed attempt's error reported. Both are omitted when the
+  provider reported none. A trace adapter can therefore record a complete
+  attempt when it ends instead of waiting for a step checkpoint. Token counts
+  are metadata, never content: `trace_content false` does not hide them.
+  Hosts with a `trace_fields` allowlist for `:provider_call` must add these
+  keys to receive them. The fields are documented in `docs/CONFIGURATION.md`.
+
+### Fixed
+
+- A failed or aborted attempt's `:provider_call` trace now carries
+  `error_class`: the exception's class name, bounded to 512 bytes by the
+  diagnostic text helper (`anonymous_error` for an anonymous class). It also
+  carries `error_cause_class`, the class name of the error's direct cause
+  (`Exception#cause`, else the error's `wrapped_exception`), captured the same
+  way and omitted when there is no cause: a `Faraday::ConnectionFailed`
+  wraps both never-connected causes (`Errno::ECONNREFUSED`, `SocketError`,
+  `Net::OpenTimeout`) and lost-after-sending ones (`EOFError`,
+  `Errno::ECONNRESET`), and a host deciding whether an attempt may have been
+  billed needs to tell them apart. Messages never ride the trace. Hosts with a
+  `trace_fields` allowlist for `:provider_call` must add `:error_class` and
+  `:error_cause_class` to receive them.
+
 ## [0.10.0] - 2026-08-24
 
 ### Added

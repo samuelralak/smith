@@ -20,6 +20,12 @@ module Smith
         new(input_tokens:, output_tokens:)
       end
 
+      def self.sum(usages)
+        return if usages.empty?
+
+        new(input_tokens: usages.sum(&:input_tokens), output_tokens: usages.sum(&:output_tokens))
+      end
+
       def total_tokens
         input_tokens + output_tokens
       end

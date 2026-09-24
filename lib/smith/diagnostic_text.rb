@@ -9,7 +9,10 @@ module Smith
     STRING_BYTESIZE = String.instance_method(:bytesize)
     STRING_BYTESLICE = String.instance_method(:byteslice)
     MODULE_MATCH = Module.instance_method(:===)
-    private_constant :TRUNCATION_MARKER, :STRING_BYTESIZE, :STRING_BYTESLICE, :MODULE_MATCH
+    MODULE_NAME = Module.instance_method(:name)
+    OBJECT_CLASS = Object.instance_method(:class)
+    private_constant :TRUNCATION_MARKER, :STRING_BYTESIZE, :STRING_BYTESLICE, :MODULE_MATCH, :MODULE_NAME,
+                     :OBJECT_CLASS
 
     extend Dry::Initializer
 
@@ -17,6 +20,12 @@ module Smith
     option :max_bytes, default: proc { MAX_BYTES }
 
     def self.capture(value, max_bytes: MAX_BYTES) = new(value, max_bytes:).call
+
+    # An error's class name, read through the native lookups so the error
+    # cannot misreport it, and bounded like any diagnostic identifier.
+    def self.error_class_name(error)
+      capture(MODULE_NAME.bind_call(OBJECT_CLASS.bind_call(error)) || "anonymous_error", max_bytes: 512)
+    end
 
     def call
       validate_limit!
