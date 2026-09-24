@@ -1100,6 +1100,30 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
         payload: { title: "Test artifact", insights: [{ text: "Insight" }] }
       )
     end
+
+    it "reads a String-keyed outcome identically live and after a JSON restore" do
+      klass = with_stubbed_class("SpecDetStringKeyedOutcomeWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+
+        transition :prepare, from: :idle, to: :done do
+          run do |step|
+            step.write_outcome(
+              kind: :artifact_ready,
+              payload: { "title" => "Test artifact", "insights" => [{ "text" => "Insight" }] }
+            )
+          end
+        end
+      end
+
+      workflow = klass.new
+      live = workflow.run!
+      restored = klass.from_state(JSON.parse(JSON.generate(workflow.to_state))).run!
+
+      expect(live.outcome_payload).to eq(title: "Test artifact", insights: [{ text: "Insight" }])
+      expect(restored.outcome_payload).to eq(live.outcome_payload)
+      expect(restored.outcome).to eq(live.outcome)
+    end
   end
 
   # ---------------------------------------------------------------------------

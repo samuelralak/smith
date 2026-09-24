@@ -38,7 +38,7 @@ module Smith
         @context.merge!(step.context_writes)
         step.context_writes.each_key { |key| record_persisted_key!(key) }
         @router_next_transition = step.routed_to if step.routed_to
-        @outcome = snapshot_value(step.outcome) if step.outcome
+        @outcome = symbolize_value(snapshot_value(step.outcome)) if step.outcome
       end
 
       def emit_deterministic_trace(transition, result:, routed_to: nil, error: nil, outcome_kind: nil)

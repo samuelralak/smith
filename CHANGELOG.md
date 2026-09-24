@@ -60,6 +60,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Changed
 
+- **Breaking:** a deterministic step's `write_outcome` is deep-symbolized
+  when written, matching restore. A live `RunResult#outcome_payload` (and
+  `RunResult#outcome`) now has Symbol keys at every depth, so a host reading
+  String keys from a live payload must switch to Symbol keys. Restored
+  payloads were already symbolized, so an outcome now reads identically live
+  and after a JSON restore. Persisted JSON is unchanged.
 - Contract tightening: `ActiveRecordStore` refuses to write with a non-nil
   TTL instead of silently ignoring it, since it has no expiry column.
   `store`, `store_versioned`, and `replace_exact` raise `ArgumentError`
