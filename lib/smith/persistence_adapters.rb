@@ -71,6 +71,16 @@ module Smith
     end
     private_class_method :build
 
+    # ActiveRecordStore's host table has no expiry column, so a TTL could
+    # only be ignored. Its writes fail closed instead of silently keeping
+    # state forever; reads and deletes never take a TTL and keep working.
+    def self.refuse_active_record_ttl!(ttl)
+      return if ttl.nil?
+
+      raise ArgumentError,
+            "ActiveRecordStore cannot expire workflow state; persistence_ttl must be nil, got #{ttl.inspect}"
+    end
+
     # Capability introspection used by Workflow#persist! to decide
     # whether the adapter supports optimistic locking via store_versioned.
     def self.supports?(adapter, capability)

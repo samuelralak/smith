@@ -59,8 +59,8 @@ module Smith
 
   # Persistence TTL in Integer seconds. nil (default) means workflows
   # persist indefinitely. Adapters that natively support TTL (Redis,
-  # CacheStore, Memory) pass this through; ActiveRecordStore TTL is
-  # deferred (would need an `expires_at` column + sweeper).
+  # CacheStore, Memory) pass this through; ActiveRecordStore has no expiry
+  # column and refuses a non-nil TTL.
   # Per-workflow `Workflow.persistence_ttl 1.day.to_i` DSL overrides this.
   setting :persistence_ttl, default: nil
 

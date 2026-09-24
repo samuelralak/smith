@@ -16,10 +16,8 @@ module Smith
         @persistence_identity = identity.to_s.dup.freeze if identity
       end
 
-      def store(key, payload, ttl: nil) # rubocop:disable Lint/UnusedMethodArgument
-        # TTL is deferred for ActiveRecordStore — would require an
-        # `expires_at` column + a periodic sweeper job. Ignored here;
-        # documented as a known limitation.
+      def store(key, payload, ttl: nil)
+        PersistenceAdapters.refuse_active_record_ttl!(ttl)
         Retry.with_retries(operation: :store, transient: ActiveRecordConnectionErrors.classes) do
           record = model_class.find_or_initialize_by(@key_column => key)
           record.public_send(:"#{@payload_column}=", payload)
@@ -47,9 +45,8 @@ module Smith
       # `lock_version` column. Requires the AR model to have a
       # `lock_version` (or configured) integer column with default 0.
       # If absent, raises ArgumentError directing the host to migrate.
-      def store_versioned(key, payload, expected_version:, ttl: nil) # rubocop:disable Lint/UnusedMethodArgument
-        ensure_version_column!
-        ensure_locking_configuration!
+      def store_versioned(key, payload, expected_version:, ttl: nil)
+        ensure_versioned_write!(ttl)
 
         write_versioned(key, payload, expected_version)
       rescue *ActiveRecordConnectionErrors.classes => e

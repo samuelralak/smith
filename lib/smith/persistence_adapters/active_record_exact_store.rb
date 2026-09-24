@@ -5,9 +5,8 @@ module Smith
     module ActiveRecordExactStore
       attr_reader :persistence_identity
 
-      def replace_exact(key, payload, expected_payload:, ttl: nil) # rubocop:disable Lint/UnusedMethodArgument
-        ensure_version_column!
-        ensure_locking_configuration!
+      def replace_exact(key, payload, expected_payload:, ttl: nil)
+        ensure_versioned_write!(ttl)
         model = model_class
         ensure_exact_schema!(model)
         ActiveRecordExactWrite.new(
@@ -24,6 +23,12 @@ module Smith
       end
 
       private
+
+      def ensure_versioned_write!(ttl)
+        PersistenceAdapters.refuse_active_record_ttl!(ttl)
+        ensure_version_column!
+        ensure_locking_configuration!
+      end
 
       def ensure_exact_schema!(model)
         ensure_exact_payload_column!(model)

@@ -205,11 +205,12 @@ module Smith
         #
         # Wiring contract: when the resolved TTL is non-nil,
         # Workflow#persist! forwards it to the adapter as a `ttl:`
-        # kwarg. Shipped adapters (Memory, RedisStore, CacheStore,
-        # ActiveRecordStore) accept this kwarg; external duck-typed
-        # adapters that implement only the bare REQUIRED_METHODS contract
-        # without a `ttl:` kwarg will only break when a host actually
-        # opts into TTL.
+        # kwarg. Memory, RedisStore, and CacheStore honour it;
+        # ActiveRecordStore cannot expire state and refuses a non-nil TTL
+        # before writing, which a persisted run reaches before its first
+        # step. External duck-typed adapters that implement only the bare
+        # REQUIRED_METHODS contract without a `ttl:` kwarg will only break
+        # when a host actually opts into TTL.
         def persistence_ttl(seconds = nil)
           return @persistence_ttl if seconds.nil?
 

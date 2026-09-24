@@ -21,6 +21,73 @@ RSpec.describe Smith::PersistenceAdapters::ActiveRecordStore, :ar do
     expect(second.lock_version).to eq(1)
   end
 
+  it "refuses a TTL on every write before touching the database" do
+    adapter.store_versioned("kept", payload(1), expected_version: 0)
+    kept = SmithWorkflowStateRecord.find_by!(key: "kept").payload
+    writes = [
+      -> { adapter.store("expiring", payload(1), ttl: 60) },
+      -> { adapter.store_versioned("expiring", payload(1), expected_version: 0, ttl: 60) },
+      -> { adapter.replace_exact("kept", payload(2), expected_payload: kept, ttl: 60) }
+    ]
+
+    writes.each do |write|
+      expect { write.call }.to raise_error(ArgumentError, /cannot expire workflow state/)
+    end
+    expect(SmithWorkflowStateRecord.where(key: "expiring")).to be_empty
+    expect(SmithWorkflowStateRecord.find_by!(key: "kept").payload).to eq(kept)
+
+    adapter.store("plain", payload(1), ttl: nil)
+    expect(SmithWorkflowStateRecord.find_by!(key: "plain").payload).to eq(payload(1))
+  end
+
+  it "refuses a workflow TTL before any step of a persisted run executes" do
+    step_ran = false
+    workflow = with_stubbed_class("SpecActiveRecordTtlWorkflow", Smith::Workflow) do
+      persistence_ttl 60
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done do
+        compute { |_step| step_ran = true }
+      end
+    end
+
+    expect do
+      workflow.run_persisted!(key: "ttl-workflow", adapter:)
+    end.to raise_error(ArgumentError, /cannot expire workflow state/)
+    expect(step_ran).to be(false)
+    expect(SmithWorkflowStateRecord.where(key: "ttl-workflow")).to be_empty
+  end
+
+  it "reads and clears persisted state through the configured adapter while a global TTL is set" do
+    settings = %i[persistence_adapter persistence_options persistence_ttl]
+    original = settings.to_h { |name| [name, Smith.config.public_send(name)] }
+    workflow = with_stubbed_class("SpecActiveRecordGlobalTtlReadWorkflow", Smith::Workflow) do
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done
+    end
+    workflow.new.persist!("ttl-read", adapter:)
+    Smith.configure do |config|
+      config.persistence_adapter = :active_record
+      config.persistence_options = { model: "SmithWorkflowStateRecord" }
+      config.persistence_ttl = 3600
+    end
+
+    restored = workflow.restore("ttl-read")
+
+    expect(restored.state).to eq(:idle)
+    expect(workflow.persisted_state_exists?(key: "ttl-read")).to be(true)
+    expect(workflow.stuck_for?(persistence_key: "ttl-read", threshold: 3600)).to be(false)
+    expect(workflow.heartbeat_age(persistence_key: "ttl-read")).to be_a(Float)
+    expect { restored.run_persisted!("ttl-read") }.to raise_error(ArgumentError, /cannot expire workflow state/)
+    restored.clear_persisted!("ttl-read")
+    expect(workflow.persisted_state_exists?(key: "ttl-read")).to be(false)
+  ensure
+    Smith.configure { |config| original.each { |name, value| config.public_send(:"#{name}=", value) } }
+  end
+
   it "atomically replaces only the exact current payload" do
     original = payload(1).sub("}", ',"phase":"prepared"}')
     claimed = payload(1).sub("}", ',"phase":"dispatching"}')

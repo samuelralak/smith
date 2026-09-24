@@ -217,10 +217,12 @@ message batch, appends it under Smith's workflow lifecycle lock, and returns an
 immutable digest witness. The host still owns session identity, transaction
 coordination, persistence, idempotency, and resume policy.
 
-Built-in adapters (all support TTL where the backend allows; `Redis`,
-`ActiveRecord`, and `Memory` support optimistic locking via `store_versioned`
-and exact dispatch claims via `replace_exact`; `ActiveRecord` participates in
-the caller's transaction for host-record coordination;
+Built-in adapters (all except `ActiveRecord` support TTL; `ActiveRecord` has no
+expiry column, so its writes refuse a non-nil `persistence_ttl`, while reads and
+deletes keep working and `smith doctor --durability` flags the combination;
+`Redis`, `ActiveRecord`, and `Memory` support optimistic locking via
+`store_versioned` and exact dispatch claims via `replace_exact`; `ActiveRecord`
+participates in the caller's transaction for host-record coordination;
 `Redis` and `Memory` also support heartbeat probes via `record_heartbeat` /
 `last_heartbeat`):
 

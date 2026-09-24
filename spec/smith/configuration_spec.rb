@@ -137,4 +137,32 @@ RSpec.describe "Smith configuration contract" do
       config.persistence_options = original_options
     end
   end
+
+  it "resolves an ActiveRecordStore adapter while a persistence TTL is configured, cached or not" do
+    original_adapter = Smith.config.persistence_adapter
+    original_options = Smith.config.persistence_options
+    original_ttl = Smith.config.persistence_ttl
+
+    Smith.configure do |config|
+      config.persistence_adapter = :active_record
+      config.persistence_options = { model: "SmithWorkflowStateRecord", identity: "primary:workflow-states" }
+      config.persistence_ttl = nil
+    end
+    resolved = Smith.persistence_adapter
+
+    Smith.configure { |config| config.persistence_ttl = 3600 }
+
+    cached = Smith.persistence_adapter
+    Smith.instance_variable_set(:@_persistence_adapter_signature, nil)
+
+    expect(resolved).to be_a(Smith::PersistenceAdapters::ActiveRecordStore)
+    expect(cached).to equal(resolved)
+    expect(Smith.persistence_adapter).to be_a(Smith::PersistenceAdapters::ActiveRecordStore)
+  ensure
+    Smith.configure do |config|
+      config.persistence_adapter = original_adapter
+      config.persistence_options = original_options
+      config.persistence_ttl = original_ttl
+    end
+  end
 end

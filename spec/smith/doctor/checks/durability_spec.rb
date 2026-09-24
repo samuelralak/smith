@@ -21,6 +21,31 @@ RSpec.describe Smith::Doctor::Checks::Durability do
     end
   end
 
+  it "fails the TTL check when the ActiveRecord adapter is configured with a persistence TTL", :ar do
+    settings = %i[persistence_adapter persistence_options persistence_ttl]
+    original = settings.to_h { |name| [name, Smith.config.public_send(name)] }
+    Smith.configure do |c|
+      c.persistence_adapter = :active_record
+      c.persistence_options = { model: "SmithWorkflowStateRecord" }
+      c.persistence_ttl = 3600
+    end
+
+    report = Smith::Doctor::Report.new
+    described_class.run(report)
+    Smith.configure { |c| c.persistence_ttl = nil }
+    untimed = Smith::Doctor::Report.new
+    described_class.run(untimed)
+
+    check = report.checks.find { |c| c.name == "durability.ttl" }
+    expect(check.status).to eq(:fail)
+    expect(check.message).to eq("ActiveRecordStore cannot expire workflow state; persistence_ttl must be nil")
+    expect(check.detail).to include("3600")
+    expect(report.checks.find { |c| c.name == "durability.persist_restore" }.status).to eq(:pass)
+    expect(untimed.checks.map(&:name)).not_to include("durability.ttl")
+  ensure
+    Smith.configure { |c| original.each { |name, value| c.public_send(:"#{name}=", value) } }
+  end
+
   it "passes persist_restore and resume_after_restore with working adapter" do
     store = {}
     adapter = Object.new

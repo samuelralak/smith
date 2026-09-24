@@ -31,8 +31,24 @@ module Smith
           )
           return
         else
+          check_ttl_support(report, adapter)
           check_persist_and_restore(report, adapter)
           check_resume_after_restore(report, adapter)
+        end
+
+        # ActiveRecordStore refuses every write that carries a TTL, so a
+        # configured global TTL would fail the first persisted run.
+        def self.check_ttl_support(report, adapter)
+          ttl = ::Smith.config.persistence_ttl
+          return if ttl.nil? || !adapter.is_a?(::Smith::PersistenceAdapters::ActiveRecordStore)
+
+          report.add(
+            name: "durability.ttl",
+            status: :fail,
+            message: "ActiveRecordStore cannot expire workflow state; persistence_ttl must be nil",
+            detail: "Smith.config.persistence_ttl is #{ttl.inspect}, so every persisted write refuses it. " \
+                    "Set it to nil, or use an adapter that honours TTL."
+          )
         end
 
         def self.check_persist_and_restore(report, adapter)

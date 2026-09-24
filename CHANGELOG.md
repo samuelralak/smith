@@ -60,6 +60,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Changed
 
+- Contract tightening: `ActiveRecordStore` refuses to write with a non-nil
+  TTL instead of silently ignoring it, since it has no expiry column.
+  `store`, `store_versioned`, and `replace_exact` raise `ArgumentError`
+  before touching the database. Reads and deletes take no TTL, and resolving
+  the adapter never refuses, so `restore`, `persisted_state_exists?`,
+  `clear_persisted!`, `stuck_for?`, and `heartbeat_age` keep working while a
+  TTL is configured. A global or per-workflow `persistence_ttl` with this
+  adapter is refused by the initial checkpoint that `run_persisted!` and
+  `advance_persisted!` write before their first step, so no step runs before
+  the refusal. A nil TTL (the default) is unaffected. `smith doctor
+  --durability` fails a new `durability.ttl` check when the configured
+  adapter is an `ActiveRecordStore` and `Smith.config.persistence_ttl` is
+  set. The README, `docs/CONFIGURATION.md`, and the `persistence_ttl` DSL
+  comment no longer claim this adapter honours TTL.
 - Contract tightening: workflow and agent `budget` declarations raise
   `ArgumentError`, naming the accepted keys, when given a key Smith does not
   read; previously such a key was accepted and ignored. Workflow budgets
