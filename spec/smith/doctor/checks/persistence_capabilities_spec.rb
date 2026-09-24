@@ -33,6 +33,25 @@ RSpec.describe Smith::Doctor::Checks::PersistenceCapabilities do
     expect(check.message).to match(/No persistence adapter configured/)
   end
 
+  it "reports an adapter that fails to resolve as that failure, not as a missing adapter" do
+    original_options = Smith.config.persistence_options
+    Smith.configure do |c|
+      c.persistence_adapter = :cache_store
+      c.persistence_options = {}
+      c.test_mode = false
+    end
+
+    report = Smith::Doctor::Report.new
+    described_class.run(report)
+
+    check = report.checks.find { |c| c.name == "persistence.capabilities" }
+    expect(check.status).to eq(:fail)
+    expect(check.message).to eq("Persistence adapter configuration is invalid")
+    expect(check.detail).to include("store")
+  ensure
+    Smith.configure { |c| c.persistence_options = original_options }
+  end
+
   it "passes when the configured adapter supports all optional capabilities" do
     Smith.configure do |c|
       c.persistence_adapter = Smith::PersistenceAdapters::Memory.new

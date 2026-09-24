@@ -167,6 +167,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   failed with nothing spent). Integers keep floor division; a Float steps
   down in `O(1)` ulp steps. Amounts stay Integer or Float in and JSON-safe
   numerics out.
+- `smith doctor`'s `persistence.capabilities` check reports an adapter that
+  fails to resolve as a failed "Persistence adapter configuration is invalid"
+  check carrying the resolution error, where it reported "No persistence
+  adapter configured".
+- A swallowed `on_step:` callback error is logged with its class after the
+  message (`Smith::Workflow on_step callback error: <message> (<class>)`),
+  where only the message was logged. It is still swallowed.
 
 ## [0.10.0] - 2026-08-24
 

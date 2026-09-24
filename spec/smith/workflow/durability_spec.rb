@@ -146,6 +146,25 @@ RSpec.describe "Smith::Workflow durability helpers" do
     Smith.configure { |config| config.logger = original_logger }
   end
 
+  it "names the class of a swallowed step callback error beside its message" do
+    klass = with_stubbed_class("SpecOnStepFailureClassWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done
+    end
+    logger = instance_double("Logger", error: nil, warn: nil)
+    original_logger = Smith.config.logger
+    Smith.configure { |config| config.logger = logger }
+
+    result = klass.new.run_persisted!("wf:on-step-class", adapter:, on_step: ->(_step) { raise KeyError, "missing" })
+
+    expect(result.state).to eq(:done)
+    expect(logger).to have_received(:error).with("Smith::Workflow on_step callback error: missing (KeyError)")
+  ensure
+    Smith.configure { |config| config.logger = original_logger }
+  end
+
   it "supports a declarative persistence_key for class-level convenience calls" do
     klass = with_stubbed_class("SpecDerivedKeyWorkflow", workflow_class) do
       persistence_key { |ctx| "workflow:#{ctx[:ticket_id]}" }

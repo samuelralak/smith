@@ -17,19 +17,16 @@ module Smith
         OPTIONAL_CAPABILITIES = Smith::PersistenceAdapters::OPTIONAL_METHODS
 
         def run(report)
-          adapter = resolve_adapter
+          adapter = Smith.persistence_adapter
+        rescue StandardError => e
+          report_invalid_adapter(report, e)
+        else
           return report_missing_adapter(report) if adapter.nil?
 
           missing = OPTIONAL_CAPABILITIES.reject { |cap| capability_available?(adapter, cap) }
           return report_supported_capabilities(report, adapter) if missing.empty?
 
           report_missing_capabilities(report, adapter, missing)
-        end
-
-        def resolve_adapter
-          Smith.persistence_adapter
-        rescue StandardError
-          nil
         end
 
         def capability_available?(adapter, capability)
@@ -40,6 +37,15 @@ module Smith
           identity.is_a?(String) && !identity.empty? && identity.bytesize <= 256
         rescue StandardError
           false
+        end
+
+        def report_invalid_adapter(report, error)
+          report.add(
+            name: "persistence.capabilities",
+            status: :fail,
+            message: "Persistence adapter configuration is invalid",
+            detail: error.message
+          )
         end
 
         def report_missing_adapter(report)

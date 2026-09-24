@@ -389,7 +389,7 @@ module Smith
       def invoke_on_step_callback(step, callback)
         callback&.call(step)
       rescue StandardError => e
-        Smith.config.logger&.error("Smith::Workflow on_step callback error: #{e.message}")
+        Smith.config.logger&.error("Smith::Workflow on_step callback error: #{e.message} (#{e.class})")
       end
     end
   end
