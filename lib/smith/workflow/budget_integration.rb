@@ -22,7 +22,7 @@ module Smith
         return nil unless ledger
 
         ledger.limits.each_with_object({}) do |(dim, _limit), est|
-          per_branch = estimate_for_dimension(dim, ledger.remaining(dim), branch_count)
+          per_branch = estimate_for_dimension(dim, ledger.remaining_share(dim, branch_count))
           cap = agent_cap_for_dimension(dim, agent_budget)
           est[dim] = cap ? [per_branch, cap].min : per_branch
         end
@@ -117,10 +117,10 @@ module Smith
         { branch: branch_key, agent: agent_name, output: agent_result ? agent_result.content : result }
       end
 
-      def estimate_for_dimension(dim, limit, branch_count)
+      def estimate_for_dimension(dim, share)
         return 0 unless BUDGET_DIMENSIONS.include?(dim)
 
-        TOKEN_DIMENSIONS.include?(dim) ? [limit / branch_count, 1].max : limit / branch_count
+        TOKEN_DIMENSIONS.include?(dim) ? [share, 1].max : share
       end
 
       def agent_cap_for_dimension(dim, agent_budget)

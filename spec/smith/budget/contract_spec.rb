@@ -200,6 +200,27 @@ RSpec.describe "Smith budget ledger contract" do
     expect(ledger.remaining(:cost)).to eq(10.0)
   end
 
+  it "reserves its reported remaining amount after Float cost settlements" do
+    ledger = ledger_class.new(limits: { total_cost: 0.5 })
+    costs = [(3295 * 5e-06) + (1075 * 2.5e-05), (2990 * 5e-06) + (496 * 2.5e-05)]
+    costs.each { |cost| ledger.reconcile!(ledger.reserve!(:total_cost, ledger.remaining(:total_cost)), cost) }
+    exact_remaining = BigDecimal("0.5") - costs.sum { BigDecimal(_1.to_s) }
+    remaining = ledger.remaining(:total_cost)
+
+    expect(ledger.consumed).to eq(total_cost: 0.0707)
+    expect(BigDecimal(remaining.to_s)).to be <= exact_remaining
+    expect { ledger.reserve!(:total_cost, remaining) }.not_to raise_error
+  end
+
+  it "splits the remaining amount into shares that all fit" do
+    ledger = ledger_class.new(limits: { total_cost: 0.2, tokens: 10 })
+    cost_share = ledger.remaining_share(:total_cost, 3)
+
+    expect(ledger.remaining_share(:tokens, 3)).to eq(3)
+    expect { 3.times { ledger.reserve!(:total_cost, cost_share) } }.not_to raise_error
+    expect(cost_share).to be_within(1e-15).of(0.2 / 3)
+  end
+
   it "fences reservations by identity and consumes them exactly once" do
     ledger = build_ledger(limit: 10)
     first = ledger.reserve!(:tokens, 5)

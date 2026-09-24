@@ -24,6 +24,24 @@ RSpec.describe "Smith::Agent contract" do
     expect(child.tool_budget_exhaustion).to eq(:complete)
   end
 
+  it "accepts every agent budget key Smith reads" do
+    concrete = Class.new(agent_class) do
+      budget token_limit: 10, cost: 0.1, wall_clock: 5, tool_calls: 2, total_tokens: 10, total_cost: 0.1
+    end
+
+    expect(concrete.budget.keys).to eq(%i[token_limit cost wall_clock tool_calls total_tokens total_cost])
+  end
+
+  it "rejects an agent budget key Smith does not read, naming the accepted keys" do
+    expect do
+      Class.new(agent_class) { budget token_limit: 10, wall_clock_ms: 5_000 }
+    end.to raise_error(
+      ArgumentError,
+      "agent budget does not accept :wall_clock_ms; " \
+      "accepted keys are :token_limit, :cost, :wall_clock, :tool_calls, :total_tokens, :total_cost"
+    )
+  end
+
   it "rejects unknown tool-budget exhaustion policies" do
     expect do
       Class.new(agent_class) { tool_budget_exhaustion :retry }

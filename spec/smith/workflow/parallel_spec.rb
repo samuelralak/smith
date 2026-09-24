@@ -1367,6 +1367,40 @@ RSpec.describe "Smith::Workflow parallel execution" do
     expect(total_token_reserves.count([:reserve, :total_tokens, 24_982])).to eq(2)
   end
 
+  it "splits a Float cost budget into branch reservations that all fit at once" do
+    agent = with_stubbed_class("SpecParallelFloatShareAgent", agent_class) do
+      register_as :spec_parallel_float_share_agent
+      model "gpt-5-mini"
+    end
+    all_reserved = Concurrent::CountDownLatch.new(3)
+    allow(agent).to receive(:chat) do
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_message| nil }
+      chat.define_singleton_method(:complete) do
+        all_reserved.count_down
+        all_reserved.wait(1)
+        Struct.new(:content, :input_tokens, :output_tokens).new("ok", 0, 0)
+      end
+      chat
+    end
+    workflow = with_stubbed_class("SpecParallelFloatShareWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+      budget total_cost: 0.2
+
+      transition :fan_out, from: :idle, to: :done do
+        execute :spec_parallel_float_share_agent, parallel: true, count: 3
+        on_failure :fail
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.last_error).to be_nil
+    expect(result.state).to eq(:done)
+  end
+
   it "enforces agent-only token_limit per parallel branch invocation without a workflow budget" do
     budget_ledger_class = require_const("Smith::Budget::Ledger")
 

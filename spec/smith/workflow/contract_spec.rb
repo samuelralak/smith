@@ -98,6 +98,48 @@ RSpec.describe "Smith::Workflow contract" do
     expect(klass).to be < workflow_class
   end
 
+  it "accepts every workflow budget key Smith reads" do
+    klass = with_stubbed_class("SpecBudgetKeysWorkflow", workflow_class) do
+      budget total_tokens: 100, token_limit: 100, total_cost: 1.0, tool_calls: 3, wall_clock: 30
+    end
+
+    expect(klass.budget.keys).to eq(%i[total_tokens token_limit total_cost tool_calls wall_clock])
+  end
+
+  it "rejects a workflow budget key Smith does not read, naming the accepted keys" do
+    expect do
+      with_stubbed_class("SpecUnknownBudgetKeyWorkflow", workflow_class) do
+        budget total_tokens: 10_000, wall_clock_ms: 30_000
+      end
+    end.to raise_error(
+      ArgumentError,
+      "workflow budget does not accept :wall_clock_ms; " \
+      "accepted keys are :total_tokens, :token_limit, :total_cost, :tool_calls, :wall_clock"
+    )
+  end
+
+  it "restores a 0.10.0 payload that consumed a budget key the workflow no longer declares" do
+    klass = with_stubbed_class("SpecDroppedBudgetKeyWorkflow", workflow_class) do
+      budget total_tokens: 100
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done
+    end
+    state = klass.new.to_state.merge(created_at: "2026-08-24T12:00:00Z", updated_at: "2026-08-24T12:00:00Z")
+    json_state = JSON.parse(JSON.generate(state.merge(budget_consumed: { total_tokens: 7, wall_clock_ms: 0 })))
+    ruby_state = state.merge(budget_consumed: { total_tokens: 7, "wall_clock_ms" => 0 })
+
+    [json_state, ruby_state].each do |payload|
+      restored = klass.from_state(payload)
+      ledger = restored.instance_variable_get(:@ledger)
+
+      expect(ledger.consumed).to eq(total_tokens: 7)
+      expect(ledger.remaining(:total_tokens)).to eq(93)
+      expect(restored.run!.state).to eq(:done)
+    end
+  end
+
   it "stores the documented transition metadata for execute, on_success, and on_failure" do
     klass = with_stubbed_class("SpecTransitionMetadataWorkflow", workflow_class) do
       initial_state :idle

@@ -58,12 +58,16 @@ module Smith
         @mutex.synchronize { release_reservation(token) }
       end
 
-      def remaining(key)
+      def remaining(key) = remaining_share(key, 1)
+
+      # One of parts equal shares of the remaining amount, taken from the exact
+      # internal value so that parts reservations of it always fit.
+      def remaining_share(key, parts)
         dimension = @amount_contract.dimension!(key)
         @amount_contract.known_dimension!(dimension)
         @mutex.synchronize do
           amount = @state_transition.remaining(@publication.state, dimension)
-          @representation.externalize_amount(dimension, amount)
+          @representation.externalize_remaining(dimension, amount, parts)
         end
       end
 

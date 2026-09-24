@@ -1166,6 +1166,59 @@ RSpec.describe "Smith::Workflow run result contract" do
     Smith.configure { |config| config.pricing = original_pricing }
   end
 
+  it "keeps reserving a serial cost budget after Float-priced settlements" do
+    original_pricing = Smith.config.pricing
+    Smith.configure do |config|
+      config.pricing = { "gpt-5-mini" => { input_cost_per_token: 5e-06, output_cost_per_token: 2.5e-05 } }
+    end
+    agent = with_stubbed_class("SpecSerialFloatCostAgent", agent_class) do
+      register_as :spec_serial_float_cost_agent
+      model "gpt-5-mini"
+    end
+    usage = [[3295, 1075], [2990, 496], [1000, 200]]
+    calls = Concurrent::AtomicFixnum.new(-1)
+    allow(agent).to receive(:chat) do
+      input_tokens, output_tokens = usage.fetch(calls.increment)
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |_message| nil }
+      chat.define_singleton_method(:complete) do
+        Struct.new(:content, :input_tokens, :output_tokens).new("ok", input_tokens, output_tokens)
+      end
+      chat
+    end
+    workflow = with_stubbed_class("SpecSerialFloatCostWorkflow", workflow_class) do
+      initial_state :idle
+      state :first
+      state :second
+      state :done
+      state :failed
+      budget total_cost: 0.5
+
+      transition :one, from: :idle, to: :first do
+        execute :spec_serial_float_cost_agent
+        on_failure :fail
+      end
+
+      transition :two, from: :first, to: :second do
+        execute :spec_serial_float_cost_agent
+        on_failure :fail
+      end
+
+      transition :three, from: :second, to: :done do
+        execute :spec_serial_float_cost_agent
+        on_failure :fail
+      end
+    end.new
+
+    result = workflow.run!
+
+    expect(result.last_error).to be_nil
+    expect(result.state).to eq(:done)
+    expect(result.total_cost).to be < 0.5
+  ensure
+    Smith.configure { |config| config.pricing = original_pricing }
+  end
+
   it "wraps provider call failures from chat.complete as AgentError" do
     agent_error = require_const("Smith::AgentError")
     upstream_error = Class.new(RubyLLM::ServerError)

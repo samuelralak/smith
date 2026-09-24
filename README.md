@@ -407,9 +407,15 @@ Guardrails run as input/output gates around agent calls. See [`docs/TOOLS_AND_GU
 
 ```ruby
 class BudgetedWorkflow < Smith::Workflow
-  budget total_tokens: 10_000, total_cost: 0.50, wall_clock_ms: 30_000
+  budget total_tokens: 10_000, total_cost: 0.50, wall_clock: 30
 end
 ```
+
+`wall_clock` is in seconds. A workflow budget accepts `total_tokens`,
+`token_limit`, `total_cost`, `tool_calls`, and `wall_clock`; an agent budget
+accepts `token_limit`, `cost`, `wall_clock`, `tool_calls`, `total_tokens`, and
+`total_cost`. Any other key raises `ArgumentError` naming the accepted keys. A
+restored run drops consumed amounts for keys the workflow no longer declares.
 
 Budgets reserve serially at each step and reconcile after the agent call. Parallel branches reserve scoped envelopes that release back to the parent ledger. The `Workflow::RunResult` carries `total_tokens`, `total_cost`, and per-call `usage_entries`.
 
@@ -422,7 +428,9 @@ ledger.reconcile_many!(reservation, actual: { total_tokens: 640, total_cost: 0.0
 
 `release!` / `release_many!` accept the same receipt when work never starts.
 Receipts are ledger-owned and one-shot: another ledger, a replay, or an
-amount-only settlement is rejected.
+amount-only settlement is rejected. `ledger.remaining(key)` never reads back
+above the exact remaining amount, and `ledger.remaining_share(key, parts)`
+returns one of `parts` equal shares of it such that reserving all `parts` fits.
 
 Budget amounts accept finite, non-negative `Integer` and `Float` values. Smith
 uses an exact `BigDecimal` representation derived from each value's canonical

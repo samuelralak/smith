@@ -430,7 +430,20 @@ module Smith
         config = self.class.budget
         return nil unless config
 
-        Budget::Ledger.new(limits: config, consumed: consumed)
+        Budget::Ledger.new(limits: config, consumed: declared_budget_consumed(consumed, config))
+      end
+
+      # A dimension the workflow no longer declares has no limit, so its
+      # consumed entry (a key an earlier version accepted and ignored) is
+      # dropped rather than refused.
+      def declared_budget_consumed(consumed, config)
+        return consumed unless consumed.is_a?(Hash)
+
+        declared = config.each_key.to_h { |dimension| [dimension.to_s, dimension] }
+        consumed.each_with_object({}) do |(key, amount), kept|
+          dimension = declared[key.to_s]
+          kept[dimension] = amount if dimension
+        end
       end
 
       def persisted_context

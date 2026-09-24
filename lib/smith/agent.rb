@@ -11,9 +11,10 @@ module Smith
     EXECUTION_IDENTITY_UNSET = Object.new.freeze
     TOOL_BUDGET_EXHAUSTION_UNSET = Object.new.freeze
     TOOL_BUDGET_EXHAUSTION_POLICIES = %i[raise complete].freeze
+    BUDGET_KEYS = %i[token_limit cost wall_clock tool_calls total_tokens total_cost].freeze
 
     private_constant :EXECUTION_IDENTITY_UNSET
-    private_constant :TOOL_BUDGET_EXHAUSTION_UNSET, :TOOL_BUDGET_EXHAUSTION_POLICIES
+    private_constant :TOOL_BUDGET_EXHAUSTION_UNSET, :TOOL_BUDGET_EXHAUSTION_POLICIES, :BUDGET_KEYS
 
     # Reserved input names auto-injected by the normalizer into
     # runtime_context. User-side `inputs :name` calls cannot redeclare
@@ -48,6 +49,12 @@ module Smith
 
       def budget(**opts)
         return @budget_config if opts.empty?
+
+        unknown = opts.keys - BUDGET_KEYS
+        unless unknown.empty?
+          raise ArgumentError, "agent budget does not accept #{unknown.map(&:inspect).join(", ")}; " \
+                               "accepted keys are #{BUDGET_KEYS.map(&:inspect).join(", ")}"
+        end
 
         @budget_config = opts
       end

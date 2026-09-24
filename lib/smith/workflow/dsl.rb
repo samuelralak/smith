@@ -3,6 +3,9 @@
 module Smith
   class Workflow
     module DSL
+      BUDGET_KEYS = %i[total_tokens token_limit total_cost tool_calls wall_clock].freeze
+      private_constant :BUDGET_KEYS
+
       def self.included(base)
         base.extend(ClassMethods)
       end
@@ -63,6 +66,12 @@ module Smith
 
         def budget(**opts)
           return @budget_config if opts.empty?
+
+          unknown = opts.keys - BUDGET_KEYS
+          unless unknown.empty?
+            raise ArgumentError, "workflow budget does not accept #{unknown.map(&:inspect).join(", ")}; " \
+                                 "accepted keys are #{BUDGET_KEYS.map(&:inspect).join(", ")}"
+          end
 
           @budget_config = opts
         end

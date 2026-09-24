@@ -51,6 +51,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   A rejected round records only the generator's usage and `:provider_call`.
   Documented in the Evaluator-Optimizer section of `docs/PATTERNS.md`.
 
+### Changed
+
+- Contract tightening: workflow and agent `budget` declarations raise
+  `ArgumentError`, naming the accepted keys, when given a key Smith does not
+  read; previously such a key was accepted and ignored. Workflow budgets
+  accept `total_tokens`, `token_limit`, `total_cost`, `tool_calls`, and
+  `wall_clock`; agent budgets accept `token_limit`, `cost`, `wall_clock`,
+  `tool_calls`, `total_tokens`, and `total_cost`. `wall_clock` is in seconds:
+  the README budget example used the ignored `wall_clock_ms: 30_000` and now
+  uses `wall_clock: 30`. The check is `O(K)` time and space for `K` declared
+  keys. State written by 0.10.0 keeps restoring after the host removes such a
+  key: 0.10.0 reserved every declared key at each agent call, so it could
+  persist a consumed entry like `"wall_clock_ms" => 0`, and restore now drops
+  consumed entries (String or Symbol keys) for dimensions the workflow no
+  longer declares. An undeclared dimension has no limit, so dropping it is
+  safe. The filter is `O(D + C)` for `D` declared and `C` consumed keys.
+
 ### Fixed
 
 - A failed or aborted attempt's `:provider_call` trace now carries
@@ -70,6 +87,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   refinement round's assistant turn, as JSON, using the serialization Smith
   applies at the provider boundary, where it sent Ruby `inspect` notation.
   String candidates are unchanged.
+- A budget reservation of the reported remaining amount no longer raises
+  `BudgetExceeded` far below the limit. `Budget::Ledger#remaining` returned
+  the Float nearest the exact remaining amount, and reserving it re-reads its
+  shortest decimal form, which after Float-priced costs sits above the exact
+  amount about half the time: a serial step on a $0.50 `total_cost` budget
+  failed its third call at $0.0707. `remaining` now returns a value that
+  never reads back above the exact amount, so it may read one ulp lower than
+  before. `Budget::Ledger#remaining_share(key, parts)` is a new public method
+  that returns one of `parts` equal shares that all fit, which fan-out branch
+  estimates now use (a `total_cost: 0.2` budget split across three branches
+  failed with nothing spent). Integers keep floor division; a Float steps
+  down in `O(1)` ulp steps. Amounts stay Integer or Float in and JSON-safe
+  numerics out.
 
 ## [0.10.0] - 2026-08-24
 
