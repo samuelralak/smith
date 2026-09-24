@@ -20,6 +20,9 @@ module Smith
         [Smith::PersistedFailureInvalid, "persisted_failure_invalid"],
         [Smith::ToolGuardrailFailed, "tool_guardrail_failed"],
         [Smith::DeadlineExceeded, "deadline_exceeded"],
+        [Smith::ProviderPermanentFailure, "provider_permanent_failure"],
+        [Smith::BudgetExceeded, "budget_exceeded"],
+        [Smith::GuardrailFailed, "guardrail_failed"],
         [Smith::AgentError, "agent_error"],
         [Smith::WorkflowError, "workflow_error"]
       ].freeze

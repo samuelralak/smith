@@ -132,6 +132,31 @@ RSpec.describe "Smith::Workflow step_in_progress idempotency marker" do
       expect { klass.restore("workflow:idempotency-test", adapter: adapter) }.to raise_error(Smith::StepInProgressOnRestore)
     end
 
+    it "names the state an interrupted second step started from and the transition the payload records" do
+      klass = workflow_class(mode: :strict)
+      workflow = klass.new
+      workflow.advance_persisted!("workflow:idempotency-test", adapter:)
+      workflow.instance_variable_set(:@next_transition_name, :finish)
+      allow(workflow).to receive(:advance!).and_raise(Exception.new("simulated crash"))
+
+      expect do
+        workflow.advance_persisted!("workflow:idempotency-test", adapter:)
+      end.to raise_error(Exception, /simulated crash/)
+
+      expect { klass.restore("workflow:idempotency-test", adapter:) }
+        .to raise_error(Smith::StepInProgressOnRestore) do |error|
+          expect([error.state, error.transition]).to eq(%i[working finish])
+          expect(error.message).to include("state=:working")
+        end
+    end
+
+    it "keeps the state and transition nil-safe for a raise that does not know them" do
+      error = Smith::StepInProgressOnRestore.new(workflow: "SpecWorkflow", persistence_key: "k")
+
+      expect([error.state, error.transition]).to eq([nil, nil])
+      expect(error.message).to start_with('step in progress on restore for SpecWorkflow key="k": a previous worker')
+    end
+
     it "clears the marker on successful advance" do
       klass = workflow_class(mode: :strict)
       workflow = klass.new

@@ -44,7 +44,7 @@ module Smith
       @step_count = 0
       @next_transition_name = nil
       @ledger = ledger || build_ledger
-      @created_at = created_at || Time.now.utc.iso8601
+      @created_at = created_at || Time.now.utc.iso8601(6)
       @updated_at = @created_at
       @total_cost = 0.0
       @total_tokens = 0
@@ -120,7 +120,7 @@ module Smith
                       execute_step(transition)
                     end
       @step_count += 1
-      @updated_at = Time.now.utc.iso8601
+      @updated_at = Time.now.utc.iso8601(6)
       record_step_snapshot(step_result)
       step_result
     rescue UnresolvedTransitionError => e

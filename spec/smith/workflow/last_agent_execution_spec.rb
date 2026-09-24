@@ -186,5 +186,86 @@ RSpec.describe "Smith::Workflow last agent execution attribution" do
       expect(result.state).to eq(:done)
       expect(result.context[:seen_model]).to eq("gpt-5-mini")
     end
+
+    it "restores last_output so a compute step resuming after the agent step reads what a live run reads" do
+      agent = with_stubbed_class("SpecLastOutputResumeAgent", agent_class) do
+        register_as :spec_last_output_resume_agent
+        model "gpt-5-mini"
+      end
+      stub_chat(agent, content: "designed")
+
+      klass = with_stubbed_class("SpecLastOutputResumeWorkflow", workflow_class) do
+        initial_state :idle
+        state :drafted
+        state :done
+
+        transition :design, from: :idle, to: :drafted do
+          execute :spec_last_output_resume_agent
+        end
+
+        transition :fold, from: :drafted, to: :done do
+          compute { |step| step.write_context(:seen_output, step.last_output) }
+        end
+      end
+
+      live = klass.new.run_persisted!("wf:last-output", adapter:)
+      drafted = adapter.writes.reverse.find { |(_, state)| state["state"] == "drafted" }
+      resume_adapter = adapter.class.new
+      resume_adapter.store("wf:last-output", JSON.generate(drafted.last))
+      resumed = klass.restore("wf:last-output", adapter: resume_adapter)
+
+      expect(resumed.session_messages.last).to eq(role: "assistant", content: "designed")
+      expect(resumed.run!.context[:seen_output]).to eq(live.context[:seen_output])
+      expect(live.context[:seen_output]).to eq("designed")
+    end
+
+    it "restores the served provider as the Symbol a live run holds" do
+      agent = with_stubbed_class("SpecLastProviderResumeAgent", agent_class) do
+        register_as :spec_last_provider_resume_agent
+        model "gpt-5-mini", provider: :openai
+      end
+      stub_chat(agent, content: "designed")
+
+      klass = with_stubbed_class("SpecLastProviderResumeWorkflow", workflow_class) do
+        initial_state :idle
+        state :drafted
+        state :done
+
+        transition :design, from: :idle, to: :drafted do
+          execute :spec_last_provider_resume_agent
+        end
+
+        transition :fold, from: :drafted, to: :done do
+          compute { |step| step.write_context(:seen_provider, step.last_agent_provider) }
+        end
+      end
+
+      live = klass.new.run_persisted!("wf:last-provider", adapter:)
+      drafted = adapter.writes.reverse.find { |(_, state)| state["state"] == "drafted" }
+      resume_adapter = adapter.class.new
+      resume_adapter.store("wf:last-provider", JSON.generate(drafted.last))
+      resumed = klass.restore("wf:last-provider", adapter: resume_adapter).run!
+
+      expect(live.context[:seen_provider]).to eq(:openai)
+      expect(resumed.context[:seen_provider]).to eq(live.context[:seen_provider])
+    end
+  end
+
+  describe "DeterministicStep#last_output" do
+    it "reads an assistant message whether its role is a Symbol or a String under either key form" do
+      shapes = [
+        { role: :assistant, content: "symbol role" },
+        { role: "assistant", content: "string role" },
+        { "role" => "assistant", "content" => "string keys" }
+      ]
+
+      outputs = shapes.map do |message|
+        step_class.new(
+          context: {}, session_messages: [message], tool_results: [], state: :idle, transition_name: :fold
+        ).last_output
+      end
+
+      expect(outputs).to eq(["symbol role", "string role", "string keys"])
+    end
   end
 end

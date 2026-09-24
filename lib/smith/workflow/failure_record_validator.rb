@@ -20,14 +20,25 @@ module Smith
         "Smith::AgentError" => "agent_error",
         "Smith::BlankAgentOutputError" => "agent_error",
         "Smith::DeadlineExceeded" => "deadline_exceeded",
+        "Smith::ProviderPermanentFailure" => "provider_permanent_failure",
+        "Smith::BudgetExceeded" => "budget_exceeded",
+        "Smith::GuardrailFailed" => "guardrail_failed",
         "Smith::WorkflowError" => "workflow_error",
         "Smith::UnresolvedTransitionError" => "workflow_error",
         "Smith::Workflow::Composite::BranchFailure" => "workflow_error"
       }.freeze
+      # Records written before these classes had their own families carry
+      # "other" and no details; they keep restoring exactly as they did.
+      LEGACY_ERROR_FAMILIES = {
+        "Smith::ProviderPermanentFailure" => "other",
+        "Smith::BudgetExceeded" => "other",
+        "Smith::GuardrailFailed" => "other"
+      }.freeze
       KNOWN_FAMILIES = %w[
         deterministic_step_failure tool_guardrail_failed tool_failure_notification_failed tool_capture_failed
         tool_outcome_uncertain tool_execution_not_admitted bounded_completion_error persisted_failure_invalid
-        deadline_exceeded agent_error workflow_error other
+        deadline_exceeded provider_permanent_failure budget_exceeded guardrail_failed agent_error workflow_error
+        other
       ].freeze
       RETRY_FORBIDDEN_FAMILIES = %w[
         tool_capture_failed tool_failure_notification_failed tool_outcome_uncertain tool_execution_not_admitted
@@ -40,11 +51,15 @@ module Smith
         },
         "Smith::Workflow::Composite::BranchFailure" => lambda { |details|
           Smith::Workflow::Composite::BranchFailure.from_details(details)
+        },
+        "Smith::ProviderPermanentFailure" => ->(details) { Smith::ProviderPermanentFailure.from_details(details) },
+        "Smith::BlankAgentOutputError" => lambda { |details|
+          Smith::BlankAgentOutputError.from_details(details) unless details.nil?
         }
       }.freeze
       BOOLEAN_VALUES = [true, false].freeze
-      private_constant :KNOWN_ERROR_FAMILIES, :KNOWN_FAMILIES, :RETRY_FORBIDDEN_FAMILIES, :DETAIL_VALIDATORS,
-                       :BOOLEAN_VALUES
+      private_constant :KNOWN_ERROR_FAMILIES, :LEGACY_ERROR_FAMILIES, :KNOWN_FAMILIES, :RETRY_FORBIDDEN_FAMILIES,
+                       :DETAIL_VALIDATORS, :BOOLEAN_VALUES
 
       extend Dry::Initializer
 
@@ -74,9 +89,12 @@ module Smith
       def validate_class_family!
         expected = KNOWN_ERROR_FAMILIES[snapshot[:error_class]]
         return unless expected && family != expected
+        return if legacy_family?
 
         reject!("persisted workflow failure class and family disagree")
       end
+
+      def legacy_family? = LEGACY_ERROR_FAMILIES[snapshot[:error_class]] == family
 
       def validate_retry_policy!
         forbidden = snapshot[:error_retry_forbidden]
@@ -103,6 +121,8 @@ module Smith
       end
 
       def validate_details!
+        return if legacy_family?
+
         validator = DETAIL_VALIDATORS[snapshot[:error_class]]
         validator&.call(snapshot[:error_details])
       end

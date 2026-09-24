@@ -623,6 +623,117 @@ RSpec.describe "Smith::Workflow usage tracking" do
       expect(Smith::Errors.retry_forbidden?(restored_error)).to be(true)
     end
 
+    it "restores a permanent provider failure as its own class with its bounded attributes" do
+      workflow = workflow_klass.new
+      error = Smith::ProviderPermanentFailure.new(
+        "invalid credentials",
+        provider: :anthropic,
+        model_id: "claude-sonnet-4-6",
+        source_error_class: "RubyLLM::UnauthorizedError"
+      )
+      workflow.send(:record_step_snapshot, transition: :run, from: :idle, to: :failed, error:)
+
+      state = JSON.parse(JSON.generate(workflow.to_state))
+      restored_error = workflow_klass.from_state(state).send(:build_run_result, []).last_error
+
+      expect(state.dig("last_failed_step", "error_family")).to eq("provider_permanent_failure")
+      expect(state.dig("last_failed_step", "error_details")).to eq(
+        "provider" => "anthropic",
+        "model_id" => "claude-sonnet-4-6",
+        "source_error_class" => "RubyLLM::UnauthorizedError"
+      )
+      expect(restored_error).to be_a(Smith::ProviderPermanentFailure)
+      expect(restored_error.message).to eq("invalid credentials")
+      expect(restored_error.provider).to eq(:anthropic)
+      expect(restored_error.model_id).to eq("claude-sonnet-4-6")
+      expect(restored_error.source_error_class).to eq("RubyLLM::UnauthorizedError")
+      expect(Smith::Errors.retryable?(restored_error)).to be(false)
+    end
+
+    it "restores budget and guardrail failures as their own classes" do
+      errors = [Smith::BudgetExceeded.new("agent tool_calls budget exceeded"), Smith::GuardrailFailed.new("blocked")]
+
+      restored = errors.map do |error|
+        workflow = workflow_klass.new
+        workflow.send(:record_step_snapshot, transition: :run, from: :idle, to: :failed, error:)
+        workflow_klass.from_state(JSON.parse(JSON.generate(workflow.to_state))).send(:build_run_result, []).last_error
+      end
+
+      expect(restored.map(&:class)).to eq([Smith::BudgetExceeded, Smith::GuardrailFailed])
+      expect(restored.map(&:message)).to eq(errors.map(&:message))
+    end
+
+    it "restores a blank agent output failure with its agent and model" do
+      workflow = workflow_klass.new
+      error = Smith::BlankAgentOutputError.new(agent_name: :writer, model_used: "gpt-5-mini")
+      workflow.send(:record_step_snapshot, transition: :run, from: :idle, to: :failed, error:)
+
+      restored_error = workflow_klass.from_state(JSON.parse(JSON.generate(workflow.to_state)))
+                                     .send(:build_run_result, []).last_error
+
+      expect(restored_error).to be_a(Smith::BlankAgentOutputError)
+      expect(restored_error.agent_name).to eq(:writer)
+      expect(restored_error.model_used).to eq("gpt-5-mini")
+      expect(restored_error.message).to eq(error.message)
+      expect(Smith::Errors.retryable?(restored_error)).to be(true)
+    end
+
+    it "keeps restoring these failures from records written before they had their own families" do
+      legacy_families = {
+        "Smith::ProviderPermanentFailure" => "other",
+        "Smith::BudgetExceeded" => "other",
+        "Smith::GuardrailFailed" => "other",
+        "Smith::BlankAgentOutputError" => "agent_error"
+      }
+
+      restored = legacy_families.map do |error_class, error_family|
+        state = workflow_klass.new.to_state
+        state[:last_failed_step] = {
+          transition: :run, from: :idle, to: :failed, error_class:, error_family:,
+          error_message: "legacy", error_retryable: nil, error_kind: nil, error_details: nil
+        }
+        workflow_klass.from_state(JSON.parse(JSON.generate(state))).send(:build_run_result, []).last_error
+      end
+
+      expect(restored.map(&:class)).to eq([RuntimeError, RuntimeError, RuntimeError, Smith::AgentError])
+      expect(restored.map(&:message).uniq).to eq(["legacy"])
+    end
+
+    it "fails closed when a permanent provider failure claims another family" do
+      state = workflow_klass.new.to_state
+      state[:last_failed_step] = {
+        transition: :run, from: :idle, to: :failed,
+        error_class: "Smith::ProviderPermanentFailure", error_family: "agent_error",
+        error_message: "invalid credentials", error_retryable: nil, error_kind: nil, error_details: nil
+      }
+
+      expect do
+        workflow_klass.from_state(JSON.parse(JSON.generate(state)))
+      end.to raise_error(Smith::PersistedFailureInvalid, /class and family disagree/)
+    end
+
+    it "fails closed when persisted provider or blank-output failure details are malformed" do
+      records = [
+        ["Smith::ProviderPermanentFailure", "provider_permanent_failure",
+         { "provider" => "openai", "model_id" => "m", "source_error_class" => "E", "prompt" => "leak" }],
+        ["Smith::ProviderPermanentFailure", "provider_permanent_failure",
+         { "provider" => "openai", "model_id" => "m" * 513, "source_error_class" => "E" }],
+        ["Smith::BlankAgentOutputError", "agent_error", { "agent_name" => 7, "model_used" => "m" }]
+      ]
+
+      records.each do |error_class, error_family, error_details|
+        state = workflow_klass.new.to_state
+        state[:last_failed_step] = {
+          transition: :run, from: :idle, to: :failed, error_class:, error_family:,
+          error_message: "failed", error_retryable: nil, error_kind: nil, error_details:
+        }
+
+        expect do
+          workflow_klass.from_state(JSON.parse(JSON.generate(state)))
+        end.to raise_error(Smith::PersistedFailureInvalid, /details are invalid/)
+      end
+    end
+
     it "does not instantiate arbitrary persisted error classes" do
       constructed = false
       stub_const("SpecPersistedConstructorProbe", Class.new(StandardError) do

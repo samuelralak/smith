@@ -50,6 +50,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   with `accept: true`, is ignored exactly as before and the evaluator judges.
   A rejected round records only the generator's usage and `:provider_call`.
   Documented in the Evaluator-Optimizer section of `docs/PATTERNS.md`.
+- `Smith::StepInProgressOnRestore` gains `state`, the persisted state the
+  interrupted step started from (a Symbol), and `transition`, the next
+  transition the payload records (such as a routed one), else `nil`, so a
+  host can tell which step died without reading Smith's payload. Both are set
+  wherever restore raises it and default to `nil` for any other construction;
+  the constructor stays backward compatible and the message gains only
+  ` state=...` when the state is known.
 
 ### Changed
 
@@ -70,6 +77,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Fixed
 
+- `DeterministicStep#last_output` returned `nil` after a JSON restore,
+  because a restored session message carries a Symbol key with a String role
+  value. `last_output` now accepts a Symbol or String role under either key
+  form. Restored messages keep the shape 0.10.0 gives them (Symbol keys, JSON
+  values such as `role: "assistant"`).
+- Restored failures keep their type. `ProviderPermanentFailure`,
+  `BudgetExceeded`, and `GuardrailFailed` get their own failure families
+  (`provider_permanent_failure`, `budget_exceeded`, `guardrail_failed`) where
+  they were `other`, and restore as their own classes where they restored as
+  `RuntimeError`. `BlankAgentOutputError` keeps the `agent_error` family and
+  restores as itself where it restored as a plain `AgentError`.
+  `ProviderPermanentFailure` and `BlankAgentOutputError` gain `details` (each
+  value bounded to 512 bytes) and `from_details`, so `provider`, `model_id`,
+  `source_error_class`, `agent_name`, and `model_used` survive a restore.
+  Details stay JSON-normalized, and `FailureRecordValidator` rejects malformed
+  details, or one of these classes claiming another family, with
+  `Smith::PersistedFailureInvalid`. Records written by earlier versions (these
+  classes under `other`, or `BlankAgentOutputError` without details) keep
+  restoring exactly as before. The new families also appear as `error_family`
+  on failed `:transition` traces and `StepFailed` events. Composite branch
+  failure evidence (`Workflow::Composite::ErrorEvidence`) still classifies
+  these three errors as `other`. Rollback: 0.10.0 checks `error_family` and
+  `error_cause_family` against its own family list, so any persisted payload
+  whose `last_failed_step`, or its cause, carries one of the new families
+  fails to restore under 0.10.0, whether the run is terminal or not; clear or
+  settle such runs before rolling back.
 - A failed or aborted attempt's `:provider_call` trace now carries
   `error_class`: the exception's class name, bounded to 512 bytes by the
   diagnostic text helper (`anonymous_error` for an anonymous class). It also
@@ -82,6 +115,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   billed needs to tell them apart. Messages never ride the trace. Hosts with a
   `trace_fields` allowlist for `:provider_call` must add `:error_class` and
   `:error_cause_class` to receive them.
+- Restore and timestamp asymmetries. The `provider` in
+  `last_agent_execution`, read by `DeterministicStep#last_agent_provider`,
+  restores as the Symbol a live run holds where it restored as a String.
+  `created_at` is now written with microsecond precision (`iso8601(6)`), so a
+  `wall_clock` deadline no longer fires up to a second early; the early firing
+  affected live runs too, since the deadline is always computed from the
+  stored string. `updated_at` is written with the same precision at every
+  step, so it never reads earlier than `created_at`. Payloads with
+  whole-second timestamps still restore.
 - `optimize` sends a structured candidate (a Hash or Array from an
   `output_schema` generator) to the evaluator, and replays it as the
   refinement round's assistant turn, as JSON, using the serialization Smith

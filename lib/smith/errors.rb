@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "diagnostic_text"
 require_relative "error"
 require_relative "persisted_failure_invalid"
 require_relative "pricing_configuration_error"
@@ -88,6 +89,11 @@ module Smith
   class AgentError < Error; end
 
   class BlankAgentOutputError < AgentError
+    DETAIL_NAMES = %i[agent_name model_used].freeze
+    DETAIL_KEYS = DETAIL_NAMES.to_h { |name| [name.to_s.freeze, name] }.freeze
+    MAX_DETAIL_BYTES = 512
+    private_constant :DETAIL_NAMES, :DETAIL_KEYS, :MAX_DETAIL_BYTES
+
     attr_reader :agent_name, :model_used
 
     def initialize(agent_name:, model_used:)
@@ -101,6 +107,46 @@ module Smith
 
       super(detail)
     end
+
+    def details
+      {
+        agent_name: agent_name && DiagnosticText.capture(agent_name.to_s, max_bytes: MAX_DETAIL_BYTES),
+        model_used: model_used && DiagnosticText.capture(model_used.to_s, max_bytes: MAX_DETAIL_BYTES)
+      }.freeze
+    end
+
+    def self.from_details(details)
+      values = normalize_details(details)
+      new(agent_name: values.fetch(:agent_name)&.to_sym, model_used: values.fetch(:model_used))
+    end
+
+    def self.normalize_details(details)
+      raise ArgumentError, "blank agent output details must be a Hash" unless details.is_a?(Hash)
+
+      values = {}
+      Hash.instance_method(:each_pair).bind_call(details) do |key, value|
+        name = key.is_a?(Symbol) ? key : DETAIL_KEYS[key]
+        unless DETAIL_NAMES.include?(name)
+          raise ArgumentError, "blank agent output details contain an unknown attribute"
+        end
+        raise ArgumentError, "blank agent output details contain a duplicate attribute" if values.key?(name)
+
+        values[name] = bounded_detail(name, value)
+      end
+      raise ArgumentError, "blank agent output details are incomplete" unless values.length == DETAIL_NAMES.length
+
+      values
+    end
+
+    def self.bounded_detail(name, value)
+      return value if value.nil?
+
+      bounded = value.is_a?(String) && value.valid_encoding? && value.bytesize <= MAX_DETAIL_BYTES
+      raise ArgumentError, "blank agent output detail #{name} must be bounded text" unless bounded
+
+      value
+    end
+    private_class_method :normalize_details, :bounded_detail
   end
 
   class WorkflowError < Error; end
@@ -185,15 +231,20 @@ module Smith
   # `idempotency_mode :strict`. Signals that a previous worker crashed
   # between `persist!` (before advance) and `persist!` (after advance);
   # the step's effects are unknown, so blindly re-running could
-  # double-execute non-idempotent agent calls or tools.
+  # double-execute non-idempotent agent calls or tools. `state` is the
+  # persisted state the interrupted step started from and `transition` the
+  # next transition the payload records; each is nil when unknown.
   class StepInProgressOnRestore < Error
-    attr_reader :workflow, :persistence_key
+    attr_reader :workflow, :persistence_key, :state, :transition
 
-    def initialize(workflow:, persistence_key:)
+    def initialize(workflow:, persistence_key:, state: nil, transition: nil)
       @workflow = workflow
       @persistence_key = persistence_key
+      @state = state.to_sym if state.is_a?(String) || state.is_a?(Symbol)
+      @transition = transition.to_sym if transition.is_a?(String) || transition.is_a?(Symbol)
       super(
-        "step in progress on restore for #{workflow} key=#{persistence_key.inspect}: " \
+        "step in progress on restore for #{workflow} key=#{persistence_key.inspect}" \
+        "#{" state=#{@state.inspect}" if @state}: " \
         "a previous worker crashed mid-step. Hosts using idempotency_mode :strict must " \
         "decide whether to clear the persisted state (idempotent re-run unsafe) or " \
         "switch to :lax (assume re-run is safe)."

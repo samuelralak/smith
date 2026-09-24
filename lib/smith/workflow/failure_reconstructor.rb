@@ -18,6 +18,9 @@ module Smith
         "bounded_completion_error" => ->(record) { Smith::BoundedCompletionError.new(record[:error_message]) },
         "persisted_failure_invalid" => ->(record) { Smith::PersistedFailureInvalid.new(record[:error_message]) },
         "deadline_exceeded" => ->(record) { Smith::DeadlineExceeded.new(record[:error_message]) },
+        "provider_permanent_failure" => ->(record) { provider_permanent_failure(record) },
+        "budget_exceeded" => ->(record) { Smith::BudgetExceeded.new(record[:error_message]) },
+        "guardrail_failed" => ->(record) { Smith::GuardrailFailed.new(record[:error_message]) },
         "agent_error" => ->(record) { Smith::AgentError.new(record[:error_message]) },
         "workflow_error" => ->(record) { Smith::WorkflowError.new(record[:error_message]) },
         "other" => ->(record) { RuntimeError.new(record[:error_message]) }
@@ -25,7 +28,8 @@ module Smith
       SPECIAL_CLASS_BUILDERS = {
         "Smith::Workflow::Composite::BranchFailure" => lambda { |record|
           Smith::Workflow::Composite::BranchFailure.from_details(record[:error_details])
-        }
+        },
+        "Smith::BlankAgentOutputError" => ->(record) { blank_agent_output_failure(record) }
       }.freeze
       private_constant :FAMILY_BUILDERS, :SPECIAL_CLASS_BUILDERS
 
@@ -73,7 +77,19 @@ module Smith
         Smith::ToolFailureNotificationFailed.from_details(record.fetch(:error_details))
       end
 
-      private_class_method :deterministic_step_failure, :tool_guardrail_failure, :tool_failure_notification_failure
+      def self.provider_permanent_failure(record)
+        Smith::ProviderPermanentFailure.from_details(record.fetch(:error_details), message: record[:error_message])
+      end
+
+      def self.blank_agent_output_failure(record)
+        details = record[:error_details]
+        return Smith::AgentError.new(record[:error_message]) if details.nil?
+
+        Smith::BlankAgentOutputError.from_details(details)
+      end
+
+      private_class_method :deterministic_step_failure, :tool_guardrail_failure, :tool_failure_notification_failure,
+                           :provider_permanent_failure, :blank_agent_output_failure
     end
   end
 end

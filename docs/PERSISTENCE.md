@@ -534,7 +534,11 @@ before writing when an open transaction has no exact identity capability.
 If execution raises or the process dies after external work, the durable marker
 remains set. A strict restore therefore fails closed with
 `StepInProgressOnRestore`; the host must reconcile operation results or classify
-the run as uncertain rather than blindly replaying the transition. The same
+the run as uncertain rather than blindly replaying the transition. The error's
+`state` is the persisted state the interrupted step started from (a Symbol) and
+its `transition` is the next transition the payload records, such as a routed
+one, or nil when it records none, so the host can tell which step died without
+reading Smith's payload itself. The same
 in-memory workflow object cannot retry an attempted transition. If a host
 transaction rolls back after a successful `persist!`,
 `complete_persisted_step!` rejects the rolled-back checkpoint. When the adapter

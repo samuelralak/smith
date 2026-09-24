@@ -160,16 +160,17 @@ module Smith
 
         raise Smith::StepInProgressOnRestore.new(
           workflow: self.class.name,
-          persistence_key: normalized[:persistence_key]
+          persistence_key: normalized[:persistence_key],
+          state: normalized[:state],
+          transition: normalized[:next_transition_name]
         )
       end
 
       def validate_raw_step_in_progress!(state)
         return unless state.is_a?(Hash)
 
-        marker = state[:step_in_progress] || state["step_in_progress"]
-        persistence_key = state[:persistence_key] || state["persistence_key"]
-        validate_step_in_progress!(step_in_progress: marker, persistence_key:)
+        fields = %i[step_in_progress persistence_key state next_transition_name]
+        validate_step_in_progress!(fields.to_h { |field| [field, state[field] || state[field.to_s]] })
       end
 
       def validate_seed_digest!(normalized)
@@ -233,7 +234,9 @@ module Smith
         end
         return unless value.is_a?(Hash)
 
-        symbolize_keys(value)
+        execution = symbolize_keys(value)
+        execution[:provider] = execution[:provider].to_sym if execution[:provider].is_a?(String)
+        execution
       end
 
       # Symbolize ONLY the top-level keys of last_failed_step + the

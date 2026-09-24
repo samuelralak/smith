@@ -98,6 +98,57 @@ RSpec.describe "Smith::Workflow state serialization shape" do
     expect(result.steps.map { |step| step[:transition] }).to eq([:finish])
   end
 
+  describe "timestamp precision" do
+    let(:deadline_workflow) do
+      with_stubbed_class("SpecSubSecondDeadlineWorkflow", workflow_class) do
+        budget wall_clock: 1
+        initial_state :idle
+        state :done
+        state :failed
+
+        transition :finish, from: :idle, to: :done do
+          compute { |step| step.read_context(:noop) }
+          on_failure :fail
+        end
+      end
+    end
+
+    it "keeps a restored wall_clock deadline at the live instant instead of up to a second early" do
+      created = Time.utc(2026, 9, 24, 12, 0, 0) + Rational(9, 10)
+      allow(Time).to receive(:now).and_return(created)
+      workflow = deadline_workflow.new
+      restored = deadline_workflow.from_state(JSON.parse(JSON.generate(workflow.to_state)))
+
+      allow(Time).to receive(:now).and_return(created + Rational(1, 2))
+      result = restored.run!
+
+      expect(workflow.to_state[:created_at]).to eq("2026-09-24T12:00:00.900000Z")
+      expect(restored.send(:wall_clock_deadline)).to eq(created + 1)
+      expect(result.state).to eq(:done)
+    end
+
+    it "still reads a created_at persisted with whole seconds" do
+      state = deadline_workflow.new.to_state.merge(created_at: "2026-09-24T12:00:00Z")
+
+      restored = deadline_workflow.from_state(JSON.parse(JSON.generate(state)))
+
+      expect(restored.send(:wall_clock_deadline)).to eq(Time.utc(2026, 9, 24, 12, 0, 1))
+    end
+
+    it "writes updated_at with the microsecond precision of created_at, so it never precedes it" do
+      created = Time.utc(2026, 9, 24, 12, 0, 0) + Rational(9, 10)
+      allow(Time).to receive(:now).and_return(created)
+      workflow = deadline_workflow.new
+
+      allow(Time).to receive(:now).and_return(created + Rational(5, 100))
+      workflow.advance!
+      state = workflow.to_state
+
+      expect(state[:updated_at]).to eq("2026-09-24T12:00:00.950000Z")
+      expect(Time.iso8601(state[:updated_at])).to be >= Time.iso8601(state[:created_at])
+    end
+  end
+
   it "does not mutate the caller's persisted state while restoring it" do
     workflow = with_stubbed_class("SpecImmutableRestoreInputWorkflow", workflow_class) do
       initial_state :waiting
