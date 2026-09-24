@@ -377,6 +377,19 @@ class TranslationWorkflow < Smith::Workflow
 end
 ```
 
+`before_eval: ->(state, context) { ... }` runs after each candidate is
+generated and before the evaluator is called, and may write to the workflow
+context. When it returns a Hash whose `accept` (Symbol or String key) is
+`false`, that Hash is the round's evaluation: Smith validates it exactly as
+evaluator output (`feedback` is required, and a numeric `score` when
+`improvement_threshold` is set), skips the evaluator for that round, and
+continues as a rejection, so the feedback reaches the generator's refinement
+turn and `on_exhaustion` applies when rounds run out. Convergence and the
+improvement threshold read it as they read evaluator output. Any other return
+value, including a Hash with `accept: true`, is ignored and the evaluator
+judges as before. A deterministic check that makes a candidate unacceptable
+can reject it this way without spending an evaluator call.
+
 Why this matters:
 
 - the loop is explicit, bounded, and observable

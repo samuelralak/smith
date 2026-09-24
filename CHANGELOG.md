@@ -21,6 +21,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   are metadata, never content: `trace_content false` does not hide them.
   Hosts with a `trace_fields` allowlist for `:provider_call` must add these
   keys to receive them. The fields are documented in `docs/CONFIGURATION.md`.
+- `optimize`'s `before_eval` may reject a candidate. A returned Hash whose
+  `accept` (Symbol or String key) is `false` is that round's evaluation: it is
+  normalized and validated exactly as evaluator output (`feedback` required,
+  a numeric `score` when `improvement_threshold` is set), the evaluator is not
+  called for the round, and the loop continues as a rejection, so the
+  feedback reaches the generator's refinement turn and `on_exhaustion` applies
+  when rounds run out. Any other return value, including `nil` and a Hash
+  with `accept: true`, is ignored exactly as before and the evaluator judges.
+  A rejected round records only the generator's usage and `:provider_call`.
+  Documented in the Evaluator-Optimizer section of `docs/PATTERNS.md`.
 
 ### Fixed
 
@@ -36,6 +46,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   billed needs to tell them apart. Messages never ride the trace. Hosts with a
   `trace_fields` allowlist for `:provider_call` must add `:error_class` and
   `:error_cause_class` to receive them.
+- `optimize` sends a structured candidate (a Hash or Array from an
+  `output_schema` generator) to the evaluator, and replays it as the
+  refinement round's assistant turn, as JSON, using the serialization Smith
+  applies at the provider boundary, where it sent Ruby `inspect` notation.
+  String candidates are unchanged.
 
 ## [0.10.0] - 2026-08-24
 

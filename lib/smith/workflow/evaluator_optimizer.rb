@@ -41,8 +41,7 @@ module Smith
 
       def run_optimization_round(state, round)
         generate_candidate!(state, round)
-        invoke_before_eval(state)
-        evaluation = normalize_evaluation(evaluate_candidate(state))
+        evaluation = before_eval_rejection(state) || normalize_evaluation(evaluate_candidate(state))
         validate_evaluation_structure!(evaluation)
         validate_evaluation_fields!(evaluation, state.config)
 
@@ -127,21 +126,34 @@ module Smith
       # evaluator sees the same seed_messages + inject_state context.
       # Default nil keeps the legacy candidate-only payload.
       def build_evaluator_input(state)
-        return [{ role: :user, content: state.candidate.to_s }] unless state.config[:evaluator_context] == :inject_state
+        content = candidate_content(state.candidate)
+        return [{ role: :user, content: }] unless state.config[:evaluator_context] == :inject_state
 
         prior = Array(state.prepared_input).dup
-        prior.push(role: :user, content: state.candidate.to_s)
+        prior.push(role: :user, content:)
+      end
+
+      # A structured candidate (an output_schema agent's Hash or Array) gets
+      # the JSON serialisation the provider boundary applies; text stays as is.
+      def candidate_content(candidate)
+        candidate.is_a?(Hash) || candidate.is_a?(Array) ? json_message_content(candidate) : candidate.to_s
       end
 
       # Runs after candidate generation, before evaluator invocation.
-      # Receives (state, @context); @context is mutable. Return value
-      # is discarded. Raised exceptions bubble through the standard
-      # step failure path.
-      def invoke_before_eval(state)
+      # Receives (state, @context); @context is mutable. A returned Hash
+      # whose accept (Symbol or String key) is false is the round's
+      # evaluation, validated like evaluator output, and the evaluator is
+      # not called; any other return value is discarded. Raised exceptions
+      # bubble through the standard step failure path.
+      def before_eval_rejection(state)
         callback = state.config[:before_eval]
         return unless callback
 
-        callback.call(state, @context)
+        verdict = callback.call(state, @context)
+        return unless verdict.is_a?(Hash)
+
+        evaluation = normalize_evaluation(verdict)
+        evaluation if evaluation.key?(:accept) && evaluation[:accept].equal?(false)
       end
 
       def invoke_with_evaluator_schema(evaluator_class, schema, input)
@@ -195,7 +207,7 @@ module Smith
         return prepared_input if round.zero?
 
         (prepared_input&.dup || []).push(
-          { role: :assistant, content: prior_candidate.to_s },
+          { role: :assistant, content: candidate_content(prior_candidate) },
           {
             role: :user,
             content: "[smith:refinement-round] #{round + 1}\n[smith:evaluator-feedback]\n#{feedback}"

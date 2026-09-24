@@ -625,6 +625,62 @@ RSpec.describe "Smith::Workflow::EvaluatorOptimizer runtime behavior" do
     )
   end
 
+  it "sends a structured candidate as JSON to the evaluator and in the refinement assistant turn" do
+    generator = with_stubbed_class("SpecOptGenStructured", agent_class) do
+      register_as :spec_opt_gen_structured
+      model "gpt-5-mini"
+    end
+    evaluator = with_stubbed_class("SpecOptEvalStructured", agent_class) do
+      register_as :spec_opt_eval_structured
+      model "gpt-5-mini"
+    end
+    candidates = [{ "title" => "Draft 1", "tags" => ["a"] }, { "title" => "Draft 2", "tags" => ["b"] }]
+    evaluations = [
+      { accept: false, feedback: "shorter title", score: 0.4 },
+      { accept: true, feedback: nil, score: 0.9 }
+    ]
+    recording_chat = lambda do |klass, results|
+      inputs = Queue.new
+      calls = Concurrent::AtomicFixnum.new(-1)
+      allow(klass).to receive(:chat) do
+        received = []
+        result = results.fetch(calls.increment)
+        chat = Object.new
+        chat.define_singleton_method(:add_message) { |message| received << message }
+        chat.define_singleton_method(:with_schema) { |_s| self }
+        chat.define_singleton_method(:complete) do
+          inputs << received
+          Struct.new(:content, :input_tokens, :output_tokens).new(result, 5, 3)
+        end
+        chat
+      end
+      inputs
+    end
+    generator_inputs = recording_chat.call(generator, candidates)
+    evaluator_inputs = recording_chat.call(evaluator, evaluations)
+
+    workflow = with_stubbed_class("SpecOptStructuredWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+      state :failed
+
+      transition :draft, from: :idle, to: :done do
+        optimize generator: :spec_opt_gen_structured, evaluator: :spec_opt_eval_structured,
+                 max_rounds: 3, evaluator_schema: Class.new
+        on_failure :fail
+      end
+    end.new
+
+    result = workflow.run!
+    evaluator_messages = Array.new(2) { evaluator_inputs.pop }
+    refinement_messages = Array.new(2) { generator_inputs.pop }.last
+
+    expect(result.output).to eq(candidates.last)
+    expect(evaluator_messages.map { |messages| messages.last[:content] }).to eq(candidates.map { JSON.generate(_1) })
+    expect(refinement_messages.find { |message| message[:role] == :assistant }[:content])
+      .to eq(JSON.generate(candidates.first))
+  end
+
   describe "evaluator output normalization (real RubyLLM schema responses use String keys)" do
     it "accepts a String-keyed Hash from a schema-bound evaluator and treats accept: true correctly" do
       generator = with_stubbed_class("SpecOptGenStringKeysAccept", agent_class) do
@@ -895,6 +951,156 @@ RSpec.describe "Smith::Workflow::EvaluatorOptimizer runtime behavior" do
           end
         end
       end.to raise_error(workflow_error, /before_eval must respond to :call/)
+    end
+
+    def recording_chat(inputs, result)
+      received = []
+      chat = Object.new
+      chat.define_singleton_method(:add_message) { |message| received << message }
+      chat.define_singleton_method(:with_schema) { |_s| self }
+      chat.define_singleton_method(:complete) do
+        inputs << received
+        Struct.new(:content, :input_tokens, :output_tokens).new(result, 5, 3)
+      end
+      chat
+    end
+
+    def record_inputs(klass, results)
+      inputs = Queue.new
+      calls = Concurrent::AtomicFixnum.new(-1)
+      allow(klass).to receive(:chat) do
+        recording_chat(inputs, results.fetch([calls.increment, results.length - 1].min))
+      end
+      inputs
+    end
+
+    def before_eval_agents(label)
+      %w[Gen Eval].map do |role|
+        agent_name = :"spec_before_eval_#{label.downcase}_#{role.downcase}"
+        with_stubbed_class("SpecBeforeEval#{label}#{role}", agent_class) do
+          register_as agent_name
+          model "gpt-5-mini"
+        end
+      end
+    end
+
+    def before_eval_workflow(label, before_eval, agents: label, **options)
+      prefix = "spec_before_eval_#{agents.downcase}"
+      with_stubbed_class("SpecBeforeEval#{label}Workflow", workflow_class) do
+        initial_state :idle
+        state :done
+        state :failed
+
+        transition :draft, from: :idle, to: :done do
+          optimize generator: :"#{prefix}_gen", evaluator: :"#{prefix}_eval",
+                   max_rounds: 2, evaluator_schema: Class.new, before_eval:, **options
+          on_failure :fail
+        end
+      end.new
+    end
+
+    it "counts a returned rejection as the round's evaluation, skipping the evaluator and refining with its feedback" do
+      generator, evaluator = before_eval_agents("Reject")
+      generator_inputs = record_inputs(generator, ["draft one", "draft two"])
+      evaluator_inputs = record_inputs(evaluator, [{ accept: true, feedback: nil }])
+      verdicts = [{ "accept" => false, "feedback" => "cite the source" }, nil]
+      seen = []
+      before_eval = lambda do |state, _context|
+        seen << state.candidate
+        verdicts.shift
+      end
+
+      result = before_eval_workflow("Reject", before_eval).run!
+      generator_calls = Array.new(generator_inputs.size) { generator_inputs.pop }
+      evaluator_calls = Array.new(evaluator_inputs.size) { evaluator_inputs.pop }
+
+      expect(result.output).to eq("draft two")
+      expect(seen).to eq(["draft one", "draft two"])
+      expect(evaluator_calls.map { |messages| messages.last[:content] }).to eq(["draft two"])
+      expect(generator_calls.last.last[:content])
+        .to eq("[smith:refinement-round] 2\n[smith:evaluator-feedback]\ncite the source")
+    end
+
+    it "attributes a rejected round's usage and provider calls to its generator alone" do
+      generator, evaluator = before_eval_agents("Attribution")
+      record_inputs(generator, ["draft one", "draft two"])
+      record_inputs(evaluator, [{ accept: true, feedback: nil }])
+      verdicts = [{ accept: false, feedback: "cite the source" }, nil]
+      workflow = before_eval_workflow("Attribution", ->(_state, _context) { verdicts.shift })
+      trace_adapter = Smith::Trace::Memory.new
+      original_adapter = Smith.config.trace_adapter
+
+      begin
+        Smith.configure { |config| config.trace_adapter = trace_adapter }
+        result = workflow.run!
+      ensure
+        Smith.configure { |config| config.trace_adapter = original_adapter }
+      end
+
+      expected = [
+        [:spec_before_eval_attribution_gen, 0], [:spec_before_eval_attribution_gen, 1],
+        [:spec_before_eval_attribution_eval, 1]
+      ]
+      provider_calls = trace_adapter.traces.select { |trace| trace[:type] == :provider_call }.map { _1[:data] }
+      expect(result.usage_entries.map { |entry| [entry.agent_name, entry.round] }).to eq(expected)
+      expect(provider_calls.map { |data| [data[:agent_name], data[:round]] }).to eq(expected)
+    end
+
+    it "exhausts through on_exhaustion when before_eval rejects every round" do
+      generator, evaluator = before_eval_agents("Exhaust")
+      stub_agent(generator, "draft")
+      stub_agent(evaluator, { accept: true, feedback: nil })
+
+      rejecting = before_eval_workflow("Exhaust", ->(_state, _context) { { accept: false, feedback: "never" } })
+      last = before_eval_workflow(
+        "ExhaustLast", ->(_state, _context) { { accept: false, feedback: "never" } },
+        agents: "Exhaust", on_exhaustion: :return_last
+      )
+      result = rejecting.run!
+
+      expect(result.state).to eq(:failed)
+      expect(result.steps.first[:error].message).to eq("optimization exhausted 2 rounds without acceptance")
+      expect(last.run!.output).to eq("draft")
+      expect(generator).to have_received(:chat).exactly(4).times
+      expect(evaluator).not_to have_received(:chat)
+    end
+
+    it "validates a returned rejection exactly as evaluator output" do
+      generator, evaluator = before_eval_agents("Invalid")
+      stub_agent(generator, "draft")
+      stub_agent(evaluator, { accept: true, feedback: nil, score: 0.9 })
+
+      unexplained = before_eval_workflow("Invalid", ->(_state, _context) { { accept: false } })
+      unscored = before_eval_workflow(
+        "Unscored", ->(_state, _context) { { accept: false, feedback: "why" } },
+        agents: "Invalid", improvement_threshold: 0.1
+      )
+      messages = [unexplained, unscored].map { |workflow| workflow.run!.steps.first[:error].message }
+
+      expect(messages).to eq(
+        [
+          "evaluator must provide :feedback when not accepted",
+          "evaluator must provide numeric :score when improvement_threshold is configured"
+        ]
+      )
+      expect(evaluator).not_to have_received(:chat)
+    end
+
+    it "ignores any other return value, so the evaluator still judges" do
+      generator, evaluator = before_eval_agents("Ignored")
+      stub_agent(generator, "draft")
+      stub_agent(evaluator, { accept: true, feedback: nil })
+      returns = [
+        nil, "review text", ["violation"], { accept: true, feedback: "fine" }, { "accept" => true },
+        { verdict: false }, { accept: "false", feedback: "not a boolean" }
+      ]
+
+      outputs = returns.each_with_index.map do |value, index|
+        before_eval_workflow("Ignored#{index}", ->(_state, _context) { value }, agents: "Ignored").run!.output
+      end
+
+      expect(outputs).to eq(["draft"] * returns.length)
+      expect(evaluator).to have_received(:chat).exactly(returns.length).times
     end
   end
 
