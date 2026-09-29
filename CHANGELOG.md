@@ -50,6 +50,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   with `accept: true`, is ignored exactly as before and the evaluator judges.
   A rejected round records only the generator's usage and `:provider_call`.
   Documented in the Evaluator-Optimizer section of `docs/PATTERNS.md`.
+- `optimize`'s verdicts are an output. Each valid round's evaluation is
+  recorded as `{ round:, source:, verdict: }`: the optimizer round (the one
+  usage entries and traces carry), `:evaluator` or `:before_eval` for the one
+  that gave it, and the evaluation as normalized, every field the evaluator's
+  schema declares included, as a frozen copy. Once its loop has run, the
+  step's record carries its verdicts under `:evaluations` whether the step
+  completed or failed (a completion that fails after the loop, such as a split
+  step's snapshot, included), the verdict that ends the loop included, each
+  also naming its `attempt`, the retry policy's attempt that ran the loop: a
+  step `retry_on` runs again starts its loop afresh with rounds from 0, and the
+  earlier attempt's verdicts stay before the new ones. `RunResult#evaluations`
+  lists every optimize step's verdicts in step, attempt and round order as
+  frozen records with the step's `transition`, and
+  `OptimizationState#evaluations` gives a callable a frozen copy of its own
+  loop's verdicts so far. A step that failed before its loop, and every other
+  step, gains no key; a nested workflow's verdicts stay on its own run.
+  Verdicts are content, so no trace carries them, and like `steps` they
+  belong to the run that executed the step: nothing is persisted and a
+  terminal restore has none. Before this, a rejection's feedback lived only in
+  the loop and an accepted verdict was discarded, so a host could not see why
+  a candidate was sent back. Documented in the Evaluator-Optimizer section of
+  `docs/PATTERNS.md`.
 - `Smith::StepInProgressOnRestore` gains `state`, the persisted state the
   interrupted step started from (a Symbol), and `transition`, the next
   transition the payload records (such as a routed one), else `nil`, so a
@@ -60,6 +82,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Changed
 
+- Contract tightening: an `optimize` round's verdict, now recorded as an
+  output, must hold JSON values only (Hashes with String or Symbol keys,
+  Arrays, Strings, Symbols, Integers, finite Floats, true, false, nil), and a
+  step's verdicts together must fit the limits a split step's record is held
+  to (`ExecutionResultSnapshot`'s depth, node and byte caps). A round whose
+  verdict breaks either, most likely a rejection `before_eval` returned
+  holding an object or a very large feedback, now fails the step with
+  `Smith::WorkflowError` at that round, in every run mode, keeping the
+  verdicts recorded before it. Before, such a verdict was never recorded and
+  the loop went on.
 - **Breaking:** a deterministic step's `write_outcome` is deep-symbolized
   when written, matching restore. A live `RunResult#outcome_payload` (and
   `RunResult#outcome`) now has Symbol keys at every depth, so a host reading

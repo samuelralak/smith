@@ -63,9 +63,11 @@ module Smith
       # fallback resolution), exposed to the following deterministic step as
       # `last_agent_model` / `last_agent_provider`. `@pending_agent_execution`
       # is the transient per-step carrier from `execute_serial_step` to
-      # `complete_step`; it is never persisted.
+      # `complete_step`; it is never persisted. `@pending_evaluations` is the
+      # optimizer's, carrying a loop's verdicts into its step's record.
       @last_agent_execution = nil
       @pending_agent_execution = nil
+      @pending_evaluations = nil
       @last_failed_step = nil
       # Optimistic-locking version. Incremented on each persist!; restored
       # from the persisted payload. Adapters that support store_versioned

@@ -1263,4 +1263,281 @@ RSpec.describe "Smith::Workflow::EvaluatorOptimizer runtime behavior" do
       end.to raise_error(workflow_error, /on_exhaustion must be :raise, :return_last, or a callable/)
     end
   end
+
+  describe "verdicts as an output" do
+    def verdict_agents(label)
+      %w[Gen Eval].map do |role|
+        with_stubbed_class("SpecVerdict#{label}#{role}", agent_class) do
+          register_as :"spec_verdict_#{label.downcase}_#{role.downcase}"
+          model "gpt-5-mini"
+        end
+      end
+    end
+
+    def verdict_workflow(label, agents: label, max_rounds: 2, retry_on_agent_error: false, **options)
+      prefix = "spec_verdict_#{agents.downcase}"
+      with_stubbed_class("SpecVerdict#{label}Workflow", workflow_class) do
+        idempotency_mode :strict
+        initial_state :idle
+        state :drafted
+        state :done
+        state :failed
+
+        transition :draft, from: :idle, to: :drafted do
+          optimize generator: :"#{prefix}_gen", evaluator: :"#{prefix}_eval",
+                   max_rounds:, evaluator_schema: Class.new, **options
+          retry_on Smith::AgentError, attempts: 2, backoff: 0 if retry_on_agent_error
+          on_failure :fail
+        end
+
+        transition :finish, from: :drafted, to: :done do
+          compute { |_step| nil }
+        end
+      end.new
+    end
+
+    it "records every round's verdict and who gave it on the step, and the run result names its transition" do
+      generator, evaluator = verdict_agents("Rounds")
+      stub_agent_sequence(generator, ["draft one", "draft two"])
+      stub_agent(evaluator, { "accept" => true, "feedback" => "ok", "score" => 0.9, "notes" => ["tight"] })
+      verdicts = [{ "accept" => false, "feedback" => "cite the source" }, nil]
+
+      result = verdict_workflow("Rounds", before_eval: ->(_state, _context) { verdicts.shift }).run!
+      expected = [
+        { attempt: 1, round: 0, source: :before_eval, verdict: { accept: false, feedback: "cite the source" } },
+        { attempt: 1, round: 1, source: :evaluator,
+          verdict: { accept: true, feedback: "ok", score: 0.9, notes: ["tight"] } }
+      ]
+
+      expect(result.state).to eq(:done)
+      expect(result.steps.first[:evaluations]).to eq(expected)
+      expect(result.steps.last).not_to have_key(:evaluations)
+      expect(result.evaluations).to eq(expected.map { |evaluation| { transition: :draft, **evaluation } })
+    end
+
+    it "keeps the verdict that ends a failed loop, and hands an exit callable every verdict so far" do
+      generator, evaluator = verdict_agents("Exhaust")
+      stub_agent(generator, "draft")
+      stub_agent_sequence(evaluator, [{ accept: false, feedback: "first" }, { accept: false, feedback: "second" }])
+      seen = nil
+      failed = verdict_workflow("Exhaust").run!
+      stub_agent_sequence(evaluator, [{ accept: false, feedback: "first" }, { accept: false, feedback: "second" }])
+      exit = lambda do |state|
+        seen = state.evaluations.map { |evaluation| evaluation[:verdict][:feedback] }
+        state.candidate
+      end
+      kept = verdict_workflow("ExhaustCallable", agents: "Exhaust", on_exhaustion: exit).run!
+
+      expect(failed.state).to eq(:failed)
+      expect(failed.steps.first[:error].message).to eq("optimization exhausted 2 rounds without acceptance")
+      expect(failed.evaluations.map { |evaluation| [evaluation[:round], evaluation[:verdict][:feedback]] })
+        .to eq([[0, "first"], [1, "second"]])
+      expect(seen).to eq(%w[first second])
+      expect(kept.steps.first[:evaluations].length).to eq(2)
+    end
+
+    it "keeps the verdict that converges the loop" do
+      generator, evaluator = verdict_agents("Converged")
+      stub_agent(generator, "draft")
+      stub_agent(evaluator, { accept: false, feedback: "as good as it gets", converged: true })
+
+      result = verdict_workflow("Converged", max_rounds: 3, on_converged: :return_last).run!
+
+      expect(result.output).to eq("draft")
+      expect(result.evaluations.map { |evaluation| evaluation[:verdict] })
+        .to eq([{ accept: false, feedback: "as good as it gets", converged: true }])
+    end
+
+    it "freezes each verdict apart from what the evaluator returned" do
+      generator, evaluator = verdict_agents("Frozen")
+      feedback = +"ok"
+      stub_agent(generator, "draft")
+      stub_agent(evaluator, { accept: true, feedback: feedback, notes: [+"kept"] })
+
+      record = verdict_workflow("Frozen").run!.steps.first[:evaluations].first
+      feedback << " changed"
+
+      expect(record[:verdict][:feedback]).to eq("ok")
+      expect([record, record[:verdict], record[:verdict][:feedback], record[:verdict][:notes],
+              record[:verdict][:notes].first]).to all(be_frozen)
+    end
+
+    it "fails the round when a verdict holds a value that is not JSON, in every run mode alike" do
+      generator, evaluator = verdict_agents("Json")
+      stub_agent(generator, "draft")
+      stub_agent(evaluator, { accept: true, feedback: "ok" })
+      odd = [
+        { accept: false, feedback: "x", issues: [Object.new] },
+        { accept: false, feedback: "x", score: Float::NAN },
+        { accept: false, feedback: "x", details: { 1 => "one" } }
+      ]
+
+      messages = odd.each_with_index.map do |verdict, index|
+        result = verdict_workflow("Json#{index}", agents: "Json", before_eval: ->(_state, _context) { verdict }).run!
+        expect(result.state).to eq(:failed)
+        result.steps.first[:error].message
+      end
+
+      expect(messages).to eq(
+        [
+          "evaluation must hold JSON values; got Object",
+          "evaluation must hold finite numbers; got NaN",
+          "evaluation keys must be Strings or Symbols; got Integer"
+        ]
+      )
+    end
+
+    it "hands a callable a frozen copy, so it cannot rewrite the step's verdicts" do
+      generator, evaluator = verdict_agents("Callable")
+      stub_agent(generator, "draft")
+      stub_agent(evaluator, { accept: false, feedback: "no" })
+      exit = lambda do |state|
+        expect(state.evaluations).to be_frozen
+        state.evaluations = []
+        state.candidate
+      end
+
+      result = verdict_workflow("Callable", on_exhaustion: exit).run!
+
+      expect(result.state).to eq(:done)
+      expect(result.evaluations.length).to eq(2)
+      expect(result.evaluations).to all(be_frozen)
+    end
+
+    it "gives a step that failed before its loop no verdicts" do
+      result = verdict_workflow("Unregistered", agents: "NeverRegistered").run!
+
+      expect(result.state).to eq(:failed)
+      expect(result.steps.first).not_to have_key(:evaluations)
+      expect(result.evaluations).to eq([])
+    end
+
+    it "keeps every attempt's verdicts when the step is retried, each naming its attempt" do
+      generator, evaluator = verdict_agents("Retried")
+      stub_agent(generator, "draft")
+      answers = [{ accept: false, feedback: "first attempt" }, Smith::AgentError.new("outage"),
+                 { accept: true, feedback: "second attempt" }]
+      allow(evaluator).to receive(:chat) do
+        answer = answers.shift
+        Object.new.tap do |chat|
+          chat.define_singleton_method(:add_message) { |_message| nil }
+          chat.define_singleton_method(:with_schema) { |_schema| self }
+          chat.define_singleton_method(:complete) do
+            raise answer if answer.is_a?(Exception)
+
+            Struct.new(:content, :input_tokens, :output_tokens).new(answer, 5, 3)
+          end
+        end
+      end
+
+      result = verdict_workflow("Retried", retry_on_agent_error: true).run!
+
+      expect(result.state).to eq(:done)
+      expect(answers).to be_empty
+      said = result.evaluations.map do |evaluation|
+        [*evaluation.values_at(:attempt, :round), evaluation[:verdict][:feedback]]
+      end
+      expect(said).to eq([[1, 0, "first attempt"], [2, 0, "second attempt"]])
+    end
+
+    it "carries the verdicts through a strict persisted run and a split step's snapshot" do
+      generator, evaluator = verdict_agents("Persisted")
+      stub_agent(generator, "draft")
+      stub_agent(evaluator, { accept: true, feedback: "ok" })
+      adapter = Smith::PersistenceAdapters::Memory.new
+      expected = [{ attempt: 1, round: 0, source: :evaluator, verdict: { accept: true, feedback: "ok" } }]
+
+      persisted = verdict_workflow("Persisted").run_persisted!("verdicts:persisted", adapter:)
+      split = verdict_workflow("PersistedSplit", agents: "Persisted")
+      split.prepare_persisted_step!("verdicts:split", adapter:)
+      step = split.execute_prepared_step!
+
+      expect(persisted.state).to eq(:done)
+      expect(persisted.evaluations).to eq(expected.map { |evaluation| { transition: :draft, **evaluation } })
+      expect(step[:evaluations]).to eq(expected)
+    end
+
+    it "fails a non-JSON verdict at its round in a split step as well" do
+      generator, evaluator = verdict_agents("SplitJson")
+      stub_agent(generator, "draft")
+      stub_agent(evaluator, { accept: true, feedback: "ok" })
+      odd = ->(_state, _context) { { accept: false, feedback: Object.new } }
+      split = verdict_workflow("SplitJson", before_eval: odd)
+
+      split.prepare_persisted_step!("verdicts:split-json", adapter: Smith::PersistenceAdapters::Memory.new)
+      step = split.execute_prepared_step!
+
+      expect(step[:error].message).to eq("evaluation must hold JSON values; got Object")
+      expect(step[:evaluations]).to eq([])
+    end
+
+    it "fails the round whose verdict takes the step's past a step record's limits, in every run mode" do
+      generator, evaluator = verdict_agents("Heavy")
+      stub_agent(generator, "draft")
+      stub_agent(evaluator, { accept: true, feedback: "ok" })
+      long = "y" * ((Smith::Workflow::ExecutionResultSnapshot::MAX_BYTES / 2) + 10)
+      verdicts = -> { [{ accept: false, feedback: long }, { accept: false, feedback: long }] }
+      plain_verdicts = verdicts.call
+      split_verdicts = verdicts.call
+
+      plain = verdict_workflow("Heavy", max_rounds: 3, before_eval: ->(_state, _context) { plain_verdicts.shift }).run!
+      split = verdict_workflow("HeavySplit", agents: "Heavy", max_rounds: 3,
+                                             before_eval: ->(_state, _context) { split_verdicts.shift })
+      split.prepare_persisted_step!("verdicts:heavy", adapter: Smith::PersistenceAdapters::Memory.new)
+      step = split.execute_prepared_step!
+
+      expect(plain.state).to eq(:failed)
+      expect([plain.last_error.message, step[:error].message])
+        .to all(start_with("evaluations exceed a step record's limits"))
+      expect([plain.evaluations.length, step[:evaluations].length]).to eq([1, 1])
+      expect(split.state).to eq(:failed)
+    end
+
+    it "keeps the verdicts on the failure record when a split step's completion fails" do
+      generator, evaluator = verdict_agents("Oversize")
+      stub_agent(generator, "x" * (Smith::Workflow::ExecutionResultSnapshot::MAX_BYTES + 1))
+      stub_agent(evaluator, { accept: true, feedback: "ok" })
+      split = verdict_workflow("Oversize")
+
+      split.prepare_persisted_step!("verdicts:oversize", adapter: Smith::PersistenceAdapters::Memory.new)
+      step = split.execute_prepared_step!
+
+      expect(step[:error].message).to include("exceeds maximum bytes")
+      expect(step[:evaluations]).to eq([{ attempt: 1, round: 0, source: :evaluator,
+                                          verdict: { accept: true, feedback: "ok" } }])
+    end
+
+    it "names the attempt under way when an earlier attempt failed before its loop" do
+      generator, evaluator = verdict_agents("Late")
+      stub_agent(generator, "draft")
+      stub_agent(evaluator, { accept: true, feedback: "ok" })
+      calls = 0
+      guards = with_stubbed_class("SpecVerdictLateGuards", require_const("Smith::Guardrails")) do
+        define_method(:flaky) do |_payload|
+          calls += 1
+          raise Smith::AgentError, "transient" if calls == 1
+        end
+        input :flaky
+      end
+
+      workflow = with_stubbed_class("SpecVerdictLateWorkflow", workflow_class) do
+        initial_state :idle
+        state :drafted
+        state :failed
+        guardrails guards
+
+        transition :draft, from: :idle, to: :drafted do
+          optimize generator: :spec_verdict_late_gen, evaluator: :spec_verdict_late_eval,
+                   max_rounds: 2, evaluator_schema: Class.new
+          retry_on Smith::AgentError, attempts: 2, backoff: 0
+          on_failure :fail
+        end
+      end
+
+      result = workflow.new.run!
+
+      expect(result.state).to eq(:drafted)
+      expect(result.evaluations.map { |evaluation| evaluation.values_at(:attempt, :round) }).to eq([[2, 0]])
+    end
+  end
 end

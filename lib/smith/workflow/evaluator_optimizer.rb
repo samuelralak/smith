@@ -3,6 +3,7 @@
 require "json"
 
 require_relative "agent_result"
+require_relative "execution_result_snapshot"
 require_relative "optimization_state"
 
 module Smith
@@ -24,6 +25,7 @@ module Smith
           transition_name: transition.name,
           role: :evaluator
         )
+        pend_evaluations
         run_optimization_loop(state)
       end
 
@@ -41,9 +43,11 @@ module Smith
 
       def run_optimization_round(state, round)
         generate_candidate!(state, round)
-        evaluation = before_eval_rejection(state) || normalize_evaluation(evaluate_candidate(state))
+        rejection = before_eval_rejection(state)
+        evaluation = rejection || normalize_evaluation(evaluate_candidate(state))
         validate_evaluation_structure!(evaluation)
         validate_evaluation_fields!(evaluation, state.config)
+        record_evaluation(state, evaluation, round, rejection ? :before_eval : :evaluator)
 
         return state.candidate if evaluation[:accept]
 
@@ -58,6 +62,88 @@ module Smith
         state.last_score = evaluation[:score]
         state.feedback = evaluation[:feedback]
         nil
+      end
+
+      # Each valid round's evaluation, in round order: the round, whether the
+      # evaluator or a before_eval rejection gave it, and the verdict as
+      # normalized, copied and frozen so neither the loop nor a host holding a
+      # record can change it. Recorded before any exit, so the verdict that
+      # ends the loop (accepted, converged, or under the threshold) is kept.
+      # The loop's state carries a frozen copy, so a callable reads the
+      # verdicts so far and cannot rewrite the step's.
+      def record_evaluation(state, evaluation, round, source)
+        records = @pending_evaluations.values.last
+        record = { round: round, source: source, verdict: frozen_verdict(evaluation) }.freeze
+        within_step_record_limits!(@pending_evaluations.values.flatten(1) << record)
+        records << record
+        state.evaluations = records.dup.freeze
+      end
+
+      # The verdicts ride on the step's record, which a split step snapshots
+      # under ExecutionResultSnapshot's limits. A round whose verdict would
+      # take the step's verdicts past them fails here, the same way in every
+      # run mode, and the verdicts already recorded still fit a failed step's
+      # record.
+      def within_step_record_limits!(records)
+        ExecutionResultSnapshot.new({ evaluations: records }).call
+      rescue WorkflowError => e
+        raise WorkflowError, "evaluations exceed a step record's limits: #{e.message}"
+      end
+
+      # A verdict holds JSON values only, as a provider's structured output
+      # does: anything else (an object a before_eval returned, a key that is
+      # not a String or Symbol, a non-finite Float) fails the round here, the
+      # same way in every run mode, rather than when a split step snapshots it.
+      def frozen_verdict(value)
+        case value
+        when Hash then value.to_h { |key, nested| [verdict_key(key), frozen_verdict(nested)] }.freeze
+        when Array then value.map { |nested| frozen_verdict(nested) }.freeze
+        when String then StringSnapshot.copy(value, freeze: true)
+        else verdict_scalar(value)
+        end
+      end
+
+      def verdict_scalar(value)
+        case value
+        when Float then finite_verdict_number(value)
+        when Symbol, Integer, true, false, nil then value
+        else raise WorkflowError, "evaluation must hold JSON values; got #{value.class}"
+        end
+      end
+
+      def verdict_key(key)
+        return key if key.is_a?(Symbol)
+        return StringSnapshot.copy(key, freeze: true) if key.is_a?(String)
+
+        raise WorkflowError, "evaluation keys must be Strings or Symbols; got #{key.class}"
+      end
+
+      def finite_verdict_number(value)
+        return value if value.finite?
+
+        raise WorkflowError, "evaluation must hold finite numbers; got #{value}"
+      end
+
+      # An optimize step's record carries every verdict its loops recorded
+      # under :evaluations, whether the step completed or failed, each naming
+      # the attempt that gave it (`@step_attempt`, the retry policy's): a step
+      # `retry_on` runs again starts its loop afresh, rounds counting from 0
+      # again, and an earlier attempt's verdicts were given and paid for all
+      # the same. The key is there whenever a loop ran; a step that failed
+      # before its loop (an agent not registered, a guardrail) and any other
+      # step have none. The carrier is transient: the loop's list keyed by its
+      # attempt, cleared once the step's record is committed or its failure
+      # captured, and at every step's start.
+      def pend_evaluations
+        (@pending_evaluations ||= {})[@step_attempt || 1] = []
+      end
+
+      def fold_pending_evaluations(step)
+        return unless @pending_evaluations
+
+        step[:evaluations] = @pending_evaluations.flat_map do |attempt, records|
+          records.map { |record| { attempt: attempt, **record }.freeze }
+        end.freeze
       end
 
       # :raise => WorkflowError(message); :return_last => state.candidate;

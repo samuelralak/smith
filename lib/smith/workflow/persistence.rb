@@ -100,11 +100,12 @@ module Smith
         @usage_entries = restore_usage_entries(normalized)
         @last_output = restore_last_output(normalized)
         # Backward-compat: pre-patch states have no last_agent_execution key and
-        # restore to nil. @pending_agent_execution is transient (nil between
-        # steps), never persisted, but must be initialized because from_state
-        # allocates and bypasses #initialize.
+        # restore to nil. @pending_agent_execution and @pending_evaluations are
+        # transient (nil between steps), never persisted, but must be
+        # initialized because from_state allocates and bypasses #initialize.
         @last_agent_execution = restore_last_agent_execution(normalized)
         @pending_agent_execution = nil
+        @pending_evaluations = nil
         @last_failed_step = restore_last_failed_step(normalized)
         # Restore the optimistic-locking version from the persisted payload.
         # Backward-compat: pre-versioning payloads have no key, restore to 0

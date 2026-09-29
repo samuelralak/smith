@@ -34,7 +34,9 @@ module Smith
         # Reset the per-step agent-attribution carrier so only a serial agent
         # step that actually runs (below) leaves model/provider for complete_step;
         # a deterministic step never sets it and must not inherit a stale value.
+        # The optimizer's verdict carrier resets for the same reason.
         @pending_agent_execution = nil
+        @pending_evaluations = nil
         output = with_scoped_artifacts { run_with_retry_policy(transition) }
         StepCompletion.instance_method(:complete_step).bind_call(self, transition, output)
       end

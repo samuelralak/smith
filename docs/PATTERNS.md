@@ -390,6 +390,52 @@ value, including a Hash with `accept: true`, is ignored and the evaluator
 judges as before. A deterministic check that makes a candidate unacceptable
 can reject it this way without spending an evaluator call.
 
+Every round's verdict is an output. Once its loop has run, the step's record
+carries its verdicts under `:evaluations`, in attempt and round order, whether
+the step completed or failed (a step that failed before its loop, or any other
+step, has no such key), and `RunResult#evaluations` lists every optimize step's
+verdicts with the step's transition:
+
+```ruby
+result = TranslationWorkflow.new.run!
+result.evaluations
+# => [{ transition: :translate, attempt: 1, round: 0, source: :evaluator,
+#       verdict: { accept: false, feedback: "Keep the formal register.", score: 0.6 } },
+#     { transition: :translate, attempt: 1, round: 1, source: :evaluator,
+#       verdict: { accept: true, feedback: "ok", score: 0.93 } }]
+```
+
+`attempt` is the retry policy's attempt that ran the loop, from 1: when
+`retry_on` runs the step again, the loop starts afresh and its rounds count
+from 0 again, so an earlier attempt's verdicts, given and paid for all the
+same, stay before it, and an attempt that failed before its loop leaves a gap.
+`round` is the optimizer round, the one usage entries and traces carry.
+`source` is `:evaluator`, or `:before_eval` for a rejection `before_eval`
+returned. `verdict` is the evaluation as normalized (Symbol keys at every
+depth), with every field the evaluator's schema declares, not only the
+contract's. A verdict holds JSON values only (Hashes with String or Symbol
+keys, Arrays, Strings, Symbols, Integers, finite Floats, true, false, nil), as
+a provider's structured output does; anything else, most likely an object a
+`before_eval` returned, fails the step with `Smith::WorkflowError`, the same
+way in every run mode. So does a round whose verdict would take the step's
+verdicts past the limits a split step's record is held to (depth, nodes and
+bytes, `ExecutionResultSnapshot`'s), keeping the verdicts before it; a step's
+output counts toward those limits only in a split step. The records on the
+step and on `RunResult#evaluations` are frozen copies; a split step's
+execution snapshot hands the host its own mutable copy of the whole step,
+verdicts included. Only a valid verdict is recorded, and the one that ends the
+loop is kept, whether it accepts, converges, or trips the improvement
+threshold. A step whose completion fails after its loop (a split step's
+snapshot over its limits) keeps its verdicts on the failure record. A nested
+workflow's verdicts stay on its own run: the parent's step carries the child's
+usage, not its verdicts. A callable
+(`before_eval` or an exit mode) reads its own loop's verdicts so far from
+`state.evaluations`, a frozen copy without `attempt`, so it cannot rewrite the
+step's. Verdicts are content, so they are an output and never a
+trace: nothing about them reaches a trace adapter. Like `steps`, they belong to
+the run that executed the step, so a terminal restore has none; a host that
+needs them later stores them when the run returns.
+
 Why this matters:
 
 - the loop is explicit, bounded, and observable

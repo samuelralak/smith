@@ -5,14 +5,18 @@ module Smith
     module RetryExecution
       private
 
+      # `@step_attempt` is the attempt under way, from 1, which the optimizer
+      # names its verdicts by; transient, set here before every attempt.
       def run_with_retry_policy(transition)
         config = transition.retry_config
+        @step_attempt = 1
         return run_guarded_step(transition) unless config
 
         schedule = retry_schedule(config)
         attempt = 0
         begin
           attempt += 1
+          @step_attempt = attempt
           run_guarded_step(transition)
         rescue StandardError => e
           raise unless retry_transition_error?(config, e, attempt)

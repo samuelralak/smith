@@ -1081,6 +1081,14 @@ Documented contracts covered:
 - optimization rounds remain inside one parent workflow step
 - the single stable instruction layer remains `system`
 - refinement-round metadata and evaluator feedback remain turn-local `user` content, while the prior candidate is passed as `assistant`
+- every valid round's verdict is an output: the step's record carries `:evaluations` (`attempt`, `round`, `source` of `:evaluator` or `:before_eval`, and the normalized `verdict` with every schema field) whether the step completed or failed, and `RunResult#evaluations` names each record's transition
+- the verdict that ends the loop is kept (exhaustion, convergence), a callable exit mode reads the verdicts so far from `state.evaluations`, a frozen copy it cannot use to rewrite the step's, and non-optimize steps, like a step that failed before its loop, carry no `:evaluations`
+- in `run!` and `run_persisted!` each verdict is a frozen copy, apart from what the evaluator returned, and so is each record `RunResult#evaluations` lists; a split step's execution snapshot is the host's own mutable copy
+- a verdict holding a value that is not JSON (an object, a non-finite Float, a key that is not a String or Symbol) fails the step with `Smith::WorkflowError` at its round, in `run!` and in a split step
+- a round whose verdict takes the step's verdicts past a step record's limits fails the step at that round in `run!` and in a split step alike, keeping the verdicts before it
+- a split step whose completion fails after its loop (its snapshot over the byte limit) keeps its verdicts on the failure record
+- a step `retry_on` runs again keeps every attempt's verdicts, each naming the retry policy's attempt that ran its loop, rounds counting from 0 in each, an attempt that failed before its loop leaving a gap
+- verdicts reach the host through a strict persisted run and a split step's execution snapshot
 
 Notes:
 

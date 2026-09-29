@@ -33,6 +33,16 @@ module Smith
         steps.reverse.map { |step| step[:error] }.compact.first
       end
 
+      # Every verdict an optimize step's loops recorded, in step, attempt and
+      # round order, each a frozen record naming its step's transition. Like
+      # `steps`, they belong to the run that executed the step: a terminal
+      # restore has none.
+      def evaluations
+        steps.flat_map do |step|
+          (step[:evaluations] || []).map { |evaluation| { transition: step[:transition], **evaluation }.freeze }
+        end
+      end
+
       def failed_transition
         failure_detail&.fetch(:transition)
       end

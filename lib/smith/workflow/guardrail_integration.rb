@@ -24,6 +24,8 @@ module Smith
 
       def handle_step_failure(transition, error)
         step = { transition: transition.name, from: transition.from, to: transition.to, error: error }
+        fold_pending_evaluations(step)
+        @pending_evaluations = nil
         # Staged, not emitted: this rescue runs under the step snapshot's
         # interrupt mask, and host StepFailed handlers must not execute
         # unkillable. with_step_context flushes after the mask closes.

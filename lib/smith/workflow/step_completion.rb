@@ -16,6 +16,7 @@ module Smith
         end
 
         @pending_agent_execution = nil
+        fold_pending_evaluations(step)
         result = SplitStepPersistence
                  .instance_method(:prepare_split_step_execution_result)
                  .bind_call(self, step)
@@ -23,6 +24,9 @@ module Smith
         SplitStepPersistence
           .instance_method(:commit_split_step_execution_result!)
           .bind_call(self, result)
+        # Cleared only once the record is committed: a completion that fails
+        # before this folds the same verdicts into its failure record.
+        @pending_evaluations = nil
         @state = transition.to
         @next_transition_name = @router_next_transition || transition.success_transition
         @router_next_transition = nil
