@@ -325,6 +325,12 @@ end
 What you get:
 
 - the child workflow's final output becomes the parent step output
+- a child failure fails the parent step with `Smith::NestedWorkflowFailed` (a
+  `WorkflowError`), which keeps the child's error as `child_error` and as the
+  exception's `cause`, and mirrors its retry classification: it is retryable
+  when the child's error was, retry-forbidden when the child's was, and a
+  `retry_on SomeError` matches it when the child's error (at any nesting
+  depth) is a `SomeError`
 - parent step count stays parent-scoped
 - parent and child share the outer budget ledger
 - nested best-known token/cost totals roll up into the parent result
@@ -578,17 +584,17 @@ Use `compute` for steps that check prior output and decide what happens next.
 
 ```ruby
 transition :verify_research, from: :gathered, to: :verified do
-  compute do |step|
+  compute(routes: %i[structure finish_terminal_failure]) do |step|
     if step.tool_results.any? { |t| t[:captured]&.dig(:retryable) }
       step.fail!("research temporarily unavailable", retryable: true)
     end
 
-    unless step.last_output
+    if step.last_output
+      step.route_to(:structure)
+    else
       step.write_outcome(kind: :terminal_failure, payload: { message: "no usable research output" })
       step.route_to(:finish_terminal_failure)
     end
-
-    step.route_to(:structure)
   end
 
   on_failure :fail
@@ -625,13 +631,15 @@ The yielded step object exposes a narrow, read-heavy surface:
 
 ### Behavior
 
-- **Routing**: `step.route_to` overrides `on_success`. If neither is set, normal state-based resolution applies. Named transitions that do not exist fail loudly with `WorkflowError`. When a deterministic transition declares `compute(routes: [...])` or `run(routes: [...])`, `step.route_to` must target one of those names; graph inspection validates the annotated targets before runtime.
+- **Routing**: `step.route_to` overrides `on_success`, and can be called once per step. If neither is set, normal state-based resolution applies. Named transitions that do not exist fail loudly with `WorkflowError`. When a deterministic transition declares `compute(routes: [...])` or `run(routes: [...])`, `step.route_to` must target one of those names; graph inspection validates the annotated targets before runtime.
+- **Declared routes must be taken**: a step that declares `routes:` and finishes without `step.route_to` raises `Smith::UnroutedDeterministicStep` (a `WorkflowError`, so `on_failure` applies and no write is kept), unless the transition declares `on_success` or `compute(routes: [...], fallthrough: true)`. Graph inspection follows the same rule: such a step reaches its routes and its `on_success`, and the first transition from its target state only with `fallthrough: true`. `fallthrough:` without `routes:` raises `WorkflowError` at definition time.
 - **Failure**: `step.fail!` raises `Smith::DeterministicStepFailure` (extends `WorkflowError`) with `retryable`, `kind`, and `details` metadata. Routes through `on_failure` like any other step failure.
 - **Outcome**: `step.write_outcome(kind:, payload:)` stores a workflow-owned terminal payload without smuggling it through context. The payload is persisted with the workflow and surfaced on `RunResult.outcome`, `RunResult.outcome_kind`, and `RunResult.outcome_payload`.
+- **Context writes**: `step.write_context(key, value)` takes a Symbol key. The value is stored with Symbol keys at every depth (String Hash keys become Symbols), the shape a restore produces, so a nested read is the same live and after a checkpoint. When the workflow's `Smith::Context` declares `persist :a, :b`, writing any other key raises `Smith::UndeclaredContextKey` instead of being dropped at the next checkpoint; with `persist :auto`, or no `persist` declaration, any key may be written.
 - **Context reads**: `step.context` returns an isolated snapshot of the workflow context at step start. Mutating that snapshot does not mutate workflow state. `step.read_context(key)` returns a merged view — pending `write_context` values override the snapshot. Use `read_context` when you need read-after-write coherence within the same step.
 - **No output**: Deterministic steps produce no session message output. `last_output` continues to mean the last agent output.
 - **No budget**: No tokens or cost consumed.
-- **Persistence**: Context writes and written outcomes survive `to_state`/`from_state`. The block itself (a Proc) lives on the class-level Transition and is never serialized.
-- **Trace**: Emits `:deterministic_step` traces for start, success/routed, and failure. When a step writes an outcome, the trace includes `outcome_kind`.
+- **Persistence**: Context writes (always to a persisted key, see above) and written outcomes survive `to_state`/`from_state`. The block itself (a Proc) lives on the class-level Transition and is never serialized.
+- **Trace**: Emits `:deterministic_step` traces whose `outcome` is `:started`, `:success`, `:routed`, or `:failed` (`outcome`, not `result`, which the content policy strips). A failure carries `error_class`, `error_family`, and `retryable` when known, never the error message. When a step writes an outcome, the trace includes `outcome_kind`.
 - **Mutual exclusivity**: `compute` and `run` cannot be combined with `execute`, `route`, `workflow`, `optimize`, or `orchestrate`. A transition declares exactly one primary execution body.
 - **No hidden scheduler**: `compute` and `run` execute synchronously inside the current runner. Use them for bounded deterministic logic, not for durable polling or wake-up loops.

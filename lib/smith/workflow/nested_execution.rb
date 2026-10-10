@@ -17,7 +17,7 @@ module Smith
       def run_child_workflow(child)
         child.run!
       rescue Smith::Error => e
-        raise WorkflowError, "nested workflow failed: #{e.message}"
+        raise NestedWorkflowFailed.new(e), cause: e
       end
 
       def build_child_workflow(child_class)
@@ -50,7 +50,7 @@ module Smith
         roll_up_child_totals(child_result)
 
         failed_step = child_result.steps.find { |s| s.key?(:error) }
-        raise WorkflowError, "nested workflow failed: #{failed_step[:error]&.message}" if failed_step
+        raise NestedWorkflowFailed.new(failed_step[:error]), cause: failed_step[:error] if failed_step
 
         child_result.output
       end

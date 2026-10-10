@@ -32,6 +32,7 @@ module Smith
         option :routes, default: proc {}
         option :fallback, default: proc {}
         option :deterministic_routes, default: proc {}
+        option :deterministic_fallthrough, default: proc {}
         option :fanout_branches, default: proc {}
         option :fanout, default: proc {}
         option :optimization, default: proc {}
@@ -59,29 +60,18 @@ module Smith
             routes: transition.router_config&.fetch(:routes, nil),
             fallback: transition.router_config&.fetch(:fallback, nil),
             deterministic_routes: transition.deterministic_routes,
+            deterministic_fallthrough: transition.deterministic_routes && transition.deterministic_fallthrough == true,
             fanout_branches: transition.fanout_config&.fetch(:branches, nil)
           }
         end
 
         def self.contract_attributes(transition, workflow_class:)
           {
-            fanout: fanout_for(transition, workflow_class: workflow_class),
-            optimization: optimization_for(transition, workflow_class: workflow_class),
-            orchestration: orchestration_for(transition, workflow_class: workflow_class),
+            fanout: FanoutContract.from_transition(transition, workflow_class:),
+            optimization: OptimizationContract.from_transition(transition, workflow_class:),
+            orchestration: OrchestrationContract.from_transition(transition, workflow_class:),
             retry_policy: retry_policy_for(transition)
           }
-        end
-
-        def self.fanout_for(transition, workflow_class:)
-          FanoutContract.from_transition(transition, workflow_class: workflow_class)
-        end
-
-        def self.optimization_for(transition, workflow_class:)
-          OptimizationContract.from_transition(transition, workflow_class: workflow_class)
-        end
-
-        def self.orchestration_for(transition, workflow_class:)
-          OrchestrationContract.from_transition(transition, workflow_class: workflow_class)
         end
 
         def self.retry_policy_for(transition)
@@ -117,6 +107,7 @@ module Smith
             routes: routes,
             fallback: fallback,
             deterministic_routes: deterministic_routes,
+            deterministic_fallthrough: deterministic_fallthrough,
             fanout_branches: fanout_branches,
             fanout: fanout,
             optimization: optimization,

@@ -251,10 +251,42 @@ RSpec.describe "Smith tracing runtime behavior" do
 
     expect(observed).to eq([
                              "[Smith::Trace] tool_call: #{{
-                               tool: "[REDACTED]",
+                               tool: "search",
                                content: "[REDACTED]"
                              }.inspect}"
                            ])
+  ensure
+    Smith.configure { |config| config.trace_content = original_value }
+  end
+
+  it "masks only content fields, never identifiers, in every built-in adapter under :redacted" do
+    original_value = Smith.config.trace_content
+    Smith.configure { |config| config.trace_content = :redacted }
+    data = {
+      model: "claude-model", execution_key: "run-1", error_class: "Smith::AgentError", tool: "search",
+      content: "secret", prompt: "question", response: "answer", args: { query: "private" }
+    }
+
+    memory = memory_trace_class.new
+    memory.record(type: :provider_call, data: data)
+    expect(memory.traces.first[:data]).to eq(
+      model: "claude-model", execution_key: "run-1", error_class: "Smith::AgentError", tool: "search",
+      content: "[REDACTED]", prompt: "[REDACTED]", response: "[REDACTED]", args: { query: "[REDACTED]" }
+    )
+
+    observed_spans = []
+    stub_open_telemetry_tracer(observed_spans)
+    open_telemetry_trace_class.new.record(type: :provider_call, data: data.except(:args))
+    expect(observed_spans.first[:attributes]).to include(
+      "smith.model" => "claude-model", "smith.execution_key" => "run-1",
+      "smith.error_class" => "Smith::AgentError", "smith.content" => "[REDACTED]"
+    )
+
+    logged = []
+    logger = Object.new
+    logger.define_singleton_method(:info) { |message| logged << message }
+    with_configured_logger(logger) { logger_trace_class.new.record(type: :provider_call, data: data.except(:args)) }
+    expect(logged.first).to include('model: "claude-model"', 'execution_key: "run-1"', 'content: "[REDACTED]"')
   ensure
     Smith.configure { |config| config.trace_content = original_value }
   end

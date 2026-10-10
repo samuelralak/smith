@@ -32,10 +32,19 @@ module Smith
 
         classes = config.fetch(:error_classes)
         if classes.any?
-          classes.any? { |error_class| error.is_a?(error_class) }
+          classes.any? { |error_class| retry_class_match?(error, error_class) }
         else
           Smith::Errors.retryable?(error)
         end
+      end
+
+      # A nested workflow's failure matches by its own class or by the class
+      # of the child error it carries, at any nesting depth.
+      def retry_class_match?(error, error_class)
+        return true if error.is_a?(error_class)
+        return false unless error.is_a?(Smith::NestedWorkflowFailed)
+
+        retry_class_match?(error.child_error, error_class)
       end
 
       def terminal_retry_error?(error)

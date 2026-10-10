@@ -1116,6 +1116,7 @@ Documented contracts covered:
 - parent transition can bind to a child workflow class
 - child workflow success returns child final output as parent step output
 - child workflow failure routes parent through normal `on_failure`
+- a child's failure, raised or routed to its own failed state, becomes `Smith::NestedWorkflowFailed` carrying `child_error` (also the `cause`) and its retry classification: retried by a class-less `retry_on` when the child's error was retryable, matched by `retry_on` on the child's error class, and retry-forbidden when the child's was (mutation-verified)
 - workflow binding rejects non-class targets
 - workflow binding rejects non-`Smith::Workflow` classes
 - transition DSL rejects combining `workflow` with `execute`
@@ -1655,6 +1656,24 @@ Documented contracts covered:
 - legacy payload (no `:step_in_progress` key) treated as false (backward compatibility)
 - `Workflow.inherited` propagates the idempotency_mode
 
+### `spec/smith/workflow/restore_position_spec.rb`
+
+Purpose:
+
+- asserts that a persisted payload naming a state or pending transition the workflow class no longer knows is refused at restore instead of restoring as a silently terminal run
+
+Architecture basis:
+
+- Section 5.3, State Serialization
+
+Documented contracts covered:
+
+- a state named only by a transition's `from:` or `to:` restores and resumes
+- an unknown state raises `Smith::UnknownStateOnRestore` with `workflow`, `persistence_key` and `state` (mutation-verified)
+- an unknown pending transition raises `Smith::UnknownTransitionOnRestore`; a declared one restores
+- `migrate_from` runs before the check, so a migration can map an old state name to a new one
+- both refusals are non-retryable `Smith::Error`s
+
 ### `spec/smith/workflow/persistence_ttl_spec.rb`
 
 Purpose:
@@ -1914,7 +1933,10 @@ Documented contracts covered:
   `step.route_to` targets outside the declared set
 - `fail!` accepts a message and optional metadata payload; the failure routes through `on_failure`
 - persistence round-trip: deterministic step state survives `to_state` / `from_state` and resumes correctly mid-workflow
-- trace lifecycle emits `started` / `success` (with the emitted outcome kind) / `routed` / `failed` events at the deterministic-step boundary
+- trace lifecycle emits `outcome` `:started` / `:success` (with the emitted outcome kind) / `:routed` / `:failed` at the deterministic-step boundary, never the reserved `result` key; a failure carries `error_class` and `error_family`, never the raw message (mutation-verified)
+- declared routes must be taken: a step with `routes:` that does not route raises `Smith::UnroutedDeterministicStep`, keeps none of its writes, and routes through `on_failure`; `on_success` or `fallthrough: true` permit finishing unrouted; `fallthrough:` without `routes:` or with a non-boolean value fails at definition time; graph reachability and transition snapshots (`deterministic_fallthrough`) follow the same rule (mutation-verified, runtime and graph)
+- writes stay within an explicit `persist :a, :b` list: any other key raises `Smith::UndeclaredContextKey` at the write; `persist :auto` and unmanaged workflows accept any key (mutation-verified)
+- context values are Symbol-keyed at every depth, from `Workflow.new`, deterministic writes, and JSON restore alike (mutation-verified at construction and restore)
 - guardrail boundary enforcement applies workflow-level input/output guardrails around deterministic step execution
 - mixed-mode workflows: a workflow can interleave deterministic steps with agent-driven steps, sharing context, session messages, tool results, and budget ledger across both kinds
 
@@ -2457,6 +2479,7 @@ Documented contracts covered:
 
 - structural trace data is recorded by default while content fields are omitted
 - `trace_content = :redacted` masks string content fields
+- `trace_content = :redacted` masks only content fields in the Memory, Logger and OpenTelemetry adapters, leaving identifiers such as `model`, `execution_key`, `error_class` and `tool` readable (mutation-verified)
 - `trace_content = true` retains full content
 - structural trace type toggles disable recording for the relevant trace category
 - `trace_fields` filters transition trace payload fields

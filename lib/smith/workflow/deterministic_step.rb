@@ -16,6 +16,7 @@ module Smith
         @transition_name = transition ? transition.name : options.fetch(:transition_name)
         @allowed_routes = snapshot_allowed_routes(transition ? transition.deterministic_routes : options[:allowed_routes])
         @last_agent_execution = options[:last_agent_execution]
+        @persisted_keys = options[:persisted_keys]&.dup&.freeze
         @context_writes = {}
         @routed_to = nil
         @outcome = nil
@@ -48,6 +49,9 @@ module Smith
 
       def write_context(key, value)
         raise WorkflowError, "write_context key must be a Symbol, got #{key.class}" unless key.is_a?(Symbol)
+        if @persisted_keys && !@persisted_keys.include?(key)
+          raise UndeclaredContextKey.new(key:, persisted_keys: @persisted_keys)
+        end
 
         @context_writes[key] = value
       end
@@ -72,7 +76,7 @@ module Smith
       private
 
       def validate_options!(options)
-        unknown = options.keys - %i[transition transition_name allowed_routes last_agent_execution]
+        unknown = options.keys - %i[transition transition_name allowed_routes last_agent_execution persisted_keys]
         raise ArgumentError, "unknown keywords: #{unknown.join(", ")}" if unknown.any?
         return if options[:transition] || options.key?(:transition_name)
 

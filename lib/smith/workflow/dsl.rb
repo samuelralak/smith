@@ -238,6 +238,14 @@ module Smith
           (@transitions || {})[name]
         end
 
+        # A state this class can hold: declared with `state` (or
+        # `initial_state`), or named by any transition's `from:` or `to:`.
+        def known_state?(name)
+          return true if (@states || []).include?(name)
+
+          (@transitions || {}).each_value.any? { |transition| transition.from == name || transition.to == name }
+        end
+
         def transition_at(index)
           (@transitions || {}).values.fetch(index)
         end

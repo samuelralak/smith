@@ -409,4 +409,105 @@ RSpec.describe "Smith::Workflow nested execution" do
       config.artifact_store = original_store
     end
   end
+
+  describe "a child's failure keeps its class and retry classification" do
+    def flaky_child(name, calls, error:)
+      with_stubbed_class(name, workflow_class) do
+        initial_state :idle
+
+        transition :work, from: :idle, to: :done do
+          compute do |_step|
+            calls << 1
+            raise error.call if calls.size == 1
+          end
+        end
+      end
+    end
+
+    def parent_of(name, child, retry_classes: [])
+      with_stubbed_class(name, workflow_class) do
+        initial_state :idle
+        state :failed
+
+        transition :delegate, from: :idle, to: :done do
+          workflow child
+          retry_on(*retry_classes, attempts: 2)
+          on_failure :fail
+        end
+      end
+    end
+
+    it "is retried when the child's error was retryable" do
+      calls = []
+      retryable = -> { Smith::DeterministicStepFailure.new("busy", retryable: true) }
+      child = flaky_child("SpecNestedRetryableChild", calls, error: retryable)
+
+      result = parent_of("SpecNestedRetryableParent", child).new.run!
+
+      expect(result.state).to eq(:done)
+      expect(calls.size).to eq(2)
+    end
+
+    it "matches retry_on by the child's error class" do
+      calls = []
+      child = flaky_child("SpecNestedClassChild", calls, error: -> { Smith::DeterministicStepFailure.new("busy") })
+
+      result = parent_of("SpecNestedClassParent", child, retry_classes: [Smith::DeterministicStepFailure]).new.run!
+
+      expect(result.state).to eq(:done)
+      expect(calls.size).to eq(2)
+    end
+
+    it "is not retried when the child's error was not retryable, and carries it" do
+      calls = []
+      child = flaky_child("SpecNestedFinalChild", calls, error: -> { Smith::DeterministicStepFailure.new("final") })
+
+      result = parent_of("SpecNestedFinalParent", child).new.run!
+
+      expect(result.state).to eq(:failed)
+      expect(calls.size).to eq(1)
+      error = result.steps.first[:error]
+      expect(error).to be_a(Smith::NestedWorkflowFailed)
+      expect(error).to be_a(Smith::WorkflowError)
+      expect(error.child_error).to be_a(Smith::DeterministicStepFailure)
+      expect(error.cause).to equal(error.child_error)
+      expect(error.retryable).to be(false)
+      expect(error.message).to include("nested workflow failed: final")
+    end
+
+    it "mirrors a retry-forbidden child error" do
+      error = Smith::NestedWorkflowFailed.new(Smith::ToolOutcomeUncertain.new("uncertain"))
+
+      expect(Smith::Errors.retry_forbidden?(error)).to be(true)
+      expect(Smith::Errors.retryable?(error)).to be(false)
+    end
+
+    it "wraps a failure the child routed to its own failed state" do
+      child = with_stubbed_class("SpecNestedRoutedChild", workflow_class) do
+        initial_state :idle
+        state :failed
+
+        transition :work, from: :idle, to: :done do
+          compute { |step| step.fail!("busy", retryable: true) }
+          on_failure :fail
+        end
+      end
+      parent = with_stubbed_class("SpecNestedRoutedParent", workflow_class) do
+        initial_state :idle
+        state :failed
+
+        transition :delegate, from: :idle, to: :done do
+          workflow child
+          on_failure :fail
+        end
+      end
+
+      error = parent.new.run!.steps.first[:error]
+
+      expect(error).to be_a(Smith::NestedWorkflowFailed)
+      expect(error.child_error).to be_a(Smith::DeterministicStepFailure)
+      expect(error.cause).to equal(error.child_error)
+      expect(Smith::Errors.retryable?(error)).to be(true)
+    end
+  end
 end

@@ -21,6 +21,7 @@ module Smith
     # AgentError + DeadlineExceeded are always retryable.
     # DeterministicStepFailure + ToolGuardrailFailed honor their
     # `retryable` attribute (opt-in at the raise site).
+    # NestedWorkflowFailed carries its child error's answer.
     # All other Smith errors and non-Smith errors return false.
     def self.retryable?(error)
       return false if error.nil?
@@ -30,7 +31,7 @@ module Smith
       return false if composite_failure
 
       case error
-      when Smith::DeterministicStepFailure, Smith::ToolGuardrailFailed
+      when Smith::DeterministicStepFailure, Smith::ToolGuardrailFailed, Smith::NestedWorkflowFailed
         error.retryable == true
       when Smith::AgentError, Smith::DeadlineExceeded
         true
@@ -41,6 +42,7 @@ module Smith
 
     def self.retry_forbidden?(error)
       return false if error.nil?
+      return error.retry_forbidden == true if MODULE_MATCH.bind_call(Smith::NestedWorkflowFailed, error)
 
       retry_forbidden_classes.any? { |error_class| MODULE_MATCH.bind_call(error_class, error) }
     end
@@ -173,6 +175,55 @@ module Smith
     end
   end
 
+  # A nested workflow's failure, raised in the parent's step. The child's
+  # error is kept as `child_error` (and as the exception's `cause`), and its
+  # retry classification is mirrored, so `retry_on` and host retry policies
+  # treat the parent step as they would the child's own failure.
+  class NestedWorkflowFailed < WorkflowError
+    attr_reader :child_error, :retryable, :retry_forbidden
+
+    def initialize(child_error)
+      @child_error = child_error
+      @retryable = Smith::Errors.retryable?(child_error)
+      @retry_forbidden = Smith::Errors.retry_forbidden?(child_error)
+      super("nested workflow failed: #{child_error&.message}")
+    end
+  end
+
+  # A `compute` or `run` step that declares `routes:` finished without
+  # calling `route_to`, declares no `on_success`, and did not opt into
+  # `fallthrough: true`. Without this error the run would silently take the
+  # first transition declared from the step's target state.
+  class UnroutedDeterministicStep < WorkflowError
+    attr_reader :transition, :routes
+
+    def initialize(transition:, routes:)
+      @transition = transition
+      @routes = routes
+      super(
+        "#{transition.inspect} declares routes: #{routes.inspect} but did not call route_to; " \
+        "route to one of them, declare on_success, or opt into fallthrough: true"
+      )
+    end
+  end
+
+  # A deterministic step wrote a context key that the workflow's
+  # Smith::Context does not list in `persist :a, :b`. The write would be
+  # dropped at the next checkpoint, so it fails the step instead.
+  class UndeclaredContextKey < WorkflowError
+    attr_reader :key, :persisted_keys
+
+    def initialize(key:, persisted_keys:)
+      @key = key
+      @persisted_keys = persisted_keys
+      super(
+        "write_context #{key.inspect} is not a persisted context key " \
+        "(persist #{persisted_keys.map(&:inspect).join(", ")}); " \
+        "declare it in the context's persist list, or use persist :auto"
+      )
+    end
+  end
+
   class SerializationError < Error; end
   class AgentRegistryError < Error; end
 
@@ -248,6 +299,46 @@ module Smith
         "a previous worker crashed mid-step. Hosts using idempotency_mode :strict must " \
         "decide whether to clear the persisted state (idempotent re-run unsafe) or " \
         "switch to :lax (assume re-run is safe)."
+      )
+    end
+  end
+
+  # Raised when a persisted payload's state is not one the restoring
+  # workflow class knows: neither declared with `state` nor named by any
+  # transition's `from:` or `to:`. Usually a deploy renamed or removed the
+  # state while a run was persisted. Restoring anyway would treat the
+  # unknown state as terminal and end the run silently. Hosts bridge a
+  # rename with `migrate_from`, or let the run finish on the workflow
+  # version that declared the state.
+  class UnknownStateOnRestore < Error
+    attr_reader :workflow, :persistence_key, :state
+
+    def initialize(workflow:, persistence_key:, state:)
+      @workflow = workflow
+      @persistence_key = persistence_key
+      @state = state
+      super(
+        "unknown state #{DiagnosticText.capture(state.inspect, max_bytes: 256)} restoring #{workflow} " \
+        "key=#{persistence_key.inspect}: declare `migrate_from` to map it, or finish the run on the " \
+        "workflow version that declared it."
+      )
+    end
+  end
+
+  # Raised when a persisted payload's pending transition is not declared by
+  # the restoring workflow class, for the same reasons as
+  # UnknownStateOnRestore.
+  class UnknownTransitionOnRestore < Error
+    attr_reader :workflow, :persistence_key, :transition
+
+    def initialize(workflow:, persistence_key:, transition:)
+      @workflow = workflow
+      @persistence_key = persistence_key
+      @transition = transition
+      super(
+        "unknown pending transition #{DiagnosticText.capture(transition.inspect, max_bytes: 256)} restoring " \
+        "#{workflow} key=#{persistence_key.inspect}: declare `migrate_from` to map it, or finish the run on " \
+        "the workflow version that declared it."
       )
     end
   end

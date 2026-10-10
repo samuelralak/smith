@@ -72,9 +72,12 @@ module Smith
       end
     end
 
-    def self.redact_sensitive_keys(data)
+    # Masks content only: the String values of `content_keys`, and the String
+    # values one level inside a Hash under one of them. Identifiers (model,
+    # execution key, tool name, error class) stay readable.
+    def self.redact_sensitive_keys(data, content_keys = SENSITIVITY_CONTENT_KEYS)
       data.each_with_object({}) do |(key, value), filtered|
-        filtered[key] = if SENSITIVITY_CONTENT_KEYS.include?(key)
+        filtered[key] = if content_keys.include?(key)
                           redact_value(value)
                         else
                           value

@@ -25,6 +25,7 @@ module Smith
         option :retry_config, default: proc {}
         option :deterministic_kind, default: proc {}
         option :deterministic_routes, default: proc {}
+        option :deterministic_fallthrough, default: proc { false }
         option :deterministic, default: proc { false }
         option :parallel, default: proc { false }
         option :parallel_count, default: proc {}

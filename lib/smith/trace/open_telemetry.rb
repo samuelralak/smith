@@ -91,7 +91,7 @@ module Smith
         when true
           data
         when :redacted
-          data.transform_values { |v| v.is_a?(String) ? "[REDACTED]" : v }
+          Smith::Trace.redact_sensitive_keys(data, CONTENT_KEYS)
         else
           data.except(*CONTENT_KEYS)
         end

@@ -8,7 +8,7 @@ module Smith
       attr_reader :name, :from, :to, :agent_name, :agent_opts, :success_transition, :failure_transition,
                   :router_config, :workflow_class, :optimization_config, :orchestrator_config,
                   :fanout_config, :retry_config, :deterministic_block, :deterministic_kind,
-                  :deterministic_routes
+                  :deterministic_routes, :deterministic_fallthrough
 
       def initialize(name, from:, to:, &)
         @name = own_identifier(name)
@@ -137,15 +137,17 @@ module Smith
       end
 
       %i[compute run].each do |method_name|
-        define_method(method_name) do |routes: nil, &block|
+        define_method(method_name) do |routes: nil, fallthrough: false, &block|
           validate_execution_primitive_conflict!("compute/run", declaration: method_name.to_s)
           raise WorkflowError, "#{method_name} requires a block" unless block
 
           normalized_routes = normalize_deterministic_routes!(routes)
+          validate_deterministic_fallthrough!(fallthrough, normalized_routes)
 
           @deterministic_block = block
           @deterministic_kind = method_name
           @deterministic_routes = normalized_routes
+          @deterministic_fallthrough = fallthrough
           commit_execution_primitive!("compute/run", declaration: method_name.to_s)
         end
       end
@@ -355,6 +357,14 @@ module Smith
 
         label = forbidden.name || "an anonymous terminal tool-evidence error class"
         raise WorkflowError, "retry_on cannot retry #{label} because the tool outcome may be uncertain"
+      end
+
+      # `fallthrough: true` lets a step that declares `routes:` finish without
+      # routing, taking `on_success` or the first transition from its target
+      # state. It means nothing without `routes:`.
+      def validate_deterministic_fallthrough!(fallthrough, routes)
+        raise WorkflowError, "fallthrough must be true or false" unless [true, false].include?(fallthrough)
+        raise WorkflowError, "fallthrough: requires routes:" if fallthrough && routes.nil?
       end
 
       def normalize_deterministic_routes!(routes)

@@ -1044,8 +1044,40 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
       parsed = JSON.parse(JSON.generate(workflow.to_state))
       restored = klass.from_state(parsed)
 
-      # JSON round-trip turns nested hash keys into strings — this is existing Smith behavior
-      expect(restored.to_state[:context]).to eq(data: { "key" => "value" })
+      # Nested keys come back as Symbols, exactly as the live run held them.
+      expect(workflow.to_state[:context]).to eq(data: { key: "value" })
+      expect(restored.to_state[:context]).to eq(data: { key: "value" })
+    end
+
+    it "holds Symbol keys at every depth live and after a JSON restore" do
+      manager = with_stubbed_class("SpecDetDeepKeysContext", context_class) do
+        persist :input, :data
+      end
+
+      klass = with_stubbed_class("SpecDetDeepKeysWorkflow", workflow_class) do
+        initial_state :idle
+        state :done
+        context_manager manager
+
+        transition :normalize, from: :idle, to: :done do
+          run do |step|
+            step.write_context(:data, { "fields" => { "title" => "Engineer" }, "items" => [{ "id" => 1 }] })
+          end
+        end
+      end
+
+      workflow = klass.new(context: { "input" => { "nested" => { "deep" => true } } })
+      workflow.run!
+      live = workflow.to_state[:context]
+      restored = klass.from_state(JSON.parse(JSON.generate(workflow.to_state))).to_state[:context]
+
+      expected = {
+        input: { nested: { deep: true } },
+        data: { fields: { title: "Engineer" }, items: [{ id: 1 }] }
+      }
+      expect(live).to eq(expected)
+      expect(restored).to eq(expected)
+      expect(restored.dig(:data, :fields, :title)).to eq("Engineer")
     end
 
     it "outcome written by run survives to_state/from_state round-trip" do
@@ -1160,9 +1192,10 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
       transition_traces = trace_adapter.traces.select { |t| t[:type] == :transition }
 
       expect(det_traces.length).to eq(2)
-      expect(det_traces[0][:data][:result]).to eq(:started)
+      expect(det_traces[0][:data][:outcome]).to eq(:started)
       expect(det_traces[0][:data][:kind]).to eq(:compute)
-      expect(det_traces[1][:data][:result]).to eq(:success)
+      expect(det_traces[1][:data][:outcome]).to eq(:success)
+      expect(det_traces.map { |t| t[:data] }).to all(satisfy { |data| !data.key?(:result) })
 
       expect(transition_traces.length).to eq(1)
       expect(transition_traces[0][:data][:transition]).to eq(:check)
@@ -1186,7 +1219,7 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
       klass.new.run!
 
       det_traces = trace_adapter.traces.select { |t| t[:type] == :deterministic_step }
-      routed = det_traces.find { |t| t[:data][:result] == :routed }
+      routed = det_traces.find { |t| t[:data][:outcome] == :routed }
 
       expect(routed).not_to be_nil
       expect(routed[:data][:routed_to]).to eq(:finish)
@@ -1207,7 +1240,7 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
       klass.new.run!
 
       det_traces = trace_adapter.traces.select { |t| t[:type] == :deterministic_step }
-      success = det_traces.find { |t| t[:data][:result] == :success }
+      success = det_traces.find { |t| t[:data][:outcome] == :success }
 
       expect(success).not_to be_nil
       expect(success[:data][:outcome_kind]).to eq(:artifact_ready)
@@ -1228,10 +1261,13 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
       klass.new.run!
 
       det_traces = trace_adapter.traces.select { |t| t[:type] == :deterministic_step }
-      failed = det_traces.find { |t| t[:data][:result] == :failed }
+      failed = det_traces.find { |t| t[:data][:outcome] == :failed }
 
       expect(failed).not_to be_nil
-      expect(failed[:data][:error]).to eq("bad research")
+      expect(failed[:data]).to include(error_class: "Smith::DeterministicStepFailure",
+                                       error_family: "deterministic_step_failure")
+      expect(failed[:data]).not_to have_key(:error)
+      expect(failed[:data].values.map(&:to_s)).not_to include(a_string_including("bad research"))
     end
   end
 
@@ -1365,6 +1401,122 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
 
       transitions = result.steps.map { |s| s[:transition] }
       expect(transitions).to eq(%i[research verify normalize finish])
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Fail-closed routing and writes
+  # ---------------------------------------------------------------------------
+
+  describe "declared routes must be taken" do
+    def routed_workflow(name, fallthrough: nil, on_success: nil)
+      route_options = { routes: [:chosen] }
+      route_options[:fallthrough] = fallthrough unless fallthrough.nil?
+      with_stubbed_class(name, workflow_class) do
+        initial_state :idle
+        state :failed
+
+        transition :decide, from: :idle, to: :decided do
+          compute(**route_options) { |step| step.write_context(:seen, true) }
+          on_success on_success if on_success
+          on_failure :fail
+        end
+
+        transition :default_path, from: :decided, to: :defaulted
+        transition :chosen, from: :decided, to: :chosen_done
+      end
+    end
+
+    it "fails a step that declares routes but never routes, keeping none of its writes" do
+      result = routed_workflow("SpecUnroutedWorkflow").new.run!
+
+      expect(result.state).to eq(:failed)
+      error = result.steps.first[:error]
+      expect(error).to be_a(Smith::UnroutedDeterministicStep)
+      expect(error).to be_a(Smith::WorkflowError)
+      expect(error.transition).to eq(:decide)
+      expect(error.routes).to eq([:chosen])
+      expect(result.context).not_to have_key(:seen)
+    end
+
+    it "takes on_success when the step declares it and does not route" do
+      result = routed_workflow("SpecUnroutedOnSuccessWorkflow", on_success: :chosen).new.run!
+
+      expect(result.state).to eq(:chosen_done)
+    end
+
+    it "takes the first transition from the target state with fallthrough: true" do
+      result = routed_workflow("SpecFallthroughWorkflow", fallthrough: true).new.run!
+
+      expect(result.state).to eq(:defaulted)
+      expect(result.context).to include(seen: true)
+    end
+
+    it "rejects fallthrough: without routes: and non-boolean values at definition time" do
+      expect do
+        with_stubbed_class("SpecFallthroughNoRoutesWorkflow", workflow_class) do
+          initial_state :idle
+          transition(:decide, from: :idle, to: :done) { compute(fallthrough: true) { |_step| nil } }
+        end
+      end.to raise_error(Smith::WorkflowError, /fallthrough: requires routes:/)
+
+      expect do
+        with_stubbed_class("SpecFallthroughTruthyWorkflow", workflow_class) do
+          initial_state :idle
+          transition(:decide, from: :idle, to: :done) { compute(routes: [:x], fallthrough: "yes") { |_step| nil } }
+        end
+      end.to raise_error(Smith::WorkflowError, /fallthrough must be true or false/)
+    end
+
+    it "shows graph inspection only the successors the step can actually take" do
+      strict = routed_workflow("SpecRoutesGraphStrictWorkflow")
+      loose = routed_workflow("SpecRoutesGraphLooseWorkflow", fallthrough: true)
+
+      expect(strict.graph.reachable_transitions.map(&:name)).to contain_exactly(:decide, :chosen)
+      expect(loose.graph.reachable_transitions.map(&:name)).to contain_exactly(:decide, :chosen, :default_path)
+
+      snapshot = ->(klass, name) { klass.graph.transition_snapshots.find { _1.name == name }.to_h }
+      expect(snapshot.call(strict, :decide)).to include(deterministic_fallthrough: false)
+      expect(snapshot.call(loose, :decide)).to include(deterministic_fallthrough: true)
+      expect(snapshot.call(strict, :chosen)).not_to have_key(:deterministic_fallthrough)
+    end
+  end
+
+  describe "writes stay within an explicit persist list" do
+    def writing_workflow(name, manager)
+      with_stubbed_class(name, workflow_class) do
+        initial_state :idle
+        state :failed
+        context_manager manager if manager
+
+        transition :write, from: :idle, to: :done do
+          compute do |step|
+            step.write_context(:declared, 1)
+            step.write_context(:undeclared, 2)
+          end
+          on_failure :fail
+        end
+      end
+    end
+
+    it "fails a write to a key the persist list does not declare" do
+      manager = with_stubbed_class("SpecExplicitPersistContext", context_class) { persist :declared }
+      result = writing_workflow("SpecUndeclaredWriteWorkflow", manager).new.run!
+
+      expect(result.state).to eq(:failed)
+      error = result.steps.first[:error]
+      expect(error).to be_a(Smith::UndeclaredContextKey)
+      expect(error.key).to eq(:undeclared)
+      expect(error.persisted_keys).to eq([:declared])
+      expect(result.context).not_to have_key(:declared)
+    end
+
+    it "allows any key under persist :auto or with no persist declaration" do
+      auto = with_stubbed_class("SpecAutoPersistWriteContext", context_class) { persist :auto }
+
+      expect(writing_workflow("SpecAutoWriteWorkflow", auto).new.run!.context).to include(declared: 1, undeclared: 2)
+      expect(writing_workflow("SpecUnmanagedWriteWorkflow", nil).new.run!.context)
+        .to include(declared: 1, undeclared: 2)
     end
   end
 end

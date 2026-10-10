@@ -4,6 +4,81 @@ All notable changes to Smith are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Smith is pre-1.0 and under active development; expect occasional contract tightening between minor versions until 1.0.
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking:** workflow context is Symbol-keyed at every depth, live and
+  restored alike. The context given to `Workflow.new`, every value a
+  deterministic step writes with `write_context`, and every restored payload
+  hold String Hash keys as Symbols, recursively through Hashes and Arrays.
+  Before, a restore symbolized only top-level keys, so a nested read such as
+  `context.dig(:fields, :title)` returned the value live and `nil` after a
+  JSON round trip, silently. A host reading String keys from nested context
+  values, live or restored, must switch to Symbol keys. Persisted JSON is
+  unchanged. Normalization is `O(N)` in the size of the value written, and
+  `Workflow.new` now holds a normalized copy of the context it is given rather
+  than the caller's Hash.
+- **Breaking:** restoring a payload whose state the workflow class does not
+  know raises `Smith::UnknownStateOnRestore` (`workflow`, `persistence_key`,
+  `state`), and one whose pending transition the class does not declare raises
+  `Smith::UnknownTransitionOnRestore` (`workflow`, `persistence_key`,
+  `transition`). A state is known when it is declared with `state` or
+  `initial_state`, or named by any transition's `from:` or `to:`
+  (`Workflow.known_state?`). Before, an unknown state restored as a state with
+  no outgoing transitions, so the run read as terminal and ended silently; an
+  unknown pending transition failed only when the run next advanced. The check
+  runs after `migrate_from`, so a migration can map an old name to a new one.
+  Neither error is retryable. The check is `O(T)` in the class's transitions.
+- **Breaking:** a `compute` or `run` step that declares `routes:` must route.
+  Finishing without `step.route_to` raises `Smith::UnroutedDeterministicStep`
+  (a `WorkflowError`, with `transition` and `routes`), so `on_failure` applies
+  and none of the step's writes are kept, unless the transition declares
+  `on_success` or opts into `compute(routes: [...], fallthrough: true)`.
+  Before, such a step silently took the first transition declared from its
+  target state. `fallthrough:` must be `true` or `false` and requires
+  `routes:`; either violation raises `WorkflowError` at definition time.
+  Graph inspection follows the runtime rule: a step with `routes:` reaches its
+  routes and its `on_success`, and the first transition from its target state
+  only with `fallthrough: true`. Transition snapshots of steps with `routes:`
+  carry `deterministic_fallthrough`; other snapshots are unchanged.
+- **Breaking:** when the workflow's `Smith::Context` declares an explicit
+  `persist :a, :b` list, a deterministic step writing any other key raises
+  `Smith::UndeclaredContextKey` (a `WorkflowError`, with `key` and
+  `persisted_keys`) at the write. Before, the write took effect in the live
+  run and was dropped at the next checkpoint, contrary to the docs.
+  `persist :auto` and workflows without a `persist` declaration are
+  unaffected.
+- A nested workflow's failure fails the parent step with
+  `Smith::NestedWorkflowFailed` (a `WorkflowError`, message still
+  `nested workflow failed: ...`), which keeps the child's error as
+  `child_error` and as the exception's `cause`, whether the child raised or
+  routed the failure to its own failed state. It mirrors the child's retry
+  classification: `Smith::Errors.retryable?` and `retry_forbidden?` answer as
+  they would for the child's error, and a `retry_on SomeError` matches it when
+  the child's error, at any nesting depth, is a `SomeError`. Before, the
+  child's failure became a plain `WorkflowError`, so a retryable child failure
+  was never retried by the parent.
+- **Breaking:** `:deterministic_step` traces report `outcome` (`:started`,
+  `:success`, `:routed`, `:failed`) instead of `result`, which is a reserved
+  content key the default content policy strips, matching the `:transition`
+  and `:provider_call` vocabulary. A failure carries `error_class`,
+  `error_family`, and `retryable` (when known) instead of the raw exception
+  message, which could hold content. Hosts reading `result` or `error` from
+  these traces must switch to `outcome` and `error_class`.
+
+### Fixed
+
+- `trace_content :redacted` in the built-in Memory, Logger and OpenTelemetry
+  adapters masked every String value, including identifiers such as `model`,
+  `execution_key`, `attempt_id`, `tool` and `error_class`. It now masks only
+  content fields (`content`, `prompt`, `response`, `args`, `result`), the same
+  rule the central content policy applies, through the shared
+  `Smith::Trace.redact_sensitive_keys(data, content_keys)`.
+- The `compute` example in `docs/PATTERNS.md` called `route_to` twice on one
+  path, which raises; it now routes once on each branch and declares its
+  routes.
+
 ## [0.11.0] - 2026-10-07
 
 ### Added

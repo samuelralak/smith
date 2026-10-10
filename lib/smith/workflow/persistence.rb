@@ -77,6 +77,7 @@ module Smith
           self.class.idempotency_mode == :strict && !allow_step_in_progress
         migrated = migrate_if_needed(hash)
         normalized = normalize_persisted_state(migrated)
+        validate_restored_position!(normalized)
         persistence_version = validated_persistence_version(normalized)
         restore_persisted_keys(normalized)
         restore_core_fields(normalized)
@@ -256,6 +257,28 @@ module Smith
         ).call
       end
 
+      # A state or pending transition the class no longer declares (a deploy
+      # renamed or removed it) fails the restore. Restoring it would leave
+      # the run in a state with no outgoing transitions, which reads as
+      # terminal and ends the run silently. Runs after `migrate_from`, so a
+      # migration can map an old name to a new one.
+      def validate_restored_position!(normalized)
+        validate_restored_state!(normalized[:state], normalized[:persistence_key])
+        validate_restored_transition!(normalized[:next_transition_name], normalized[:persistence_key])
+      end
+
+      def validate_restored_state!(state, persistence_key)
+        return if state.nil? || self.class.known_state?(state)
+
+        raise Smith::UnknownStateOnRestore.new(workflow: self.class.name, persistence_key:, state:)
+      end
+
+      def validate_restored_transition!(transition, persistence_key)
+        return if transition.nil? || self.class.find_transition(transition)
+
+        raise Smith::UnknownTransitionOnRestore.new(workflow: self.class.name, persistence_key:, transition:)
+      end
+
       def restore_core_fields(normalized)
         @state = normalized[:state]
         @context = filter_persisted_context(normalized[:context] || {})
@@ -377,8 +400,11 @@ module Smith
         states.include?(value)
       end
 
+      # Context keys are Symbols at every depth, matching what construction
+      # and deterministic writes produce, so a nested read behaves the same
+      # before and after a restore.
       def normalize_nested_hashes!(normalized)
-        normalized[:context] = symbolize_keys(normalized[:context]) if normalized[:context].is_a?(Hash)
+        normalized[:context] = symbolize_value(normalized[:context]) if normalized[:context].is_a?(Hash)
         return unless normalized[:budget_consumed].is_a?(Hash)
 
         normalized[:budget_consumed] = symbolize_keys(normalized[:budget_consumed])

@@ -41,9 +41,20 @@ What Smith does for you:
   original roles and order, while bounding only later workflow observations
 - injects a state summary message into that prepared input
 - persists declared workflow context keys
+- keeps context Hash keys as Symbols at every depth: the context given to
+  `new`, every deterministic write, and every restore hold String keys as
+  Symbols, so a nested read such as `context.dig(:fields, :title)` is the same
+  live and after a JSON round trip
 - persists accepted session history
 - preserves chosen next transitions across persistence
 - supports JSON host round-trips through `to_state` and `.from_state`
+- refuses to restore a payload whose state, or whose pending transition, the
+  workflow class no longer knows (a deploy renamed or removed it), raising
+  `Smith::UnknownStateOnRestore` or `Smith::UnknownTransitionOnRestore`
+  instead of restoring a run that would read as terminal. A state is known
+  when it is declared with `state` or named by any transition's `from:` or
+  `to:`. The check runs after `migrate_from`, so a migration can map an old
+  name to a new one
 
 `preserve_seed: true` is intended for workflows whose seed is durable external
 conversation and whose later accepted outputs are internal stage handoffs. Smith

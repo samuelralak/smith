@@ -46,9 +46,16 @@ module Smith
           return Targets.router_for(transition) if transition.routed?
 
           names = Array(transition.deterministic_routes).dup
-          name = transition.success_transition || graph.first_transition_from(transition.to)&.name
+          name = transition.success_transition
+          name ||= graph.first_transition_from(transition.to)&.name if default_successor?(transition)
           names << name if name
           names.uniq
+        end
+
+        # A step declaring `routes:` reaches only its routes and `on_success`,
+        # unless it opts into `fallthrough: true`.
+        def default_successor?(transition)
+          transition.deterministic_routes.nil? || transition.deterministic_fallthrough
         end
 
         def executable_target(name, expected_state:)
