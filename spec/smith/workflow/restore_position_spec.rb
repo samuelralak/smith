@@ -88,10 +88,126 @@ RSpec.describe "Smith::Workflow restore of an unknown position" do
     expect(restored.run!.state).to eq(:done)
   end
 
-  it "classifies both refusals as non-retryable Smith errors" do
-    expect(Smith::UnknownStateOnRestore.ancestors).to include(Smith::Error)
-    expect(Smith::UnknownTransitionOnRestore.ancestors).to include(Smith::Error)
-    error = Smith::UnknownStateOnRestore.new(workflow: "W", persistence_key: "k", state: :gone)
-    expect(Smith::Errors.retryable?(error)).to be(false)
+  it "classifies both refusals as Smith errors that are neither retryable nor retry-forbidden" do
+    errors = [
+      Smith::UnknownStateOnRestore.new(workflow: "W", persistence_key: "k", state: :gone),
+      Smith::UnknownTransitionOnRestore.new(workflow: "W", persistence_key: "k", transition: :gone)
+    ]
+
+    errors.each do |error|
+      expect(error).to be_a(Smith::Error)
+      expect(error).not_to be_a(Smith::WorkflowError)
+      expect(Smith::Errors.retryable?(error)).to be(false)
+      expect(Smith::Errors.retry_forbidden?(error)).to be(false)
+    end
+  end
+
+  it "bounds the persistence key it reports" do
+    error = Smith::UnknownStateOnRestore.new(workflow: "W", persistence_key: "k" * 100_000, state: :gone)
+
+    expect(error.message.bytesize).to be < 2_000
+    expect(error.message).to include("bump persistence_schema_version")
+  end
+
+  it "restores String-named states, mid-run and terminal" do
+    klass = with_stubbed_class("SpecRestoreStringStatesWorkflow", workflow_class) do
+      initial_state "idle"
+
+      transition("prepare", from: "idle", to: "prepared") { compute { |_step| nil } }
+      transition("finish", from: "prepared", to: "finished") { compute { |_step| nil } }
+    end
+    workflow = klass.new
+    workflow.advance!
+
+    mid = klass.from_state(json_round_trip(workflow))
+    expect(mid.state).to eq("prepared")
+    finished = mid.run!
+    expect(finished.state).to eq("finished")
+    expect(klass.from_state(json_round_trip(mid)).state).to eq("finished")
+  end
+
+  it "knows a state named only by a transition's from:" do
+    klass = with_stubbed_class("SpecRestoreFromOnlyWorkflow", workflow_class) do
+      initial_state :idle
+
+      transition(:start, from: :idle, to: :done) { compute { |_step| nil } }
+      transition(:side_exit, from: :side, to: :done) { compute { |_step| nil } }
+    end
+    payload = json_round_trip(klass.new).merge("state" => "side")
+
+    restored = klass.from_state(payload)
+
+    expect(restored.state).to eq(:side)
+    expect(restored.run!.state).to eq(:done)
+  end
+
+  it "knows a state named only by a transition's to:" do
+    klass = two_step_workflow("SpecRestoreToOnlyWorkflow")
+    payload = json_round_trip(klass.new).merge("state" => "done")
+
+    expect(klass.from_state(payload).state).to eq(:done)
+  end
+
+  it "refuses a payload with no state when the class has an initial state" do
+    klass = with_stubbed_class("SpecRestoreNilStateWorkflow", workflow_class) do
+      initial_state :idle
+      state :failed
+
+      transition(:go, from: :idle, to: :done) { compute { |_step| nil } }
+    end
+    payload = json_round_trip(klass.new)
+
+    [payload.merge("state" => nil), payload.except("state")].each do |broken|
+      expect { klass.from_state(broken) }.to raise_error(Smith::UnknownStateOnRestore)
+    end
+  end
+
+  it "reports a definition digest mismatch before an unknown state" do
+    original = with_stubbed_class("SpecRestoreDigestV1Workflow", workflow_class) do
+      definition_digest "a" * 64
+      initial_state :idle
+
+      transition(:go, from: :idle, to: :mid) { compute { |_step| nil } }
+      transition(:finish, from: :mid, to: :done) { compute { |_step| nil } }
+    end
+    current = with_stubbed_class("SpecRestoreDigestV2Workflow", workflow_class) do
+      definition_digest "b" * 64
+      initial_state :idle
+
+      transition(:finish, from: :idle, to: :done) { compute { |_step| nil } }
+    end
+    workflow = original.new
+    workflow.advance!
+
+    expect { current.from_state(json_round_trip(workflow)) }
+      .to raise_error(Smith::WorkflowError, /definition does not match/)
+  end
+
+  it "still refuses when migrate_from is declared without bumping the schema version" do
+    klass = with_stubbed_class("SpecRestoreNoBumpWorkflow", workflow_class) do
+      initial_state :idle
+
+      migrate_from(1) do |payload|
+        payload[:state] = "drafted"
+        payload
+      end
+
+      transition(:draft, from: :idle, to: :drafted) { compute { |_step| nil } }
+    end
+    payload = json_round_trip(klass.new).merge("state" => "draft_ready")
+
+    expect { klass.from_state(payload) }
+      .to raise_error(Smith::UnknownStateOnRestore, /bump persistence_schema_version/)
+  end
+
+  it "reports a stored run in an unknown state as stuck, not terminal" do
+    adapter = Smith::PersistenceAdapters::Memory.new
+    klass = two_step_workflow("SpecRestoreStuckWorkflow")
+    stale = json_round_trip(klass.new).merge(
+      "state" => "renamed_away", "updated_at" => "2026-01-01T00:00:00Z", "class" => "SpecRestoreStuckWorkflow"
+    )
+    adapter.store("stuck-1", JSON.generate(stale))
+
+    expect(klass.stuck_for?(persistence_key: "stuck-1", threshold: 60, adapter:)).to be(true)
   end
 end

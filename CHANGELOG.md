@@ -6,77 +6,158 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+### Upgrade notes
+
+- `Smith::EXECUTION_SEMANTICS_VERSION` is now `"6"`: routing, context writes,
+  restore admission, nested failure and retry semantics changed. Hosts that
+  fold it into definition digests or cache keys see new values, and durable
+  composite plans prepared under 0.11.0 are refused by their integrity check.
+  Drain or clear in-flight persisted runs before upgrading.
+
 ### Changed
 
-- **Breaking:** workflow context is Symbol-keyed at every depth, live and
-  restored alike. The context given to `Workflow.new`, every value a
-  deterministic step writes with `write_context`, and every restored payload
-  hold String Hash keys as Symbols, recursively through Hashes and Arrays.
-  Before, a restore symbolized only top-level keys, so a nested read such as
-  `context.dig(:fields, :title)` returned the value live and `nil` after a
-  JSON round trip, silently. A host reading String keys from nested context
-  values, live or restored, must switch to Symbol keys. Persisted JSON is
-  unchanged. Normalization is `O(N)` in the size of the value written, and
-  `Workflow.new` now holds a normalized copy of the context it is given rather
-  than the caller's Hash.
-- **Breaking:** restoring a payload whose state the workflow class does not
-  know raises `Smith::UnknownStateOnRestore` (`workflow`, `persistence_key`,
-  `state`), and one whose pending transition the class does not declare raises
-  `Smith::UnknownTransitionOnRestore` (`workflow`, `persistence_key`,
-  `transition`). A state is known when it is declared with `state` or
-  `initial_state`, or named by any transition's `from:` or `to:`
-  (`Workflow.known_state?`). Before, an unknown state restored as a state with
-  no outgoing transitions, so the run read as terminal and ended silently; an
-  unknown pending transition failed only when the run next advanced. The check
-  runs after `migrate_from`, so a migration can map an old name to a new one.
-  Neither error is retryable. The check is `O(T)` in the class's transitions.
+- **Breaking:** workflow context has one shape everywhere.
+  - Top-level keys must be Symbols, the rule `write_context` already applied.
+    `Workflow.new`, and the class-level helpers that derive a persistence key
+    from a context (`restore_or_initialize`, `persisted_state_exists?`,
+    `restorable_billing_state?`, `run_persisted!`), raise
+    `Smith::WorkflowError` naming the first other key. Before, String keys were
+    accepted live and became Symbols only on restore, and a `persistence_key`
+    builder saw the caller's context on the class-level path but the
+    workflow's own on the instance path.
+  - Every Hash key inside a context value becomes the Symbol of its String
+    form, at every depth: in `Workflow.new`, at each `write_context` call (so
+    `read_context` in the same step already sees it), after hooks that write
+    the live context, and on restore. Before, a restore symbolized only
+    top-level keys, so `context.dig(:fields, :title)` returned the value live
+    and `nil` after a JSON round trip. Integer and other keys become Symbols
+    too (`101` becomes `:"101"`, as JSON would make it). Hash subclasses such as
+    `HashWithIndifferentAccess` become plain Hashes, and default procs and
+    `compare_by_identity` are not kept.
+  - Two keys of one Hash that become the same Symbol, a value that contains
+    itself, and nesting deeper than 100 levels (JSON's own limit) raise
+    `Smith::WorkflowError` instead of keeping whichever key came last or
+    overflowing the stack.
+  - Values are not converted: Symbols, Times and other non-JSON values still
+    come back as Strings after a restore.
+  - `Workflow.new` holds a normalized copy, not the caller's Hash.
+  - Normalization is `O(N)` in the entries of the value being normalized.
+- **Breaking:** an explicit `persist :a, :b` list is an allow-list for the
+  context in every run, persisted or not and nested or not.
+  - `write_context` of any other key raises `Smith::UndeclaredContextKey`
+    (a `WorkflowError`, with `key` and `persisted_keys`). Before, the write
+    took effect in the live run and was dropped at the next checkpoint,
+    contrary to the docs.
+  - A rejected write fails the step even when the step body rescues the
+    error, so it can never become a silently dropped write.
+  - Hooks that receive the live context (`before_eval`, `after_completion`,
+    guardrails) are checked at the end of their step. A new top-level key must
+    be a Symbol the list allows; otherwise the step fails and the context's
+    top-level values go back to how they were when the step started. New or
+    replaced values take the context's key shape.
+  - `persist` refuses keys that are not Symbols with `WorkflowError` at
+    definition time. Before, String keys made every write fail on restore.
+  - `persist :auto` and workflows with no `persist` declaration accept any
+    Symbol key.
+- **Breaking:** restoring a payload whose position the class does not know
+  raises instead of restoring a run that reads as terminal.
+  - An unknown state, or no state while the class has an initial state,
+    raises `Smith::UnknownStateOnRestore` (`workflow`, `persistence_key`,
+    `state`). An undeclared pending transition raises
+    `Smith::UnknownTransitionOnRestore` (`workflow`, `persistence_key`,
+    `transition`). Both are `Smith::Error`s that are neither retryable nor
+    retry-forbidden, with bounded messages.
+  - A state is known when it is declared with `state` or `initial_state`, or
+    named by any transition's `from:` or `to:`. It is matched by its String
+    form (`Workflow.known_state?`, `Workflow.resolve_state_name`, `O(S + T)`),
+    so String-named states restore as the Strings the class declares. Before,
+    a String-named state reached only through transitions restored as an
+    undeclared Symbol and read as terminal.
+  - The check runs after `migrate_from` and after the `definition_digest`
+    check, so a digest mismatch is still reported as one. A migration that
+    maps an old name needs a `persistence_schema_version` bump, since
+    migrations run only when the stored version is behind; the error message
+    says so.
+  - Finished runs whose terminal state was renamed are refused as well, by
+    `restore`, `restore_or_initialize`, `restorable_billing_state?` and the
+    class-level `run_persisted!`. Migrate them, or read the stored JSON
+    directly.
+  - `stuck_for?` reports a stored run in an unknown state as stuck. Before,
+    it reported it as terminal.
 - **Breaking:** a `compute` or `run` step that declares `routes:` must route.
-  Finishing without `step.route_to` raises `Smith::UnroutedDeterministicStep`
-  (a `WorkflowError`, with `transition` and `routes`), so `on_failure` applies
-  and none of the step's writes are kept, unless the transition declares
-  `on_success` or opts into `compute(routes: [...], fallthrough: true)`.
-  Before, such a step silently took the first transition declared from its
-  target state. `fallthrough:` must be `true` or `false` and requires
-  `routes:`; either violation raises `WorkflowError` at definition time.
-  Graph inspection follows the runtime rule: a step with `routes:` reaches its
-  routes and its `on_success`, and the first transition from its target state
-  only with `fallthrough: true`. Transition snapshots of steps with `routes:`
-  carry `deterministic_fallthrough`; other snapshots are unchanged.
-- **Breaking:** when the workflow's `Smith::Context` declares an explicit
-  `persist :a, :b` list, a deterministic step writing any other key raises
-  `Smith::UndeclaredContextKey` (a `WorkflowError`, with `key` and
-  `persisted_keys`) at the write. Before, the write took effect in the live
-  run and was dropped at the next checkpoint, contrary to the docs.
-  `persist :auto` and workflows without a `persist` declaration are
-  unaffected.
-- A nested workflow's failure fails the parent step with
-  `Smith::NestedWorkflowFailed` (a `WorkflowError`, message still
-  `nested workflow failed: ...`), which keeps the child's error as
-  `child_error` and as the exception's `cause`, whether the child raised or
-  routed the failure to its own failed state. It mirrors the child's retry
-  classification: `Smith::Errors.retryable?` and `retry_forbidden?` answer as
-  they would for the child's error, and a `retry_on SomeError` matches it when
-  the child's error, at any nesting depth, is a `SomeError`. Before, the
-  child's failure became a plain `WorkflowError`, so a retryable child failure
-  was never retried by the parent.
+  - If its target state has an outgoing transition, finishing without
+    `step.route_to` raises `Smith::UnroutedDeterministicStep` (a
+    `WorkflowError`, with `transition` and `routes`), so `on_failure` applies
+    and none of the step's writes are kept. The exceptions are a transition
+    that declares `on_success`, and one that opts into
+    `compute(routes: [...], fallthrough: true)`.
+  - A step whose target state has no outgoing transition may finish unrouted,
+    and the run ends there, so `routes: [:fail]` can still name only an
+    exceptional route.
+  - Before, an unrouted step silently took the first transition declared from
+    its target state.
+  - `fallthrough:` must be `true` or `false`. `fallthrough: true` without
+    `routes:` raises `WorkflowError` at definition time.
+  - Graph inspection follows the runtime rule, so a transition reachable only
+    through the old fall-through is now reported as an `unreachable_transition`
+    warning; declare `fallthrough: true` to keep it.
+  - Transition snapshots of steps with `routes:` carry
+    `deterministic_fallthrough`; other snapshots are unchanged.
+  - A class-less `retry_on` does not retry the new error. `retry_on
+    Smith::WorkflowError` does, until its attempts run out.
+- **Breaking:** nested workflow failures.
+  - A child that raises passes its error to the parent step unchanged,
+    whatever its class, so the parent's `retry_on` and
+    `Smith::Errors.retryable?` see the child's own error at any depth, and the
+    child's billable usage is rolled into the parent on every attempt. Before,
+    a raised `Smith::Error` became a plain non-retryable `WorkflowError`, and
+    the child's usage was not rolled up.
+  - A child that routes its failure through its own `on_failure` has handled
+    it. The parent still fails with a non-retryable `WorkflowError` (`nested
+    workflow failed: ...`, now bounded to 1 KiB), exactly as before.
+- **Breaking:** tool evidence travels up through nesting. A step that runs
+  inside another step's execution (a nested workflow's step) marks the
+  enclosing step's tool execution tracker when a tool ran in it. So when a
+  tool ran in any child step, a failure of the parent step becomes
+  `Smith::ToolOutcomeUncertain` and is never retried, exactly as when the tool
+  runs in the parent step itself. Before, a parent could retry a child whose
+  tools had already run.
+- **Breaking:** `retry_on` starts no attempt once the workflow's effective
+  wall-clock deadline has passed. Before, a step that hit its deadline could
+  sleep through every backoff and fail again each time.
 - **Breaking:** `:deterministic_step` traces report `outcome` (`:started`,
-  `:success`, `:routed`, `:failed`) instead of `result`, which is a reserved
-  content key the default content policy strips, matching the `:transition`
-  and `:provider_call` vocabulary. A failure carries `error_class`,
-  `error_family`, and `retryable` (when known) instead of the raw exception
-  message, which could hold content. Hosts reading `result` or `error` from
-  these traces must switch to `outcome` and `error_class`.
+  `:success`, `:routed`, `:failed`) instead of `result`. `result` is a
+  reserved content key that the default content policy strips, and `outcome`
+  matches the `:transition` and `:provider_call` vocabulary. A failure carries
+  `error_class`, `error_family`, and `retryable` when known, instead of the
+  raw exception message, which could hold content. Hosts that read `result` or
+  `error` from these traces, or that name them in a `trace_fields` allowlist
+  for `:deterministic_step`, must switch to `outcome` and `error_class`;
+  otherwise they receive neither.
+- **Breaking:** `trace_content :redacted` masks content only, and masks it
+  completely.
+  - The built-in Memory, Logger and OpenTelemetry adapters mask the content
+    fields `content`, `prompt`, `response`, `args`, and `result`, and leave
+    every other field readable. That includes identifiers such as `model`,
+    `tool`, `attempt_id`, `error_class`, and `execution_key`, which defaults
+    to the persistence key and may embed host identifiers. Before, they
+    masked every String value.
+  - Masking is recursive, in the central policy too (`args` and `result`):
+    every String and Symbol at any depth of Hashes and Arrays becomes
+    `"[REDACTED]"`, so nested content no longer leaks. Numbers, booleans and
+    nil are kept.
+  - Hosts that relied on `:redacted` to hide identifiers, or fields a custom
+    trace adds, must drop them with `trace_fields`.
 
 ### Fixed
 
-- `trace_content :redacted` in the built-in Memory, Logger and OpenTelemetry
-  adapters masked every String value, including identifiers such as `model`,
-  `execution_key`, `attempt_id`, `tool` and `error_class`. It now masks only
-  content fields (`content`, `prompt`, `response`, `args`, `result`), the same
-  rule the central content policy applies, through the shared
-  `Smith::Trace.redact_sensitive_keys(data, content_keys)`.
+- A failure whose `details` raises an error whose own `message` also raises no
+  longer replaces the step's error (`FailureRecord` reads that inner message
+  through its guarded reader). This was present in 0.11.0.
+- Classifying a deterministic step's failure for its trace can never replace
+  the step's error, and is skipped when no trace adapter is configured.
 - The `compute` example in `docs/PATTERNS.md` called `route_to` twice on one
-  path, which raises; it now routes once on each branch and declares its
+  path, which raises. It now routes once on each branch and declares its
   routes.
 
 ## [0.11.0] - 2026-10-07

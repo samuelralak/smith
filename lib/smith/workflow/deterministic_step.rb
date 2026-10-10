@@ -4,7 +4,7 @@ module Smith
   class Workflow
     class DeterministicStep
       attr_reader :context, :tool_results, :session_messages, :current_state, :transition_name,
-                  :context_writes, :routed_to, :outcome, :allowed_routes
+                  :context_writes, :routed_to, :outcome, :allowed_routes, :write_violation
 
       def initialize(context:, session_messages:, tool_results:, state:, **options)
         validate_options!(options)
@@ -47,13 +47,27 @@ module Smith
         @context_writes.key?(key) ? @context_writes[key] : context[key]
       end
 
+      # The value is stored in the context's key shape at once, so a
+      # `read_context` later in the same step sees what the next step will.
+      # A rejected write is remembered as well as raised, so a `rescue` in
+      # the step body cannot turn it into a silently dropped write.
       def write_context(key, value)
         raise WorkflowError, "write_context key must be a Symbol, got #{key.class}" unless key.is_a?(Symbol)
+
         if @persisted_keys && !@persisted_keys.include?(key)
-          raise UndeclaredContextKey.new(key:, persisted_keys: @persisted_keys)
+          reject_write!(UndeclaredContextKey.new(key:, persisted_keys: @persisted_keys))
         end
 
-        @context_writes[key] = value
+        @context_writes[key] = begin
+          ContextKeys.normalize(value)
+        rescue WorkflowError => e
+          reject_write!(e)
+        end
+      end
+
+      def reject_write!(error)
+        @write_violation ||= error
+        raise error
       end
 
       def route_to(transition_name)

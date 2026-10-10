@@ -364,7 +364,7 @@ module Smith
       # state. It means nothing without `routes:`.
       def validate_deterministic_fallthrough!(fallthrough, routes)
         raise WorkflowError, "fallthrough must be true or false" unless [true, false].include?(fallthrough)
-        raise WorkflowError, "fallthrough: requires routes:" if fallthrough && routes.nil?
+        raise WorkflowError, "fallthrough: true requires routes:" if fallthrough && routes.nil?
       end
 
       def normalize_deterministic_routes!(routes)

@@ -291,6 +291,112 @@ RSpec.describe "Smith tracing runtime behavior" do
     Smith.configure { |config| config.trace_content = original_value }
   end
 
+  it "masks every content field at any depth and keeps identifiers, in every built-in adapter" do
+    original_value = Smith.config.trace_content
+    Smith.configure { |config| config.trace_content = :redacted }
+    data = {
+      model: "m-1", content: { nested: { deeper: "c" } }, prompt: :prompt_symbol, response: ["r"],
+      args: { ids: ["a"], count: 3 }, result: [{ value: "v" }]
+    }
+    masked = {
+      model: "m-1", content: { nested: { deeper: "[REDACTED]" } }, prompt: "[REDACTED]", response: ["[REDACTED]"],
+      args: { ids: ["[REDACTED]"], count: 3 }, result: [{ value: "[REDACTED]" }]
+    }
+
+    memory = memory_trace_class.new
+    memory.record(type: :custom, data: data)
+    expect(memory.traces.first[:data]).to eq(masked)
+
+    logged = []
+    logger = Object.new
+    logger.define_singleton_method(:info) { |message| logged << message }
+    with_configured_logger(logger) { logger_trace_class.new.record(type: :custom, data: data) }
+    expect(logged.first).to end_with(masked.inspect)
+
+    observed_spans = []
+    stub_open_telemetry_tracer(observed_spans)
+    open_telemetry_trace_class.new.record(type: :custom, data: data)
+    attributes = observed_spans.first[:attributes]
+    expect(attributes["smith.model"]).to eq("m-1")
+    expect(attributes.values.join).not_to match(/\b(c|r|a|v|prompt_symbol)\b/)
+  ensure
+    Smith.configure { |config| config.trace_content = original_value }
+  end
+
+  describe "deterministic failure traces" do
+    def failing_compute_workflow(name, error)
+      with_stubbed_class(name, workflow_class) do
+        initial_state :idle
+        state :failed
+
+        transition :work, from: :idle, to: :done do
+          compute { |_step| raise error.call }
+          on_failure :fail
+        end
+      end
+    end
+
+    it "never lets an error whose details and inner message both raise replace the step's own error" do
+      inner = Class.new(StandardError) { def message = raise(TypeError, "inner message exploded") }
+      hostile = Class.new(Smith::DeterministicStepFailure) { define_method(:details) { raise inner } }
+      klass = failing_compute_workflow("SpecHostileTraceWorkflow", -> { hostile.new("x") })
+
+      [memory_trace_class.new, nil].each do |adapter|
+        result = with_trace_adapter(adapter) { klass.new.run! }
+
+        expect(result.steps.first[:error]).to be_a(hostile)
+      end
+    end
+
+    it "keeps the step's error and a bounded class name when classifying it for the trace raises" do
+      adapter = memory_trace_class.new
+      failure = -> { Smith::DeterministicStepFailure.new("x") }
+      klass = failing_compute_workflow("SpecTraceClassifyRaisesWorkflow", failure)
+      first = true
+      allow(Smith::Workflow::FailureRecord).to receive(:capture).and_wrap_original do |original, *args|
+        if first
+          first = false
+          raise TypeError, "classification exploded"
+        end
+        original.call(*args)
+      end
+
+      result = with_trace_adapter(adapter) { klass.new.run! }
+
+      expect(result.steps.first[:error]).to be_a(Smith::DeterministicStepFailure)
+      failed = adapter.traces.find { |t| t[:type] == :deterministic_step && t[:data][:outcome] == :failed }
+      expect(failed[:data]).to include(error_class: "Smith::DeterministicStepFailure")
+      expect(failed[:data]).not_to have_key(:error_family)
+    end
+
+    it "classifies the failure for the trace only when a trace adapter is configured" do
+      klass = failing_compute_workflow("SpecUntracedFailureWorkflow", -> { Smith::DeterministicStepFailure.new("x") })
+      calls = 0
+      allow(Smith::Workflow::FailureRecord).to receive(:capture).and_wrap_original do |original, *args|
+        calls += 1
+        original.call(*args)
+      end
+
+      with_trace_adapter(memory_trace_class.new) { klass.new.run! }
+      traced = calls
+      calls = 0
+      with_trace_adapter(nil) { klass.new.run! }
+
+      expect(calls).to eq(traced - 1)
+    end
+
+    it "carries retryable when the error says so" do
+      adapter = memory_trace_class.new
+      klass = failing_compute_workflow("SpecRetryableTraceWorkflow",
+                                       -> { Smith::DeterministicStepFailure.new("x", retryable: true) })
+
+      with_trace_adapter(adapter) { klass.new.run! }
+
+      failed = adapter.traces.find { |t| t[:type] == :deterministic_step && t[:data][:outcome] == :failed }
+      expect(failed[:data]).to include(retryable: true, error_family: "deterministic_step_failure")
+    end
+  end
+
   it "emits a tool-call trace after tool execution" do
     adapter = memory_trace_class.new
 
@@ -358,7 +464,7 @@ RSpec.describe "Smith tracing runtime behavior" do
 
     tool_trace = adapter.traces.find { |trace| trace[:type] == :tool_call }
     expect(tool_trace[:data][:tool]).to eq(traced_tool.new.name)
-    expect(tool_trace[:data][:args]).to eq(context: { user: :ok }, query: "[REDACTED]")
+    expect(tool_trace[:data][:args]).to eq(context: { user: "[REDACTED]" }, query: "[REDACTED]")
     expect(tool_trace[:data][:result]).to eq(result: "[REDACTED]")
   ensure
     Smith.configure { |config| config.trace_content = original_value }

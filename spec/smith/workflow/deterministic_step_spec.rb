@@ -1061,23 +1061,23 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
 
         transition :normalize, from: :idle, to: :done do
           run do |step|
-            step.write_context(:data, { "fields" => { "title" => "Engineer" }, "items" => [{ "id" => 1 }] })
+            step.write_context(:data, { "fields" => { "title" => "Example" }, "items" => [{ "id" => 1 }] })
           end
         end
       end
 
-      workflow = klass.new(context: { "input" => { "nested" => { "deep" => true } } })
+      workflow = klass.new(context: { input: { "nested" => { "deep" => true } } })
       workflow.run!
       live = workflow.to_state[:context]
       restored = klass.from_state(JSON.parse(JSON.generate(workflow.to_state))).to_state[:context]
 
       expected = {
         input: { nested: { deep: true } },
-        data: { fields: { title: "Engineer" }, items: [{ id: 1 }] }
+        data: { fields: { title: "Example" }, items: [{ id: 1 }] }
       }
       expect(live).to eq(expected)
       expect(restored).to eq(expected)
-      expect(restored.dig(:data, :fields, :title)).to eq("Engineer")
+      expect(restored.dig(:data, :fields, :title)).to eq("Example")
     end
 
     it "outcome written by run survives to_state/from_state round-trip" do
@@ -1458,7 +1458,7 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
           initial_state :idle
           transition(:decide, from: :idle, to: :done) { compute(fallthrough: true) { |_step| nil } }
         end
-      end.to raise_error(Smith::WorkflowError, /fallthrough: requires routes:/)
+      end.to raise_error(Smith::WorkflowError, /fallthrough: true requires routes:/)
 
       expect do
         with_stubbed_class("SpecFallthroughTruthyWorkflow", workflow_class) do
@@ -1517,6 +1517,251 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
       expect(writing_workflow("SpecAutoWriteWorkflow", auto).new.run!.context).to include(declared: 1, undeclared: 2)
       expect(writing_workflow("SpecUnmanagedWriteWorkflow", nil).new.run!.context)
         .to include(declared: 1, undeclared: 2)
+    end
+  end
+
+  describe "context shape" do
+    def keyed_workflow(name, manager = nil, &body)
+      with_stubbed_class(name, workflow_class) do
+        initial_state :idle
+        state :failed
+        context_manager manager if manager
+
+        transition :work, from: :idle, to: :done do
+          run(&body)
+          on_failure :fail
+        end
+      end
+    end
+
+    it "refuses a String top-level key when the workflow is built" do
+      klass = keyed_workflow("SpecTopLevelStringWorkflow") { |_step| nil }
+
+      expect { klass.new(context: { "ticket_id" => "T-1" }) }
+        .to raise_error(Smith::WorkflowError, /context keys must be Symbols/)
+    end
+
+    it "gives a persistence_key builder the same context on the class and instance paths" do
+      Smith.configure { |config| config.persistence_adapter = :memory }
+      klass = with_stubbed_class("SpecSameKeyWorkflow", workflow_class) do
+        initial_state :idle
+        persistence_key { |ctx| "ticket:#{ctx[:ticket_id]}" }
+
+        transition(:first, from: :idle, to: :mid) { compute { |_step| nil } }
+        transition(:second, from: :mid, to: :done) { compute { |_step| nil } }
+      end
+
+      %w[A B].each do |id|
+        workflow = klass.restore_or_initialize(context: { ticket_id: id })
+        workflow.advance_persisted!
+      end
+
+      expect(klass.persisted_state_exists?(context: { ticket_id: "A" })).to be(true)
+      expect(klass.restore_or_initialize(context: { ticket_id: "B" }).state).to eq(:mid)
+      [
+        -> { klass.restore_or_initialize(context: { "ticket_id" => "A" }) },
+        -> { klass.persisted_state_exists?(context: { "ticket_id" => "A" }) },
+        -> { klass.restorable_billing_state?(context: { "ticket_id" => "A" }) }
+      ].each do |call|
+        expect(&call).to raise_error(Smith::WorkflowError, /context keys must be Symbols/)
+      end
+    ensure
+      Smith.configure { |config| config.persistence_adapter = nil }
+    end
+
+    it "turns every nested key into the Symbol of its String form, live and restored" do
+      klass = keyed_workflow("SpecIntegerKeyWorkflow") do |step|
+        step.write_context(:scores, { 101 => 0.9, "user-7" => 0.4 })
+      end
+      workflow = klass.new
+      workflow.run!
+
+      expected = { "101": 0.9, "user-7": 0.4 }
+      expect(workflow.to_state[:context][:scores]).to eq(expected)
+      expect(klass.from_state(JSON.parse(JSON.generate(workflow.to_state))).to_state[:context][:scores])
+        .to eq(expected)
+    end
+
+    it "lets read_context see a written value in its final shape within the same step" do
+      seen = nil
+      klass = keyed_workflow("SpecReadAfterWriteWorkflow") do |step|
+        step.write_context(:data, { "nested" => { "k" => 1 } })
+        seen = step.read_context(:data).dig(:nested, :k)
+      end
+
+      klass.new.run!
+
+      expect(seen).to eq(1)
+    end
+
+    it "fails a write whose keys collide, contain themselves, or nest too deep" do
+      cyclic = {}
+      cyclic[:self] = [cyclic]
+      deep = 101.times.reduce({}) { |inner, _| { n: inner } }
+      cases = { { "a" => 1, a: 2 } => /both become :a/, cyclic => /contains itself/, deep => /deeper than 100/ }
+
+      cases.each_with_index do |(value, message), index|
+        klass = keyed_workflow("SpecBadShapeWorkflow#{index}") { |step| step.write_context(:data, value) }
+        result = klass.new.run!
+
+        expect(result.state).to eq(:failed)
+        expect(result.steps.first[:error].message).to match(message)
+      end
+    end
+
+    it "rejects an undeclared write at the write, before the rest of the step runs" do
+      manager = with_stubbed_class("SpecWriteTimeContext", context_class) { persist :kept }
+      reached = false
+      klass = keyed_workflow("SpecWriteTimeWorkflow", manager) do |step|
+        step.write_context(:other, 1)
+        reached = true
+      end
+
+      expect(klass.new.run!.steps.first[:error]).to be_a(Smith::UndeclaredContextKey)
+      expect(reached).to be(false)
+    end
+
+    it "keeps a rejected write failing even when the step rescues it" do
+      manager = with_stubbed_class("SpecRescuedWriteContext", context_class) { persist :kept }
+      klass = keyed_workflow("SpecRescuedWriteWorkflow", manager) do |step|
+        step.write_context(:other, 1)
+      rescue StandardError
+        nil
+      end
+
+      result = klass.new.run!
+
+      expect(result.state).to eq(:failed)
+      expect(result.steps.first[:error]).to be_a(Smith::UndeclaredContextKey)
+    end
+
+    it "refuses persist keys that are not Symbols" do
+      expect { with_stubbed_class("SpecStringPersistContext", context_class) { persist "result" } }
+        .to raise_error(Smith::WorkflowError, /persist keys must be Symbols/)
+    end
+
+    describe "writes from hooks that receive the live context" do
+      def stub_ok_chat(agent)
+        reply = Struct.new(:content, :input_tokens, :output_tokens).new("ok", 1, 1)
+        allow(agent).to receive(:chat) do
+          chat = Object.new
+          chat.define_singleton_method(:add_message) { |_msg| nil }
+          chat.define_singleton_method(:complete) { reply }
+          chat
+        end
+      end
+
+      def hook_workflow(name, manager, write)
+        agent_name = :"#{name.downcase}_agent"
+        stub_ok_chat(with_stubbed_class("#{name}Agent", agent_class) do
+          register_as agent_name
+          model "gpt-5-mini"
+          define_method(:after_completion) do |result, context|
+            write.call(context)
+            result
+          end
+        end)
+        with_stubbed_class(name, workflow_class) do
+          initial_state :idle
+          state :failed
+          context_manager manager if manager
+
+          transition :work, from: :idle, to: :done do
+            execute agent_name
+            on_failure :fail
+          end
+        end
+      end
+
+      it "normalizes a nested value a hook writes" do
+        klass = hook_workflow("SpecHookShapeWorkflow", nil, ->(ctx) { ctx[:extra] = { "rule" => { "id" => 7 } } })
+
+        result = klass.new.run!
+
+        expect(result.state).to eq(:done)
+        expect(result.context.dig(:extra, :rule, :id)).to eq(7)
+      ensure
+        Smith::Agent::Registry.delete(:spechookshapeworkflow_agent)
+      end
+
+      it "fails the step when a hook adds a String key or a key the persist list does not declare" do
+        manager = with_stubbed_class("SpecHookPersistContext", context_class) { persist :kept }
+        string_key = hook_workflow("SpecHookStringWorkflow", nil, ->(ctx) { ctx["loose"] = 1 })
+        undeclared = hook_workflow("SpecHookUndeclaredWorkflow", manager, ->(ctx) { ctx[:other] = 1 })
+
+        expect(string_key.new.run!.steps.first[:error].message).to match(/context keys must be Symbols/)
+        result = undeclared.new(context: { kept: 1 }).run!
+        expect(result.steps.first[:error]).to be_a(Smith::UndeclaredContextKey)
+        expect(result.context).to eq(kept: 1)
+      ensure
+        Smith::Agent::Registry.delete(:spechookstringworkflow_agent)
+        Smith::Agent::Registry.delete(:spechookundeclaredworkflow_agent)
+      end
+    end
+  end
+
+  describe "declared routes and the target state" do
+    it "ends at a terminal target state without routing" do
+      klass = with_stubbed_class("SpecRoutesTerminalWorkflow", workflow_class) do
+        initial_state :idle
+        state :failed
+
+        transition :check, from: :idle, to: :done do
+          compute(routes: [:fail]) { |_step| nil }
+        end
+      end
+
+      expect(klass.new.run!.state).to eq(:done)
+    end
+
+    it "takes an on_success outside the routes, and graph inspection includes it" do
+      klass = with_stubbed_class("SpecRoutesOnSuccessWorkflow", workflow_class) do
+        initial_state :idle
+
+        transition :decide, from: :idle, to: :decided do
+          compute(routes: [:chosen]) { |_step| nil }
+          on_success :other
+        end
+        transition :chosen, from: :decided, to: :chosen_done
+        transition :other, from: :decided, to: :other_done
+        transition :first_from_decided_never, from: :decided, to: :never
+      end
+
+      expect(klass.new.run!.state).to eq(:other_done)
+      expect(klass.graph.reachable_transitions.map(&:name)).to contain_exactly(:decide, :chosen, :other)
+    end
+
+    it "raises out of run! when an unrouted step has no failure route" do
+      klass = with_stubbed_class("SpecUnroutedRaisesWorkflow", workflow_class) do
+        initial_state :idle
+
+        transition(:decide, from: :idle, to: :decided) { compute(routes: [:chosen]) { |_step| nil } }
+        transition :fallback, from: :decided, to: :fell
+        transition :chosen, from: :decided, to: :done
+      end
+
+      expect { klass.new.run! }.to raise_error(Smith::UnroutedDeterministicStep)
+    end
+
+    it "leaves a failure record that restores" do
+      klass = with_stubbed_class("SpecUnroutedRestoreWorkflow", workflow_class) do
+        initial_state :idle
+        state :failed
+
+        transition :decide, from: :idle, to: :decided do
+          compute(routes: [:chosen]) { |_step| nil }
+          on_failure :fail
+        end
+        transition :fallback, from: :decided, to: :fell
+        transition :chosen, from: :decided, to: :done
+      end
+      workflow = klass.new
+      workflow.run!
+
+      restored = klass.from_state(JSON.parse(JSON.generate(workflow.to_state)))
+
+      expect(restored.state).to eq(:failed)
+      expect(restored.run!.last_error).to be_a(Smith::WorkflowError)
     end
   end
 end

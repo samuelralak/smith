@@ -1116,7 +1116,7 @@ Documented contracts covered:
 - parent transition can bind to a child workflow class
 - child workflow success returns child final output as parent step output
 - child workflow failure routes parent through normal `on_failure`
-- a child's failure, raised or routed to its own failed state, becomes `Smith::NestedWorkflowFailed` carrying `child_error` (also the `cause`) and its retry classification: retried by a class-less `retry_on` when the child's error was retryable, matched by `retry_on` on the child's error class, and retry-forbidden when the child's was (mutation-verified)
+- a child that raises passes its error to the parent step unchanged (any class, at any nesting depth), after its usage is rolled into the parent on every attempt: a class-less `retry_on` retries it when the child's error is retryable, a class `retry_on` matches the child's class, and a non-Smith error passes through as itself; a child that routes its failure through its own `on_failure` gives the parent a non-retryable `WorkflowError` and is never retried; when a tool ran in any child step, the parent step's failure is `Smith::ToolOutcomeUncertain`, never retried, whether the child raised or routed, and the resulting failure record restores and runs again; no retry starts once the parent's wall-clock deadline has passed (all mutation-verified against the full suite)
 - workflow binding rejects non-class targets
 - workflow binding rejects non-`Smith::Workflow` classes
 - transition DSL rejects combining `workflow` with `execute`
@@ -1669,10 +1669,10 @@ Architecture basis:
 Documented contracts covered:
 
 - a state named only by a transition's `from:` or `to:` restores and resumes
-- an unknown state raises `Smith::UnknownStateOnRestore` with `workflow`, `persistence_key` and `state` (mutation-verified)
+- an unknown state raises `Smith::UnknownStateOnRestore` with `workflow`, `persistence_key` and `state`; a payload with no state is refused when the class has an initial state; String-named states restore as the Strings the class declares, mid-run and terminal; states named only by `from:` or only by `to:` are known; the persistence key in the message is bounded and the message advises a schema-version bump; a stored run in an unknown state reports as stuck through `stuck_for?` (all mutation-verified against the full suite)
 - an unknown pending transition raises `Smith::UnknownTransitionOnRestore`; a declared one restores
-- `migrate_from` runs before the check, so a migration can map an old state name to a new one
-- both refusals are non-retryable `Smith::Error`s
+- `migrate_from` runs before the check, so a migration can map an old state name to a new one; a `migrate_from` without a schema-version bump does not run and the payload is still refused; a `definition_digest` mismatch is reported before an unknown state (mutation-verified)
+- both refusals are `Smith::Error`s, not `WorkflowError`s, and neither retryable nor retry-forbidden (mutation-verified)
 
 ### `spec/smith/workflow/persistence_ttl_spec.rb`
 
@@ -1933,10 +1933,10 @@ Documented contracts covered:
   `step.route_to` targets outside the declared set
 - `fail!` accepts a message and optional metadata payload; the failure routes through `on_failure`
 - persistence round-trip: deterministic step state survives `to_state` / `from_state` and resumes correctly mid-workflow
-- trace lifecycle emits `outcome` `:started` / `:success` (with the emitted outcome kind) / `:routed` / `:failed` at the deterministic-step boundary, never the reserved `result` key; a failure carries `error_class` and `error_family`, never the raw message (mutation-verified)
-- declared routes must be taken: a step with `routes:` that does not route raises `Smith::UnroutedDeterministicStep`, keeps none of its writes, and routes through `on_failure`; `on_success` or `fallthrough: true` permit finishing unrouted; `fallthrough:` without `routes:` or with a non-boolean value fails at definition time; graph reachability and transition snapshots (`deterministic_fallthrough`) follow the same rule (mutation-verified, runtime and graph)
-- writes stay within an explicit `persist :a, :b` list: any other key raises `Smith::UndeclaredContextKey` at the write; `persist :auto` and unmanaged workflows accept any key (mutation-verified)
-- context values are Symbol-keyed at every depth, from `Workflow.new`, deterministic writes, and JSON restore alike (mutation-verified at construction and restore)
+- trace lifecycle emits `outcome` `:started` / `:success` (with the emitted outcome kind) / `:routed` / `:failed` at the deterministic-step boundary, never the reserved `result` key; a failure carries `error_class`, `error_family` and `retryable` when known, never the raw message (mutation-verified)
+- declared routes must be taken: a step with `routes:` whose target state has an outgoing transition and that does not route raises `Smith::UnroutedDeterministicStep`, keeps none of its writes, routes through `on_failure`, and escapes `run!` without one; `on_success` (also outside the routes) or `fallthrough: true` permit finishing unrouted, and a terminal target state ends the run there; `fallthrough: true` without `routes:` or a non-boolean value fails at definition time; graph reachability (including `on_success`) and transition snapshots (`deterministic_fallthrough`) follow the same rule; the failure record restores (all mutation-verified against the full suite)
+- an explicit `persist :a, :b` list is an allow-list in every run: any other key raises `Smith::UndeclaredContextKey` at the write, before the rest of the step runs, and still fails the step when the step body rescues it; `persist :auto` and unmanaged workflows accept any key; `persist` refuses non-Symbol keys at definition time; hooks that write the live context (`after_completion`) are checked at the end of the step, a String or undeclared new key fails it and restores the context's top-level values, and nested values they write are normalized (all mutation-verified against the full suite)
+- context shape: `Workflow.new` and the class-level helpers that derive a persistence key (`restore_or_initialize`, `persisted_state_exists?`, `restorable_billing_state?`) refuse String top-level keys, so a `persistence_key` builder sees the same context on every path and distinct runs keep distinct keys; every nested key becomes the Symbol of its String form (Integer keys included) at construction, at the write (so `read_context` in the same step sees it), and on JSON restore; colliding keys, self-containing values and nesting deeper than 100 levels fail the write with distinct messages (all mutation-verified against the full suite)
 - guardrail boundary enforcement applies workflow-level input/output guardrails around deterministic step execution
 - mixed-mode workflows: a workflow can interleave deterministic steps with agent-driven steps, sharing context, session messages, tool results, and budget ledger across both kinds
 
@@ -2479,7 +2479,8 @@ Documented contracts covered:
 
 - structural trace data is recorded by default while content fields are omitted
 - `trace_content = :redacted` masks string content fields
-- `trace_content = :redacted` masks only content fields in the Memory, Logger and OpenTelemetry adapters, leaving identifiers such as `model`, `execution_key`, `error_class` and `tool` readable (mutation-verified)
+- `trace_content = :redacted` masks only content fields (`content`, `prompt`, `response`, `args`, `result`) in the Memory, Logger and OpenTelemetry adapters, every String and Symbol at any depth of Hashes and Arrays, leaving identifiers such as `model`, `execution_key`, `error_class` and `tool` readable (mutation-verified per adapter and per masking rule)
+- a deterministic step's failure trace is classified only when a trace adapter is configured, keeps the step's error when classification raises, and an error whose `details` and inner message both raise keeps its own class with or without tracing (mutation-verified)
 - `trace_content = true` retains full content
 - structural trace type toggles disable recording for the relevant trace category
 - `trace_fields` filters transition trace payload fields

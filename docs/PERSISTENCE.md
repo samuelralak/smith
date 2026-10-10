@@ -41,20 +41,43 @@ What Smith does for you:
   original roles and order, while bounding only later workflow observations
 - injects a state summary message into that prepared input
 - persists declared workflow context keys
-- keeps context Hash keys as Symbols at every depth: the context given to
-  `new`, every deterministic write, and every restore hold String keys as
-  Symbols, so a nested read such as `context.dig(:fields, :title)` is the same
-  live and after a JSON round trip
+- keeps one context shape everywhere. Top-level keys must be Symbols: `new`,
+  and the class-level helpers that derive a persistence key from a context
+  (`restore_or_initialize`, `persisted_state_exists?`,
+  `restorable_billing_state?`, `run_persisted!`), raise `Smith::WorkflowError`
+  for any other key, so a `persistence_key` builder sees the same context on
+  every path. Every Hash key inside a value becomes the Symbol of its String
+  form, at every depth, in `new`, at each deterministic write, after hooks
+  that write the live context, and on restore, so a nested read such as
+  `context.dig(:fields, :title)` is the same live and after a JSON round trip.
+  Integer and other keys become Symbols too (`101` becomes `:"101"`, as JSON
+  would make it); Hash subclasses become plain Hashes, without default procs
+  or identity comparison; colliding keys, self-containing values and nesting
+  deeper than 100 levels raise `Smith::WorkflowError`. Values are not
+  converted: only JSON-native values (Strings, numbers, booleans, nil, Hashes,
+  Arrays) read the same after a restore, while Symbols, Times and other
+  objects come back as Strings. `new` holds a normalized copy of the context,
+  not the caller's Hash
 - persists accepted session history
 - preserves chosen next transitions across persistence
 - supports JSON host round-trips through `to_state` and `.from_state`
 - refuses to restore a payload whose state, or whose pending transition, the
-  workflow class no longer knows (a deploy renamed or removed it), raising
+  workflow class does not know (a deploy renamed or removed it, or the payload
+  has no state while the class has an initial state), raising
   `Smith::UnknownStateOnRestore` or `Smith::UnknownTransitionOnRestore`
   instead of restoring a run that would read as terminal. A state is known
-  when it is declared with `state` or named by any transition's `from:` or
-  `to:`. The check runs after `migrate_from`, so a migration can map an old
-  name to a new one
+  when it is declared with `state` or `initial_state`, or named by any
+  transition's `from:` or `to:`, matched by its String form, so String-named
+  states restore as the Strings the class declares. The check runs after
+  `migrate_from` and after the `definition_digest` check, so a digest
+  mismatch is reported as one and a migration can map an old name: bump
+  `persistence_schema_version` and declare `migrate_from(<previous version>)`,
+  since migrations run only when the stored version is behind. Finished runs
+  are refused too, by `restore`, `restore_or_initialize`,
+  `restorable_billing_state?` and the class-level `run_persisted!`: to read the
+  outcome of a finished run whose terminal state was renamed, migrate it or
+  read the stored JSON directly. `stuck_for?` reports a stored run in an
+  unknown state as stuck, since it can neither advance nor restore
 
 `preserve_seed: true` is intended for workflows whose seed is durable external
 conversation and whose later accepted outputs are internal stage handoffs. Smith

@@ -126,7 +126,7 @@ module Smith
         FailureDetailSnapshot.new(error.details).call
       rescue StandardError => e
         FailureDetailSnapshot.new(
-          smith_failure_details_omitted: DiagnosticText.capture(e.message, max_bytes: 1_024)
+          smith_failure_details_omitted: DiagnosticText.capture(error_message(e), max_bytes: 1_024)
         ).call
       end
     end

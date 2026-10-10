@@ -240,10 +240,18 @@ module Smith
 
         # A state this class can hold: declared with `state` (or
         # `initial_state`), or named by any transition's `from:` or `to:`.
-        def known_state?(name)
-          return true if (@states || []).include?(name)
+        # Matched by String form, so a payload's "prepared" finds a state
+        # declared as :prepared or "prepared". `O(S + T)`.
+        def known_state?(name) = !resolve_state_name(name).nil?
 
-          (@transitions || {}).each_value.any? { |transition| transition.from == name || transition.to == name }
+        # The identifier this class declares for `name` (matched by String
+        # form), or nil when the class knows no such state.
+        def resolve_state_name(name)
+          return if name.nil?
+
+          wanted = name.to_s
+          candidates = (@states || []) + (@transitions || {}).each_value.flat_map { |t| [t.from, t.to] }
+          candidates.find { |candidate| !candidate.nil? && candidate.to_s == wanted }
         end
 
         def transition_at(index)

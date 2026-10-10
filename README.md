@@ -511,6 +511,11 @@ Smith::Errors.retry_forbidden?(error)
 # => true for terminal tool-evidence failures that must never be replayed
 ```
 
+A nested workflow's step fails with the child's own error when the child
+raises it, so these answers carry through nesting. When a tool ran inside the
+child, the parent step's failure becomes `ToolOutcomeUncertain`, which is never
+retried.
+
 Workflow transitions can also declare a bounded local retry policy:
 
 ```ruby
@@ -520,7 +525,8 @@ transition :draft, from: :idle, to: :done do
 end
 ```
 
-When no classes are passed, `retry_on` uses `Smith::Errors.retryable?`.
+When no classes are passed, `retry_on` uses `Smith::Errors.retryable?`. No
+attempt starts once the workflow's wall-clock deadline has passed.
 This is a bounded local transition retry policy. Durable scheduling, long waits,
 and external idempotency guarantees remain host-owned.
 

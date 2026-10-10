@@ -77,7 +77,6 @@ module Smith
           self.class.idempotency_mode == :strict && !allow_step_in_progress
         migrated = migrate_if_needed(hash)
         normalized = normalize_persisted_state(migrated)
-        validate_restored_position!(normalized)
         persistence_version = validated_persistence_version(normalized)
         restore_persisted_keys(normalized)
         restore_core_fields(normalized)
@@ -114,6 +113,7 @@ module Smith
         # the original store from the legacy adapter contract).
         @persistence_version = persistence_version
         validate_definition_digest!(normalized)
+        validate_restored_position!(normalized)
         # Preserve the seed digest from the persisted payload so it
         # round-trips on subsequent persists. validate_seed_digest!
         # compares this against a fresh evaluation of the seed builder
@@ -257,18 +257,21 @@ module Smith
         ).call
       end
 
-      # A state or pending transition the class no longer declares (a deploy
-      # renamed or removed it) fails the restore. Restoring it would leave
-      # the run in a state with no outgoing transitions, which reads as
-      # terminal and ends the run silently. Runs after `migrate_from`, so a
-      # migration can map an old name to a new one.
+      # A state or pending transition the class does not know (a deploy
+      # renamed or removed it, or the payload has none) fails the restore.
+      # Restoring it would leave the run in a state with no outgoing
+      # transitions, which reads as terminal and ends the run silently. Runs
+      # after `migrate_from` and after the definition digest check, so a
+      # migration can map an old name and a digest mismatch is reported as
+      # one.
       def validate_restored_position!(normalized)
         validate_restored_state!(normalized[:state], normalized[:persistence_key])
         validate_restored_transition!(normalized[:next_transition_name], normalized[:persistence_key])
       end
 
       def validate_restored_state!(state, persistence_key)
-        return if state.nil? || self.class.known_state?(state)
+        return if state.nil? && self.class.initial_state.nil?
+        return if !state.nil? && self.class.known_state?(state)
 
         raise Smith::UnknownStateOnRestore.new(workflow: self.class.name, persistence_key:, state:)
       end
@@ -384,27 +387,22 @@ module Smith
         symbolized
       end
 
+      # The identifier the class itself uses for a payload's state name, so a
+      # String-named state stays a String; an unknown name is symbolized.
       def normalize_state_name(value)
         return if value.nil?
-        return value if declared_state?(value)
-        return value unless value.is_a?(String)
 
-        symbolized = value.to_sym
-        return symbolized if declared_state?(symbolized)
+        resolved = self.class.resolve_state_name(value)
+        return resolved unless resolved.nil?
 
-        symbolized
-      end
-
-      def declared_state?(value)
-        states = self.class.instance_variable_get(:@states) || []
-        states.include?(value)
+        value.is_a?(String) ? value.to_sym : value
       end
 
       # Context keys are Symbols at every depth, matching what construction
       # and deterministic writes produce, so a nested read behaves the same
       # before and after a restore.
       def normalize_nested_hashes!(normalized)
-        normalized[:context] = symbolize_value(normalized[:context]) if normalized[:context].is_a?(Hash)
+        normalized[:context] = ContextKeys.normalize(normalized[:context]) if normalized[:context].is_a?(Hash)
         return unless normalized[:budget_consumed].is_a?(Hash)
 
         normalized[:budget_consumed] = symbolize_keys(normalized[:budget_consumed])

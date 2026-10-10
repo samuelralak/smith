@@ -72,9 +72,9 @@ module Smith
       end
     end
 
-    # Masks content only: the String values of `content_keys`, and the String
-    # values one level inside a Hash under one of them. Identifiers (model,
-    # execution key, tool name, error class) stay readable.
+    # Masks content only: every String and Symbol inside the values of
+    # `content_keys`, at any depth. Identifiers (model, execution key, tool
+    # name, error class) stay readable.
     def self.redact_sensitive_keys(data, content_keys = SENSITIVITY_CONTENT_KEYS)
       data.each_with_object({}) do |(key, value), filtered|
         filtered[key] = if content_keys.include?(key)
@@ -85,12 +85,16 @@ module Smith
       end
     end
 
+    # Every String and Symbol leaf at any depth of Hashes and Arrays;
+    # numbers, booleans and nil are kept.
     def self.redact_value(value)
       case value
-      when String
+      when String, Symbol
         "[REDACTED]"
       when Hash
-        value.transform_values { |v| v.is_a?(String) ? "[REDACTED]" : v }
+        value.transform_values { |nested| redact_value(nested) }
+      when Array
+        value.map { |nested| redact_value(nested) }
       else
         value
       end

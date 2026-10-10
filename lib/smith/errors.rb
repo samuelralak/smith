@@ -21,7 +21,6 @@ module Smith
     # AgentError + DeadlineExceeded are always retryable.
     # DeterministicStepFailure + ToolGuardrailFailed honor their
     # `retryable` attribute (opt-in at the raise site).
-    # NestedWorkflowFailed carries its child error's answer.
     # All other Smith errors and non-Smith errors return false.
     def self.retryable?(error)
       return false if error.nil?
@@ -31,7 +30,7 @@ module Smith
       return false if composite_failure
 
       case error
-      when Smith::DeterministicStepFailure, Smith::ToolGuardrailFailed, Smith::NestedWorkflowFailed
+      when Smith::DeterministicStepFailure, Smith::ToolGuardrailFailed
         error.retryable == true
       when Smith::AgentError, Smith::DeadlineExceeded
         true
@@ -42,7 +41,6 @@ module Smith
 
     def self.retry_forbidden?(error)
       return false if error.nil?
-      return error.retry_forbidden == true if MODULE_MATCH.bind_call(Smith::NestedWorkflowFailed, error)
 
       retry_forbidden_classes.any? { |error_class| MODULE_MATCH.bind_call(error_class, error) }
     end
@@ -175,21 +173,6 @@ module Smith
     end
   end
 
-  # A nested workflow's failure, raised in the parent's step. The child's
-  # error is kept as `child_error` (and as the exception's `cause`), and its
-  # retry classification is mirrored, so `retry_on` and host retry policies
-  # treat the parent step as they would the child's own failure.
-  class NestedWorkflowFailed < WorkflowError
-    attr_reader :child_error, :retryable, :retry_forbidden
-
-    def initialize(child_error)
-      @child_error = child_error
-      @retryable = Smith::Errors.retryable?(child_error)
-      @retry_forbidden = Smith::Errors.retry_forbidden?(child_error)
-      super("nested workflow failed: #{child_error&.message}")
-    end
-  end
-
   # A `compute` or `run` step that declares `routes:` finished without
   # calling `route_to`, declares no `on_success`, and did not opt into
   # `fallthrough: true`. Without this error the run would silently take the
@@ -201,7 +184,8 @@ module Smith
       @transition = transition
       @routes = routes
       super(
-        "#{transition.inspect} declares routes: #{routes.inspect} but did not call route_to; " \
+        "#{DiagnosticText.capture(transition.inspect, max_bytes: 256)} declares routes: " \
+        "#{DiagnosticText.capture(routes.inspect, max_bytes: 1024)} but did not call route_to; " \
         "route to one of them, declare on_success, or opt into fallthrough: true"
       )
     end
@@ -217,8 +201,8 @@ module Smith
       @key = key
       @persisted_keys = persisted_keys
       super(
-        "write_context #{key.inspect} is not a persisted context key " \
-        "(persist #{persisted_keys.map(&:inspect).join(", ")}); " \
+        "context key #{DiagnosticText.capture(key.inspect, max_bytes: 256)} is not a persisted context key " \
+        "(persist #{DiagnosticText.capture(persisted_keys.map(&:inspect).join(", "), max_bytes: 1024)}); " \
         "declare it in the context's persist list, or use persist :auto"
       )
     end
@@ -319,7 +303,8 @@ module Smith
       @state = state
       super(
         "unknown state #{DiagnosticText.capture(state.inspect, max_bytes: 256)} restoring #{workflow} " \
-        "key=#{persistence_key.inspect}: declare `migrate_from` to map it, or finish the run on the " \
+        "key=#{DiagnosticText.capture(persistence_key.inspect, max_bytes: 256)}: bump " \
+        "persistence_schema_version and declare `migrate_from` to map it, or finish the run on the " \
         "workflow version that declared it."
       )
     end
@@ -337,8 +322,9 @@ module Smith
       @transition = transition
       super(
         "unknown pending transition #{DiagnosticText.capture(transition.inspect, max_bytes: 256)} restoring " \
-        "#{workflow} key=#{persistence_key.inspect}: declare `migrate_from` to map it, or finish the run on " \
-        "the workflow version that declared it."
+        "#{workflow} key=#{DiagnosticText.capture(persistence_key.inspect, max_bytes: 256)}: bump " \
+        "persistence_schema_version and declare `migrate_from` to map it, or finish the run on the " \
+        "workflow version that declared it."
       )
     end
   end

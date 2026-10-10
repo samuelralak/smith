@@ -118,7 +118,7 @@ observes a provider but finds only a model-only rate, it raises
 | `trace_provider_calls` | Emit one timed `:provider_call` trace per provider attempt | Usually leave on |
 | `trace_cost` | Emit one `:cost` trace per completed agent invocation | Emits only once pricing is configured |
 | `trace_fields` | Allowlist structural trace fields | Use when you want tighter trace output |
-| `trace_content` | Whether content appears in traces: `false` drops content fields, `:redacted` masks their String values, `true` keeps them. Content fields are `content`, `prompt`, `response`, `args`, and `result`; identifiers such as model, execution key, tool name, and error class are never masked | Leave `false` first |
+| `trace_content` | Whether content appears in traces: `false` drops content fields, `:redacted` replaces every String and Symbol inside them, at any depth, with `"[REDACTED]"`, and `true` keeps them. The built-in adapters treat `content`, `prompt`, `response`, `args`, and `result` as content; the central policy, which runs first, masks `args` and `result`. Every other field passes unmasked, including identifiers such as model, execution key (which defaults to the persistence key), tool name, and error class, and any field a custom trace adds: drop those with `trace_fields` if they must not leave the process | Leave `false` first |
 | `trace_attribution` | Merge ambient execution attribution into trace payloads | Usually leave on |
 | `pricing` | Best-known model-call cost catalog | Add once you care about `total_cost` |
 | `logger` | Smith's runtime logger | Usually the first setting to add |

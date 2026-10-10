@@ -30,21 +30,21 @@ module Smith
         return false if attempt >= config.fetch(:attempts)
         return false if terminal_retry_error?(error)
 
+        return false if retry_deadline_passed?
+
         classes = config.fetch(:error_classes)
         if classes.any?
-          classes.any? { |error_class| retry_class_match?(error, error_class) }
+          classes.any? { |error_class| error.is_a?(error_class) }
         else
           Smith::Errors.retryable?(error)
         end
       end
 
-      # A nested workflow's failure matches by its own class or by the class
-      # of the child error it carries, at any nesting depth.
-      def retry_class_match?(error, error_class)
-        return true if error.is_a?(error_class)
-        return false unless error.is_a?(Smith::NestedWorkflowFailed)
-
-        retry_class_match?(error.child_error, error_class)
+      # No attempt starts once the wall-clock deadline has passed: it could
+      # only fail again, after sleeping through its backoff.
+      def retry_deadline_passed?
+        deadline = effective_deadline
+        !deadline.nil? && Time.now.utc >= deadline
       end
 
       def terminal_retry_error?(error)

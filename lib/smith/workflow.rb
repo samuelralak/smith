@@ -42,7 +42,7 @@ module Smith
       @state = self.class.initial_state
       # Symbol keys at every depth, the shape a restore produces, so a
       # context reads the same live and after a checkpoint round trip.
-      @context = symbolize_value(context)
+      @context = ContextKeys.normalize_context(context)
       @step_count = 0
       @next_transition_name = nil
       @ledger = ledger || build_ledger

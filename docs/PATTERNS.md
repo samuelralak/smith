@@ -325,12 +325,16 @@ end
 What you get:
 
 - the child workflow's final output becomes the parent step output
-- a child failure fails the parent step with `Smith::NestedWorkflowFailed` (a
-  `WorkflowError`), which keeps the child's error as `child_error` and as the
-  exception's `cause`, and mirrors its retry classification: it is retryable
-  when the child's error was, retry-forbidden when the child's was, and a
-  `retry_on SomeError` matches it when the child's error (at any nesting
-  depth) is a `SomeError`
+- a child that raises its failure passes the error to the parent step
+  unchanged, after its billable usage is rolled into the parent, so the
+  parent's `retry_on` and `Smith::Errors.retryable?` treat it as the child's
+  own error, at any nesting depth
+- a child that routes its failure through its own `on_failure` has handled it:
+  the parent step fails with a non-retryable `Smith::WorkflowError`
+  (`nested workflow failed: <child message>`, bounded to 1 KiB)
+- tool evidence travels up: when a tool ran in any of the child's steps, a
+  failure of the parent step becomes `Smith::ToolOutcomeUncertain` and is never
+  retried, exactly as when the tool runs in the parent step itself
 - parent step count stays parent-scoped
 - parent and child share the outer budget ledger
 - nested best-known token/cost totals roll up into the parent result
@@ -385,7 +389,8 @@ end
 
 `before_eval: ->(state, context) { ... }` runs after each candidate is
 generated and before the evaluator is called, and may write to the workflow
-context. When it returns a Hash whose `accept` (Symbol or String key) is
+context (a new top-level key must be a Symbol that the context's `persist` list
+allows; see Deterministic Steps, Context writes). When it returns a Hash whose `accept` (Symbol or String key) is
 `false`, that Hash is the round's evaluation: Smith validates it exactly as
 evaluator output (`feedback` is required, and a numeric `score` when
 `improvement_threshold` is set), skips the evaluator for that round, and
@@ -632,10 +637,11 @@ The yielded step object exposes a narrow, read-heavy surface:
 ### Behavior
 
 - **Routing**: `step.route_to` overrides `on_success`, and can be called once per step. If neither is set, normal state-based resolution applies. Named transitions that do not exist fail loudly with `WorkflowError`. When a deterministic transition declares `compute(routes: [...])` or `run(routes: [...])`, `step.route_to` must target one of those names; graph inspection validates the annotated targets before runtime.
-- **Declared routes must be taken**: a step that declares `routes:` and finishes without `step.route_to` raises `Smith::UnroutedDeterministicStep` (a `WorkflowError`, so `on_failure` applies and no write is kept), unless the transition declares `on_success` or `compute(routes: [...], fallthrough: true)`. Graph inspection follows the same rule: such a step reaches its routes and its `on_success`, and the first transition from its target state only with `fallthrough: true`. `fallthrough:` without `routes:` raises `WorkflowError` at definition time.
+- **Declared routes must be taken**: a step that declares `routes:` and finishes without `step.route_to` raises `Smith::UnroutedDeterministicStep` (a `WorkflowError`, so `on_failure` applies and no write is kept) when its target state has an outgoing transition, unless the transition declares `on_success` or `compute(routes: [...], fallthrough: true)`. A step whose target state has no outgoing transition may finish unrouted: the run ends there, as declared, so `compute(routes: [:fail])` can name only its exceptional route. Graph inspection follows the same rule: such a step reaches its routes and its `on_success`, and the first transition from its target state only with `fallthrough: true`; a transition reachable only that way is reported unreachable until the step declares `fallthrough: true`. `fallthrough: true` without `routes:` raises `WorkflowError` at definition time. A class-less `retry_on` does not retry `UnroutedDeterministicStep`, but `retry_on Smith::WorkflowError` does, until its attempts run out.
 - **Failure**: `step.fail!` raises `Smith::DeterministicStepFailure` (extends `WorkflowError`) with `retryable`, `kind`, and `details` metadata. Routes through `on_failure` like any other step failure.
 - **Outcome**: `step.write_outcome(kind:, payload:)` stores a workflow-owned terminal payload without smuggling it through context. The payload is persisted with the workflow and surfaced on `RunResult.outcome`, `RunResult.outcome_kind`, and `RunResult.outcome_payload`.
-- **Context writes**: `step.write_context(key, value)` takes a Symbol key. The value is stored with Symbol keys at every depth (String Hash keys become Symbols), the shape a restore produces, so a nested read is the same live and after a checkpoint. When the workflow's `Smith::Context` declares `persist :a, :b`, writing any other key raises `Smith::UndeclaredContextKey` instead of being dropped at the next checkpoint; with `persist :auto`, or no `persist` declaration, any key may be written.
+- **Context writes**: `step.write_context(key, value)` takes a Symbol key. The value is stored at the call in the context's key shape: every Hash key at every depth becomes the Symbol of its String form, which is what a restore produces, so `step.read_context` later in the same step, the next step, and a restored run all read the same keys. Values are not converted (see `docs/PERSISTENCE.md`). Two keys that become the same Symbol, a value that contains itself, or nesting deeper than 100 levels fail the write with `Smith::WorkflowError`.
+- **Persist list as an allow-list**: when the workflow's `Smith::Context` declares `persist :a, :b`, writing any other key raises `Smith::UndeclaredContextKey`, in every run, persisted or not and nested or not, so the list is the context's declared shape rather than a filter applied at checkpoints. A rejected write fails the step even when the step body rescues the error. With `persist :auto`, or no `persist` declaration, any Symbol key may be written. Hooks that receive the live context (`before_eval`, `after_completion`, guardrails) are held to the same rules at the end of their step: a new top-level key must be a Symbol the list allows, a violation fails the step and puts the context's top-level values back as they were when the step started, and new or replaced values take the context's key shape.
 - **Context reads**: `step.context` returns an isolated snapshot of the workflow context at step start. Mutating that snapshot does not mutate workflow state. `step.read_context(key)` returns a merged view — pending `write_context` values override the snapshot. Use `read_context` when you need read-after-write coherence within the same step.
 - **No output**: Deterministic steps produce no session message output. `last_output` continues to mean the last agent output.
 - **No budget**: No tokens or cost consumed.

@@ -268,6 +268,7 @@ require_relative "smith/agent/registry"
 
 # Workflow (Transition, DSL, Persistence, and Execution must load before Workflow)
 require_relative "smith/workflow/identifier"
+require_relative "smith/workflow/context_keys"
 require_relative "smith/workflow/transition"
 require_relative "smith/workflow/transition_actionability"
 require_relative "smith/workflow/graph"

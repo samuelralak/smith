@@ -14,10 +14,23 @@ module Smith
         handle_child_result(child_result)
       end
 
+      # A child that raises passes its error to the parent unchanged, after
+      # its billable usage is rolled up. If a tool ran in the child, the
+      # parent's step already carries that evidence and turns the failure
+      # into ToolOutcomeUncertain (GuardedStepExecution).
       def run_child_workflow(child)
         child.run!
-      rescue Smith::Error => e
-        raise NestedWorkflowFailed.new(e), cause: e
+      rescue StandardError
+        roll_up_child_totals(raised_child_usage(child))
+        raise
+      end
+
+      RaisedChildUsage = Struct.new(:usage_entries, :total_cost, :total_tokens)
+      private_constant :RaisedChildUsage
+
+      def raised_child_usage(child)
+        RaisedChildUsage.new(child.usage_entries, child.instance_variable_get(:@total_cost),
+                             child.instance_variable_get(:@total_tokens))
       end
 
       def build_child_workflow(child_class)
@@ -49,8 +62,14 @@ module Smith
       def handle_child_result(child_result)
         roll_up_child_totals(child_result)
 
+        # A child that handled its failure through its own `on_failure` route
+        # has already applied its failure policy, so the parent sees a
+        # non-retryable WorkflowError, as before.
         failed_step = child_result.steps.find { |s| s.key?(:error) }
-        raise NestedWorkflowFailed.new(failed_step[:error]), cause: failed_step[:error] if failed_step
+        if failed_step
+          raise WorkflowError,
+                "nested workflow failed: #{DiagnosticText.capture(failed_step[:error]&.message.to_s, max_bytes: 1024)}"
+        end
 
         child_result.output
       end

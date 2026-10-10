@@ -158,25 +158,19 @@ module Smith
           parsed = JSON.parse(payload)
           state_name = parsed["state"] || parsed[:state]
           class_name = parsed["class"] || parsed[:class]
-          next_transition = parsed["next_transition_name"] || parsed[:next_transition_name]
-
           return false unless state_name && class_name
 
-          klass = Object.const_get(class_name)
-          state = state_name_for_payload(klass, state_name)
-          !klass.transition_from?(state) && next_transition.nil?
+          next_transition = parsed["next_transition_name"] || parsed[:next_transition_name]
+          terminal_payload_state?(Object.const_get(class_name), state_name, next_transition)
         rescue JSON::ParserError, NameError, NoMethodError
           false
         end
 
-        def state_name_for_payload(klass, state_name)
-          states = klass.instance_variable_get(:@states) || []
-          return state_name if states.include?(state_name)
-
-          symbolized = state_name.to_sym if state_name.respond_to?(:to_sym)
-          return symbolized if states.include?(symbolized)
-
-          state_name
+        # A state the class no longer knows can never advance or restore, so
+        # it is not terminal: an old one reports as stuck.
+        def terminal_payload_state?(klass, state_name, next_transition)
+          state = klass.resolve_state_name(state_name)
+          !state.nil? && !klass.transition_from?(state) && next_transition.nil?
         end
 
         def persistence_adapter!(adapter)
@@ -192,7 +186,7 @@ module Smith
           raise WorkflowError, "persistence key is required unless workflow defines persistence_key" unless builder
 
           derived = if builder.arity == 1
-            builder.call(context)
+            builder.call(ContextKeys.normalize_context(context))
           else
             builder.call
           end

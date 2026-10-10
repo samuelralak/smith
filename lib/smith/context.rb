@@ -23,6 +23,7 @@ module Smith
           return @persist_keys || []
         end
 
+        validate_persist_keys!(keys)
         if also && !keys.include?(:auto)
           raise Smith::WorkflowError, ":also is only valid alongside :auto"
         end
@@ -46,6 +47,14 @@ module Smith
       def persist_mode
         @persist_mode || :explicit
       end
+
+      def validate_persist_keys!(keys)
+        invalid = keys.grep_v(Symbol)
+        return if invalid.empty?
+
+        raise Smith::WorkflowError, "persist keys must be Symbols, got #{invalid.map(&:inspect).join(", ")}"
+      end
+      private :validate_persist_keys!
 
       def persist_auto_seed
         @persist_auto_seed || []
