@@ -7,6 +7,14 @@ module Smith
 
       # `@step_attempt` is the attempt under way, from 1, which the optimizer
       # names its verdicts by; transient, set here before every attempt.
+      #
+      # Every attempt sends its requests under the step's idempotency keys,
+      # so a retry after an uncertain failure (a timeout, a lost connection)
+      # cannot repeat a request that took effect. Only an attempt that
+      # failed in a way the step declares settled moves later attempts to
+      # new keys. Attempts replay in the same order after a restore, so a
+      # replay reaches the same keys as long as the receivers answer the
+      # replayed requests as before.
       def run_with_retry_policy(transition)
         config = transition.retry_config
         @step_attempt = 1
@@ -14,17 +22,34 @@ module Smith
 
         schedule = retry_schedule(config)
         attempt = 0
+        key_generation = 0
         begin
           attempt += 1
           @step_attempt = attempt
-          run_guarded_step(transition)
+          run_attempt_under_keys(transition, key_generation)
         rescue StandardError => e
           raise unless retry_transition_error?(config, e, attempt)
 
+          key_generation += 1 if new_idempotency_key_after?(config, e)
           sleep_for_retry(schedule, attempt)
           retry
         end
       end
+
+      def run_attempt_under_keys(transition, key_generation)
+        return run_guarded_step(transition) if key_generation.zero?
+
+        IdempotencyKey.within(:key_generation, key_generation) { run_guarded_step(transition) }
+      end
+
+      def new_idempotency_key_after?(config, error)
+        return true if error.is_a?(DeterministicStepFailure) && error.new_idempotency_key
+
+        config.fetch(:new_idempotency_key_on, EMPTY_ERROR_CLASSES).any? { |error_class| error.is_a?(error_class) }
+      end
+
+      EMPTY_ERROR_CLASSES = [].freeze
+      private_constant :EMPTY_ERROR_CLASSES
 
       def retry_transition_error?(config, error, attempt)
         return false if attempt >= config.fetch(:attempts)

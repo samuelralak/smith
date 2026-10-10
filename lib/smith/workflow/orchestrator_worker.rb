@@ -40,7 +40,7 @@ module Smith
 
       def run_orchestration_loop(state)
         state.config[:max_delegation_rounds].times do |round|
-          result = run_orchestration_round(state, round)
+          result = IdempotencyKey.within(:round, round) { run_orchestration_round(state, round) }
           return result if result
         end
 
@@ -67,12 +67,16 @@ module Smith
 
       def execute_workers(state, tasks)
         runner = method(:run_worker_with_schema)
-        tasks.map do |task|
+        tasks.each_with_index.map do |task, index|
           validate_task!(task, state.config[:task_schema])
-          execution = WorkerExecution.run(state.worker_class, task, state.config[:worker_output_schema], runner)
+          execution = IdempotencyKey.within(:task, index) { run_worker_task(state, task, runner) }
           validate_worker_output!(execution.output, state.config[:worker_output_schema])
           { execution_id: execution.execution_id, task: execution.task, output: execution.output }
         end
+      end
+
+      def run_worker_task(state, task, runner)
+        WorkerExecution.run(state.worker_class, task, state.config[:worker_output_schema], runner)
       end
 
       def run_worker_with_schema(worker_class, task, worker_output_schema)

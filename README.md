@@ -531,8 +531,24 @@ end
 
 When no classes are passed, `retry_on` uses `Smith::Errors.retryable?`. No
 attempt starts once the workflow's wall-clock deadline has passed.
-This is a bounded local transition retry policy. Durable scheduling, long waits,
-and external idempotency guarantees remain host-owned.
+This is a bounded local transition retry policy. Durable scheduling and long
+waits remain host-owned.
+
+Steps and tools get idempotency keys for the requests they send outside the
+system, the same on every attempt and after a restore:
+
+```ruby
+transition :charge, from: :approved, to: :charged do
+  compute { |step| Payments.charge(order, idempotency_key: step.idempotency_key) }
+  retry_on Payments::Timeout, Payments::Declined, attempts: 3,
+           new_idempotency_key_on: [Payments::Declined]
+end
+```
+
+A retry keeps the keys, so a request that took effect before a timeout is not
+repeated. An error named in `new_idempotency_key_on:` (or `step.fail!(...,
+new_idempotency_key: true)`) shows the attempt's requests took no effect, and
+the attempts after it use new keys. See `docs/PERSISTENCE.md`, Replay Safety.
 
 ## Runtime Complexity
 

@@ -152,12 +152,15 @@ module Smith
   class WorkflowError < Error; end
 
   class DeterministicStepFailure < WorkflowError
-    attr_reader :retryable, :kind, :details
+    attr_reader :retryable, :kind, :details, :new_idempotency_key
 
-    def initialize(message, retryable: nil, kind: nil, details: nil)
+    # `new_idempotency_key: true` declares that the failed attempt's
+    # requests took no effect, so a retry sends them under new keys.
+    def initialize(message, retryable: nil, kind: nil, details: nil, new_idempotency_key: false)
       @retryable = retryable
       @kind = kind
       @details = details
+      @new_idempotency_key = new_idempotency_key == true
       super(message)
     end
   end

@@ -270,6 +270,25 @@ authoritative replay proof. `ordinal` is allocated from one thread-safe sequence
 shared by every Smith-managed chat, branch, thread, and fiber inside the current
 host invocation scope.
 
+For a key to send with a side-effecting request, a tool running in a workflow
+step calls `idempotency_key(scope)` in `perform`:
+
+```ruby
+class SendInvoice < Smith::Tool
+  def perform(customer_id:, amount_cents:)
+    Billing.send_invoice(customer_id:, amount_cents:,
+                         idempotency_key: idempotency_key(customer_id:, amount_cents:))
+  end
+end
+```
+
+The key is unique to the run, the step and branch the tool runs in, the tool and
+the scope, and the same when the step is replayed, including in concurrent tool
+calls. The scope names the request, usually from its arguments, because the
+model can call one tool several times in a step and a replayed step's model may
+order its calls differently. Outside a workflow step it raises
+`Smith::WorkflowError`. See `docs/PERSISTENCE.md`, Replay Safety.
+
 Hosts that reconstruct an execution may supply an explicit next ordinal:
 
 ```ruby

@@ -1676,6 +1676,27 @@ Documented contracts covered:
 - composite effects accept entries with and without details, total cache tokens, and reject invalid details
 - the OpenAI Responses adapter reports uncached input
 
+### `spec/smith/workflow/idempotency_key_spec.rb`
+
+Purpose:
+
+- asserts that steps and tools get idempotency keys that are the same on every replay of a request and unique to the run, the step's position, the tool and the scope
+
+Architecture basis:
+
+- Section 5.3, State Serialization
+- Section 4.5, Tools
+
+Documented contracts covered:
+
+- a compute step's key is 64 hex characters, the same on every `retry_on` attempt, different for another scope, another step, and a transition that runs again later in the run; `step.attempt` counts attempts from 1
+- a run restored after a crash mid-step gets the step's earlier keys; a new run gets new keys, even under a persistence key an earlier run used; a run's execution namespace is assigned at construction and given on restore to a payload written without one
+- a later attempt moves to a new key only after `fail!(..., new_idempotency_key: true)` or an error named in `retry_on ... new_idempotency_key_on:`, and keeps the new key across a later timeout; `fail!` refuses a non-boolean flag
+- a nested workflow's steps are placed under the parent's step; a workflow advanced inside another's step is a run of its own; parallel branches, fan-out branches, optimizer rounds, orchestrator rounds and worker tasks, and durable composite branches (the same on a worker's re-run) each get their own key; no key leaks out of a run
+- a tool's key is carried into concurrent tool calls, differs per scope and per tool, differs from the step's key, and is refused outside a step
+- scopes hash alike whatever their Hash order or Symbol and String spelling, convert other encodings to UTF-8, and refuse Floats, other objects, invalid Strings, duplicate or non-String keys, cycles and nesting past the depth limit
+- `retry_on new_idempotency_key_on:` shows in graph inspection (snapshot and transition contract) only when declared; it refuses classes the policy does not retry, non-classes and retry-forbidden classes, and accepts subclasses of retried classes and any class when Smith's classification decides retries
+
 ### `spec/smith/workflow/restore_position_spec.rb`
 
 Purpose:

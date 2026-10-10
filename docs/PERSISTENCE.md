@@ -601,6 +601,71 @@ entry points remain guarded even when a host prepends modules after class
 creation, and prepared execution bypasses host `advance!` wrappers so they
 cannot become transition execution authority.
 
+## Replay Safety: Idempotency Keys
+
+A step that is replayed, by a retry or by a restore after a crash, sends its
+outside requests again. Smith gives each request a key so the receiver can drop
+the repeat:
+
+```ruby
+transition :charge, from: :approved, to: :charged do
+  compute do |step|
+    Payments.charge(order, idempotency_key: step.idempotency_key)
+    Receipts.email(order, idempotency_key: step.idempotency_key(:receipt))
+  end
+  retry_on Payments::Timeout, Payments::Declined, attempts: 3,
+           new_idempotency_key_on: [Payments::Declined]
+end
+```
+
+- `step.idempotency_key(scope = nil)` in `compute` and `run` steps,
+  `idempotency_key(scope)` inside a `Smith::Tool`'s `perform`, and
+  `Smith::IdempotencyKey.current(scope = nil)` for host code called from a
+  running step. Each returns 64 lowercase hex characters (a SHA-256), which
+  fits receivers that cap keys at 64 characters.
+- A key is unique to the run, the step's position and the scope. The position
+  is the step number and transition, then any nested workflow step, parallel or
+  fan-out branch (durable composite branches included), optimizer round, or
+  orchestrator round and task inside it. A tool's key also names the tool. Use
+  a scope to tell apart several requests of one step; a tool can run several
+  times in a step, so its scope is required and should name the request
+  (`idempotency_key(kwargs)`).
+- A scope is built from Strings, Symbols, Integers, `true`, `false`, `nil`,
+  Arrays and Hashes with String or Symbol keys. Symbols count as their Strings
+  and Hash order does not matter. Floats and other objects raise
+  `ArgumentError`, because their text form is not a stable identity.
+- The run part is the workflow's execution namespace, a UUID assigned when the
+  workflow is built (or when a payload written without one is restored) and
+  persisted with it. Two runs never share keys, even when the second reuses the
+  first's persistence key after it was cleared.
+- A key survives a crash only if the checkpoint written before the step holds
+  the namespace and step count. `advance_persisted!`, `run_persisted!` and the
+  host-coordinated step boundaries all checkpoint before every step. A run that
+  is never persisted has no replay to protect.
+
+Every attempt of a step uses the same keys. A retry after an uncertain failure
+(a timeout, a dropped connection) then cannot repeat a request that took
+effect. Some receivers store a failed reply under its key and return it for
+every repeat. When an attempt fails in a way that shows its requests took no
+effect, the attempts after it can use new keys:
+
+- `step.fail!("declined", retryable: true, new_idempotency_key: true)`, or
+- `retry_on ..., new_idempotency_key_on: [Payments::Declined]`. The listed
+  classes must be ones the policy retries (any class, when the policy lists none
+  and Smith's retry classification decides). Classes that may hide a tool's
+  outcome are refused. Graph inspection shows the list in the transition's
+  retry policy.
+
+`step.attempt` is the attempt under way, from 1. A host that wants a different
+key on every attempt can pass it in the scope
+(`step.idempotency_key([:charge, step.attempt])`).
+
+After a crash, a step's retries run again from the first attempt. A replay
+reaches the new keys again only if the receivers refuse the replayed requests
+as they did before, which a receiver that stores replies under their keys does.
+A receiver that does not store failures could accept a replayed request under
+the first key while the original run had already succeeded under a newer one.
+
 ## Active Record Optimistic Locking
 
 `ActiveRecordStore` keeps two version domains deliberately separate:

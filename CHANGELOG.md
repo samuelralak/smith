@@ -40,6 +40,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   takes `cache_read_tokens:`, `cache_write_tokens:` and `mode:` (defaults 0, 0,
   `:sync`), and `validate_catalog!` rejects negative or non-numeric cache rates
   and out-of-range discounts.
+- Idempotency keys for requests a step sends outside the system.
+  `step.idempotency_key(scope = nil)` in `compute` and `run` steps,
+  `idempotency_key(scope)` inside a `Smith::Tool`'s `perform`, and
+  `Smith::IdempotencyKey.current(scope = nil)` for host code called from a
+  running step return 64 lowercase hex characters (a SHA-256). A key is the
+  same on every attempt of the step and after a restore, and unique to the
+  run, the step's position (step number and transition, then any nested
+  workflow step, parallel or fan-out branch, durable composite branch,
+  optimizer round, or orchestrator round and task), the tool and the scope.
+  Scopes are built from Strings, Symbols, Integers, booleans, `nil`, Arrays and
+  Hashes; Floats and other objects raise `ArgumentError`. Outside a running
+  step they raise `Smith::WorkflowError`. Keys survive a crash when the run was
+  checkpointed before the step, as `advance_persisted!`, `run_persisted!` and
+  the host-coordinated step boundaries do.
+- `retry_on ..., new_idempotency_key_on: [ErrorClass]` and
+  `step.fail!(..., new_idempotency_key: true)` declare that a failed attempt's
+  requests took no effect, so the attempts after it use new keys; every other
+  retry keeps them. `new_idempotency_key_on:` must name classes the policy
+  retries, refuses retry-forbidden classes, and shows in graph inspection's
+  retry policy when declared. `DeterministicStepFailure#new_idempotency_key`
+  and `DeterministicStep#attempt` (the attempt under way, from 1).
 - `UsageEntry#total_tokens`, `AgentResult#total_tokens`,
   `ProviderUsage#total_tokens` and `ProviderUsage#total_input_tokens`.
 
@@ -84,6 +105,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   cached and cache-written input taken out, as RubyLLM reports every other
   provider, keeping the cache counts separate. Before, cached input was in both
   counts.
+- A workflow's execution namespace (the persisted UUID that scopes its
+  artifacts and now its idempotency keys) is assigned when the workflow is
+  built, and when a payload written without one is restored, instead of on
+  first artifact use, so `to_state` always carries it. Smith's per-step tool
+  context (`Smith::Tool::ScopedContext`) holds one more private value, the
+  step's idempotency position; a host that builds that context Hash by hand
+  rather than from `ScopedContext.capture` must include it.
 - **Breaking:** an explicit `persist :a, :b` list is an allow-list for the
   context in every run, persisted or not and nested or not.
   - `write_context` of any other key raises `Smith::UndeclaredContextKey`

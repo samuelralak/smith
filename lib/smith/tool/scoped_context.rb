@@ -16,7 +16,8 @@ module Smith
         current_invocation_batch_admitter: :smith_tool_invocation_batch_admitter,
         current_invocation_failure_handler: :smith_tool_invocation_failure_handler,
         current_invocation_sequence: :smith_tool_invocation_sequence,
-        current_invocation: :smith_tool_invocation
+        current_invocation: :smith_tool_invocation,
+        current_idempotency_scope: :smith_idempotency_scope
       }.freeze
 
       CONTEXT_KEYS.each do |reader, key|
@@ -24,17 +25,13 @@ module Smith
         define_method("#{reader}=") { |value| Thread.current[key] = value }
       end
 
-      private :current_invocation_batch_admitter,
-              :current_invocation_batch_admitter=,
-              :current_invocation_failure_handler,
-              :current_invocation_failure_handler=,
-              :current_invocation_sequence,
-              :current_invocation_sequence=,
-              :current_tool_dispatch_claim,
-              :current_tool_dispatch_claim=,
-              :current_tool_dispatch_start_handler,
-              :current_tool_dispatch_start_handler=,
-              :current_invocation=
+      private :current_invocation_batch_admitter, :current_invocation_batch_admitter=,
+              :current_invocation_failure_handler, :current_invocation_failure_handler=,
+              :current_invocation_sequence, :current_invocation_sequence=,
+              :current_tool_dispatch_claim, :current_tool_dispatch_claim=,
+              :current_tool_dispatch_start_handler, :current_tool_dispatch_start_handler=,
+              :current_invocation=,
+              :current_idempotency_scope, :current_idempotency_scope=
 
       def self.capture
         CONTEXT_KEYS.to_h { |reader, key| [reader, Thread.current[key]] }.freeze

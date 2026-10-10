@@ -36,6 +36,7 @@ module Smith
       def run_branch(transition, index, env, ledger, signal)
         binding = ParallelAgentBinding.new(self, transition, env.agent_class)
         with_branch_context(env, ledger, parallel_agent_binding: binding) do
+          narrow_idempotency_scope(:branch, index)
           with_agent_context(env.agent_class) do
             branch_ledger = effective_call_ledger
             reserved = reserve_branch_call(branch_ledger, env, ledger)
@@ -74,6 +75,7 @@ module Smith
           # Restoration is owned by the snapshot above, which tracks the
           # attribution thread key.
           Attribution.install(Attribution.ambient.merge(**attribution_overlay)) if attribution_overlay
+          narrow_idempotency_scope(:branch, attribution_overlay[:branch_key]) if attribution_overlay&.key?(:branch_key)
 
           unless parallel_agent_binding.equal?(NO_PARALLEL_BINDING)
             Thread.current[:smith_parallel_agent_binding] = parallel_agent_binding
@@ -82,6 +84,14 @@ module Smith
         ensure
           teardown_branch_context(env)
         end
+      end
+
+      # Each branch of a step is a position of its own, so the same request
+      # from two branches gets two keys. Restoration is owned by the
+      # branch's ThreadContextSnapshot.
+      def narrow_idempotency_scope(*segment)
+        scope = IdempotencyKey.current_scope
+        IdempotencyKey.install(scope.within(*segment)) if scope
       end
 
       def setup_branch_context(env, ledger)

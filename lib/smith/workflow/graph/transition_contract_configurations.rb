@@ -65,13 +65,16 @@ module Smith
           config = transition.retry_config
           return unless config
 
-          {
+          exported = {
             error_classes: config.fetch(:error_classes).dup.freeze,
             attempts: config.fetch(:attempts),
             backoff: config.fetch(:backoff),
             max_delay: config[:max_delay],
             jitter: config.fetch(:jitter)
-          }.freeze
+          }
+          new_key_classes = config.fetch(:new_idempotency_key_on, [])
+          exported[:new_idempotency_key_on] = new_key_classes.dup.freeze if new_key_classes.any?
+          exported.freeze
         end
 
         def own_hash(hash)

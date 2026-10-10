@@ -124,17 +124,25 @@ module Smith
       end
       alias fanout fan_out
 
-      def retry_on(*error_classes, attempts:, backoff: 0, max_delay: nil, jitter: 0)
+      # `new_idempotency_key_on:` names errors that show an attempt's
+      # requests took no effect (a refusal, not a timeout): the attempts
+      # after one of them use new idempotency keys. Every other retry keeps
+      # the step's keys.
+      # rubocop:disable Metrics/ParameterLists
+      def retry_on(*error_classes, attempts:, backoff: 0, max_delay: nil, jitter: 0, new_idempotency_key_on: [])
         policy = normalize_retry_policy!(error_classes, attempts:, backoff:, max_delay:, jitter:)
+        new_key_classes = normalize_new_idempotency_key_on!(new_idempotency_key_on, error_classes)
 
         @retry_config = {
           error_classes: error_classes.freeze,
           attempts: policy.attempts,
           backoff: policy.base_delay,
           max_delay: policy.max_delay,
-          jitter: policy.jitter
+          jitter: policy.jitter,
+          new_idempotency_key_on: new_key_classes
         }.freeze
       end
+      # rubocop:enable Metrics/ParameterLists
 
       %i[compute run].each do |method_name|
         define_method(method_name) do |routes: nil, fallthrough: false, &block|
@@ -349,6 +357,30 @@ module Smith
         )
       rescue ArgumentError => e
         raise WorkflowError, "retry_on #{e.message}"
+      end
+
+      def normalize_new_idempotency_key_on!(classes, retried_classes)
+        unless classes.is_a?(Array) && classes.all? { |error_class| standard_error_class?(error_class) }
+          raise WorkflowError, "retry_on new_idempotency_key_on: must be an Array of StandardError classes"
+        end
+
+        reject_retry_forbidden!(classes)
+        reject_unretried_new_key_classes!(classes, retried_classes)
+        classes.dup.freeze
+      end
+
+      def standard_error_class?(value) = value.is_a?(Class) && value <= StandardError
+
+      # With no error classes the policy retries whatever Smith classifies
+      # retryable, which cannot be checked here.
+      def reject_unretried_new_key_classes!(classes, retried_classes)
+        return if retried_classes.empty?
+
+        unretried = classes.find { |error_class| retried_classes.none? { |retried| error_class <= retried } }
+        return unless unretried
+
+        raise WorkflowError, "retry_on new_idempotency_key_on: lists #{unretried.name || unretried.inspect}, " \
+                             "which this policy does not retry"
       end
 
       def reject_retry_forbidden!(error_classes)

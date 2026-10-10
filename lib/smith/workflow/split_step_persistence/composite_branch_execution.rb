@@ -46,7 +46,10 @@ module Smith
             # (execution key from the restored persistence key, the split
             # step's transition, then the branch overlay downstream).
             # Restoration is owned by within_raw_step_context's snapshot.
-            install_step_attribution(@split_step_transition) if @split_step_transition
+            if @split_step_transition
+              install_step_attribution(@split_step_transition)
+              install_step_idempotency_scope(@split_step_transition)
+            end
             with_scoped_artifacts(&block)
           end
           [output, nil]

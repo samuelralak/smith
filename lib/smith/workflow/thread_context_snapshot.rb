@@ -20,6 +20,7 @@ module Smith
         current_invocation_context
         current_invocation_sequence
         current_invocation
+        current_idempotency_scope
       ].freeze
       THREAD_KEYS = %i[
         smith_attribution

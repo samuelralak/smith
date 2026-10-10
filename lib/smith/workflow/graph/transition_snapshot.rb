@@ -78,12 +78,14 @@ module Smith
           config = transition.retry_config
           return unless config
 
+          new_key_classes = config.fetch(:new_idempotency_key_on, [])
           {
             attempts: config.fetch(:attempts),
             error_classes: config.fetch(:error_classes).map(&:name),
             backoff: config.fetch(:backoff),
             max_delay: config[:max_delay],
-            jitter: config.fetch(:jitter)
+            jitter: config.fetch(:jitter),
+            new_idempotency_key_on: (new_key_classes.map(&:name) if new_key_classes.any?)
           }.compact
         end
 

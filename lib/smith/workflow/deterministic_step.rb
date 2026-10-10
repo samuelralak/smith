@@ -5,6 +5,8 @@ module Smith
     class DeterministicStep
       attr_reader :context, :tool_results, :session_messages, :current_state, :transition_name,
                   :context_writes, :routed_to, :outcome, :allowed_routes, :write_violation
+      # The attempt under way, from 1; above 1 only under `retry_on`.
+      attr_reader :attempt
 
       def initialize(context:, session_messages:, tool_results:, state:, **options)
         validate_options!(options)
@@ -15,8 +17,7 @@ module Smith
         @current_state = state
         @transition_name = transition ? transition.name : options.fetch(:transition_name)
         @allowed_routes = snapshot_allowed_routes(transition ? transition.deterministic_routes : options[:allowed_routes])
-        @last_agent_execution = options[:last_agent_execution]
-        @persisted_keys = options[:persisted_keys]&.dup&.freeze
+        assign_execution_facts(options)
         @context_writes = {}
         @routed_to = nil
         @outcome = nil
@@ -83,14 +84,38 @@ module Smith
         @outcome = { kind: kind, payload: payload }
       end
 
-      def fail!(message, retryable: nil, kind: nil, details: nil)
-        raise DeterministicStepFailure.new(message, retryable: retryable, kind: kind, details: details)
+      def fail!(message, retryable: nil, kind: nil, details: nil, new_idempotency_key: false)
+        unless [true, false].include?(new_idempotency_key)
+          raise ArgumentError, "fail! new_idempotency_key must be true or false"
+        end
+
+        raise DeterministicStepFailure.new(message, retryable:, kind:, details:, new_idempotency_key:)
+      end
+
+      # A key for a request this step sends outside the system: the same on
+      # every attempt of the step and after a restore, unique to this run,
+      # step and `scope`. Use a scope to tell apart several requests of one
+      # step. See Smith::IdempotencyKey.
+      def idempotency_key(scope = nil)
+        unless @idempotency_scope
+          raise WorkflowError, "an idempotency key is only available inside a running workflow step"
+        end
+
+        @idempotency_scope.key(scope)
       end
 
       private
 
+      def assign_execution_facts(options)
+        @last_agent_execution = options[:last_agent_execution]
+        @persisted_keys = options[:persisted_keys]&.dup&.freeze
+        @idempotency_scope = options[:idempotency_scope]
+        @attempt = options.fetch(:attempt, 1)
+      end
+
       def validate_options!(options)
-        unknown = options.keys - %i[transition transition_name allowed_routes last_agent_execution persisted_keys]
+        unknown = options.keys - %i[transition transition_name allowed_routes last_agent_execution persisted_keys
+                                    idempotency_scope attempt]
         raise ArgumentError, "unknown keywords: #{unknown.join(", ")}" if unknown.any?
         return if options[:transition] || options.key?(:transition_name)
 

@@ -12,6 +12,7 @@ module Smith
         ThreadContextSnapshot.new.around do
           setup_step_context
           install_step_attribution(transition)
+          install_step_idempotency_scope(transition)
           Thread.handle_interrupt(Object => :immediate, &block)
         rescue StandardError => e
           @outcome = nil
@@ -78,6 +79,19 @@ module Smith
                      .merge(execution_key: @persistence_key, workflow: self.class.name || "anonymous")
                      .override(transition: transition.name, from: transition.from, to: transition.to)
         )
+      end
+
+      # The step's position for idempotency keys: its number and transition
+      # in this run's namespace. A nested workflow sharing the namespace (an
+      # in-process child) is placed under the parent's current position, so
+      # a child step never takes a key a parent step already used; any other
+      # workflow started inside a step is a run of its own. Restoration is
+      # owned by the surrounding ThreadContextSnapshot.
+      def install_step_idempotency_scope(transition)
+        namespace = ArtifactIntegration.instance_method(:execution_namespace).bind_call(self)
+        outer = IdempotencyKey.current_scope
+        base = outer && outer.run == namespace ? outer : IdempotencyKey::Scope.root(namespace)
+        IdempotencyKey.install(base.within(:step, @step_count + 1, transition.name.to_s))
       end
 
       def teardown_step_context

@@ -245,6 +245,7 @@ require_relative "smith/persistence_adapters"
 
 # Tool (depends on RubyLLM::Tool)
 require_relative "smith/tool"
+require_relative "smith/idempotency_key"
 require_relative "smith/tools"
 require_relative "smith/tools/web_search"
 require_relative "smith/tools/url_fetcher"

@@ -286,7 +286,9 @@ module Smith
         @state = normalized[:state]
         @context = filter_persisted_context(normalized[:context] || {})
         @step_count = normalized[:step_count] || 0
-        @execution_namespace = normalized[:execution_namespace]
+        # A payload written before namespaces were assigned at construction
+        # gets one now, so it is in the checkpoint before the next step.
+        @execution_namespace = normalized[:execution_namespace] || SecureRandom.uuid
         @created_at = normalized[:created_at]
         @updated_at = normalized[:updated_at]
       end

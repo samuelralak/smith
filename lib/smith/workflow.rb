@@ -44,6 +44,10 @@ module Smith
       # context reads the same live and after a checkpoint round trip.
       @context = ContextKeys.normalize_context(context)
       @step_count = 0
+      # The run's own identity, persisted with it: artifacts are scoped to
+      # it and idempotency keys derive from it, so it exists from the start
+      # and is in the checkpoint written before the first step.
+      @execution_namespace = SecureRandom.uuid
       @next_transition_name = nil
       @ledger = ledger || build_ledger
       @created_at = created_at || Time.now.utc.iso8601(6)
