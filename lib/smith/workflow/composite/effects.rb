@@ -25,10 +25,12 @@ module Smith
         # construction.
         USAGE_ALLOWED_ATTRIBUTES = Workflow::UsageEntry.members.map(&:to_s).freeze
         USAGE_REQUIRED_ATTRIBUTES =
-          (USAGE_ALLOWED_ATTRIBUTES - %w[transition branch_key round attempt_id workflow]).freeze
+          (USAGE_ALLOWED_ATTRIBUTES - Workflow::UsageEntry::OPTIONAL_MEMBERS.map(&:to_s)).freeze
+        USAGE_COUNT_ATTRIBUTES = %w[cache_read_tokens cache_write_tokens thinking_tokens].freeze
+        USAGE_MODES = %w[sync stream batch].freeze
         TOOL_REQUIRED_ATTRIBUTES = %w[tool captured].freeze
         TOOL_ALLOWED_ATTRIBUTES = (TOOL_REQUIRED_ATTRIBUTES + %w[tool_call_id]).freeze
-        private_constant :USAGE_ALLOWED_ATTRIBUTES, :USAGE_REQUIRED_ATTRIBUTES,
+        private_constant :USAGE_ALLOWED_ATTRIBUTES, :USAGE_REQUIRED_ATTRIBUTES, :USAGE_COUNT_ATTRIBUTES, :USAGE_MODES,
                          :TOOL_REQUIRED_ATTRIBUTES, :TOOL_ALLOWED_ATTRIBUTES
 
         attribute :usage_entries, Types::Array
@@ -55,6 +57,7 @@ module Smith
             validate_bounded_keys!(entry, USAGE_REQUIRED_ATTRIBUTES, USAGE_ALLOWED_ATTRIBUTES, "composite usage entry")
             validate_usage_identity!(entry)
             validate_usage_attribution!(entry)
+            validate_usage_details!(entry)
             validate_usage_amount!(entry.fetch("input_tokens"), "input_tokens")
             validate_usage_amount!(entry.fetch("output_tokens"), "output_tokens")
             validate_cost!(entry.fetch("cost"))
@@ -63,7 +66,7 @@ module Smith
         end
 
         def usage_totals(entries)
-          tokens = entries.sum { _1.fetch("input_tokens") + _1.fetch("output_tokens") }
+          tokens = entries.sum { entry_tokens(_1) }
           if tokens > PreparedStep::MAX_COUNTER_VALUE
             raise ArgumentError, "composite usage token total exceeds the signed 64-bit limit"
           end
@@ -74,6 +77,11 @@ module Smith
           raise ArgumentError, "composite usage cost total must be finite" unless cost.finite?
 
           [tokens, cost]
+        end
+
+        def entry_tokens(entry)
+          %w[input_tokens output_tokens].sum { entry.fetch(_1) } +
+            %w[cache_read_tokens cache_write_tokens].sum { entry.fetch(_1, 0) }
         end
 
         def validate_usage_identity!(entry)
@@ -99,6 +107,21 @@ module Smith
           end
           validate_usage_amount!(entry.fetch("round"), "round") if entry.key?("round")
           validate_uuid!(entry.fetch("attempt_id"), "composite usage entry attempt_id") if entry.key?("attempt_id")
+        end
+
+        # Optional usage details, bounded like the attribution keys: counts
+        # are non-negative Integers, response facts bounded Strings, and the
+        # mode one of the three call modes.
+        def validate_usage_details!(entry)
+          USAGE_COUNT_ATTRIBUTES.each do |key|
+            validate_usage_amount!(entry.fetch(key), key) if entry.key?(key)
+          end
+          %w[stop_reason provider_message_id].each do |key|
+            validate_bounded_string!(entry.fetch(key), "composite usage entry #{key}", 256) if entry.key?(key)
+          end
+          return if !entry.key?("mode") || USAGE_MODES.include?(entry.fetch("mode"))
+
+          raise ArgumentError, "composite usage entry mode is invalid"
         end
 
         def validate_uuid!(value, label)

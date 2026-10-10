@@ -141,7 +141,7 @@ module Smith
             content: response_output_text(data),
             thinking: ::RubyLLM::Thinking.build(text: response_reasoning_text(outputs)),
             tool_calls: ToolsExtensions.parse_response_tool_calls(outputs),
-            input_tokens: usage["input_tokens"],
+            input_tokens: response_uncached_input_tokens(usage),
             output_tokens: usage["output_tokens"],
             cached_tokens: usage.dig("input_tokens_details", "cached_tokens"),
             cache_creation_tokens: usage.dig("input_tokens_details", "cache_write_tokens") || 0,
@@ -149,6 +149,18 @@ module Smith
             model_id: data["model"],
             raw: response
           )
+        end
+
+        # The Responses API counts cached input inside `input_tokens`; RubyLLM
+        # reports every provider's input with cache reads and writes taken
+        # out, so the same is done here and the cache counts stay separate.
+        def self.response_uncached_input_tokens(usage)
+          input = usage["input_tokens"]
+          return input unless input.is_a?(Integer)
+
+          cached = usage.dig("input_tokens_details", "cached_tokens").to_i
+          written = usage.dig("input_tokens_details", "cache_write_tokens").to_i
+          [input - cached - written, 0].max
         end
 
         def self.format_response_message(message, provider: nil)

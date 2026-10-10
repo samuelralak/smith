@@ -67,7 +67,12 @@ module Smith
       def provider_call_usage(usage)
         return {} unless usage
 
-        { input_tokens: usage.input_tokens, output_tokens: usage.output_tokens }
+        {
+          input_tokens: usage.input_tokens, output_tokens: usage.output_tokens,
+          cache_read_tokens: usage.cache_read_tokens, cache_write_tokens: usage.cache_write_tokens,
+          thinking_tokens: usage.thinking_tokens, stop_reason: usage.stop_reason,
+          provider_message_id: usage.provider_message_id
+        }
       end
 
       def provider_call_outcome(attempt, aborted)

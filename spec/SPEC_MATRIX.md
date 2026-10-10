@@ -1656,6 +1656,26 @@ Documented contracts covered:
 - legacy payload (no `:step_in_progress` key) treated as false (backward compatibility)
 - `Workflow.inherited` propagates the idempotency_mode
 
+### `spec/smith/workflow/cache_usage_spec.rb`
+
+Purpose:
+
+- asserts that prompt-cache, thinking and response facts flow from a provider response through usage, totals, budgets, pricing, traces and composite effects
+
+Architecture basis:
+
+- Section 4.6, Budgets and Cost
+- Section 4.8, Observability
+
+Documented contracts covered:
+
+- `ProviderUsage.from_message` reads cache read and write counts (both RubyLLM reader names), thinking tokens, and the stop reason and message id of the Anthropic, OpenAI Chat Completions and OpenAI Responses body shapes; facts are bounded; non-Integer or negative counts are ignored; `to_h` omits nil optional members; `sum` totals counts and keeps the last response's facts
+- a workflow run records the details on its usage entry with `mode: :sync`, counts cache tokens in `total_tokens` and in a token budget's consumption, round-trips the entry through JSON, and leaves an entry without details unchanged
+- `:provider_call`, `:token_usage` and `:cost` traces carry the details
+- pricing: cache rates, 0 when absent; tier choice on total input; batch discount, full rate when absent; catalog validation of the new keys
+- composite effects accept entries with and without details, total cache tokens, and reject invalid details
+- the OpenAI Responses adapter reports uncached input
+
 ### `spec/smith/workflow/restore_position_spec.rb`
 
 Purpose:

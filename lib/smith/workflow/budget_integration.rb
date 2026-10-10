@@ -44,7 +44,7 @@ module Smith
         results = Array(agent_results).compact
 
         {
-          tokens: results.sum { |result| (result.input_tokens || 0) + (result.output_tokens || 0) },
+          tokens: results.sum { |result| result.total_tokens || 0 },
           cost: results.sum { |result| result.cost || 0 }
         }
       end

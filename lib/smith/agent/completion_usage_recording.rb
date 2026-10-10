@@ -23,7 +23,8 @@ module Smith
             output_tokens: usage.output_tokens,
             cost: nil,
             model_used: model_reference.model_id,
-            provider_used: model_reference.provider
+            provider_used: model_reference.provider,
+            **Workflow::AgentResult.usage_details(usage)
           )
           compute_agent_cost(result)
           record_usage(agent_class, result, attempt_kind, model_reference, attempt_id:)

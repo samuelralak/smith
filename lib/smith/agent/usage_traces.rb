@@ -16,6 +16,8 @@ module Smith
           data: {
             input_tokens: agent_result.input_tokens,
             output_tokens: agent_result.output_tokens,
+            cache_read_tokens: agent_result.cache_read_tokens,
+            cache_write_tokens: agent_result.cache_write_tokens,
             model: agent_result.model_used,
             provider: agent_result.provider_used
           }.compact
@@ -40,7 +42,9 @@ module Smith
             model: agent_result.model_used,
             provider: agent_result.provider_used,
             input_tokens: agent_result.input_tokens,
-            output_tokens: agent_result.output_tokens
+            output_tokens: agent_result.output_tokens,
+            cache_read_tokens: agent_result.cache_read_tokens,
+            cache_write_tokens: agent_result.cache_write_tokens
           }.compact
         )
       end

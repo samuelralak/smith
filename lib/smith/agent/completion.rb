@@ -37,6 +37,13 @@ module Smith
         provider_usages.sum(&:output_tokens) if usage_complete
       end
 
+      # The whole completion's usage, cache and thinking counts and the
+      # final response's stop reason included; nil unless every response
+      # reported usage.
+      def usage
+        ProviderUsage.sum(provider_usages) if usage_complete
+      end
+
       def self.build_provider_usages(messages)
         messages.filter_map { |message| ProviderUsage.from_message(message) }.freeze
       end

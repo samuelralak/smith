@@ -14,6 +14,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   composite plans prepared under 0.11.0 are refused by their integrity check.
   Drain or clear in-flight persisted runs before upgrading.
 
+### Added
+
+- Usage carries prompt-cache, thinking and response facts. Each provider
+  response's usage (`Smith::Agent::ProviderUsage`), each `UsageEntry`, each
+  `AgentResult`, and the `:provider_call` trace gain `cache_read_tokens`,
+  `cache_write_tokens`, `thinking_tokens`, `stop_reason`, and
+  `provider_message_id`; usage entries also gain `mode` (`:sync` for every call
+  today; streaming and batch steps will record theirs). `input_tokens` keeps
+  meaning uncached input, as RubyLLM reports every provider; the cache counts
+  sit beside it, and `thinking_tokens` are already inside `output_tokens`.
+  `stop_reason` and `provider_message_id` are read from the raw response body
+  (Anthropic Messages, OpenAI Chat Completions and OpenAI Responses shapes),
+  bounded to 256 bytes, and are those of the last response of a tool loop.
+  Each is omitted when the provider did not report it: `UsageEntry#to_h` and
+  `ProviderUsage#to_h` leave nil optional members out, so entries written by
+  earlier versions re-serialize byte-identically. `:token_usage` and `:cost`
+  traces carry the cache counts too. Hosts with a `trace_fields` allowlist
+  must add the new keys to receive them.
+- Pricing catalogs accept `cache_read_cost_per_token` and
+  `cache_write_cost_per_token` on an entry or a tier, and `batch_discount` (at
+  least 0 and below 1) on an entry, applied to the whole cost of a call made in
+  batch mode. They are configured per catalog and count as 0 when absent, so a
+  call is never left unpriced for lack of them. `Smith::Pricing.compute_cost`
+  takes `cache_read_tokens:`, `cache_write_tokens:` and `mode:` (defaults 0, 0,
+  `:sync`), and `validate_catalog!` rejects negative or non-numeric cache rates
+  and out-of-range discounts.
+- `UsageEntry#total_tokens`, `AgentResult#total_tokens`,
+  `ProviderUsage#total_tokens` and `ProviderUsage#total_input_tokens`.
+
 ### Changed
 
 - **Breaking:** workflow context has one shape everywhere.
@@ -42,6 +71,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
     come back as Strings after a restore.
   - `Workflow.new` holds a normalized copy, not the caller's Hash.
   - Normalization is `O(N)` in the entries of the value being normalized.
+- **Breaking:** token totals count prompt-cache input. `RunResult#total_tokens`,
+  the workflow's token totals, token budgets (`total_tokens`, `token_limit`) and
+  composite effect totals add `cache_read_tokens` and `cache_write_tokens` to
+  input and output. Before, cached input was not counted at all, so a workflow
+  that cached heavily stayed far under a token budget it was in fact spending.
+- **Breaking:** a tiered pricing entry is chosen on a call's total input
+  (uncached plus cache read plus cache write). Before, it was chosen on
+  uncached input alone, which could select a cheaper tier than the provider
+  bills.
+- **Breaking:** Smith's OpenAI Responses adapter reports `input_tokens` with
+  cached and cache-written input taken out, as RubyLLM reports every other
+  provider, keeping the cache counts separate. Before, cached input was in both
+  counts.
 - **Breaking:** an explicit `persist :a, :b` list is an allow-list for the
   context in every run, persisted or not and nested or not.
   - `write_context` of any other key raises `Smith::UndeclaredContextKey`
@@ -151,6 +193,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Fixed
 
+- `docs/CONFIGURATION.md` said a provider-qualified call with only a
+  model-only rate raises `Smith::PricingConfigurationError`; `compute_cost`
+  never raises and leaves such usage unpriced. The docs, the README example and
+  the generator's pricing example now use provider-qualified keys through
+  `Smith::Pricing.validate_catalog!`.
 - A failure whose `details` raises an error whose own `message` also raises no
   longer replaces the step's error (`FailureRecord` reads that inner message
   through its guarded reader). This was present in 0.11.0.

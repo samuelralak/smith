@@ -35,10 +35,11 @@ Smith.configure do |config|
   config.trace_adapter = Smith::Trace::Logger
 
   # Best-known model-call cost tracking (optional)
-  # config.pricing = {
-  #   "gpt-4.1-nano" => {
+  # config.pricing = Smith::Pricing.validate_catalog!(
+  #   %w[openai gpt-4.1-nano] => {
   #     input_cost_per_token: 0.0000001,
-  #     output_cost_per_token: 0.0000004
+  #     output_cost_per_token: 0.0000004,
+  #     cache_read_cost_per_token: 0.000000025 # optional; 0 when absent
   #   }
-  # }
+  # )
 end

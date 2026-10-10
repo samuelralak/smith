@@ -32,7 +32,9 @@ module Smith
           attempt_kind: attempt_kind,
           recorded_at: Time.now.utc.iso8601(6),
           attempt_id: attempt_id,
-          **ambient_attribution_fields
+          **ambient_attribution_fields,
+          **Workflow::AgentResult::USAGE_DETAIL_MEMBERS.to_h { |member| [member, agent_result.public_send(member)] },
+          mode: agent_result.mode || :sync
         )
       end
 
@@ -52,7 +54,7 @@ module Smith
 
       def accumulate_usage(agent_result, entry)
         @usage_mutex.synchronize do
-          @total_tokens = (@total_tokens || 0) + agent_result.input_tokens + agent_result.output_tokens
+          @total_tokens = (@total_tokens || 0) + agent_result.total_tokens
           @total_cost = (@total_cost || 0.0) + (agent_result.cost || 0.0)
           @usage_entries << entry
         end

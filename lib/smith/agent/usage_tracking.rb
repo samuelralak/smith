@@ -54,14 +54,7 @@ module Smith
 
       def snapshot_and_finalize(agent_class, completion, model_reference, attempt_id: nil)
         model_reference = coerce_model_reference(model_reference)
-        agent_result = Workflow::AgentResult.new(
-          content: completion.content,
-          input_tokens: completion.input_tokens,
-          output_tokens: completion.output_tokens,
-          cost: nil,
-          model_used: model_reference.model_id,
-          provider_used: model_reference.provider
-        )
+        agent_result = completion_agent_result(completion, model_reference)
         Thread.current[:smith_last_agent_result] = agent_result
         emit_token_usage(agent_result)
         account_completion!(agent_class, completion, model_reference, agent_result, attempt_id)
@@ -69,6 +62,18 @@ module Smith
         agent_result.content = run_after_completion(agent_class, agent_result.content, @context)
         raise_blank_output!(agent_class, agent_result)
         agent_result
+      end
+
+      def completion_agent_result(completion, model_reference)
+        Workflow::AgentResult.new(
+          content: completion.content,
+          input_tokens: completion.input_tokens,
+          output_tokens: completion.output_tokens,
+          cost: nil,
+          model_used: model_reference.model_id,
+          provider_used: model_reference.provider,
+          **Workflow::AgentResult.usage_details(completion.usage)
+        )
       end
 
       def raise_blank_output!(agent_class, agent_result)
@@ -111,7 +116,10 @@ module Smith
           model: model,
           provider: agent_result.provider_used,
           input_tokens: agent_result.input_tokens,
-          output_tokens: agent_result.output_tokens
+          output_tokens: agent_result.output_tokens,
+          cache_read_tokens: agent_result.cache_read_tokens || 0,
+          cache_write_tokens: agent_result.cache_write_tokens || 0,
+          mode: agent_result.mode || :sync
         )
       end
     end

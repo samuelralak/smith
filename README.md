@@ -184,9 +184,13 @@ Smith.configure do |config|
   # OpenAI /v1/responses routing for gpt-5 + tools + thinking. :auto (default) or :off.
   config.openai_api_mode = :auto
 
-  config.pricing = {
-    "gpt-4.1-nano" => { input_cost_per_token: 1.0e-7, output_cost_per_token: 4.0e-7 }
-  }
+  config.pricing = Smith::Pricing.validate_catalog!(
+    %w[openai gpt-4.1-nano] => {
+      input_cost_per_token: 1.0e-7, output_cost_per_token: 4.0e-7,
+      cache_read_cost_per_token: 2.5e-8, # optional: prompt-cache reads (0 when absent)
+      batch_discount: 0.5                # optional: off the cost of calls made in batch mode (0 when absent)
+    }
+  )
 end
 ```
 

@@ -18,6 +18,18 @@ module Smith
     #     long-context premium pricing (Gemini 2.5 Pro: $1.25/$10 below
     #     200K input tokens, $2.50/$15 above).
     #
+    # Both shapes accept two optional rates beside input and output:
+    # `:cache_read_cost_per_token` and `:cache_write_cost_per_token`, for
+    # input read from or written to a prompt cache, which providers report
+    # apart from uncached input. An entry may also carry `:batch_discount`,
+    # the fraction a provider's batch API takes off (0.5 for half price),
+    # applied to the whole cost of a call made in `mode: :batch`. These are
+    # configured per catalog: a missing cache rate prices those tokens at 0,
+    # and a missing batch discount is 0, so a batch call costs the full
+    # rate. Tiers are
+    # chosen on the call's total input, uncached plus cache read plus cache
+    # write, since that is what long-context premiums are measured against.
+    #
     # Catalog keys are normalized once per assigned catalog object:
     #   ["provider", "model"] / [:provider, :model]  -> provider-qualified
     #   "provider/model" (first slash splits)        -> provider-qualified
@@ -29,17 +41,33 @@ module Smith
     # so accounting paths cannot mask a provider error with a pricing
     # configuration error. The legacy-only-key policy is enforced at
     # catalog admission time via `validate_catalog!`.
-    def self.compute_cost(model:, input_tokens:, output_tokens:, provider: nil)
+    # rubocop:disable Metrics/ParameterLists
+    def self.compute_cost(model:, input_tokens:, output_tokens:, provider: nil, cache_read_tokens: 0,
+                          cache_write_tokens: 0, mode: :sync)
       catalog = Smith.config.pricing
       return nil unless catalog.is_a?(Hash)
 
       entry = lookup_entry(normalized_index(catalog), model, provider)
       return nil unless entry
 
-      input_rate, output_rate = resolve_rates(entry, input_tokens)
-      return nil unless input_rate
+      rates = resolve_rates(entry, input_tokens + cache_read_tokens + cache_write_tokens)
+      return nil unless rates
 
-      (input_tokens * input_rate) + (output_tokens * output_rate)
+      cost = priced_tokens(rates, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens)
+      apply_mode(cost, entry, mode)
+    end
+    # rubocop:enable Metrics/ParameterLists
+
+    def self.priced_tokens(rates, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens)
+      (input_tokens * rates[:input]) + (output_tokens * rates[:output]) +
+        (cache_read_tokens * (rates[:cache_read] || 0)) + (cache_write_tokens * (rates[:cache_write] || 0))
+    end
+
+    def self.apply_mode(cost, entry, mode)
+      return cost unless mode == :batch
+
+      discount = entry[:batch_discount] || entry["batch_discount"]
+      discount.is_a?(Numeric) ? cost * (1 - discount) : cost
     end
 
     def self.lookup_entry(index, model, provider)
@@ -74,10 +102,35 @@ module Smith
       raise Smith::PricingConfigurationError, "pricing for #{model} must use a provider-qualified catalog key"
     end
 
-    def self.validate_entry!(key, entry)
-      return if entry.is_a?(Hash)
+    OPTIONAL_RATE_KEYS = %i[cache_read_cost_per_token cache_write_cost_per_token].freeze
+    private_constant :OPTIONAL_RATE_KEYS
 
-      raise Smith::PricingConfigurationError, "pricing entry for #{key.inspect} must be a Hash"
+    def self.validate_entry!(key, entry)
+      raise Smith::PricingConfigurationError, "pricing entry for #{key.inspect} must be a Hash" unless entry.is_a?(Hash)
+
+      tiers = entry[:tiers] || entry["tiers"]
+      [entry, *(tiers.is_a?(Array) ? tiers : [])].each { |rates| validate_optional_rates!(key, rates) }
+      validate_batch_discount!(key, entry[:batch_discount] || entry["batch_discount"])
+    end
+
+    def self.validate_optional_rates!(key, rates)
+      return unless rates.is_a?(Hash)
+
+      OPTIONAL_RATE_KEYS.each do |name|
+        next if valid_optional_rate?(rates[name] || rates[name.to_s])
+
+        raise Smith::PricingConfigurationError, "#{name} for #{key.inspect} must be a non-negative number"
+      end
+    end
+
+    def self.valid_optional_rate?(rate)
+      rate.nil? || (rate.is_a?(Numeric) && rate.finite? && rate >= 0)
+    end
+
+    def self.validate_batch_discount!(key, discount)
+      return if discount.nil? || (discount.is_a?(Numeric) && discount >= 0 && discount < 1)
+
+      raise Smith::PricingConfigurationError, "batch_discount for #{key.inspect} must be at least 0 and below 1"
     end
 
     def self.reject_collision!(seen, key, provider, model)
@@ -148,30 +201,25 @@ module Smith
       text unless text.nil? || text.empty?
     end
 
-    # Returns [input_rate, output_rate] or nil if no applicable rate.
-    # Tiered shape is recognized by the presence of a :tiers key; flat
-    # shape is the legacy default.
-    def self.resolve_rates(entry, input_tokens)
+    # Returns { input:, output:, cache_read:, cache_write: } or nil if no
+    # applicable input and output rate. Tiered shape is recognized by the
+    # presence of a :tiers key; flat shape is the legacy default.
+    def self.resolve_rates(entry, total_input_tokens)
       tiers = entry[:tiers] || entry["tiers"]
       if tiers.is_a?(Array) && !tiers.empty?
-        resolve_tiered(tiers, input_tokens)
+        tier = tiers.find { |candidate| tier_applies?(candidate, total_input_tokens) }
+        tier && rates_from(tier)
       else
-        flat = [entry[:input_cost_per_token], entry[:output_cost_per_token]]
-        return nil unless flat.all?(Numeric)
-
-        flat
+        rates_from(entry)
       end
     end
 
-    def self.resolve_tiered(tiers, input_tokens)
-      tier = tiers.find { |candidate| tier_applies?(candidate, input_tokens) }
-      return nil unless tier
-
-      rates = [
-        tier[:input_cost_per_token] || tier["input_cost_per_token"],
-        tier[:output_cost_per_token] || tier["output_cost_per_token"]
-      ]
-      rates if rates.all?(Numeric)
+    def self.rates_from(source)
+      rates = %i[input output cache_read cache_write].to_h do |name|
+        rate = source[:"#{name}_cost_per_token"] || source["#{name}_cost_per_token"]
+        [name, rate.is_a?(Numeric) ? rate : nil]
+      end
+      rates if rates[:input] && rates[:output]
     end
 
     def self.tier_applies?(tier, input_tokens)
@@ -181,6 +229,8 @@ module Smith
 
     private_class_method :lookup_entry, :validated_key!, :validate_entry!, :reject_collision!,
                          :normalized_index, :build_normalized_index, :canonical_key, :array_key,
-                         :text_key, :scalar_key, :resolve_rates, :resolve_tiered, :tier_applies?
+                         :text_key, :scalar_key, :resolve_rates, :rates_from, :tier_applies?,
+                         :priced_tokens, :apply_mode, :validate_optional_rates!, :valid_optional_rate?,
+                         :validate_batch_discount!
   end
 end
