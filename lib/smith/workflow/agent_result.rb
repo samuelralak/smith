@@ -6,7 +6,7 @@ module Smith
     # `input_tokens` counts uncached input; `cache_read_tokens` and
     # `cache_write_tokens` are the prompt-cache input beside it, and
     # `total_tokens` adds all three to the output. `mode` is how the call was
-    # made (`:sync` unless a streaming or batch step says otherwise).
+    # made, set by streaming and batch steps (nil for an ordinary call).
     AgentResult = Struct.new(
       :content, :input_tokens, :output_tokens, :cost, :model_used, :provider_used,
       :cache_read_tokens, :cache_write_tokens, :thinking_tokens, :stop_reason, :provider_message_id, :mode,
@@ -32,8 +32,22 @@ module Smith
         )
       end
 
+      # Not members, so they stay out of to_h, to_a and ==. metered_tokens
+      # is set on a partially metered invocation (some response reported no
+      # usage) to the tokens its metered responses recorded; cache_unpriced
+      # says cache tokens were priced at 0 for lack of a catalog rate.
+      attr_accessor :metered_tokens, :cache_unpriced
+
       def usage_known?
         !input_tokens.nil? && !output_tokens.nil?
+      end
+
+      # The tokens a budget settles: the total when usage is known, the
+      # metered part of a partially metered invocation, otherwise every
+      # count that is known.
+      def billable_tokens
+        total_tokens || metered_tokens ||
+          [input_tokens, output_tokens, cache_read_tokens, cache_write_tokens].sum { |count| count || 0 }
       end
 
       def total_tokens

@@ -10,6 +10,9 @@ module Smith
       attribute :response, Types::Any
       attribute :provider_usages, Types::Array.of(Types.Instance(ProviderUsage))
       attribute :usage_complete, Types::Bool
+      # The stop reason and message id of the last provider response,
+      # whether or not that response reported usage.
+      attribute :response_facts, Types::Hash.default({}.freeze)
 
       def self.from_messages(response:, messages:)
         assistant_messages = Array(messages).select do |message|
@@ -21,7 +24,8 @@ module Smith
         new(
           response: response,
           provider_usages:,
-          usage_complete: provider_usages.length == usage_source.length
+          usage_complete: provider_usages.length == usage_source.length,
+          response_facts: Providers::ResponseFacts.from_message(usage_source.last)
         )
       end
 

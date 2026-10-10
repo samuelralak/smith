@@ -188,7 +188,7 @@ Smith.configure do |config|
     %w[openai gpt-4.1-nano] => {
       input_cost_per_token: 1.0e-7, output_cost_per_token: 4.0e-7,
       cache_read_cost_per_token: 2.5e-8, # optional: prompt-cache reads (0 when absent)
-      batch_discount: 0.5                # optional: off the cost of calls made in batch mode (0 when absent)
+      batch_discount: 0.5                # optional: off the cost of batch-mode calls (0 when absent; batch steps arrive later in 0.12)
     }
   )
 end
@@ -423,7 +423,7 @@ accepts `token_limit`, `cost`, `wall_clock`, `tool_calls`, `total_tokens`, and
 `total_cost`. Any other key raises `ArgumentError` naming the accepted keys. A
 restored run drops consumed amounts for keys the workflow no longer declares.
 
-Budgets reserve serially at each step and reconcile after the agent call. Parallel branches reserve scoped envelopes that release back to the parent ledger. The `Workflow::RunResult` carries `total_tokens`, `total_cost`, and per-call `usage_entries`.
+Budgets reserve serially at each step and reconcile after the agent call. Parallel branches reserve scoped envelopes that release back to the parent ledger. The `Workflow::RunResult` carries `total_tokens`, `total_cost`, and per-call `usage_entries`. Token budgets and totals count prompt-cache reads and writes beside uncached input and output, and settle every billed response, including the completed rounds of a tool loop whose attempt then failed.
 
 Direct ledger integrations settle the exact receipt returned by reservation:
 

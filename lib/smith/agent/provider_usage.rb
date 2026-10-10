@@ -3,7 +3,7 @@
 require "dry-struct"
 
 require_relative "../types"
-require_relative "provider_response_facts"
+require_relative "../providers/response_facts"
 
 module Smith
   class Agent
@@ -36,7 +36,7 @@ module Smith
         output_tokens = message.output_tokens
         return unless input_tokens.is_a?(Integer) && output_tokens.is_a?(Integer)
 
-        new(input_tokens:, output_tokens:, **optional_counts(message), **ProviderResponseFacts.from_message(message))
+        new(input_tokens:, output_tokens:, **optional_counts(message), **Providers::ResponseFacts.from_message(message))
       end
 
       def self.optional_counts(message)
@@ -65,6 +65,14 @@ module Smith
             stop_reason: usages.last.stop_reason, provider_message_id: usages.last.provider_message_id)
       end
       private_class_method :optional_counts, :count_from
+
+      # This usage with the stop reason and message id of `facts`, a
+      # ResponseFacts result, in place of its own: a tool loop's summed
+      # usage carries its final response's facts even when that response
+      # reported no usage.
+      def with_response_facts(facts)
+        self.class.new(**to_h.except(:stop_reason, :provider_message_id), **facts)
+      end
 
       # Optional members are omitted when nil, so usage without cache or
       # response details keeps its earlier shape.

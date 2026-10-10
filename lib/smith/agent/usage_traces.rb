@@ -32,7 +32,9 @@ module Smith
       # traces is not a spend total. Unpriced usage emits nothing, and the
       # caller gates out partially metered or partially priced invocations
       # so an incomplete figure is never presented as the invocation cost.
-      def emit_cost_trace(agent_result, invocation_cost)
+      # `cache_unpriced: true` says cache tokens were priced at 0 because the
+      # catalog has no rate for them.
+      def emit_cost_trace(agent_result, invocation_cost, cache_unpriced: false)
         return if invocation_cost.nil?
 
         Smith::Trace.record(
@@ -44,7 +46,8 @@ module Smith
             input_tokens: agent_result.input_tokens,
             output_tokens: agent_result.output_tokens,
             cache_read_tokens: agent_result.cache_read_tokens,
-            cache_write_tokens: agent_result.cache_write_tokens
+            cache_write_tokens: agent_result.cache_write_tokens,
+            cache_unpriced: (true if cache_unpriced)
           }.compact
         )
       end

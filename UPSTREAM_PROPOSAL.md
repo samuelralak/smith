@@ -138,6 +138,7 @@ What stays Smith-owned (orchestration concerns, not provider-API concerns):
 ## Tracking
 
 - RubyLLM PR #770 (OpenAI `/v1/responses` support) is the related upstream track. Smith's vendored `Smith::Providers::OpenAI::Responses` retires when #770 merges.
+- One divergence from #770 to carry upstream or keep on retirement: the vendored parser reports `input_tokens` with cached and cache-written input taken out (the SMITH-AUTHORED `response_usage`), as RubyLLM reports every other provider. #770 passes the Responses API's `input_tokens`, which includes cached input, while also reporting `cached_tokens`; Smith totals and prices both, so retiring the vendored file without this would count cached input twice. `spec/smith/workflow/cache_usage_spec.rb` parses a Responses body end to end to catch that.
 - This proposal (capability profiles + before_complete) is a separate, additive RubyLLM RFC. Once accepted, Smith files a migration PR to consume it.
 
 ## Current RubyLLM Docs Check

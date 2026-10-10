@@ -20,9 +20,9 @@ module Smith
         # Required keys are the pre-attribution UsageEntry shape, so effects
         # produced by an older Smith (a mid-deploy branch worker or a
         # restored checkpoint) stay valid; allowed keys are the current
-        # member set, so unknown keys still reject. The attribution members
-        # (transition, branch_key, round, attempt_id) are optional by
-        # construction.
+        # member set, so unknown keys still reject. UsageEntry::OPTIONAL_MEMBERS
+        # (the attribution members, the cache and thinking counts, the
+        # response facts and mode) are optional by construction.
         USAGE_ALLOWED_ATTRIBUTES = Workflow::UsageEntry.members.map(&:to_s).freeze
         USAGE_REQUIRED_ATTRIBUTES =
           (USAGE_ALLOWED_ATTRIBUTES - Workflow::UsageEntry::OPTIONAL_MEMBERS.map(&:to_s)).freeze
@@ -117,7 +117,7 @@ module Smith
             validate_usage_amount!(entry.fetch(key), key) if entry.key?(key)
           end
           %w[stop_reason provider_message_id].each do |key|
-            validate_bounded_string!(entry.fetch(key), "composite usage entry #{key}", 256) if entry.key?(key)
+            validate_bounded_bytes!(entry.fetch(key), "composite usage entry #{key}", 256) if entry.key?(key)
           end
           return if !entry.key?("mode") || USAGE_MODES.include?(entry.fetch("mode"))
 
@@ -134,6 +134,14 @@ module Smith
           return if value.is_a?(String) && value.length.between?(1, max_length)
 
           raise ArgumentError, "#{label} must be a bounded non-empty String"
+        end
+
+        # Response facts are bounded in bytes where they are read, so they
+        # are checked in bytes here.
+        def validate_bounded_bytes!(value, label, max_bytes)
+          return if value.is_a?(String) && value.bytesize.between?(1, max_bytes)
+
+          raise ArgumentError, "#{label} must be a non-empty String of at most #{max_bytes} bytes"
         end
 
         def validate_nonempty_string!(value, label)

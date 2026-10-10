@@ -5,18 +5,14 @@ module Smith
     module CompletionUsageRecording
       private
 
-      # Returns [invocation_cost, fully_priced]. The cost is the sum of the
-      # recorded entries' costs (nil when nothing was priced): per-response
-      # pricing is what tiered catalogs bill, so the invocation cost comes
-      # from this sum, never from pricing the aggregate token totals (which
-      # would resolve the wrong tier for multi-response tool loops).
-      # fully_priced is true only when every provider response carried usage
-      # and every usage priced; a partial sum is still returned (it is what
-      # was verifiably billed) but callers must not present it as the
-      # complete invocation cost.
-      def record_completion_usage(agent_class, completion, attempt_kind, model_reference, attempt_id: nil)
+      # Records and prices one usage entry per provider response and returns
+      # the per-response AgentResults: per-response pricing is what tiered
+      # catalogs bill, so an invocation's cost is the sum of these, never the
+      # aggregate token totals priced as one call (which would resolve the
+      # wrong tier for a multi-response tool loop).
+      def record_response_usages(agent_class, usages, attempt_kind, model_reference, attempt_id: nil)
         model_reference = coerce_model_reference(model_reference)
-        costs = completion.provider_usages.map do |usage|
+        usages.map do |usage|
           result = Workflow::AgentResult.new(
             content: nil,
             input_tokens: usage.input_tokens,
@@ -28,11 +24,23 @@ module Smith
           )
           compute_agent_cost(result)
           record_usage(agent_class, result, attempt_kind, model_reference, attempt_id:)
-          result.cost
+          result
         end
-        summarize_invocation_costs(costs, completion)
       end
 
+      # Returns [invocation_cost, fully_priced, per_response_results].
+      def record_completion_usage(agent_class, completion, attempt_kind, model_reference, attempt_id: nil)
+        results = record_response_usages(agent_class, completion.provider_usages, attempt_kind, model_reference,
+                                         attempt_id:)
+        [*summarize_invocation_costs(results.map(&:cost), completion), results]
+      end
+
+      # Returns [invocation_cost, fully_priced]. The cost is the sum of the
+      # priced responses (nil when none was priced). fully_priced is true
+      # only when every provider response carried usage and every usage
+      # priced; a partial sum is still returned (it is what was verifiably
+      # billed) but callers must not present it as the complete invocation
+      # cost.
       def summarize_invocation_costs(costs, completion)
         priced = costs.compact
         invocation_cost = priced.empty? ? nil : priced.sum

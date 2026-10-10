@@ -13,6 +13,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   fold it into definition digests or cache keys see new values, and durable
   composite plans prepared under 0.11.0 are refused by their integrity check.
   Drain or clear in-flight persisted runs before upgrading.
+- Token and cost accounting changed too (see Changed): cache tokens count in
+  totals and budgets, cached input on the OpenAI Responses path is priced at
+  the cache-read rate, and completed tool-loop rounds before a failure settle
+  into budgets. A run in flight across the upgrade mixes the two accountings.
+- OpenAI Responses calls cost less on upgrade unless the catalog sets
+  `cache_read_cost_per_token`: their cached input was priced at the full input
+  rate and is now priced at the cache-read rate, 0 when unset.
 
 ### Added
 
@@ -25,21 +32,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   meaning uncached input, as RubyLLM reports every provider; the cache counts
   sit beside it, and `thinking_tokens` are already inside `output_tokens`.
   `stop_reason` and `provider_message_id` are read from the raw response body
-  (Anthropic Messages, OpenAI Chat Completions and OpenAI Responses shapes),
-  bounded to 256 bytes, and are those of the last response of a tool loop.
-  Each is omitted when the provider did not report it: `UsageEntry#to_h` and
+  of Anthropic Messages, OpenAI Chat Completions, OpenAI Responses, Gemini and
+  Bedrock Converse, each recognized by its own marker (for example
+  `"object" => "response"`); any other body gives neither, and a body that
+  cannot be read never fails the call. They are bounded to 256 bytes and are
+  those of the last response of a tool loop, even when that response reported
+  no usage. Each is omitted when the provider did not report it (RubyLLM's
+  OpenAI adapters report a cache write count of 0): `UsageEntry#to_h` and
   `ProviderUsage#to_h` leave nil optional members out, so entries written by
-  earlier versions re-serialize byte-identically. `:token_usage` and `:cost`
-  traces carry the cache counts too. Hosts with a `trace_fields` allowlist
-  must add the new keys to receive them.
+  earlier versions re-serialize byte-identically. Usage entries also gain
+  `mode`, set only for streamed and batch calls (later in this release), so an
+  ordinary call's entry keeps its earlier shape. `:token_usage` and `:cost`
+  traces carry the cache counts too, and `:cost` adds `cache_unpriced: true`
+  when the invocation's cache tokens were priced at 0 for lack of a rate. Hosts
+  with a `trace_fields` allowlist must add the new keys to receive them.
 - Pricing catalogs accept `cache_read_cost_per_token` and
-  `cache_write_cost_per_token` on an entry or a tier, and `batch_discount` (at
-  least 0 and below 1) on an entry, applied to the whole cost of a call made in
-  batch mode. They are configured per catalog and count as 0 when absent, so a
-  call is never left unpriced for lack of them. `Smith::Pricing.compute_cost`
-  takes `cache_read_tokens:`, `cache_write_tokens:` and `mode:` (defaults 0, 0,
-  `:sync`), and `validate_catalog!` rejects negative or non-numeric cache rates
-  and out-of-range discounts.
+  `cache_write_cost_per_token` on an entry or a tier (a tier without its own
+  uses the entry's), and `batch_discount` (at least 0 and below 1) on an entry,
+  applied to the whole cost of a call made in batch mode. They are configured
+  per catalog and count as 0 when absent, so a call is never left unpriced for
+  lack of them. `Smith::Pricing.compute_cost` takes `cache_read_tokens:`,
+  `cache_write_tokens:` and `mode:` (defaults 0, 0, `:sync`) and treats a count
+  that is not a non-negative Integer as 0, so it still never raises. Batch mode
+  is priced only through `compute_cost(mode: :batch)` until batch steps ship.
 - Idempotency keys for requests a step sends outside the system.
   `step.idempotency_key(scope = nil)` in `compute` and `run` steps,
   `idempotency_key(scope)` inside a `Smith::Tool`'s `perform`, and
@@ -62,7 +77,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   retry policy when declared. `DeterministicStepFailure#new_idempotency_key`
   and `DeterministicStep#attempt` (the attempt under way, from 1).
 - `UsageEntry#total_tokens`, `AgentResult#total_tokens`,
-  `ProviderUsage#total_tokens` and `ProviderUsage#total_input_tokens`.
+  `AgentResult#billable_tokens` (every known count, which budgets settle) and
+  `ProviderUsage#total_input_tokens`. `Agent::Completion#usage` (the whole
+  completion's `ProviderUsage`), `AgentResult.usage_details`,
+  `AgentResult::USAGE_DETAIL_MEMBERS` and `UsageEntry::OPTIONAL_MEMBERS` are
+  public.
 
 ### Changed
 
@@ -93,18 +112,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   - `Workflow.new` holds a normalized copy, not the caller's Hash.
   - Normalization is `O(N)` in the entries of the value being normalized.
 - **Breaking:** token totals count prompt-cache input. `RunResult#total_tokens`,
-  the workflow's token totals, token budgets (`total_tokens`, `token_limit`) and
-  composite effect totals add `cache_read_tokens` and `cache_write_tokens` to
-  input and output. Before, cached input was not counted at all, so a workflow
-  that cached heavily stayed far under a token budget it was in fact spending.
+  the workflow's token totals, token budgets (`total_tokens`, `token_limit`),
+  composite effect totals and `ProviderUsage#total_tokens` add
+  `cache_read_tokens` and `cache_write_tokens` to input and output. Before,
+  cached input was not counted at all, so a workflow that cached heavily stayed
+  far under a token budget it was in fact spending.
+- **Breaking:** `Workflow::AgentResult` gains `cache_read_tokens`,
+  `cache_write_tokens`, `thinking_tokens`, `stop_reason`,
+  `provider_message_id` and `mode` (the last set only by streaming and batch
+  steps), so its `to_h`, `to_a`, `==` and positional deconstruction carry six
+  more members.
+- **Breaking:** `Smith::Pricing.validate_catalog!` refuses catalogs 0.11.0
+  accepted: cache rates that are not non-negative Integers or Floats, a
+  `batch_discount` outside 0 (inclusive) to 1 (exclusive) or not an Integer or
+  Float, and a `batch_discount` inside a tier, where it would never apply.
 - **Breaking:** a tiered pricing entry is chosen on a call's total input
   (uncached plus cache read plus cache write). Before, it was chosen on
   uncached input alone, which could select a cheaper tier than the provider
   bills.
 - **Breaking:** Smith's OpenAI Responses adapter reports `input_tokens` with
   cached and cache-written input taken out, as RubyLLM reports every other
-  provider, keeping the cache counts separate. Before, cached input was in both
-  counts.
+  provider, keeping the cache counts separate. Before, its `input_tokens`
+  included cached input, which Smith priced at the full input rate; that input
+  is now priced at `cache_read_cost_per_token`, 0 when the catalog has none, so
+  Responses-path costs fall unless the catalog sets it. Cache counts that are
+  not Integers are ignored, and counts larger than the reported input are
+  capped to it, so the reported input total is kept.
 - A workflow's execution namespace (the persisted UUID that scopes its
   artifacts and now its idempotency keys) is assigned when the workflow is
   built, and when a payload written without one is restored, instead of on
@@ -221,6 +254,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Fixed
 
+- Budgets settle every billed token. The completed rounds of a tool loop whose
+  attempt then failed, and the metered responses of a tool loop in which some
+  response reported no usage, were recorded in usage entries and run totals but
+  never reached the budget ledger. A failed attempt's own reported cache tokens
+  were in its `:provider_call` trace but not in its usage entry, cost, totals or
+  budget. Budgets may now be reached sooner than in 0.11.0.
+- Flat pricing entries with String keys (`"input_cost_per_token"`), as a
+  catalog loaded from JSON or YAML has, are priced. They were silently
+  unpriced, while tiered entries already read String keys; `total_cost` budgets
+  that never consumed such calls now do.
 - `docs/CONFIGURATION.md` said a provider-qualified call with only a
   model-only rate raises `Smith::PricingConfigurationError`; `compute_cost`
   never raises and leaves such usage unpriced. The docs, the README example and

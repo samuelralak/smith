@@ -13,43 +13,31 @@ module Smith
 
       private
 
+      # A failed attempt's own reported usage, cache counts included, is
+      # recorded, priced and settled into the budget like any billed
+      # response, so its usage entry agrees with its :provider_call trace.
       def account_failed_attempt(error, model_reference, agent_class, attempt_id: nil)
-        return unless error.respond_to?(:input_tokens) && error.respond_to?(:output_tokens)
+        usage = ProviderUsage.from_message(error)
+        return unless usage
 
-        input = error.input_tokens
-        output = error.output_tokens
-        return unless input.is_a?(Integer) && output.is_a?(Integer)
-
-        record_failed_usage(agent_class, model_reference, input, output, attempt_id:)
+        record_billed_usages(agent_class, [usage], :failed_attempt, model_reference, attempt_id:)
       end
 
-      # Returns the provider usages it recorded, so the attempt's trace can
-      # carry the same totals its usage entries hold.
+      # The completed rounds of a tool loop whose attempt then failed were
+      # billed: they are recorded and settled into the budget like a failed
+      # attempt's usage. Returns the provider usages recorded, so the
+      # attempt's trace carries the same totals its usage entries hold.
       def account_completed_prefix(agent_class, model_reference, messages, attempt_id: nil)
         completion = Completion.from_messages(response: nil, messages: messages)
-        record_completion_usage(agent_class, completion, :partial_attempt, model_reference, attempt_id:)
+        record_billed_usages(agent_class, completion.provider_usages, :partial_attempt, model_reference, attempt_id:)
         completion.provider_usages
       end
 
-      def record_failed_usage(agent_class, model_reference, input_tokens, output_tokens, attempt_id: nil)
-        model_reference = coerce_model_reference(model_reference)
-        cost = Smith::Pricing.compute_cost(
-          model: model_reference.model_id,
-          provider: model_reference.provider,
-          input_tokens:,
-          output_tokens:
-        )
-        agent_result = Workflow::AgentResult.new(
-          content: nil,
-          input_tokens:,
-          output_tokens:,
-          cost: cost,
-          model_used: model_reference.model_id,
-          provider_used: model_reference.provider
-        )
-        Thread.current[:smith_failed_agent_results] ||= []
-        Thread.current[:smith_failed_agent_results] << agent_result
-        record_usage(agent_class, agent_result, :failed_attempt, model_reference, attempt_id:)
+      # Usage that is billed but is not the invocation's result joins the
+      # failed billable attempts, which budget settlement reads beside it.
+      def record_billed_usages(agent_class, usages, attempt_kind, model_reference, attempt_id:)
+        results = record_response_usages(agent_class, usages, attempt_kind, model_reference, attempt_id:)
+        (Thread.current[:smith_failed_agent_results] ||= []).concat(results)
       end
 
       def snapshot_and_finalize(agent_class, completion, model_reference, attempt_id: nil)
@@ -98,29 +86,33 @@ module Smith
       # budget settlement and result surfaces read) and the recorded entries,
       # the budget ledger, and the :cost trace all agree. The trace emits
       # only for fully metered, fully priced invocations, so a partial
-      # figure is never presented as the invocation cost; the partial sum
-      # still settles the budget because it is what was verifiably billed.
+      # figure is never presented as the invocation cost; the partial sums
+      # of cost and tokens still settle the budget because they are what
+      # was verifiably billed.
       def account_completion!(agent_class, completion, model_reference, agent_result, attempt_id)
-        invocation_cost, fully_priced = record_completion_usage(
+        invocation_cost, fully_priced, results = record_completion_usage(
           agent_class, completion, :completed_attempt, model_reference, attempt_id:
         )
         agent_result.cost = invocation_cost
-        emit_cost_trace(agent_result, invocation_cost) if fully_priced
+        agent_result.metered_tokens = results.sum(&:total_tokens) unless completion.usage_complete
+        return unless fully_priced
+
+        emit_cost_trace(agent_result, invocation_cost, cache_unpriced: results.any?(&:cache_unpriced))
       end
 
+      # Prices the result and notes whether cache tokens were priced at 0
+      # for lack of a rate, which the :cost trace reports.
       def compute_agent_cost(agent_result)
         return unless agent_result.usage_known?
 
-        model = agent_result.model_used
-        agent_result.cost = Smith::Pricing.compute_cost(
-          model: model,
-          provider: agent_result.provider_used,
-          input_tokens: agent_result.input_tokens,
-          output_tokens: agent_result.output_tokens,
+        usage = {
+          model: agent_result.model_used, provider: agent_result.provider_used,
+          input_tokens: agent_result.input_tokens, output_tokens: agent_result.output_tokens,
           cache_read_tokens: agent_result.cache_read_tokens || 0,
-          cache_write_tokens: agent_result.cache_write_tokens || 0,
-          mode: agent_result.mode || :sync
-        )
+          cache_write_tokens: agent_result.cache_write_tokens || 0
+        }
+        agent_result.cost = Smith::Pricing.compute_cost(**usage, mode: agent_result.mode || :sync)
+        agent_result.cache_unpriced = Smith::Pricing.cache_unpriced?(**usage.except(:output_tokens))
       end
     end
   end

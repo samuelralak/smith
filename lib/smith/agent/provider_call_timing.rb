@@ -106,9 +106,9 @@ module Smith
       end
 
       def completed_provider_attempt(completion, observed_reference, timer, facts)
+        usage = ProviderUsage.sum(completion.provider_usages)&.with_response_facts(completion.response_facts)
         attempt = ProviderAttempt.success(
-          completion:, model_reference: observed_reference, duration_ms: timer.elapsed_ms,
-          usage: ProviderUsage.sum(completion.provider_usages), **facts
+          completion:, model_reference: observed_reference, duration_ms: timer.elapsed_ms, usage:, **facts
         )
         record_provider_call_trace(attempt)
         attempt

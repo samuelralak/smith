@@ -34,7 +34,7 @@ module Smith
           attempt_id: attempt_id,
           **ambient_attribution_fields,
           **Workflow::AgentResult::USAGE_DETAIL_MEMBERS.to_h { |member| [member, agent_result.public_send(member)] },
-          mode: agent_result.mode || :sync
+          mode: agent_result.mode
         )
       end
 

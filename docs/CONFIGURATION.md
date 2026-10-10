@@ -86,12 +86,13 @@ Smith.configure do |config|
   config.trace_provider_calls = true
   config.trace_attribution = true
 
-  config.pricing = {
+  config.pricing = Smith::Pricing.validate_catalog!(
     %w[openai gpt-4.1-nano] => {
       input_cost_per_token: 0.0000001,
-      output_cost_per_token: 0.0000004
+      output_cost_per_token: 0.0000004,
+      cache_read_cost_per_token: 0.000000025
     }
-  }
+  )
 
   config.logger = Logger.new($stdout)
 end
@@ -103,17 +104,25 @@ remain available only for calls whose provider is genuinely unknown; a
 provider-qualified call never reads a model-only rate, and usage with no
 applicable rate stays unpriced (a nil cost), without raising.
 `Smith::Pricing.validate_catalog!` is the raising check: it rejects model-only
-keys, keys that collide, non-Hash entries, and invalid optional rates.
+keys, keys that collide, non-Hash entries, optional rates that are not
+non-negative Integers or Floats, and a `batch_discount` that is out of range or
+sits inside a tier.
 
 Each entry, or each tier of a tiered entry, prices `input_cost_per_token` and
 `output_cost_per_token`, and optionally `cache_read_cost_per_token` and
 `cache_write_cost_per_token` for input read from or written to a prompt cache,
-which providers report apart from uncached input. An entry may also carry
-`batch_discount`, the fraction taken off the cost of a call made in batch mode
-(`0.5` for half price). Cache rates and the batch discount are configured per
-catalog and count as `0` when absent: cache tokens then add nothing to a cost,
-and a batch call costs the full rate. Tiers are chosen on a call's total input,
-uncached plus cache read plus cache write.
+which providers report apart from uncached input. A tier without its own cache
+rate uses the entry's. An entry may also carry `batch_discount`, the fraction
+taken off the cost of a call made in batch mode (`0.5` for half price). Cache
+rates and the batch discount are configured per catalog and count as `0` when
+absent: cache tokens then add nothing to a cost (the `:cost` trace says so with
+`cache_unpriced: true`), and a batch call costs the full rate. Tiers are chosen
+on a call's total input, uncached plus cache read plus cache write, so a cached
+call can pass every bounded tier and stay unpriced when the last tier is
+bounded. One cache write rate prices every cache lifetime; a provider that bills
+longer-lived cache writes higher (Anthropic's one-hour cache) needs the rate of
+the lifetime the host uses. Keys may be Symbols or Strings, as a catalog loaded
+from JSON or YAML has.
 
 ### What Each `Smith.configure` Setting Is For
 
@@ -161,9 +170,13 @@ tool-loop prefix, and a failed attempt's own reported usage); both are omitted
 when the provider reported none. `input_tokens` counts uncached input only;
 `cache_read_tokens` and `cache_write_tokens` are the prompt-cache input beside
 it, and `thinking_tokens` are already inside `output_tokens`. `stop_reason` and
-`provider_message_id` are those of the attempt's last provider response. Each of
-these is omitted when the provider did not report it. `:token_usage` and
-`:cost` traces carry `cache_read_tokens` and `cache_write_tokens` too. A failed or aborted attempt adds `error_class`,
+`provider_message_id` are those of the attempt's last provider response, read
+from its raw body when the body is one Smith recognizes (Anthropic, OpenAI Chat
+Completions and Responses, Gemini, Bedrock Converse). Each of these is omitted
+when the provider did not report it. `:token_usage` and `:cost` traces carry
+`cache_read_tokens` and `cache_write_tokens` too, and `:cost` adds
+`cache_unpriced: true` when cache tokens were priced at 0 for lack of a rate. A
+failed or aborted attempt adds `error_class`,
 and `error_cause_class` for the error's direct cause (`Exception#cause`, else a
 wrapping error's `wrapped_exception`, such as the `EOFError` inside a
 `Faraday::ConnectionFailed`), omitted when there is none. Class names and token

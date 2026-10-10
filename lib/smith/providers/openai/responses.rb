@@ -141,26 +141,12 @@ module Smith
             content: response_output_text(data),
             thinking: ::RubyLLM::Thinking.build(text: response_reasoning_text(outputs)),
             tool_calls: ToolsExtensions.parse_response_tool_calls(outputs),
-            input_tokens: response_uncached_input_tokens(usage),
-            output_tokens: usage["output_tokens"],
-            cached_tokens: usage.dig("input_tokens_details", "cached_tokens"),
-            cache_creation_tokens: usage.dig("input_tokens_details", "cache_write_tokens") || 0,
-            thinking_tokens: usage.dig("output_tokens_details", "reasoning_tokens"),
+            # SMITH-AUTHORED: every usage count from response_usage (see the
+            # SMITH-AUTHORED helpers below and UPSTREAM_PROPOSAL.md).
+            **response_usage(usage),
             model_id: data["model"],
             raw: response
           )
-        end
-
-        # The Responses API counts cached input inside `input_tokens`; RubyLLM
-        # reports every provider's input with cache reads and writes taken
-        # out, so the same is done here and the cache counts stay separate.
-        def self.response_uncached_input_tokens(usage)
-          input = usage["input_tokens"]
-          return input unless input.is_a?(Integer)
-
-          cached = usage.dig("input_tokens_details", "cached_tokens").to_i
-          written = usage.dig("input_tokens_details", "cache_write_tokens").to_i
-          [input - cached - written, 0].max
         end
 
         def self.format_response_message(message, provider: nil)
@@ -298,6 +284,7 @@ module Smith
         end
 
         # ---- SMITH-AUTHORED helpers (inlined from PR #770 chat.rb) -------
+
         #
         # Upstream PR #770 keeps these on the chat module (which is mixed
         # into the provider class so they're available as instance methods
@@ -305,6 +292,34 @@ module Smith
         # standalone (it can't read @config), so these helpers are
         # inlined as class methods with the provider passed in where
         # @config access is needed.
+
+        # SMITH-AUTHORED, not from PR #770. The Responses API counts cached
+        # and cache-written input inside `input_tokens`; RubyLLM reports
+        # every other provider's input with those taken out, and Smith totals
+        # and prices the cache counts beside it, so the same is done here.
+        # Cache counts that are not non-negative Integers are dropped, and
+        # counts larger than the reported input are capped to it, so the
+        # input total the provider reported is kept.
+        def self.response_usage(usage)
+          details = usage["input_tokens_details"].is_a?(Hash) ? usage["input_tokens_details"] : {}
+          input, cached, written = uncached_input(
+            usage["input_tokens"], usage_count(details["cached_tokens"]), usage_count(details["cache_write_tokens"])
+          )
+          { input_tokens: input, output_tokens: usage["output_tokens"], cached_tokens: cached,
+            cache_creation_tokens: written, thinking_tokens: usage.dig("output_tokens_details", "reasoning_tokens") }
+        end
+
+        def self.uncached_input(input, cached, written)
+          return [input, cached, written] unless input.is_a?(Integer)
+
+          cached &&= [cached, input].min
+          written &&= [written, input - cached.to_i].min
+          [input - cached.to_i - written.to_i, cached, written]
+        end
+
+        def self.usage_count(value)
+          value if value.is_a?(Integer) && value >= 0
+        end
 
         def self.format_role(role, provider: nil)
           case role

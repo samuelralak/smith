@@ -1669,12 +1669,14 @@ Architecture basis:
 
 Documented contracts covered:
 
-- `ProviderUsage.from_message` reads cache read and write counts (both RubyLLM reader names), thinking tokens, and the stop reason and message id of the Anthropic, OpenAI Chat Completions and OpenAI Responses body shapes; facts are bounded; non-Integer or negative counts are ignored; `to_h` omits nil optional members; `sum` totals counts and keeps the last response's facts
-- a workflow run records the details on its usage entry with `mode: :sync`, counts cache tokens in `total_tokens` and in a token budget's consumption, round-trips the entry through JSON, and leaves an entry without details unchanged
-- `:provider_call`, `:token_usage` and `:cost` traces carry the details
-- pricing: cache rates, 0 when absent; tier choice on total input; batch discount, full rate when absent; catalog validation of the new keys
-- composite effects accept entries with and without details, total cache tokens, and reject invalid details
-- the OpenAI Responses adapter reports uncached input
+- `ProviderUsage.from_message` reads cache read and write counts under either RubyLLM reader name and thinking tokens, ignoring counts that are not non-negative Integers; it reads the stop reason and message id of Anthropic, OpenAI Chat Completions, OpenAI Responses (incomplete reason, else status), Gemini and Bedrock Converse bodies, each recognized by its own marker, and nothing from a body without one; facts are bounded; `to_h` omits nil optional members; `sum` totals counts and keeps the last response's facts
+- a workflow run records the details on its usage entry, leaves `mode` off an ordinary call's entry, counts cache tokens in `total_tokens` and in a token budget's consumption, round-trips the entry through JSON, and re-serializes an entry without details byte-identically
+- `:provider_call`, `:token_usage` and `:cost` traces carry the details; `:cost` adds `cache_unpriced: true` only when cache tokens were priced at 0 for lack of a rate
+- budgets and totals settle a completed tool-loop round before a failed attempt, a failed attempt's own cache tokens (entry, cost, totals and budget agreeing with its trace), and the metered part of a partially metered tool loop, whose `:provider_call` carries its last response's facts; a raw body that cannot be read never fails a billed call; `AgentResult#billable_tokens` counts the known parts of half-known usage
+- pricing: cache rates, 0 when absent; a tier without cache rates uses the entry's, and never the entry's input or output rate; tier choice on total input including cache writes; String-keyed rates; counts that are not non-negative Integers price as 0; a non-Hash entry is unpriced; `cache_unpriced?`; batch discount, full rate when absent; catalog validation refuses negative, non-Integer-or-Float (Complex, Rational, String, `false`) cache rates under either key form, out-of-range or non-real discounts, and a discount inside a tier
+- composite effects accept entries with and without details, total cache tokens, and reject invalid details (negative or Float counts, an empty or over-256-byte response fact, an unknown mode)
+- the OpenAI Responses adapter parses a body end to end, reporting input with cached and cache-written input taken out, capping cache counts at the reported input and ignoring non-Integer counts, so the provider's total is kept
+- the review fixes above are mutation-verified against the full suite
 
 ### `spec/smith/workflow/idempotency_key_spec.rb`
 
