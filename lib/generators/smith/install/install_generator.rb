@@ -13,13 +13,17 @@ module Smith
     # The most a PostgreSQL text column holds (1 GiB less a byte), the
     # payload's limit when no bound is set.
     UNBOUNDED_PAYLOAD = 1_073_741_823
+    # The default bound: well above what one step can add to a state (a
+    # map's collected results, 4 MiB; a wait's payload or a paused tool
+    # loop, 1 MiB each), so it refuses runaway growth, not a run Smith built.
+    MAX_STATE_BYTES = 16 * 1024 * 1024
 
     source_root File.expand_path("templates", __dir__)
     desc "Writes Smith's initializer, and a table and model for workflow state"
 
     class_option :state_model, type: :string, default: "WorkflowState",
                                desc: "The model that keeps workflow state"
-    class_option :max_state_bytes, type: :numeric, default: 1_048_576,
+    class_option :max_state_bytes, type: :numeric, default: MAX_STATE_BYTES,
                                    desc: "persistence_max_bytes, and the payload CHECK above it (0: neither)"
     class_option :skip_state_model, type: :boolean, default: false,
                                     desc: "Write only the initializer"
@@ -77,7 +81,7 @@ module Smith
     # ignores it, as SQLite does.
     def payload_limit = [check_bytes || UNBOUNDED_PAYLOAD, UNBOUNDED_PAYLOAD].min
 
-    # An Integer as a Ruby literal: 1_048_576.
+    # An Integer as a Ruby literal: 16_777_216.
     def literal(number) = number.to_s.gsub(/\B(?=(\d{3})+(?!\d))/, "_")
   end
 end

@@ -17,7 +17,7 @@ environment before calling the slice complete.
 
 ```ruby
 # Gemfile
-gem "smith-agents", "0.12.0", require: "smith"
+gem "smith-agents", "0.12.1", require: "smith"
 ```
 
 ```bash
@@ -31,7 +31,8 @@ for workflow state (`WorkflowState`, Smith's `:active_record` persistence
 adapter): a unique string key (child runs are stored under 64-character
 keys of their own, so the key is not a host row's id), the state as JSON
 text, the `lock_version` Smith's versioned writes compare, and a CHECK on
-the payload's size. The initializer sets `persistence_max_bytes` (1 MiB): a
+the payload's size. The initializer sets `persistence_max_bytes` (16 MiB,
+well above what one step can add, so it stops runaway growth only): a
 step whose result would take a stored run past it fails with
 `Smith::PersistedStateTooLarge` before the result is kept, as with any
 error (its usage recorded, its `on_failure` taken), so the run stays
@@ -460,7 +461,7 @@ Smith.configure do |config|
   config.persistence_adapter = :rails_cache
   config.persistence_options = { namespace: "smith" }
   config.persistence_ttl = 1.day.to_i
-  config.persistence_max_bytes = 1_048_576 # a stored state's bound (nil: none); see Installation
+  config.persistence_max_bytes = 16_777_216 # a stored state's bound (nil: none); see Installation
   config.persistence_retry_policy = { attempts: 3, base_delay: 0.1, max_delay: 1.0 }
 
   # Generic runtime resource bounds

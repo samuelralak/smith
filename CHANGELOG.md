@@ -4,6 +4,20 @@ All notable changes to Smith are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Smith is pre-1.0 and under active development; expect occasional contract tightening between minor versions until 1.0.
 
+## [0.12.1] - 2026-10-11
+
+### Changed
+
+- `rails g smith:install` sets `persistence_max_bytes` to 16 MiB (it was
+  1 MiB), with the payload CHECK a third above it (22,373,717 bytes). One
+  step can add more than 1 MiB to a run's state (a `map` step's collected
+  results are bounded at 4 MiB), so the old default could refuse a run Smith
+  built itself. An app generated with 0.12.0 keeps its bound: raise
+  `config.persistence_max_bytes`, and replace the CHECK in a migration
+  (`remove_check_constraint` then `add_check_constraint` with the new
+  bound; on MySQL, also `change_column :workflow_states, :payload, :text,
+  limit: 22_373_717`).
+
 ## [0.12.0] - 2026-10-11
 
 ### Upgrade notes
