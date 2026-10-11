@@ -38,7 +38,14 @@ module Smith
       # failed billable attempts, which budget settlement reads beside it.
       def record_billed_usages(agent_class, usages, attempt_kind, model_reference, attempt_id:)
         results = record_response_usages(agent_class, usages, attempt_kind, model_reference, attempt_id:)
-        (Thread.current[:smith_failed_agent_results] ||= []).concat(results)
+        add_failed_agent_results(results)
+      end
+
+      # A new Array, never the one in place: a step's thread context
+      # (ThreadContextSnapshot) puts back the list it started with, which
+      # must not carry this step's failed attempts into the next.
+      def add_failed_agent_results(results)
+        Thread.current[:smith_failed_agent_results] = [*Array(Thread.current[:smith_failed_agent_results]), *results]
       end
 
       # Records and settles one completed attempt's usage and returns its

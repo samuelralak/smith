@@ -105,7 +105,7 @@ module Smith
       # A billed response that is not the invocation's output settles with
       # its failed attempts.
       def settle_rejected(agent_result)
-        (Thread.current[:smith_failed_agent_results] ||= []) << agent_result
+        add_failed_agent_results([agent_result])
         Thread.current[:smith_last_agent_result] = nil
       end
 

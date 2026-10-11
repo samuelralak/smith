@@ -29,6 +29,7 @@ module Smith
         option :output_to, default: proc {}
         option :stream, default: proc {}
         option :batch_mode, default: proc {}
+        option :on_request_change, default: proc {}
         option :children_config, default: proc {}
         option :deterministic_kind, default: proc {}
         option :deterministic_routes, default: proc {}

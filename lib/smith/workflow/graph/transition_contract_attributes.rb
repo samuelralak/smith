@@ -56,10 +56,12 @@ module Smith
         end
 
         # How the step's calls are made: streamed to a sink, and :sync,
-        # :batch or :callable (a mode chosen per attempt).
+        # :batch or :callable (a mode chosen per attempt), and what a batch
+        # result does when the step renders another request by then.
         def call_attributes
           mode = transition.batch_mode
-          { stream: transition.stream, batch_mode: mode.respond_to?(:call) ? :callable : mode }
+          { stream: transition.stream, batch_mode: mode.respond_to?(:call) ? :callable : mode,
+            on_request_change: transition.on_request_change }
         end
 
         def children_config

@@ -44,6 +44,7 @@ module Smith
         option :output_to, default: proc {}
         option :stream, default: proc {}
         option :mode, default: proc {}
+        option :on_request_change, default: proc {}
         option :children, default: proc {}
 
         def self.from_transition(transition, workflow_class: nil)
@@ -84,6 +85,7 @@ module Smith
             output_to: transition.output_to,
             stream: transition.stream,
             mode: transition.batch_mode,
+            on_request_change: transition.on_request_change,
             children: children_for(transition)
           }
         end

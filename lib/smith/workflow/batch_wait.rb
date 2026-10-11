@@ -60,7 +60,7 @@ module Smith
       def complete_batch_wait(transition, entries, done)
         record = @awaiting
         @awaiting = nil
-        @batch_delivery = Batch::Delivery.new(entries)
+        @batch_delivery = Batch::Delivery.new(entries, on_change: transition.on_request_change || :keep)
         step = with_step_context(transition) do
           Execution.instance_method(:execute_step_body).bind_call(self, transition)
         ensure

@@ -1904,6 +1904,24 @@ Documented contracts covered:
 - the Anthropic client submits one batch with the shared headers and the provider's key, refuses mixed headers, other providers, empty or oversized batches before sending, reads status and the JSONL results file, cancels, refuses a malformed batch id, and makes no connection retries
 - these contracts are mutation-verified against the full suite
 
+### `spec/smith/batch_request_change_spec.rb`
+
+Purpose:
+
+- asserts what a batch result does when its step renders another request by the time it comes (`on_request_change:`)
+
+Architecture basis:
+
+- Section 4.2, Workflows; Section 6, Budgets
+
+Documented contracts covered:
+
+- `:resend` sends the request as rendered now over the wire and its reply is the output; the result set aside is charged as a `:failed_attempt` with `mode: :batch`; an unchanged request's result is taken, sending nothing
+- `:fail` fails the step with `BatchRequestChanged` (the result charged), which `retry_on` with a mode callable sends again synchronously
+- a fan-out resends only the branch whose request changed
+- `on_request_change:` takes :keep, :resend or :fail, only on a step that may batch, stays out of `agent_opts`, and shows in graph snapshots
+- these contracts are mutation-verified against the full suite
+
 ### `spec/smith/batch_review_spec.rb`
 
 Purpose:
@@ -1921,6 +1939,7 @@ Documented contracts covered:
 - in strict mode a completion is stored as a step under way before it runs, and a run caught in one is refused as unfinished
 - a batch step in an in-process child fails before anything is captured or queued
 - a call that renders another request than the one sent (its payload or its headers) takes the result all the same, its `:provider_call` trace saying `request_changed: true` (and only then)
+- a step's failed attempts never outlive it on a thread whose list its thread context puts back
 - a succeeded message not of the provider's reply shape (content blocks, text, non-negative usage counts), or a payload nested too deep, raises ArgumentError and keeps the wait; an error type is bounded
 - restore refuses a pending batch whose attempt or key generation its step's retry policy does not allow, whose ids are not its branches', or whose digests are malformed, and a fan-out whose branches were renamed
 - a mode callable object (not a Proc) is asked with its own arity; a model or tools given by a block is a readiness warning; a batch queue without `enqueue` is refused when set

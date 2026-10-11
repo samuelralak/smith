@@ -361,10 +361,15 @@ then the run waits on `:batch_result`. Smith never submits or polls, and waits
 without sleeping: `Smith::Providers::Anthropic::Batches` gives the host
 `submit`, `status`, `results` and `cancel`. `resume!` with
 `{custom_id => result}` runs the step again, each call taking its result as
-the reply it would have got. The request sent is the call's: a step that
-renders another one now (a date in its prompt, data read afresh) takes its
-result all the same, and its `:provider_call` trace says
-`request_changed: true`. Then the output checks, a follow-up call (over the
+the reply it would have got. A call that renders another request by then (a
+date in its prompt, data read afresh, a prompt changed in a deploy) does what
+its step's `on_request_change:` says: `:keep` (the default) takes the result,
+which answers the request as sent, and its `:provider_call` trace says
+`request_changed: true`; `:resend` sends the request as rendered now over the
+wire instead; `:fail` fails the step with `Smith::BatchRequestChanged` (an
+`AgentError`, so `retry_on` can send it again, synchronously if the mode
+callable says so). A result the call does not use is charged all the same.
+Then the output checks, a follow-up call (over the
 wire), guardrails and `output_to:` as ever, usage recorded with `mode: :batch`
 and priced with the catalog's `batch_discount`, and charged even past a
 budget, as the money is spent. A request the provider refused fails the step

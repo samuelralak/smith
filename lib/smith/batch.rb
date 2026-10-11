@@ -129,15 +129,21 @@ module Smith
     end
 
     # The results a resumed step takes, one per branch (nil for a step
-    # without branches), each with the digest of the request it answers.
-    # Each is taken once: a follow-up call the step makes after it (a repair)
-    # goes over the wire. `untaken` is what no call took (a branch cancelled
-    # by a sibling's failure), paid for all the same.
+    # without branches), each with the digest of the request it answers, and
+    # what a result does when its call renders another request
+    # (`on_change`). Each is taken once: a follow-up call the step makes
+    # after it (a repair) goes over the wire. `untaken` is what no call took
+    # (a branch cancelled by a sibling's failure) or set aside (a result its
+    # call would not use), paid for all the same.
     class Delivery
       Entry = Struct.new(:result, :digest)
 
-      def initialize(entries_by_branch)
+      attr_reader :on_change
+
+      def initialize(entries_by_branch, on_change: :keep)
         @entries = entries_by_branch.dup
+        @set_aside = {}
+        @on_change = on_change
         @lock = Mutex.new
       end
 
@@ -145,7 +151,16 @@ module Smith
 
       def for?(branch_key) = @lock.synchronize { @entries.key?(branch_key) }
 
-      def untaken = @lock.synchronize { @entries.dup.tap { @entries.clear } }
+      def set_aside(branch_key, entry) = @lock.synchronize { @set_aside[branch_key] = entry }
+
+      def untaken
+        @lock.synchronize do
+          @set_aside.merge(@entries).tap do
+            @entries.clear
+            @set_aside.clear
+          end
+        end
+      end
     end
   end
 end

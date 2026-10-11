@@ -95,8 +95,12 @@ RSpec.describe "Smith batch mode: review fixes" do
     workflow.run!
     detect, extract = queue.items.map { _1[:custom_id] }
     payload = { detect => errored("api_error"), extract => succeeded("paid", tokens: [30, 10]) }
+    # A thread that ran a call outside any step keeps the list the step's
+    # thread context puts back, which must not carry this step's charges.
+    Thread.current[:smith_failed_agent_results] = []
 
     expect(workflow.resume!(event: :batch_result, token: workflow.awaiting.token, payload:)).to eq(:failed)
+    expect(Thread.current[:smith_failed_agent_results]).to eq([])
     charged = workflow.usage_entries.find { _1.branch_key == :extract }
     expect([charged&.mode, charged&.attempt_kind, charged&.input_tokens]).to eq([:batch, :failed_attempt, 30])
     expect(ledger.consumed).to eq(total_tokens: 40)

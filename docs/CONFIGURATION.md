@@ -201,7 +201,8 @@ the step streamed. Each of these is omitted when the provider did not report
 it. `mode` is `:stream` for a streamed attempt, `:batch` for one answered by a
 batch result, and omitted for a synchronous one; `request_changed: true` marks
 a batch result whose call rendered a request other than the one sent (a date in
-its prompt, data read afresh), which takes the result all the same. `:token_usage` and `:cost` traces carry
+its prompt, data read afresh) and took the result all the same
+(`on_request_change: :keep`, the default). `:token_usage` and `:cost` traces carry
 `cache_read_tokens` and `cache_write_tokens` too, and `:cost` adds
 `cache_unpriced: true` when cache tokens were priced at 0 for lack of a rate. A
 failed or aborted attempt adds `error_class`,

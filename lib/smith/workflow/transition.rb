@@ -9,7 +9,7 @@ module Smith
                   :router_config, :workflow_class, :optimization_config, :orchestrator_config,
                   :fanout_config, :retry_config, :deterministic_block, :deterministic_kind,
                   :deterministic_routes, :deterministic_fallthrough, :await_config, :timeout_transition,
-                  :step_input, :output_to, :stream, :batch_mode
+                  :step_input, :output_to, :stream, :batch_mode, :on_request_change
 
       def initialize(name, from:, to:, &)
         @name = own_identifier(name)
@@ -67,6 +67,8 @@ module Smith
       # `mode:` is :sync (the default), :batch, or a callable of the context
       # and the step attempt returning one: a batch step sends its request
       # through the host's batch queue and waits for the result.
+      # `on_request_change:` says what a batch result does when the step
+      # renders another request by the time it comes (Smith::Batch).
       def execute(agent_name, input: nil, output_to: nil, **opts)
         validate_execution_primitive_conflict!("execute")
 
@@ -75,9 +77,10 @@ module Smith
         assign_step_io!(input, output_to)
         @stream = stream_name!(opts[:stream], opts)
         @batch_mode = batch_mode!(opts[:mode], stream: opts[:stream], parallel: opts[:parallel] == true)
+        @on_request_change = request_change!(opts[:on_request_change])
 
         @agent_name = normalized_agent
-        @agent_opts = opts.except(:stream, :mode).freeze
+        @agent_opts = opts.except(:stream, :mode, :on_request_change).freeze
         commit_execution_primitive!("execute")
       end
 
@@ -168,10 +171,11 @@ module Smith
         commit_execution_primitive!("orchestrate")
       end
 
-      def fan_out(branches:, input: nil, output_to: nil, mode: nil)
+      def fan_out(branches:, input: nil, output_to: nil, mode: nil, on_request_change: nil)
         validate_execution_primitive_conflict!("fan_out")
         assign_step_io!(input, output_to)
         @batch_mode = batch_mode!(mode, stream: nil, parallel: false)
+        @on_request_change = request_change!(on_request_change)
 
         normalized = normalize_fanout_branches!(branches)
         @fanout_branch_lookup = normalized.to_h do |key, agent|
@@ -317,6 +321,19 @@ module Smith
         raise WorkflowError, "mode: is not available on a parallel step" if parallel
 
         mode
+      end
+
+      # What a batch result does when the step renders another request by
+      # the time it comes: :keep it (the default), :resend the request over
+      # the wire, or :fail the step with BatchRequestChanged.
+      def request_change!(value)
+        return if value.nil?
+        unless %i[keep resend fail].include?(value)
+          raise WorkflowError, "on_request_change: must be :keep, :resend or :fail"
+        end
+        raise WorkflowError, "on_request_change: needs mode: :batch or a mode callable" unless batches?
+
+        value
       end
 
       # One reply streams to one sink: a parallel step has several.

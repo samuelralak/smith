@@ -302,6 +302,15 @@ module Smith
     end
   end
 
+  # A batch result answers a request other than the one its step renders
+  # now (a date in the prompt, data read afresh, a changed prompt), and the
+  # step declares `on_request_change: :fail`. An AgentError, so `retry_on`
+  # may send the request again (synchronously, if the mode callable says so
+  # at the next attempt); the result is charged all the same.
+  class BatchRequestChanged < AgentError
+    def initialize(message = "the step renders another request than its batch result answers") = super
+  end
+
   # The provider refused a batch request as invalid; sending it again would
   # be refused again.
   class BatchRequestInvalid < WorkflowError

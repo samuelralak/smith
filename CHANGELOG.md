@@ -159,9 +159,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   and resumes the run once with `{custom_id => result}`, each result's message
   checked against the provider's reply shape. The requests are queued only once
   the step's attempt has ended without error; `pending_batch` keeps each
-  request's digest, and a call that renders another request now (a date in
-  its prompt) takes the result sent for it all the same, its `:provider_call`
-  trace saying `request_changed: true`. The step runs again at its attempt, each call
+  request's digest. A call that renders another request by the time its
+  result comes (a date in its prompt, data read afresh) does what its step's
+  `on_request_change:` says: `:keep` (the default) takes the result, its
+  `:provider_call` trace saying `request_changed: true`; `:resend` sends the
+  request as rendered now over the wire; `:fail` raises
+  `Smith::BatchRequestChanged` (an `AgentError`, which `retry_on` may retry).
+  A result set aside is charged as a `:failed_attempt`. The step runs again at its attempt, each call
   of that attempt (only) taking its result through RubyLLM's own parser, and a
   succeeded result no call took (a cancelled fan-out branch) is charged as a
   `:failed_attempt`; in strict mode the completion runs as a marked step. A
@@ -574,6 +578,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Fixed
 
+- A step's failed attempts no longer outlive it on its thread. Smith added
+  them to the thread's list in place, and the step's thread context put that
+  same list back when the step ended, so a thread that had made a call outside
+  any step carried one step's failed attempts into the next step's budget
+  settlement (counted twice, possibly in another run).
 - Budgets settle every billed token. The completed rounds of a tool loop whose
   attempt then failed, and the metered responses of a tool loop in which some
   response reported no usage, were recorded in usage entries and run totals but

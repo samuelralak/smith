@@ -970,11 +970,15 @@ post it, hands it to `Smith.config.batch_queue` and waits.
   if every result were missing.
 - The step runs again at its attempt and key generation, each call taking its
   result instead of going over the wire, then goes on as after a synchronous
-  call; the completion is the step. The request sent is the call's: a step
-  that renders another one now (a model block, instructions or input that
-  changed while the run waited: a date, data read afresh) takes the result all
-  the same, and the call's `:provider_call` trace says `request_changed: true`
-  (`pending_batch` keeps each request's digest to tell).
+  call; the completion is the step. A call that renders another request than
+  the one sent (`pending_batch` keeps each request's digest to tell: a model
+  block, instructions or input that changed while the run waited, a date, data
+  read afresh) does what the step's `on_request_change:` says. `:keep` (the
+  default) takes the result, and the call's `:provider_call` trace says
+  `request_changed: true`; `:resend` sends the request as rendered now over
+  the wire; `:fail` raises `Smith::BatchRequestChanged`, an `AgentError` that
+  `retry_on` may retry. A result set aside so is charged as a
+  `:failed_attempt` with `mode: :batch`.
   Only the batch's own attempt takes results; a succeeded result no call took
   (a fan-out branch cancelled by a sibling's failure) is recorded and charged
   as a `:failed_attempt` all the same. In strict mode a completion is stored as

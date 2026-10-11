@@ -21,7 +21,8 @@ module Smith
         return capture_batch_call(chat, model_reference) if @batch_capturing
 
         entry = take_batch_result
-        return deliver_batch_result(chat, entry) if entry
+        delivered = deliver_batch_result(chat, entry) if entry
+        return delivered if delivered
 
         stream = @step_stream
         return [chat.complete, nil] unless stream
@@ -44,12 +45,18 @@ module Smith
       end
 
       # The batch result as the chat's reply, and whether the request the
-      # call rendered is other than the one sent (a fact of its attempt).
+      # call rendered is other than the one sent (a fact of its attempt). A
+      # result its call will not use (`on_request_change` :resend or :fail)
+      # is set aside, to be charged; :resend returns nil, and the call goes
+      # over the wire.
       def deliver_batch_result(chat, entry)
-        response, changed = Providers::BatchExchange.deliver(chat_provider(chat), entry.result, entry.digest) do
-          chat.complete
-        end
+        delivery = @batch_delivery
+        response, changed = Providers::BatchExchange.deliver(chat_provider(chat), entry.result, entry.digest,
+                                                             on_change: delivery.on_change) { chat.complete }
         [response, nil, :batch, { request_changed: changed || nil }]
+      rescue BatchRequestChanged
+        delivery.set_aside(Attribution.current&.branch_key, entry)
+        raise unless delivery.on_change == :resend
       end
 
       # A batch step's call: the provider must have a batch interface (only
