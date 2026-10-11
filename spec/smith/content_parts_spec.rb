@@ -233,9 +233,7 @@ RSpec.describe "Smith content parts: Smith::Content and Smith::Message" do
         Smith::Message.user([Smith::Content.document(ref, media_type: "application/pdf")])
       end
       error = timed_out.new.run!.last_error
-      expect([error.class, error.message]).to eq([Smith::ContentUnavailable,
-                                                  "the artifact of a document part could not be read: " \
-                                                  "Faraday::TimeoutError"])
+      expect([error.class, error.message]).to eq([Faraday::TimeoutError, "store timed out"])
 
       plain_store = Class.new do
         def initialize = @data = {}

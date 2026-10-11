@@ -2,6 +2,8 @@
 
 require "securerandom"
 
+require_relative "store_rules"
+
 module Smith
   module Artifacts
     # An artifact store in an S3-compatible bucket: AWS S3, Cloudflare R2
@@ -15,15 +17,23 @@ module Smith
     # from the remaining options (`region:`, `endpoint:`,
     # `access_key_id:`, `secret_access_key:`, ...), which needs the
     # `aws-sdk-s3` gem in the host's bundle; Smith does not depend on it.
+    # Only keys of the store's ref shape under the prefix are artifacts, so
+    # other objects in the bucket are neither read, listed nor deleted.
     class S3
-      REF = /\A(?:[A-Za-z0-9_-]+:)?[A-Za-z0-9-]+\z/
+      include StoreRules
+
+      INNER_REF = StoreRules::UUID
       NAMESPACE_KEY = "smith-execution-namespace"
 
-      def initialize(bucket:, prefix: "smith/artifacts", namespace: nil, client: nil, **)
+      def initialize(bucket:, prefix: "smith/artifacts", namespace: nil, client: nil, **client_options)
+        if client && client_options.any?
+          raise ArgumentError, "give Smith::Artifacts::S3 a client: or the options to build one, not both"
+        end
+
         @bucket = bucket
         @prefix = prefix.to_s.delete_suffix("/")
-        @namespace = namespace
-        @client = client || self.class.build_client(**)
+        @namespace = check_namespace!(namespace)
+        @client = client || self.class.build_client(**client_options)
       end
 
       def self.build_client(**)
@@ -34,13 +44,16 @@ module Smith
       end
 
       def store(data, content_type: "application/octet-stream", execution_namespace: nil)
-        ref = generate_ref
+        enforce_tenant_isolation!
+        check_data!(data)
+        ref = generate_ref(SecureRandom.uuid)
         metadata = execution_namespace ? { NAMESPACE_KEY => execution_namespace } : {}
         @client.put_object(bucket: @bucket, key: object_key(ref), body: data, content_type:, metadata:)
         ref
       end
 
       def fetch(ref)
+        enforce_tenant_isolation!
         return unless owns_ref?(ref)
 
         @client.get_object(bucket: @bucket, key: object_key(ref)).body.read
@@ -50,7 +63,7 @@ module Smith
 
       # Whether a run (its execution namespace) stored this ref.
       def stored_by?(ref, execution_namespace)
-        return false unless owns_ref?(ref)
+        return false if execution_namespace.nil? || !owns_ref?(ref)
 
         @client.head_object(bucket: @bucket, key: object_key(ref)).metadata[NAMESPACE_KEY] == execution_namespace
       rescue StandardError => e
@@ -59,12 +72,15 @@ module Smith
         false
       end
 
+      # Listing the prefix, then (for one run's refs) a HEAD per expired
+      # object.
       def expired(retention: nil, execution_namespace: nil)
+        retention = effective_retention(retention)
         return [] unless retention
 
         cutoff = Time.now.utc - retention
         objects.filter_map do |object|
-          ref = object.key.delete_prefix("#{@prefix}/")
+          ref = object.key.delete_prefix(key_prefix)
           next unless object.last_modified.utc < cutoff && owns_ref?(ref)
           next if execution_namespace && !stored_by?(ref, execution_namespace)
 
@@ -72,32 +88,28 @@ module Smith
         end
       end
 
-      def delete(ref)
-        @client.delete_object(bucket: @bucket, key: object_key(ref)) if owns_ref?(ref)
+      # Removes the artifact (when a run is named, only if that run stored
+      # it).
+      def delete(ref, execution_namespace: nil)
+        enforce_tenant_isolation!
+        return unless owns_ref?(ref) && (execution_namespace.nil? || stored_by?(ref, execution_namespace))
+
+        @client.delete_object(bucket: @bucket, key: object_key(ref))
         nil
       end
 
       private
 
-      def generate_ref
-        raw = SecureRandom.uuid
-        @namespace ? "#{@namespace}:#{raw}" : raw
-      end
+      def key_prefix = @prefix.empty? ? "" : "#{@prefix}/"
 
-      def object_key(ref) = "#{@prefix}/#{ref}"
-
-      def owns_ref?(ref)
-        return false unless ref.is_a?(String) && REF.match?(ref)
-
-        @namespace ? ref.start_with?("#{@namespace}:") : !ref.include?(":")
-      end
+      def object_key(ref) = "#{key_prefix}#{ref}"
 
       # Every object under the prefix, page by page.
       def objects
         Enumerator.new do |yielder|
           token = nil
           loop do
-            page = @client.list_objects_v2(bucket: @bucket, prefix: "#{@prefix}/", continuation_token: token)
+            page = @client.list_objects_v2(bucket: @bucket, prefix: key_prefix, continuation_token: token)
             page.contents.each { |object| yielder << object }
             break unless page.is_truncated
 

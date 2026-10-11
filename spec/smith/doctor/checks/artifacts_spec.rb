@@ -25,9 +25,12 @@ RSpec.describe Smith::Doctor::Checks::Artifacts do
       .to eq([["artifacts.store", :pass]])
   end
 
-  it "warns of a process-local store beside persisted state, and of a store that cannot vouch for refs" do
-    expect(results(artifact_store: :memory, persistence_adapter: :memory))
+  it "warns of a process-local store beside durable state, and of a store that cannot vouch for refs" do
+    expect(results(artifact_store: :memory, persistence_adapter: :redis))
       .to eq([["artifacts.store", :pass], ["artifacts.durability", :warn]])
+    expect(results(artifact_store: :memory, persistence_adapter: :memory)).to eq([["artifacts.store", :pass]])
+    expect(results(artifact_store: :memory, persistence_adapter: nil)).to eq([["artifacts.store", :pass]])
+    expect(results(artifact_store: nil, test_mode: true)).to eq([["artifacts.store", :pass]])
     unvouched = Class.new do
       def store(*, **) = "ref"
       def fetch(_ref) = nil
@@ -35,5 +38,29 @@ RSpec.describe Smith::Doctor::Checks::Artifacts do
     end
     expect(results(artifact_store: unvouched.new, persistence_adapter: nil))
       .to eq([["artifacts.store", :pass], ["artifacts.ownership", :warn]])
+  end
+
+  it "warns of a table, directory or bucket the store cannot use", :ar do
+    expect(results(artifact_store: :active_record, artifact_options: { model: "SmithArtifactRecord" }))
+      .to eq([["artifacts.store", :pass]])
+    expect(results(artifact_store: :active_record, artifact_options: { model: "SmithWorkflowStateRecord" }))
+      .to eq([["artifacts.store", :pass], ["artifacts.usable", :warn]])
+    expect(results(artifact_store: :active_record, artifact_options: { model: "NoSuchArtifactModel" }))
+      .to eq([["artifacts.store", :pass], ["artifacts.usable", :warn]])
+    expect(results(artifact_store: :file, artifact_options: { dir: "/nonexistent/smith" }))
+      .to eq([["artifacts.store", :pass], ["artifacts.usable", :warn]])
+    unreachable = Object.new
+    unreachable.define_singleton_method(:head_bucket) { |**| raise Timeout::Error }
+    expect(results(artifact_store: :s3, artifact_options: { bucket: "b", client: unreachable }))
+      .to eq([["artifacts.store", :pass], ["artifacts.usable", :warn]])
+  end
+
+  it "runs as part of smith doctor, and a missing store is a workflow error" do
+    Smith.configure { |config| config.artifact_store = :memory }
+    report = Smith::Doctor.run(io: StringIO.new)
+
+    expect(report.checks.map(&:name)).to include("artifacts.store")
+    expect(report.checks.map(&:name)).not_to include("config.artifact_store")
+    expect(Smith::ArtifactStoreMissing.ancestors).to include(Smith::WorkflowError)
   end
 end

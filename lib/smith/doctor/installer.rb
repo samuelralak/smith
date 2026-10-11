@@ -78,7 +78,12 @@ module Smith
             #   store(key, payload)
             #   fetch(key)
             #   delete(key)
-            config.artifact_store = Smith::Artifacts::Memory.new
+            #
+            # Artifacts (large outputs, attached documents) need a store that
+            # outlives the process: :s3 (S3, R2) or :active_record, with
+            # config.artifact_options; :memory keeps them in this process.
+            # config.artifact_store = :s3
+            # config.artifact_options = { bucket: "smith-artifacts", region: "us-east-1" }
             config.trace_adapter = Smith::Trace::Memory.new
           end
         RUBY

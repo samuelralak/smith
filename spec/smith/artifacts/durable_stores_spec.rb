@@ -52,7 +52,7 @@ RSpec.describe "Smith artifacts: configured, durable stores" do
       configure(:dropbox)
       expect { Smith.artifacts }.to raise_error(ArgumentError, /unknown artifact store :dropbox/)
       configure(Object.new)
-      expect { Smith.artifacts }.to raise_error(ArgumentError, /must implement store, fetch, expired/)
+      expect { Smith.artifacts }.to raise_error(ArgumentError, /must implement store, fetch/)
 
       configure(nil)
       Smith.config.test_mode = false
@@ -79,6 +79,77 @@ RSpec.describe "Smith artifacts: configured, durable stores" do
 
       expect(plain.new.run!.state).to eq(:done)
       expect(storing.new.run!.last_error).to be_a(Smith::ArtifactStoreMissing)
+    end
+
+    it "takes names as Strings, rebuilds on new options, and keeps a configured store by identity" do
+      configure("memory")
+      expect(Smith.artifacts).to be_a(Smith::Artifacts::Memory)
+      first_client = FakeS3Client.new
+      configure(:s3, bucket: "one", client: first_client)
+      first = Smith.artifacts
+      configure(:s3, bucket: "two", client: first_client)
+      expect(Smith.artifacts).not_to equal(first)
+
+      Smith.configure { |config| config.artifact_options = nil }
+      configure(:memory)
+      Smith.config.artifact_options = nil
+      expect(Smith.artifacts).to be_a(Smith::Artifacts::Memory)
+
+      equal_store = Struct.new(:name) do
+        def store(*, **) = "ref"
+        def fetch(_ref) = nil
+      end
+      configure(equal_store.new("a"))
+      kept = Smith.artifacts
+      replacement = equal_store.new("a")
+      configure(replacement)
+      expect(Smith.artifacts).to equal(replacement)
+      expect(kept).not_to equal(replacement)
+    end
+
+    it "uses a class or module that stores itself, validates a class it builds, and needs store and fetch only" do
+      itself = Module.new do
+        def self.store(*, **) = "ref"
+        def self.fetch(_ref) = "bytes"
+      end
+      configure(itself)
+      expect(Smith.artifacts).to equal(itself)
+      itself_class = Class.new do
+        def self.store(*, **) = "ref"
+        def self.fetch(_ref) = "bytes"
+      end
+      configure(itself_class)
+      expect(Smith.artifacts).to equal(itself_class)
+
+      configure(Class.new { def initialize(**) = nil })
+      expect { Smith.artifacts }.to raise_error(ArgumentError, /must implement store, fetch/)
+      minimal = Class.new do
+        def store(*, **) = "ref"
+        def fetch(_ref) = nil
+      end
+      configure(minimal.new)
+      expect { Smith.artifacts }.not_to raise_error
+      expect { Smith::Artifacts::ScopedStore.new(namespace: "run").expired }
+        .to raise_error(Smith::Error, /does not list expired refs/)
+    end
+
+    it "builds one store when threads resolve it together, and keeps a :memory store across test_mode" do
+      builds = Queue.new
+      slow = Class.new(Smith::Artifacts::Memory) do
+        define_method(:initialize) do |**options|
+          sleep 0.01
+          builds << 1
+          super(**options)
+        end
+      end
+      configure(slow)
+      stores = Array.new(8) { Thread.new { Smith.artifacts } }.map(&:value)
+      expect([builds.size, stores.uniq.size]).to eq([1, 1])
+
+      configure(:memory)
+      ref = Smith.artifacts.store("kept")
+      Smith.config.test_mode = !Smith.config.test_mode
+      expect(Smith.artifacts.fetch(ref)).to eq("kept")
     end
 
     it "explains that an S3 store needs the SDK or a client" do
@@ -163,6 +234,49 @@ RSpec.describe "Smith artifacts: configured, durable stores" do
     end
   end
 
+  describe "a run's view of its artifacts" do
+    it "lets the host read and clean up what a run stored, after the run" do
+      configure(:memory)
+      klass = with_stubbed_class("SpecHostArtifacts", Smith::Workflow) do
+        initial_state :idle
+        transition :t, from: :idle, to: :done do
+          compute { |step| step.write_context(:ref, Smith.artifacts.store("out")) }
+        end
+      end
+      run = klass.new
+      ref = run.run!.context[:ref]
+      other = klass.new
+      other.run!
+
+      expect([run.artifacts.fetch(ref), other.artifacts.fetch(ref), Smith.artifacts.fetch(ref)])
+        .to eq(["out", nil, nil])
+      other.artifacts.delete(ref)
+      expect(run.artifacts.fetch(ref)).to eq("out")
+      shared = other.run!.context[:ref]
+      expect(shared.split(":").last).to eq(ref.split(":").last)
+      run.artifacts.delete(ref)
+      expect([run.artifacts.fetch(ref), other.artifacts.fetch(shared)]).to eq([nil, "out"])
+      expect([run.artifacts.fetch(nil), run.artifacts.fetch(42)]).to eq([nil, nil])
+
+      child = Smith::ChildRun.new(ref: 0, key: "k", workflow: klass, input: {}, untrusted_keys: [],
+                                  artifact_namespaces: [other.to_state[:execution_namespace]]).build
+      expect(child.artifacts.fetch(shared)).to eq("out")
+    end
+
+    it "deletes through a custom store that can vouch, only the refs the run stored" do
+      deleted = []
+      custom = Class.new(Smith::Artifacts::Memory) do
+        define_method(:delete) { |ref| deleted << ref }
+      end.new
+      run_a = Smith::Artifacts::ScopedStore.new(backend: custom, namespace: "run-a")
+      run_b = Smith::Artifacts::ScopedStore.new(backend: custom, namespace: "run-b")
+      ref = run_a.store("mine")
+      run_b.delete(ref.sub("run-a", "run-b"))
+      run_a.delete(ref)
+      expect(deleted).to eq([ref.delete_prefix("run-a:")])
+    end
+  end
+
   describe "a run's documents in a durable store" do
     let(:sent) { [] }
 
@@ -235,9 +349,8 @@ RSpec.describe "Smith artifacts: configured, durable stores" do
         define_method(:delete) { |ref| deleted << ref }
       end.new
       unvouched = Smith::Artifacts::ScopedStore.new(backend: plain, namespace: "child", readable: ["parent"])
-      unvouched.delete("parent:abc")
-      unvouched.delete("child:def")
-      expect(deleted).to eq(["def"])
+      expect { unvouched.delete("child:def") }.to raise_error(Smith::Error, /needs a store with stored_by\? and delete/)
+      expect(deleted).to eq([])
     end
   end
 end

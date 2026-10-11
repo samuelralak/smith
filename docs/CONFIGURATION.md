@@ -80,7 +80,8 @@ Smith.configure do |config|
   config.artifact_options = {
     bucket: "smith-artifacts",
     endpoint: "https://<account>.r2.cloudflarestorage.com", region: "auto",
-    access_key_id: ENV.fetch("R2_ACCESS_KEY_ID"), secret_access_key: ENV.fetch("R2_SECRET_ACCESS_KEY")
+    access_key_id: ENV.fetch("R2_ACCESS_KEY_ID"), secret_access_key: ENV.fetch("R2_SECRET_ACCESS_KEY"),
+    request_checksum_calculation: "when_required", response_checksum_validation: "when_required" # R2
   }
   config.artifact_retention = 30 * 86_400
   config.artifact_encryption = :none
@@ -165,7 +166,7 @@ from JSON or YAML has.
 | `parallel_branch_limit` | Maximum branches accepted by one homogeneous or heterogeneous fan-out | Defaults to `1_000` |
 | `parallel_concurrency` | Maximum active branch threads within one parallel execution | Defaults to `8` |
 | `parallel_nesting_limit` | Maximum re-entrant fan-out depth; hard-capped at `256` | Defaults to `64` |
-| `test_mode` | Auto-select `:memory` adapter when `persistence_adapter` is nil | Enable in `spec_helper.rb` to skip Redis/cache wiring in tests |
+| `test_mode` | Auto-select the in-process `:memory` adapter when `persistence_adapter` is nil, and an in-process artifact store when `artifact_store` is nil | Enable in `spec_helper.rb` to skip Redis/cache/bucket wiring in tests |
 | `openai_api_mode` | `:auto` routes (gpt-5 family + tools + thinking) via `/v1/responses` using Smith's vendored Responses adapter (sync only; streaming over `/v1/responses` is not yet supported); `:off` drops incompatible tools instead | Leave `:auto` (default) unless you need streaming with the (gpt-5 + tools + thinking) combo, in which case set `:off` for graceful tool-dropping |
 | `trace_normalizer` | Emit `:normalizer_decision` trace events from `Smith::Models::Normalizer` | Useful when debugging cross-provider request shaping |
 | `ruby_llm_model_registry` | `:database` to require an AR-backed RubyLLM model registry; `:bundled` for the JSON fallback | Leave at default unless you've migrated to DB-backed |

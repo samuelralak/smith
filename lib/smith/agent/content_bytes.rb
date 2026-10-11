@@ -9,8 +9,9 @@ module Smith
     # most MAX_IMAGE_BYTES and any part at most Content::MAX_PART_BYTES, and
     # the request's text with its documents and images as they are sent
     # (PDFs and images in base64) at most MAX_REQUEST_BYTES. Anything else
-    # raises Smith::ContentUnavailable. Held per thread for the invocation,
-    # so parallel branches read their own.
+    # raises Smith::ContentUnavailable; the store's own errors pass on.
+    # Held per thread for the invocation, so parallel branches read their
+    # own.
     module ContentBytes
       MAX_IMAGE_BYTES = 5 * 1024 * 1024
       MAX_REQUEST_BYTES = 32 * 1024 * 1024
@@ -80,7 +81,9 @@ module Smith
       end
 
       # Through the run's scoped store, which must be able to tell which run
-      # stored a ref.
+      # stored a ref. The store's own errors (a timeout, a missing store)
+      # pass on as they are, before any provider attempt, so `retry_on` can
+      # take a transient one.
       def stored_bytes(part)
         store = Smith.scoped_artifacts
         unless store.respond_to?(:vouches?) && store.vouches?
@@ -89,11 +92,6 @@ module Smith
         end
 
         store.fetch(part["artifact"])
-      rescue ContentUnavailable
-        raise
-      rescue StandardError => e
-        raise ContentUnavailable, "the artifact of a #{part["type"]} part could not be read: " \
-                                  "#{DiagnosticText.error_class_name(e)}"
       end
     end
   end

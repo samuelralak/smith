@@ -1804,17 +1804,32 @@ Purpose:
 
 Documented contracts covered:
 
-- `artifact_store` resolves a named store (`:s3`, `:file`, `:active_record`, `:memory`) with `artifact_options`, a store class built with them, or a store, and caches it until the configuration changes; an unknown or incomplete store is refused; with nothing configured, `Smith.artifacts` raises `Smith::ArtifactStoreMissing` outside `test_mode` and is an in-process Memory store in it; a run that keeps no artifacts needs none, and a step that stores one fails with it; `:s3` explains that it needs the SDK or a client
+- `artifact_store` resolves a named store (`:s3`, `:file`, `:active_record`, `:memory`, as Symbols or Strings) with `artifact_options`, a store class built with them (and validated), a class or module that stores itself, or a store (needing `store` and `fetch` only), and caches it, built once under a lock, until the store (by identity) or its options change, keeping a `:memory` store across a `test_mode` change; an unknown or incomplete store is refused; with nothing configured, `Smith.artifacts` raises `Smith::ArtifactStoreMissing` outside `test_mode` and is an in-process Memory store in it; a run that keeps no artifacts needs none, and a step that stores one fails with it; `:s3` explains that it needs the SDK or a client
 - the S3 store keeps one object per artifact under its prefix, with its content type and the run that stored it, reads none for a missing, malformed or other tenant's ref, lists expired refs across pages and by run, deletes, and passes on errors other than a missing object
 - the Active Record store keeps one binary row per artifact with its run, by model class or name, refuses malformed and other tenants' refs, lists expired refs by run, and deletes
-- a run's documents read back through both stores; a scoped delete removes only the run's own refs, with a store that can vouch for refs or not
-- these contracts are mutation-verified against the full suite (29/29)
+- a run's documents read back through both stores; a scoped delete removes only the run's own refs and is refused over a store that cannot vouch for refs; `workflow.artifacts` lets the host read and clean up a run's refs after the run, and refuses non-String refs
+- these contracts are mutation-verified against the full suite
 
 ### `spec/smith/doctor/checks/artifacts_spec.rb`
 
 Documented contracts covered:
 
 - `smith doctor` warns when no artifact store is configured, fails when it cannot be built, passes a durable one, and warns of a process-local store beside persisted state and of a store that cannot say which run stored a ref
+
+### `spec/smith/artifacts/store_rules_spec.rb`
+
+Purpose:
+
+- asserts the rules every built-in store (Memory, File, S3, Active Record) keeps
+
+Documented contracts covered:
+
+- each stores bytes only (a `TypeError` otherwise), takes a tenant namespace of letters, digits, `-` and `_` only, and keeps to `artifact_tenant_isolation`
+- each names a run only for a ref that run stored, never for no run, and never for another tenant's ref
+- tenants stay apart in fetch, `stored_by?`, `expired` and `delete`
+- `expired` uses `artifact_retention` when no retention is given and lists by run; `delete(ref, execution_namespace:)` removes only what that run stored
+- Memory keeps each run's claim on shared bytes apart: a run's delete drops its claim, the bytes go with the last, and expiry goes by the claims' times
+- a File store deletes nothing outside its directory; an S3 store treats only keys of its ref shape under its prefix as artifacts (not a sibling prefix, a stray key or another tenant's), keys an empty prefix without a slash, takes a client or its options, and raises errors other than a missing object; an Active Record store deletes only its own well-formed refs
 
 ### `spec/smith/artifacts/ownership_spec.rb`
 

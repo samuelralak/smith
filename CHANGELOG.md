@@ -8,11 +8,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Upgrade notes
 
-- The artifact store must be configured: outside `test_mode`, `Smith.artifacts`
-  with no `artifact_store` raises `Smith::ArtifactStoreMissing` instead of
-  using a store in process memory. Set `config.artifact_store` to `:s3`,
-  `:active_record`, `:file` or `:memory` (with `config.artifact_options`), or
-  a store; `smith doctor` reports a missing or process-local store.
+- The artifact store must be configured: outside `test_mode`, storing or
+  reading an artifact with no `artifact_store` raises
+  `Smith::ArtifactStoreMissing` instead of using a store in process memory
+  (a run that keeps no artifacts needs none). Set `config.artifact_store` to
+  `:s3`, `:active_record`, `:file` or `:memory` (with
+  `config.artifact_options`), or a store; `smith doctor` reports a missing,
+  unusable or process-local store, and the install templates no longer write
+  `Smith::Artifacts::Memory.new`.
+- Artifact stores take bytes: `store` refuses anything but a String with a
+  `TypeError` (Memory used to keep any object, and File wrote its `inspect`),
+  so serialize first (`JSON.generate`). A store class now gets built with
+  `artifact_options` unless the class itself stores and fetches. A tenant
+  `namespace:` must be letters, digits, `-` and `_`, and
+  `artifact_tenant_isolation` and `artifact_retention` now apply to every
+  built-in store. `Memory#delete` drops one run's claim when given its
+  `execution_namespace:`; the File store's refs are random UUIDs, as before.
 
 - `Smith::EXECUTION_SEMANTICS_VERSION` is now `"7"`: routing, context writes,
   restore admission, nested failure and retry semantics changed, and durable

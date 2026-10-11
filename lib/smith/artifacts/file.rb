@@ -4,35 +4,49 @@ require "fileutils"
 require "json"
 require "securerandom"
 
+require_relative "store_rules"
+
 module Smith
   module Artifacts
+    # An artifact store in a directory (`dir:`), shared only when the
+    # directory is. Each artifact is a file named by a random UUID (after
+    # the store's tenant `namespace:` when one is set) beside a `.meta`
+    # file with its type and the run that stored it; no ref names any other
+    # file.
     class File
-      # A ref names a file in the store's directory and nothing else.
-      REF = /\A(?:[A-Za-z0-9_-]+:)?[A-Za-z0-9-]+\z/
+      include StoreRules
+
+      INNER_REF = StoreRules::UUID
 
       def initialize(dir:, namespace: nil)
         @dir = dir
-        @namespace = namespace
+        @namespace = check_namespace!(namespace)
       end
 
       def store(data, content_type: "application/octet-stream", execution_namespace: nil)
-        ref = generate_ref
+        enforce_tenant_isolation!
+        check_data!(data)
+        ref = generate_ref(SecureRandom.uuid)
         meta = { content_type: content_type }
         meta[:execution_namespace] = execution_namespace if execution_namespace
-        ::File.write(::File.join(@dir, ref), data)
+        ::File.binwrite(::File.join(@dir, ref), data)
         ::File.write(::File.join(@dir, "#{ref}.meta"), JSON.generate(meta))
         ref
       end
 
       def fetch(ref)
-        return nil unless owns_ref?(ref)
+        enforce_tenant_isolation!
+        return unless owns_ref?(ref)
 
         path = ::File.join(@dir, ref)
-        ::File.file?(path) ? ::File.read(path) : nil
+        ::File.binread(path) if ::File.file?(path)
       end
 
-      def delete(ref)
-        return unless owns_ref?(ref)
+      # Removes the artifact (when a run is named, only if that run stored
+      # it).
+      def delete(ref, execution_namespace: nil)
+        enforce_tenant_isolation!
+        return unless owns_ref?(ref) && (execution_namespace.nil? || stored_by?(ref, execution_namespace))
 
         [ref, "#{ref}.meta"].each { |name| ::FileUtils.rm_f(::File.join(@dir, name)) }
         nil
@@ -40,17 +54,18 @@ module Smith
 
       # Whether a run (its execution namespace) stored this ref.
       def stored_by?(ref, execution_namespace)
-        owns_ref?(ref) && matches_execution_namespace?(ref, execution_namespace)
+        !execution_namespace.nil? && owns_ref?(ref) && stored_namespace(ref) == execution_namespace
       end
 
       def expired(retention: nil, execution_namespace: nil)
+        retention = effective_retention(retention)
         return [] unless retention
 
         cutoff = Time.now.utc - retention
-        Dir.glob(::File.join(@dir, "*")).reject { |f| f.end_with?(".meta") }.filter_map do |path|
+        Dir.glob(::File.join(@dir, "*")).filter_map do |path|
           ref = ::File.basename(path)
-          next unless ::File.mtime(path).utc < cutoff
-          next if execution_namespace && !matches_execution_namespace?(ref, execution_namespace)
+          next unless owns_ref?(ref) && ::File.mtime(path).utc < cutoff
+          next if execution_namespace && stored_namespace(ref) != execution_namespace
 
           ref
         end
@@ -58,25 +73,13 @@ module Smith
 
       private
 
-      def generate_ref
-        raw = SecureRandom.uuid
-        @namespace ? "#{@namespace}:#{raw}" : raw
-      end
-
-      def owns_ref?(ref)
-        return false unless ref.is_a?(String) && REF.match?(ref)
-
-        @namespace ? ref.start_with?("#{@namespace}:") : !ref.include?(":")
-      end
-
-      def matches_execution_namespace?(ref, execution_namespace)
+      def stored_namespace(ref)
         meta_path = ::File.join(@dir, "#{ref}.meta")
-        return false unless ::File.exist?(meta_path)
+        return unless ::File.exist?(meta_path)
 
-        meta = JSON.parse(::File.read(meta_path), symbolize_names: true)
-        meta[:execution_namespace] == execution_namespace
+        JSON.parse(::File.read(meta_path))["execution_namespace"]
       rescue JSON::ParserError
-        false
+        nil
       end
     end
   end

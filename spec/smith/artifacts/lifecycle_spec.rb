@@ -3,20 +3,26 @@
 RSpec.describe "Smith::Artifacts::Memory lifecycle contract" do
   let(:memory_store_class) { require_const("Smith::Artifacts::Memory") }
 
-  it "stores content and fetches it by opaque ref" do
+  # Ages every claim on a ref, as if each run stored it `seconds` ago.
+  def age(store, ref, seconds)
+    claims = store.instance_variable_get(:@metadata).fetch(ref).fetch(:claims)
+    claims.each_key { |claim| claims[claim] = Time.now.utc - seconds }
+  end
+
+  it "stores bytes and fetches them by opaque ref, and refuses anything else" do
     store = memory_store_class.new
-    ref = store.store({ report: "full" }, content_type: "application/json")
+    ref = store.store(JSON.generate(report: "full"), content_type: "application/json")
 
     expect(ref).to be_a(String)
-    expect(store.fetch(ref)).to eq(report: "full")
+    expect(JSON.parse(store.fetch(ref))).to eq("report" => "full")
+    expect { store.store({ report: "full" }) }.to raise_error(TypeError, /bytes/)
   end
 
   it "reports expired refs when retention is exceeded" do
     store = memory_store_class.new
 
     ref = store.store("data")
-    metadata = store.instance_variable_get(:@metadata)
-    metadata[ref][:stored_at] = Time.now.utc - 3600
+    age(store, ref, 3600)
 
     expect(store.expired(retention: 60)).to include(ref)
   end
@@ -113,10 +119,8 @@ RSpec.describe "Smith::Artifacts::Memory lifecycle contract" do
     first_ref = first_store.store("first")
     second_ref = second_store.store("second")
 
-    first_metadata = first_store.instance_variable_get(:@metadata)
-    second_metadata = second_store.instance_variable_get(:@metadata)
-    first_metadata[first_ref][:stored_at] = Time.now.utc - 3600
-    second_metadata[second_ref][:stored_at] = Time.now.utc - 3600
+    age(first_store, first_ref, 3600)
+    age(second_store, second_ref, 3600)
 
     expect(first_store.expired(retention: 60)).to eq([first_ref])
     expect(second_store.expired(retention: 60)).to eq([second_ref])
@@ -129,8 +133,7 @@ RSpec.describe "Smith::Artifacts::Memory lifecycle contract" do
     Smith.configure { |config| config.artifact_retention = 60 }
 
     ref = store.store("data")
-    metadata = store.instance_variable_get(:@metadata)
-    metadata[ref][:stored_at] = Time.now.utc - 3600
+    age(store, ref, 3600)
 
     expect(store.expired).to eq([ref])
   ensure

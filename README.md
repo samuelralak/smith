@@ -325,7 +325,8 @@ Smith.configure do |config|
 end
 ```
 
-All settings are optional for a first run. See [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) for the full reference.
+All settings are optional for a first run, except that storing artifacts or
+attaching documents needs `artifact_store` (outside `test_mode`). See [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) for the full reference.
 
 ## Persistence and Resume
 

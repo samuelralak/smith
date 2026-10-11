@@ -6,7 +6,6 @@ module Smith
       module Configuration
         def self.run(report)
           check_logger(report)
-          check_artifact_store(report)
           check_trace_adapter(report)
           check_pricing(report)
         end
@@ -18,16 +17,6 @@ module Smith
             status: configured ? :pass : :warn,
             message: configured ? "Logger configured" : "No logger configured",
             detail: configured ? nil : "Set config.logger for Smith runtime logging"
-          )
-        end
-
-        def self.check_artifact_store(report)
-          configured = !::Smith.config.artifact_store.nil?
-          report.add(
-            name: "config.artifact_store",
-            status: configured ? :pass : :warn,
-            message: configured ? "Artifact store configured" : "No artifact store configured",
-            detail: configured ? nil : "Large outputs will use in-memory default"
           )
         end
 

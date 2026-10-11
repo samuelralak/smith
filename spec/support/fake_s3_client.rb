@@ -2,9 +2,10 @@
 
 require "stringio"
 
-# An in-memory stand-in for Aws::S3::Client, paging two objects at a time,
-# raising Aws::S3::Errors::NoSuchKey or ::NotFound (stub them) for a missing
-# object.
+# An in-memory stand-in for Aws::S3::Client as the SDK behaves: user metadata
+# keys come back lowercased, bodies are binary, listings page two objects at
+# a time with a nil token on the last page, and a missing object raises
+# Aws::S3::Errors::NoSuchKey or ::NotFound (stub them).
 class FakeS3Client
   StoredObject = Struct.new(:body, :content_type, :metadata, :last_modified)
   Listed = Struct.new(:key, :last_modified)
@@ -15,7 +16,8 @@ class FakeS3Client
   def initialize = @objects = {}
 
   def put_object(bucket:, key:, body:, content_type:, metadata:)
-    @objects[[bucket, key]] = StoredObject.new(body.dup, content_type, metadata.transform_keys(&:to_s), Time.now.utc)
+    @objects[[bucket, key]] =
+      StoredObject.new(body.b, content_type, metadata.transform_keys { _1.to_s.downcase }, Time.now.utc)
     nil
   end
 
@@ -25,11 +27,14 @@ class FakeS3Client
 
   def delete_object(bucket:, key:) = @objects.delete([bucket, key]) && nil
 
+  def head_bucket(bucket:) = { bucket: }
+
   def list_objects_v2(bucket:, prefix:, continuation_token: nil)
     keys = listed_keys(bucket, prefix)
     start = continuation_token.to_i
     listed = (keys[start, 2] || []).map { Listed.new(_1, @objects[[bucket, _1]].last_modified) }
-    Page.new(listed, start + 2 < keys.length, (start + 2).to_s)
+    truncated = start + 2 < keys.length
+    Page.new(listed, truncated, truncated ? (start + 2).to_s : nil)
   end
 
   private

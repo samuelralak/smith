@@ -28,8 +28,22 @@ Smith.configure do |config|
   #   fetch(key)
   #   delete(key)
 
-  # Artifact storage for large outputs
-  config.artifact_store = Smith::Artifacts::Memory.new
+  # Artifact storage for large outputs and the documents steps attach. Like
+  # workflow state it must outlive the process for runs that wait, retry or
+  # resume elsewhere; with none set, storing or reading an artifact raises
+  # Smith::ArtifactStoreMissing (smith:doctor warns).
+  #
+  # config.artifact_store = :s3   # AWS S3, or Cloudflare R2 (needs the aws-sdk-s3 gem)
+  # config.artifact_options = {
+  #   bucket: "smith-artifacts",
+  #   endpoint: "https://<account>.r2.cloudflarestorage.com", region: "auto",
+  #   access_key_id: ENV["R2_ACCESS_KEY_ID"], secret_access_key: ENV["R2_SECRET_ACCESS_KEY"]
+  # }
+  #
+  # config.artifact_store = :active_record   # a table: see the PERSISTENCE guide, Artifacts
+  # config.artifact_options = { model: "SmithArtifact" }
+  #
+  # config.artifact_store = :memory   # one process only, e.g. in tests
 
   # Trace adapter (Smith::Trace::Memory, Smith::Trace::Logger, Smith::Trace::OpenTelemetry)
   config.trace_adapter = Smith::Trace::Logger

@@ -722,14 +722,16 @@ Smith::Message.system([Smith::Content.text(house_style, cache: true)])     # in 
   run never reads an unrelated run's artifacts, nor its own children's; a
   child returns content, or the parent stores what it needs. Content parts are
   read only from a store that records which run stored each artifact
-  (`stored_by?`: `Smith::Artifacts::Memory` and `Smith::Artifacts::File` do),
-  so a ref built from untrusted text cannot name another run's artifact or a
-  file outside the store. Memory is process-local; a run that waits, retries
-  durably or resumes in another process needs a shared store (File or the
-  host's) whose retention outlives it.
+  (`stored_by?`, as every built-in store does), so a ref built from untrusted
+  text cannot name another run's artifact or a file outside the store. A run
+  that waits, retries durably or resumes in another process needs a shared
+  store (S3 or R2, Active Record, or File on a shared disk) whose retention
+  outlives it; see Artifacts.
 - **Reading.** Before the first provider attempt Smith reads each document and
   image once and checks it, or fails the step with `Smith::ContentUnavailable`
-  (a `WorkflowError`, never retried as a provider failure): it must be a
+  (a `WorkflowError`, never retried as a provider failure); the store's own
+  errors (a timeout, `Smith::ArtifactStoreMissing`) pass on as they are, so
+  `retry_on` can take a transient one. Each must be a
   non-empty String whose bytes match its media type (a PDF, PNG, JPEG, GIF or
   WebP by its signature; `text/plain` as UTF-8), a document at most 24 MiB and
   an image at most 5 MiB, and the request's text with its documents and images
@@ -1235,8 +1237,10 @@ end
 
 Configure a store. Like workflow state, artifacts must outlive the process
 that stored them whenever a run waits, retries or resumes elsewhere, so Smith
-assumes none: outside `test_mode`, `Smith.artifacts` with nothing configured
-raises `Smith::ArtifactStoreMissing`, and `smith doctor` warns.
+assumes none: outside `test_mode`, storing or reading an artifact with
+nothing configured raises `Smith::ArtifactStoreMissing` (a run that keeps no
+artifacts needs no store), and `smith doctor` warns. In a test environment,
+set `test_mode` (an in-process store) or `artifact_store = :memory`.
 
 ```ruby
 Smith.configure do |config|
@@ -1245,23 +1249,31 @@ Smith.configure do |config|
   config.artifact_options = {
     bucket: "smith-artifacts", prefix: "artifacts",
     endpoint: "https://<account>.r2.cloudflarestorage.com", region: "auto",
-    access_key_id: ENV.fetch("R2_ACCESS_KEY_ID"), secret_access_key: ENV.fetch("R2_SECRET_ACCESS_KEY")
+    access_key_id: ENV.fetch("R2_ACCESS_KEY_ID"), secret_access_key: ENV.fetch("R2_SECRET_ACCESS_KEY"),
+    # Cloudflare's advice for aws-sdk-s3 1.178 and later:
+    request_checksum_calculation: "when_required", response_checksum_validation: "when_required"
   }
   config.artifact_retention = 30 * 86_400
 end
 ```
 
-- `:s3` keeps each artifact as one object under `prefix`, with the run that
-  stored it in the object's metadata. It builds an `Aws::S3::Client` from the
-  remaining options, or takes the host's as `client:`; Smith does not depend
-  on the SDK.
+- An artifact is bytes: `store` takes a String (serialize anything else,
+  for example with `JSON.generate`) and refuses other values with a
+  `TypeError`.
+- `:s3` keeps each artifact as one object under `prefix`, its key the ref (a
+  random UUID after the store's tenant), with the run that stored it in the
+  object's metadata; only keys of that shape are artifacts, so other objects
+  in the bucket are never read, listed or deleted. It builds an
+  `Aws::S3::Client` from the remaining options, or takes the host's as
+  `client:` (not both); a Rails app already using R2 through Active Storage
+  can pass that service's client. Smith does not depend on the SDK.
 - `:active_record` keeps each artifact as a row through the host's model
   (`model:`, a class or its name):
 
   ```ruby
   create_table :smith_artifacts do |t|
     t.string :ref, null: false, index: { unique: true }
-    t.binary :data, null: false
+    t.binary :data, null: false, limit: 64.megabytes   # MySQL's default blob holds 64 KiB
     t.string :content_type, null: false
     t.string :execution_namespace, index: true
     t.timestamps
@@ -1269,19 +1281,30 @@ end
   ```
 
 - `:file` keeps files in a directory (`dir:`), shared only when the directory
-  is; `:memory` keeps them in the process, for one process or tests. A store
-  object, or a store class built with the options, works too: it implements
-  `store`, `fetch` and `expired`, and `stored_by?(ref, execution_namespace)`
-  so runs read only their own refs (content parts require it) and `delete`
-  for cleanup.
-- Any store takes `namespace:`, a tenant prefix its refs carry; a store reads
-  no other tenant's refs.
-- Cleanup is the host's: `store.expired(retention:)` lists refs older than
-  the retention, which `store.delete(ref)` removes. A run that waits keeps its
+  is; `:memory` keeps them in the process, for one process or tests (its refs
+  are content hashes, so runs that store the same bytes share one, each with
+  its own claim). A store object (or a class or module whose own methods
+  store), or a store class built with the options, works too: it implements
+  `store` and `fetch`; `stored_by?(ref, execution_namespace)` lets runs read
+  only their own refs (content parts and a run's deletes require it), and
+  `expired` and `delete(ref, execution_namespace: nil)` serve cleanup. Every
+  built-in store implements them all.
+- Any built-in store takes `namespace:`, a tenant prefix of letters, digits,
+  `-` and `_` that its refs carry; a store reads no other tenant's refs, and
+  with `artifact_tenant_isolation` it refuses to work without one.
+  `artifact_retention` is the retention every built-in store's `expired`
+  uses when none is given.
+- Cleanup is the host's. `workflow.artifacts` is a run's view of the store
+  (what its steps see as `Smith.artifacts`): it reads the run's refs, lists
+  its expired ones (`expired(retention:)`) and deletes them (`delete(ref)`,
+  only the run's own, and in Memory only the run's claim). Across runs,
+  `Smith.artifact_backend.expired(retention:)` lists refs older than the
+  retention and `delete(ref)` removes them. A run that waits keeps its
   artifacts for as long as it waits, so keep the retention longer than the
-  longest wait, or clean up per run once it is cleared
-  (`expired(retention:, execution_namespace:)`). A child run reads its
-  ancestors' artifacts, so a parent's must outlive its spawned children.
+  longest wait, or clean up per run once it is cleared. A child run reads its
+  ancestors' artifacts, so a parent's must outlive its spawned children. On
+  S3, listing one run's expired refs costs a HEAD request per expired object
+  under the prefix.
 
 Why this matters:
 

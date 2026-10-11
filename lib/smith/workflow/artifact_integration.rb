@@ -5,6 +5,14 @@ require "securerandom"
 module Smith
   class Workflow
     module ArtifactIntegration
+      # This run's view of the artifact store, for the host after or between
+      # its steps: read the refs the run stored (or its ancestors'), list
+      # its expired refs and delete them. Inside a step, Smith.artifacts is
+      # the same view.
+      def artifacts
+        Artifacts::ScopedStore.new(namespace: execution_namespace, readable: @inherited_artifact_namespaces || [])
+      end
+
       # How many ancestors' artifacts a child run may read: the nearest
       # ones, so a deep recursion reads its near ancestors and no others.
       MAX_INHERITED_NAMESPACES = 16
