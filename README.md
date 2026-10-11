@@ -312,13 +312,13 @@ API (half price, answered within 24 hours) instead of over the wire:
 # The host keeps each request until a scheduled job submits it (a table, in
 # production); enqueue is idempotent on custom_id.
 class HostBatchQueue
-  Entry = Struct.new(:custom_id, :await_token, :request, :run_key)
+  Entry = Struct.new(:custom_id, :await_token, :request, :run_key, :batch_id)
 
   def initialize = @entries = {}
   def enqueue(custom_id:, await_token:, request:, execution_key:)
     @entries[custom_id] ||= Entry.new(custom_id, await_token, request, execution_key)
   end
-  def queued = @entries.values
+  def unsubmitted = @entries.values.reject(&:batch_id)
   def entry(custom_id) = @entries.fetch(custom_id)
 end
 Smith.config.batch_queue = HostBatchQueue.new
@@ -337,7 +337,9 @@ end
 # and resumes each run once with every result of its wait.
 queue = Smith.config.batch_queue
 batches = Smith::Providers::Anthropic::Batches.new
-batch_id = batches.submit(queue.queued.map { { custom_id: _1.custom_id, request: _1.request } })
+entries = queue.unsubmitted
+batch_id = batches.submit(entries.map { { custom_id: _1.custom_id, request: _1.request } })
+entries.each { _1.batch_id = batch_id }
 if batches.status(batch_id)[:status] == "ended"
   payloads = Hash.new { |hash, wait| hash[wait] = {} }
   batches.results(batch_id) do |custom_id, result|
@@ -354,18 +356,23 @@ declares `on_failure`, and cannot stream or be `parallel:`. Smith prepares
 the call as a synchronous one, admits it against the budget, and hands the
 exact request (the provider payload and the call's own headers, never the
 connection's credentials) to the queue under a `custom_id` (the wait's token;
-each fan-out branch its own), then the run waits on `:batch_result`. Smith
-never submits, polls or sleeps: `Smith::Providers::Anthropic::Batches` gives
-the host `submit`, `status`, `results` and `cancel`. `resume!` with
+each fan-out branch its own) once the step's attempt has ended without error,
+then the run waits on `:batch_result`. Smith never submits or polls, and waits
+without sleeping: `Smith::Providers::Anthropic::Batches` gives the host
+`submit`, `status`, `results` and `cancel`. `resume!` with
 `{custom_id => result}` runs the step again, each call taking its result as
-the reply it would have got: the output checks, a follow-up call (over the
+the reply it would have got. The request sent is the call's: a step that
+renders another one now (a date in its prompt, data read afresh) takes its
+result all the same, and its `:provider_call` trace says
+`request_changed: true`. Then the output checks, a follow-up call (over the
 wire), guardrails and `output_to:` as ever, usage recorded with `mode: :batch`
 and priced with the catalog's `batch_discount`, and charged even past a
 budget, as the money is spent. A request the provider refused fails the step
 (`Smith::BatchRequestInvalid`); a failed, canceled or expired result, or none
 by the wait's deadline (`expire_wait!`, 25 hours), raises
 `Smith::BatchResultFailed`, which `retry_on` sends again (synchronously, if the
-mode callable says so at the next attempt). Only Anthropic's batch interface is
+mode callable says so at the next attempt; an in-process `retry_on` backoff
+sleeps as on any step, while `durable: true` waits). Only Anthropic's batch interface is
 built in, and a batch request is one turn, so a batching agent has no tools;
 runtime readiness reports a missing queue (`:batch_queue_missing`) and an
 agent that cannot batch (`:batch_unavailable`), and graph inspection shows the

@@ -18,7 +18,8 @@ module Smith
       #   batches.results(batch_id) { |custom_id, result| ... }
       #
       # A batch takes at most 100,000 requests and 256 MB, and every request
-      # in it the same per-call headers (a beta feature's, say). The
+      # in it the same per-call headers (a beta feature's, say), which never
+      # override the connection's own (its key and API version). The
       # connection makes no retries of its own, so a submit is never sent
       # twice; the host's schedule tries again.
       class Batches
@@ -39,7 +40,7 @@ module Smith
           body = { requests: entries.map { |entry| { custom_id: entry.fetch(:custom_id), params: params(entry) } } }
           check_batch!(entries, body)
           headers = shared_headers(entries)
-          @connection.post(PATH, body) { |request| request.headers.merge!(headers) }.body.fetch("id")
+          @connection.post(PATH, body) { |request| add_headers(request.headers, headers) }.body.fetch("id")
         end
 
         # The batch's processing status ("in_progress", "canceling" or
@@ -88,6 +89,12 @@ module Smith
           raise ArgumentError, "the requests of one batch must share their headers" if headers.length > 1
 
           headers.first
+        end
+
+        # The requests' own headers, under the connection's (its key and API
+        # version win).
+        def add_headers(request_headers, headers)
+          headers.each { |name, value| request_headers[name] = value unless request_headers.key?(name) }
         end
 
         def id!(batch_id)

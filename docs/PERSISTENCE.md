@@ -944,15 +944,23 @@ A step whose mode is `:batch` (`execute` or `fan_out`, README "Batch mode")
 sends no request: it captures each call's request as a synchronous call would
 post it, hands it to `Smith.config.batch_queue` and waits.
 
-- The wait is of kind `:batch` (event `:batch_result`, `children` the number
-  of requests, `attempt` the step attempt), due 25 hours after entry (batches
-  end within 24). Its token is a key of the step's position and attempt, and
-  is the `custom_id` of an agent step's request; a fan-out branch's is
+- The requests are queued once the step's attempt has ended without error
+  (its context checks included), so a step that fails queues nothing. The
+  wait is of kind `:batch` (event `:batch_result`, `children` the number of
+  requests, `attempt` the step attempt), due 25 hours after entry (batches end
+  within 24). Its token is a key of the step's position and attempt, and is
+  the `custom_id` of an agent step's request; a fan-out branch's is
   `Smith::Batch.custom_id(token, branch_key)`. The run records its pending
-  batch (`pending_batch`: transition, attempt, key generation), checked on
-  restore like a pending retry: a malformed one raises `SerializationError`,
-  and one the class no longer batches (or a wait whose request count no longer
-  matches the step's branches) is refused like an unknown position.
+  batch (`pending_batch`: transition, attempt, key generation, and the digest
+  of each request by its id). On restore a malformed one, an attempt past the
+  step's `retry_on attempts:`, a key generation without
+  `new_idempotency_key_on`, or ids the step's branches no longer give raise
+  `SerializationError`, and a wait the class no longer batches is refused
+  like an unknown position.
+- Enqueues are one call per request. If the queue raises after taking some
+  of a wait's requests, the step fails and those entries answer no wait: a
+  host submits only entries whose run waits under their `await_token`
+  (`awaiting.token`), and drops the rest.
 - The host resumes the run once, with every result of the wait:
   `resume!(key, event: :batch_result, token:, payload: {custom_id => result})`,
   each result as the provider's results file gives it (`succeeded` with its
@@ -962,7 +970,16 @@ post it, hands it to `Smith.config.batch_queue` and waits.
   if every result were missing.
 - The step runs again at its attempt and key generation, each call taking its
   result instead of going over the wire, then goes on as after a synchronous
-  call; the completion is the step. A failed result raises
+  call; the completion is the step. The request sent is the call's: a step
+  that renders another one now (a model block, instructions or input that
+  changed while the run waited: a date, data read afresh) takes the result all
+  the same, and the call's `:provider_call` trace says `request_changed: true`
+  (`pending_batch` keeps each request's digest to tell).
+  Only the batch's own attempt takes results; a succeeded result no call took
+  (a fan-out branch cancelled by a sibling's failure) is recorded and charged
+  as a `:failed_attempt` all the same. In strict mode a completion is stored as
+  a step under way before it runs, and a run caught in one is refused as
+  unfinished (`StepInProgressOnRestore`). A failed result raises
   `Smith::BatchResultFailed`, which `retry_on` retries: in process, the next
   attempt sends a new batch under a new token (or goes over the wire, if the
   mode callable says :sync); a durable retry waits its backoff first, and the
@@ -971,9 +988,9 @@ post it, hands it to `Smith.config.batch_queue` and waits.
 - Admission against the budget happens when the request is queued; nothing is
   held while the run waits. The result's usage is charged when it comes, past
   the limits if need be (`Budget::Ledger#reserve_spent!`).
-- A batch step cannot wait inside split-step execution, and an in-process
-  child (a nested workflow, or a child run run inline) with a batch step fails
-  its parent's step, as any wait does (readiness: `:nested_workflow_waits`).
+- A batch step cannot wait inside split-step execution, and a batch step in
+  an in-process child (a nested workflow, or a child run run inline) fails
+  before anything is captured or queued (readiness: `:nested_workflow_waits`).
 
 ## Child Runs
 

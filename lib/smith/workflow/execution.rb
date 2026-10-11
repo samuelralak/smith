@@ -42,13 +42,17 @@ module Smith
         writable_output_key!(transition) if transition.output_to
         with_step_stream(transition) do
           output = with_scoped_artifacts { run_with_retry_policy(transition) }
+          output = queue_batch(transition, output) if output.is_a?(BatchExecution::Captured)
           next output if wait_pending?(output)
 
           StepCompletion.instance_method(:complete_step).bind_call(self, transition, output)
         end
       end
 
+      # Restored with the step's thread context (ThreadContextSnapshot): a
+      # step's depth counts the runs whose steps it runs inside.
       def setup_step_context
+        Thread.current[:smith_step_depth] = (Thread.current[:smith_step_depth] || 0) + 1
         Tool.current_deadline = wall_clock_deadline
         Tool.current_ledger = @ledger
         Tool.current_tool_result_collector = tool_result_collector

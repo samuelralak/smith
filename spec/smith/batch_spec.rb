@@ -152,8 +152,8 @@ RSpec.describe "Smith batch mode: a step's requests sent as a batch, and its res
       expect(Smith::Batch.custom_id(token)).to eq(token)
       expect(Smith::Batch.custom_id(token, :detect)).to eq(Digest::SHA256.hexdigest("#{token}/detect"))
       expect(Smith::Batch.custom_id(token, :detect)).not_to eq(Smith::Batch.custom_id(token, :extract))
-      results = Smith::Batch.results!({ token => { type: "succeeded", message: { id: "m" } } }, [token])
-      expect(results).to eq(token => { "type" => "succeeded", "message" => { "id" => "m" } })
+      results = Smith::Batch.results!({ token => succeeded("ok") }, [token])
+      expect(results).to eq(token => succeeded("ok"))
       expect(results[token]["message"]).to be_frozen
       stub_const("Smith::Batch::MAX_RESULTS_BYTES", 10)
       expect { Smith::Batch.results!({ token => { type: "canceled" } }, [token]) }
@@ -346,7 +346,7 @@ RSpec.describe "Smith batch mode: a step's requests sent as a batch, and its res
       klass.new(context: {}).run_persisted!("run-gen", adapter:)
       expect(resume(klass, "run-gen", only_request[:custom_id] => errored("api_error"))).to eq(:resumed)
       expect(klass.restore("run-gen", adapter:).to_state[:pending_batch])
-        .to eq("transition" => "ask", "attempt" => 2, "key_generation" => 1)
+        .to include("transition" => "ask", "attempt" => 2, "key_generation" => 1)
     end
 
     it "keeps the wait when a delivery crashes, and finishes a durable retry's batch cleanly" do

@@ -44,7 +44,9 @@ module Smith
       # provider call actually started: a failure before dispatch (model
       # resolution, chat construction) emits its attempt without a duration.
       # input_tokens and output_tokens total the attempt's usage entries, so
-      # a host can record the whole attempt when it ends.
+      # a host can record the whole attempt when it ends. request_changed
+      # marks a batch result that answered the request sent, not the one the
+      # call renders now.
       def record_provider_call_trace(attempt, aborted: false)
         Smith::Trace.record(
           type: :provider_call,
@@ -57,6 +59,7 @@ module Smith
             outcome: provider_call_outcome(attempt, aborted),
             **provider_call_error_classes(attempt.error),
             agent_name: attempt.agent_name,
+            request_changed: attempt.request_changed,
             **provider_call_usage(attempt.usage)
           }.compact
         )

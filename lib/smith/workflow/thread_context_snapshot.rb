@@ -29,6 +29,7 @@ module Smith
         smith_failed_agent_results
         smith_last_agent_result
         smith_parallel_agent_binding
+        smith_step_depth
       ].freeze
 
       option :tool_attributes, default: proc { TOOL_ATTRIBUTES }

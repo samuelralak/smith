@@ -1,0 +1,57 @@
+# frozen_string_literal: true
+
+module Smith
+  class Workflow
+    # What batch results cost (BatchWait). A call whose result has come is
+    # reserved for whatever the budget has left, never refused, as the money
+    # is spent; a succeeded result no call took is recorded as a billed
+    # response of its branch's agent (`:failed_attempt`, `mode: :batch`) and
+    # charged to the run's budget.
+    module BatchCharges
+      private
+
+      def reserve_estimates!(ledger, estimates)
+        return super unless batch_result_due?
+
+        Thread.current[:smith_call_reservation] = ledger.reserve_spent!(estimates)
+      end
+
+      def charge_untaken_batch_results(transition)
+        @batch_delivery.untaken.each do |branch_key, entry|
+          next unless entry.result["type"] == "succeeded"
+
+          Attribution.with(branch_key:) do
+            charge_batch_result(batch_agent_class(transition, branch_key), entry.result.fetch("message"))
+          end
+        end
+      end
+
+      def batch_agent_class(transition, branch_key)
+        return resolve_agent_class(transition) unless branch_key
+
+        resolve_fanout_agent_class(transition, transition.fanout_config.fetch(:branches).fetch(branch_key))
+      end
+
+      def charge_batch_result(agent_class, message)
+        reply = RubyLLM::Providers::Anthropic.new(RubyLLM.config)
+                                             .send(:parse_completion_response,
+                                                   Providers::BatchExchange::Response.new(message.to_h))
+        usage = Agent::ProviderUsage.from_message(reply)&.new(mode: :batch)
+        return unless usage
+
+        model = Agent::ModelReference.new(model_id: agent_class.chat_kwargs[:model] || message["model"],
+                                          provider: "anthropic")
+        record_billed_usages(agent_class, [usage], :failed_attempt, model, attempt_id: nil)
+        settle_spent_batch_charges
+      end
+
+      def settle_spent_batch_charges
+        ledger = effective_call_ledger
+        return clear_failed_billable_attempts unless ledger
+
+        reconcile_branch_budget(ledger, ledger.reserve_spent!(ledger.limits.keys.to_h { [_1, 0] }))
+        clear_failed_billable_attempts
+      end
+    end
+  end
+end

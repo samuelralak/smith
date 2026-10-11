@@ -9,7 +9,8 @@ module Smith
       # Smith.config.batch_queue, and agents whose calls can go as one: a
       # model whose provider has a batch interface in Smith (Anthropic's) and
       # no tools (a batch request is one turn). Errors for `mode: :batch`;
-      # warnings for a mode callable, which may choose :sync.
+      # warnings for a mode callable, which may choose :sync, and for a
+      # model or tools given by a block, known only per run.
       class BatchDiagnostic
         extend Dry::Initializer
 
@@ -49,6 +50,7 @@ module Smith
           reason = unavailable_reason(agent_class)
           return unless reason
 
+          severity = :warning if agent_class.model_block || agent_class.tools.is_a?(Proc)
           Diagnostic.new(
             severity:, code: :batch_unavailable, transition: transition.name, target: agent,
             message: "Transition #{Reference.format(transition.name)} may batch agent #{Reference.format(agent)}, " \

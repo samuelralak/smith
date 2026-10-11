@@ -35,6 +35,7 @@ module Smith
     include RetryWait
     include BatchExecution
     include BatchWait
+    include BatchCharges
     include ChildRunResults
     include ChildRunExecution
     include Execution

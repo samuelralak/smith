@@ -82,7 +82,12 @@ module Smith
   # `enqueue(custom_id:, await_token:, request:, execution_key:)`, idempotent
   # on `custom_id`. The host submits them and resumes each run with its
   # results.
-  setting :batch_queue, default: nil
+  setting :batch_queue, default: nil, constructor: lambda { |queue|
+    next queue if queue.nil? || queue.respond_to?(:enqueue)
+
+    raise ArgumentError, "Smith.config.batch_queue must respond to enqueue(custom_id:, await_token:, request:, " \
+                         "execution_key:)"
+  }
 
   # Retry policy for transient persistence I/O failures.
   #   attempts:    total attempts (including the first)
@@ -338,6 +343,7 @@ require_relative "smith/workflow/wait_completion"
 require_relative "smith/workflow/retry_wait"
 require_relative "smith/workflow/batch_execution"
 require_relative "smith/workflow/batch_wait"
+require_relative "smith/workflow/batch_charges"
 require_relative "smith/workflow/child_run_results"
 require_relative "smith/workflow/child_run_execution"
 require_relative "smith/workflow/wait_execution"

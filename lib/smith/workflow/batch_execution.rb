@@ -7,13 +7,18 @@ module Smith
     # Batch mode (Smith::Batch). An attempt whose mode is :batch prepares its
     # agent call as a synchronous one would, admits it against the budget,
     # and captures the request instead of sending it (a fan-out captures each
-    # branch's, in turn); the requests go to Smith.config.batch_queue under
-    # ids of the wait's token, and the run waits on `:batch_result`, recording
-    # its pending batch (the transition, the attempt and its key generation).
-    # Like any wait it is not a step; BatchWait completes it.
+    # branch's, in turn). Once the step's attempt has ended without error
+    # (its context checks included), the requests go to
+    # Smith.config.batch_queue under ids of the wait's token and the run waits
+    # on `:batch_result`, recording its pending batch (the transition, the
+    # attempt, its key generation, and each request's digest). Like any wait
+    # it is not a step; BatchWait completes it. A step inside another run's
+    # step (an in-process child) cannot wait, so it never sends a batch.
     module BatchExecution
       # Batches end within 24 hours; the wait allows one more.
       WAIT_SECONDS = 25 * 3600
+      # The requests an attempt captured, for the step to queue.
+      Captured = Data.define(:token, :requests, :attempt, :key_generation)
 
       private
 
@@ -31,7 +36,8 @@ module Smith
         return mode unless mode.respond_to?(:call)
 
         context = snapshot_value(@context)
-        value = mode.arity == 1 ? mode.call(context) : mode.call(context, @step_attempt || 1)
+        arity = mode.is_a?(Proc) ? mode.arity : mode.method(:call).arity
+        value = arity == 1 ? mode.call(context) : mode.call(context, @step_attempt || 1)
         return value if %i[sync batch].include?(value)
 
         raise WorkflowError, "a mode: callable must return :sync or :batch, got #{value.inspect}"
@@ -88,28 +94,48 @@ module Smith
       end
 
       def send_batch(transition, captures)
-        queue = Smith.config.batch_queue || raise(BatchQueueMissing)
-        raise WorkflowError, "a batch step cannot wait inside split-step execution" if @split_step_phase == :executing
-
-        check_wait_ttl!(WAIT_SECONDS)
-        token = wait_token_for(transition, ["batch", @step_attempt || 1])
-        requests = captures.transform_values(&:call)
-        requests.each do |branch_key, request|
-          queue.enqueue(custom_id: Batch.custom_id(token, branch_key), await_token: token, request:,
-                        execution_key: @persistence_key)
-        end
-        enter_batch_wait(transition, token, requests.length)
+        refuse_batch_wait!
+        Captured.new(token: wait_token_for(transition, ["batch", @step_attempt || 1]),
+                     requests: captures.transform_values(&:call), attempt: @step_attempt || 1,
+                     key_generation: @step_key_generation || 0)
       end
 
-      # The batch is the attempt a pending retry waited to make, so the
-      # pending batch takes its place.
-      def enter_batch_wait(transition, token, count)
+      # The run can wait for a batch: a queue takes its requests, it is not
+      # inside split-step execution or another run's step (an in-process
+      # child), and the wait ends within the store's TTL.
+      def refuse_batch_wait!
+        Smith.config.batch_queue || raise(BatchQueueMissing)
+        raise WorkflowError, "a batch step cannot wait inside split-step execution" if @split_step_phase == :executing
+        raise WorkflowError, "an in-process child cannot wait for a batch" if Thread.current[:smith_step_depth].to_i > 1
+
+        check_wait_ttl!(WAIT_SECONDS)
+      end
+
+      # Hands the captured requests to the queue and waits. The batch is the
+      # attempt a pending retry waited to make, so the pending batch takes
+      # its place.
+      def queue_batch(transition, captured)
+        ids = enqueue_requests(captured)
         @pending_retry = nil
-        @pending_batch = { "transition" => transition.name.to_s, "attempt" => @step_attempt || 1,
-                           "key_generation" => @step_key_generation || 0 }.freeze
-        @awaiting = WaitRecord.build_batch(transition, token, WAIT_SECONDS, Time.now.utc, count)
+        @pending_batch = pending_batch_record(transition, captured, ids)
+        @awaiting = WaitRecord.build_batch(transition, captured.token, WAIT_SECONDS, Time.now.utc, ids.length)
         record_wait_trace(transition, :waiting)
         WAIT_PENDING
+      end
+
+      # Enqueues each captured request under its custom id; returns them by id.
+      def enqueue_requests(captured)
+        ids = captured.requests.to_h { |branch_key, request| [Batch.custom_id(captured.token, branch_key), request] }
+        ids.each do |custom_id, request|
+          Smith.config.batch_queue.enqueue(custom_id:, await_token: captured.token, request:,
+                                           execution_key: @persistence_key)
+        end
+        ids
+      end
+
+      def pending_batch_record(transition, captured, ids)
+        { "transition" => transition.name.to_s, "attempt" => captured.attempt,
+          "key_generation" => captured.key_generation, "requests" => ids.transform_values { Batch.digest(_1) } }.freeze
       end
     end
   end

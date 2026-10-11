@@ -3,6 +3,9 @@
 require "digest"
 require "json"
 
+require_relative "diagnostic_text"
+require_relative "batch/message_shape"
+
 module Smith
   # Batch mode (`execute Agent, mode: :batch`, and the same on `fan_out`): a
   # step's provider request is sent through the host's batch queue instead of
@@ -11,8 +14,9 @@ module Smith
   # `Smith.config.batch_queue.enqueue(custom_id:, await_token:, request:,
   # execution_key:)` and waits on `:batch_result`; the host submits batches
   # (Smith::Providers::Anthropic::Batches), collects their results, and
-  # resumes the run with every result of its wait. Smith never submits,
-  # polls or sleeps.
+  # resumes the run with every result of its wait. Smith never submits or
+  # polls, and waits for the results without sleeping (an in-process
+  # `retry_on` backoff sleeps as on any step; `durable: true` waits instead).
   module Batch
     EVENT = "batch_result"
     RESULT_TYPES = %w[succeeded errored canceled expired].freeze
@@ -20,13 +24,19 @@ module Smith
     MAX_REQUEST_BYTES = 32 * 1024 * 1024
     MAX_RESULTS_BYTES = 64 * 1024 * 1024
     INVALID_REQUEST = "invalid_request_error"
+    CREDENTIAL_HEADERS = %w[authorization x-api-key x-goog-api-key].freeze
 
     module_function
 
     # The request a batch carries for one call: the provider, the payload it
-    # would post, and the call's own headers (never the connection's
-    # credentials), JSON-shaped, bounded and frozen.
+    # would post, and the call's own headers (never credentials: the
+    # connection's stay in it, and a call's own are refused), JSON-shaped,
+    # bounded and frozen.
     def request(provider:, params:, headers:)
+      if headers.to_h.keys.any? { CREDENTIAL_HEADERS.include?(_1.to_s.downcase) }
+        raise WorkflowError, "a batch request cannot carry credentials in its headers"
+      end
+
       encoded = JSON.generate("provider" => provider.to_s, "params" => params, "headers" => headers.to_h)
       if encoded.bytesize > MAX_REQUEST_BYTES
         raise WorkflowError, "a batch request is #{encoded.bytesize} bytes, past the #{MAX_REQUEST_BYTES} Smith sends"
@@ -34,6 +44,22 @@ module Smith
 
       deep_freeze(JSON.parse(encoded))
     end
+
+    # What identifies a request's content: a SHA-256 of its payload and
+    # headers as JSON gives them, so the request a delivery answers can be
+    # told from one the step would render now.
+    def digest(request) = digest_of(request.fetch("params"), request.fetch("headers"))
+
+    # Whether a call renders a request other than the one sent (`digest`).
+    # Nothing is sent, so nothing in it is refused; one JSON cannot give
+    # counts as changed.
+    def changed?(digest, params, headers)
+      digest_of(params, headers.to_h) != digest
+    rescue JSON::GeneratorError, JSON::NestingError, Encoding::UndefinedConversionError
+      true
+    end
+
+    def digest_of(params, headers) = Digest::SHA256.hexdigest(JSON.generate([params, headers]))
 
     # A step's request id: its wait token, and for a fan-out branch a key of
     # the token and the branch (64 hex characters, a valid custom_id).
@@ -69,7 +95,7 @@ module Smith
       type = error.dig("error", "type") || error["type"] if error.is_a?(Hash)
       raise BatchRequestInvalid if type == INVALID_REQUEST
 
-      raise BatchResultFailed.new(kind: "errored", error_type: type)
+      raise BatchResultFailed.new(kind: "errored", error_type: type.is_a?(String) ? type : nil)
     end
 
     def check_result!(result)
@@ -78,9 +104,9 @@ module Smith
       type = result["type"]
       raise ArgumentError, "a batch result's type must be one of #{RESULT_TYPES.join(", ")}" unless
         RESULT_TYPES.include?(type) || type == MISSING
-      return unless type == "succeeded" && !result["message"].is_a?(Hash)
+      return unless type == "succeeded" && !MessageShape.valid?(result["message"])
 
-      raise ArgumentError, "a succeeded batch result must carry its message"
+      raise ArgumentError, "a succeeded batch result must carry a message of the provider's reply shape"
     end
 
     def stringified(payload)
@@ -90,7 +116,7 @@ module Smith
       raise ArgumentError, "a batch delivery is past #{MAX_RESULTS_BYTES} bytes" if encoded.bytesize > MAX_RESULTS_BYTES
 
       JSON.parse(encoded)
-    rescue JSON::GeneratorError, Encoding::UndefinedConversionError
+    rescue JSON::GeneratorError, JSON::NestingError, Encoding::UndefinedConversionError
       raise ArgumentError, "a batch delivery must be JSON-shaped"
     end
 
@@ -103,17 +129,23 @@ module Smith
     end
 
     # The results a resumed step takes, one per branch (nil for a step
-    # without branches). Each is taken once: a follow-up call the step makes
-    # after it (a repair) goes over the wire.
+    # without branches), each with the digest of the request it answers.
+    # Each is taken once: a follow-up call the step makes after it (a repair)
+    # goes over the wire. `untaken` is what no call took (a branch cancelled
+    # by a sibling's failure), paid for all the same.
     class Delivery
-      def initialize(results_by_branch)
-        @results = results_by_branch.dup
+      Entry = Struct.new(:result, :digest)
+
+      def initialize(entries_by_branch)
+        @entries = entries_by_branch.dup
         @lock = Mutex.new
       end
 
-      def take(branch_key) = @lock.synchronize { @results.delete(branch_key) }
+      def take(branch_key) = @lock.synchronize { @entries.delete(branch_key) }
 
-      def for?(branch_key) = @lock.synchronize { @results.key?(branch_key) }
+      def for?(branch_key) = @lock.synchronize { @entries.key?(branch_key) }
+
+      def untaken = @lock.synchronize { @entries.dup.tap { @entries.clear } }
     end
   end
 end

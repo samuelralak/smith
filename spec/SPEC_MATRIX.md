@@ -1904,6 +1904,29 @@ Documented contracts covered:
 - the Anthropic client submits one batch with the shared headers and the provider's key, refuses mixed headers, other providers, empty or oversized batches before sending, reads status and the JSONL results file, cancels, refuses a malformed batch id, and makes no connection retries
 - these contracts are mutation-verified against the full suite
 
+### `spec/smith/batch_review_spec.rb`
+
+Purpose:
+
+- pins what two reviews of batch mode found: paid results never dropped, queued only once an attempt ends cleanly, deliveries checked and bounded
+
+Architecture basis:
+
+- Section 5, Persistence and Resume; Section 6, Budgets; Section 7, Observability
+
+Documented contracts covered:
+
+- a succeeded result no call took (a fan-out branch cancelled by a sibling's failure, or a step that failed before its call) is recorded as a `:failed_attempt` with `mode: :batch` and charged to the budget, and an errored one is not; a later attempt never takes an earlier attempt's result, and its calls are held to the budget
+- a step that fails after capturing (its context checks) queues nothing and keeps no wait or pending batch
+- in strict mode a completion is stored as a step under way before it runs, and a run caught in one is refused as unfinished
+- a batch step in an in-process child fails before anything is captured or queued
+- a call that renders another request than the one sent (its payload or its headers) takes the result all the same, its `:provider_call` trace saying `request_changed: true` (and only then)
+- a succeeded message not of the provider's reply shape (content blocks, text, non-negative usage counts), or a payload nested too deep, raises ArgumentError and keeps the wait; an error type is bounded
+- restore refuses a pending batch whose attempt or key generation its step's retry policy does not allow, whose ids are not its branches', or whose digests are malformed, and a fan-out whose branches were renamed
+- a mode callable object (not a Proc) is asked with its own arity; a model or tools given by a block is a readiness warning; a batch queue without `enqueue` is refused when set
+- a request's own credential headers are refused, and on submit the connection's headers win over a request's
+- these contracts are mutation-verified against the full suite
+
 ### `spec/smith/workflow/durable_retry_spec.rb`
 
 Purpose:

@@ -9,22 +9,30 @@ module Smith
     # per-call headers it would post. While a batch step captures, the
     # payload is thrown out as the batch request before anything is sent;
     # while it delivers, the batch result is parsed by the provider's own
-    # parser instead of a response from the wire. Only the call's own
-    # provider object is affected, so any other RubyLLM call (a tool's) goes
-    # over the wire as ever.
+    # parser instead of a response from the wire. The request sent is the
+    # call's: one the step renders differently now (a date in its prompt,
+    # data read afresh) takes the result all the same, and the delivery says
+    # so (its digest differs). Only the call's own provider object is
+    # affected, so any other RubyLLM call (a tool's) goes over the wire as
+    # ever.
     module BatchExchange
       HELD = :smith_batch_exchange
       CAPTURED = :smith_batch_request
       private_constant :HELD
 
-      Exchange = Struct.new(:provider, :result)
+      Exchange = Struct.new(:provider, :result, :digest, :changed)
       # What a provider's response parser reads.
       Response = Struct.new(:body)
 
       module_function
 
-      # Runs the block with `result` (a batch result) answering its call.
-      def deliver(provider, result, &) = within(Exchange.new(provider, result), &)
+      # Runs the block with `result` (a batch result) answering its call,
+      # whose request was the one with `digest`; returns the block's value
+      # and whether the call rendered another request.
+      def deliver(provider, result, digest, &)
+        exchange = Exchange.new(provider, result, digest, false)
+        [within(exchange, &), exchange.changed]
+      end
 
       def within(exchange)
         outer = Fiber[HELD]
@@ -51,6 +59,7 @@ module Smith
             throw(CAPTURED, Smith::Batch.request(provider: slug, params: payload, headers: additional_headers))
           end
 
+          exchange.changed = Smith::Batch.changed?(exchange.digest, payload, additional_headers)
           parse_completion_response(Response.new(Smith::Batch.message!(exchange.result).to_h))
         end
       end

@@ -155,9 +155,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   (kind `:batch`, 25 hours) with its `pending_batch` recorded. The host
   submits, polls and collects with `Smith::Providers::Anthropic::Batches`
   (`submit`, `status`, `results`, `cancel`; no connection retries, so a batch
-  is never submitted twice) and resumes the run once with
-  `{custom_id => result}`. The step runs again at its attempt, each call taking
-  its result through RubyLLM's own parser: usage with `mode: :batch` priced
+  is never submitted twice; the connection's own headers win over a request's)
+  and resumes the run once with `{custom_id => result}`, each result's message
+  checked against the provider's reply shape. The requests are queued only once
+  the step's attempt has ended without error; `pending_batch` keeps each
+  request's digest, and a call that renders another request now (a date in
+  its prompt) takes the result sent for it all the same, its `:provider_call`
+  trace saying `request_changed: true`. The step runs again at its attempt, each call
+  of that attempt (only) taking its result through RubyLLM's own parser, and a
+  succeeded result no call took (a cancelled fan-out branch) is charged as a
+  `:failed_attempt`; in strict mode the completion runs as a marked step. A
+  batch step in an in-process child fails before capture. Usage with
+  `mode: :batch` priced
   with `batch_discount` and charged even past a budget
   (`Budget::Ledger#reserve_spent!`), output checks, follow-up calls over the
   wire, guardrails and `output_to:` as after a synchronous call. A refused

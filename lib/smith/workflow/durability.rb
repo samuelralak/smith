@@ -184,12 +184,25 @@ module Smith
         def stored_wait_result(state, key, store, done)
           workflow, in_progress = restore_for_wait(state)
           workflow.instance_variable_set(:@persistence_key, key)
+          mark_batch_completion!(workflow, key, store, in_progress)
           result = yield(workflow)
           raise in_progress if in_progress && result != :resumed && result != :failed
 
           workflow.clear_step_in_progress!
           workflow.persist!(key, adapter: store) if [done, :failed].include?(result)
           result
+        end
+
+        # A batch completion makes provider calls (a follow-up, a retry over
+        # the wire, a new batch), so in strict mode it runs as a marked step:
+        # stored as under way first, and a run caught in one is unfinished.
+        def mark_batch_completion!(workflow, key, store, in_progress)
+          return unless workflow.send(:batch_waiting?)
+          raise in_progress if in_progress
+          return unless idempotency_mode == :strict
+
+          workflow.mark_step_in_progress!
+          workflow.persist!(key, adapter: store)
         end
 
         def restore_for_wait(state)

@@ -297,7 +297,7 @@ module Smith
 
     def initialize(kind:, error_type: nil)
       @kind = kind.to_s.dup.freeze
-      @error_type = error_type.to_s.dup.freeze if error_type
+      @error_type = DiagnosticText.capture(error_type.to_s, max_bytes: 128) if error_type
       super("batch result #{@kind}#{" (#{@error_type})" if @error_type}")
     end
   end

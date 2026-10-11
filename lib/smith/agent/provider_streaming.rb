@@ -20,8 +20,8 @@ module Smith
       def complete_chat(chat, model_reference, collected)
         return capture_batch_call(chat, model_reference) if @batch_capturing
 
-        result = take_batch_result
-        return [Providers::BatchExchange.deliver(chat_provider(chat), result) { chat.complete }, nil, :batch] if result
+        entry = take_batch_result
+        return deliver_batch_result(chat, entry) if entry
 
         stream = @step_stream
         return [chat.complete, nil] unless stream
@@ -41,6 +41,15 @@ module Smith
           response = chat.complete { |chunk| stream.delta(thinking.strip(chunk.content, collection.rounds.length)) }
         end
         [response, rounds]
+      end
+
+      # The batch result as the chat's reply, and whether the request the
+      # call rendered is other than the one sent (a fact of its attempt).
+      def deliver_batch_result(chat, entry)
+        response, changed = Providers::BatchExchange.deliver(chat_provider(chat), entry.result, entry.digest) do
+          chat.complete
+        end
+        [response, nil, :batch, { request_changed: changed || nil }]
       end
 
       # A batch step's call: the provider must have a batch interface (only
