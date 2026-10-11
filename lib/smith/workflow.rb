@@ -384,7 +384,7 @@ module Smith
                  elsif seeded.respond_to?(:to_a) then seeded.to_a
                  else raise WorkflowError, "seed_messages must return a message Hash or an Array of message Hashes"
                  end
-      messages.map { |message| Message.parts?(message) ? Message.check!(message) : message }
+      messages.map { |message| Message.parts?(message) ? Message.check_seed!(message) : message }
     end
 
     def snapshot_context

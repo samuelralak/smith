@@ -6,6 +6,9 @@ require "json"
 module Smith
   module Artifacts
     class File
+      # A ref names a file in the store's directory and nothing else.
+      REF = /\A(?:[A-Za-z0-9_-]+:)?[A-Za-z0-9-]+\z/
+
       def initialize(dir:, namespace: nil)
         @dir = dir
         @namespace = namespace
@@ -21,8 +24,15 @@ module Smith
       end
 
       def fetch(ref)
+        return nil unless owns_ref?(ref)
+
         path = ::File.join(@dir, ref)
-        ::File.exist?(path) ? ::File.read(path) : nil
+        ::File.file?(path) ? ::File.read(path) : nil
+      end
+
+      # Whether a run (its execution namespace) stored this ref.
+      def stored_by?(ref, execution_namespace)
+        owns_ref?(ref) && matches_execution_namespace?(ref, execution_namespace)
       end
 
       def expired(retention: nil, execution_namespace: nil)
@@ -43,6 +53,12 @@ module Smith
       def generate_ref
         raw = SecureRandom.uuid
         @namespace ? "#{@namespace}:#{raw}" : raw
+      end
+
+      def owns_ref?(ref)
+        return false unless ref.is_a?(String) && REF.match?(ref)
+
+        @namespace ? ref.start_with?("#{@namespace}:") : !ref.include?(":")
       end
 
       def matches_execution_namespace?(ref, execution_namespace)

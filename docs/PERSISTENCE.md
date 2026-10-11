@@ -688,8 +688,8 @@ end
 
 ### Content Parts
 
-A message in a step's `input:` or in `seed_messages` can carry content parts
-instead of a String:
+A message in a step's `input:` (and, for text, in `seed_messages`) can carry
+content parts instead of a String:
 
 ```ruby
 ref = Smith.artifacts.store(pdf_bytes, content_type: "application/pdf")   # inside a step
@@ -698,41 +698,74 @@ Smith::Message.user([Smith::Content.document(ref, media_type: "application/pdf",
 Smith::Message.system([Smith::Content.text(house_style, cache: true)])     # in seed_messages
 ```
 
-- `Smith::Content.text(text, cache: false)`,
+- **Parts.** `Smith::Content.text(text, cache: false)`,
   `Smith::Content.document(ref, media_type:, cache: false)` and
   `Smith::Content.image(ref, media_type:, cache: false)` build frozen,
-  JSON-shaped parts. A document (`application/pdf`, `text/plain`) or image
-  (`image/png`, `image/jpeg`, `image/gif`, `image/webp`) is a ref from
-  `Smith.artifacts.store`, never bytes, so a message with parts stays small in
-  sessions, payloads and digests. A ref is read by the run whose step stored
-  it, the workflows it nests, and its child runs: a child run (map, call or
-  spawn) may read its parent's artifacts and those of the parent's nearest
-  ancestors, up to 16 generations, so a document stored once reaches every
-  item of a map. A run never reads an unrelated run's artifacts, nor its own
-  children's; a child returns content, or the parent stores what it needs.
-- `Smith::Message.user`, `.assistant` and `.system` take a String or 1 to 100
-  parts; a system message takes text parts only, and `input:` takes user and
-  assistant messages. A message with parts carries `"parts" => true` beside its
-  role and content, which no agent output and no `append_session_messages!`
-  message can carry (the host is refused), so a structured output that looks
-  like parts stays data and reaches providers as JSON text.
-- When an agent step's chat is built, Smith reads each document and image from
-  the run's artifacts; one that is missing, expired, not a String, or larger
-  than 32 MiB fails the step before the call with a `Smith::WorkflowError`.
-  Anthropic gets native blocks (`RubyLLM::Content::Raw`): a PDF or image as
+  JSON-shaped parts: text of 1 byte to 1 MiB with more than whitespace, in
+  UTF-8; a document (`application/pdf`, `text/plain`) or image (`image/png`,
+  `image/jpeg`, `image/gif`, `image/webp`) as a ref from `Smith.artifacts.store`
+  (letters, digits, `-`, `_` and `:` only, at most 1 KiB), never bytes, so a
+  message with parts stays small in sessions, payloads and digests.
+- **Messages.** `Smith::Message.user`, `.assistant` and `.system` take a String
+  or 1 to 100 parts. Only a user message takes documents and images; system
+  and assistant messages take text parts. `input:` takes user and assistant
+  messages; `seed_messages` take text parts only, since a seed is built
+  before the run can store an artifact. A message with parts carries
+  `"parts" => true` beside its role and content; no agent output can carry
+  it and `append_session_messages!` refuses it, so a structured output that
+  looks like parts stays data and reaches providers as JSON text, and only
+  content Smith builds from parts for the call passes to RubyLLM unencoded.
+- **Whose artifacts.** A ref is read by the run whose step stored it, the
+  workflows it nests, and its child runs: a child run (map, call or spawn) may
+  read its parent's artifacts and those of the parent's nearest ancestors, up
+  to 16 generations, so a document stored once reaches every item of a map. A
+  run never reads an unrelated run's artifacts, nor its own children's; a
+  child returns content, or the parent stores what it needs. Content parts are
+  read only from a store that records which run stored each artifact
+  (`stored_by?`: `Smith::Artifacts::Memory` and `Smith::Artifacts::File` do),
+  so a ref built from untrusted text cannot name another run's artifact or a
+  file outside the store. Memory is process-local; a run that waits, retries
+  durably or resumes in another process needs a shared store (File or the
+  host's) whose retention outlives it.
+- **Reading.** Before the first provider attempt Smith reads each document and
+  image once and checks it, or fails the step with `Smith::ContentUnavailable`
+  (a `WorkflowError`, never retried as a provider failure): it must be a
+  non-empty String whose bytes match its media type (a PDF, PNG, JPEG, GIF or
+  WebP by its signature; `text/plain` as UTF-8), a document at most 24 MiB and
+  an image at most 5 MiB, and the request's text with its documents and images
+  as they are sent (PDFs and images in base64) at most 32 MiB.
+- **Anthropic** gets native blocks (`RubyLLM::Content::Raw`): a PDF or image as
   base64, a `text/plain` document as text, and `cache_control: { type:
-  "ephemeral" }` on a part marked `cache: true`, at most 4 of them in one
-  request (more fails the step). Any other provider gets the text parts joined
-  and the documents and images as attachments after them, and `cache:` is
-  ignored (those providers cache on their own). Each attempt builds its own
-  chat, so a fallback model on another provider gets its own form.
-- Seed messages keep their parts in the session, digests included, and reach
-  the agent steps that read the session: a step with `input:` sees only its
-  input and its agent's instructions, so a cached seed prefix serves the
-  steps without one. A restored session may hold parts only among its seed
-  messages, each valid, or the restore raises `Smith::SerializationError`. A document is outside content by
-  nature and cannot be wrapped like text; give a step that reads one an
-  isolated session or a narrow `input:`.
+  "ephemeral" }` on a part marked `cache: true`. A cache breakpoint caches the
+  whole request prefix up to and including that block, in Anthropic's order:
+  tools, then system (the agent's instructions, then the seed system
+  messages), then the messages. So a cached seed prefix serves later calls of
+  the same agent (same tools and instructions), and a cached `input:` part
+  caches the agent's tools and instructions with it. Anthropic needs a minimum
+  prefix length (about 1,024 tokens on most models), keeps a cache about 5
+  minutes, charges a premium to write one, and takes at most 4 breakpoints per
+  request: Smith counts the chat's own (cached instructions) with its parts,
+  against every Anthropic model in the step's chain, and refuses more before
+  the first call. Concurrent branches (`parallel:`, `fan_out`) each write the
+  cache.
+- **Other providers** get the parts as one text in their order: text parts as
+  they are, a `text/plain` document inline (`<file name='document-2.txt'
+  mime_type='text/plain'>...</file>`), and `[attached: image-3.png]` where each
+  PDF or image stands, attached under that name. `cache:` adds nothing for
+  them (OpenAI and Gemini cache on their own; Bedrock and OpenRouter get no
+  cache markers from Smith). Each attempt builds its own chat, so a fallback
+  model on another provider gets its own form, and a model whose provider
+  takes no such content (RubyLLM raises `UnsupportedAttachmentError`) passes
+  the step to the next model in the chain, or fails it with
+  `Smith::ContentUnavailable` when none is left.
+- **Sessions.** Seed messages keep their text parts in the session, digests
+  included, and reach the agent steps that read the session: a step with
+  `input:` sees only its input and its agent's instructions. A restored
+  session may hold parts only among its seed messages, each valid (text parts
+  only), however the payload was parsed, or the restore raises
+  `Smith::SerializationError`. A document is outside content by nature and
+  cannot be wrapped like text; give a step that reads one an isolated session
+  or a narrow `input:`.
 
 ## Waiting
 

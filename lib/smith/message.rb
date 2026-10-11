@@ -14,7 +14,9 @@ module Smith
   # A message with parts carries `"parts" => true` beside its role and
   # content. No agent output and no message a host admits
   # (`append_session_messages!`) can carry it, so a structured output that
-  # looks like parts stays data. A system message takes text parts only.
+  # looks like parts stays data. Only a user message takes documents and
+  # images; system and assistant messages, and every seed message (built
+  # before the run can store an artifact), take text parts.
   module Message
     MAX_PARTS = 100
 
@@ -34,7 +36,15 @@ module Smith
 
     # Whether a message Hash (String or Symbol keys) is one with parts.
     def parts?(message)
-      message.is_a?(Hash) && (message.key?("parts") || message.key?(:parts))
+      message.is_a?(Hash) && (message["parts"] == true || message[:parts] == true)
+    end
+
+    # A seed message with parts: text parts only.
+    def check_seed!(message)
+      checked = check!(message)
+      return checked if checked["content"].all? { |part| part["type"] == "text" }
+
+      raise WorkflowError, "a seed message takes text parts only; send documents and images through a step's input:"
     end
 
     # A message with parts, checked and returned frozen with String keys.
@@ -57,9 +67,9 @@ module Smith
 
     def checked_parts(role, content)
       parts = content.map { |part| Content.check!(part) }.freeze
-      return parts unless role == "system" && parts.any? { |part| part["type"] != "text" }
+      return parts if role == "user" || parts.all? { |part| part["type"] == "text" }
 
-      raise WorkflowError, "a system message takes text parts only"
+      raise WorkflowError, "a #{role} message takes text parts only"
     end
     private_class_method :build, :shaped?, :checked_parts
   end

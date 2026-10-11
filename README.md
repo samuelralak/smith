@@ -149,9 +149,10 @@ Context keys declared `untrusted` never reach `inject_state`, the
 workflow it nests. See [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md), Step
 Isolation and Untrusted Content.
 
-A message in `input:` or `seed_messages` can carry content parts: text, and
-documents and images stored as artifacts of the run, with `cache: true`
-marking a prefix Anthropic may cache:
+A message in `input:` can carry content parts: text, and documents and images
+stored as artifacts of the run (a child run reads its ancestors' too), with
+`cache: true` marking a prefix Anthropic may cache; seed messages take text
+parts:
 
 ```ruby
 transition :store, from: :fetched, to: :stored do
@@ -168,8 +169,10 @@ transition :extract, from: :stored, to: :extracted do
 end
 ```
 
-Anthropic gets native blocks; other providers get the text and the files as
-attachments. See [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md), Content Parts.
+Anthropic gets native blocks; other providers get the parts in order as text,
+with the files attached where they stand. Documents are read once, checked
+against their media type and bounds, and only from runs allowed to read them.
+See [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md), Content Parts.
 
 ### Waiting
 

@@ -40,16 +40,18 @@ module Smith
         return unless prepared_input
 
         prepared_input = provider_safe_prepared_input(prepared_input)
-        check_cache_breakpoints!(prepared_input, provider)
-        prepared_input = prepared_input.map do |message|
-          Message.parts?(message) ? provider_parts_message(message, provider) : message
-        end
-        system_messages, other_messages = prepared_input.partition do |message|
-          message_role(message) == :system
-        end
+        check_cache_breakpoints!(chat, prepared_input, provider)
+        with_built_contents do
+          prepared_input = prepared_input.map do |message|
+            Message.parts?(message) ? provider_parts_message(message, provider) : message
+          end
+          system_messages, other_messages = prepared_input.partition do |message|
+            message_role(message) == :system
+          end
 
-        merge_system_messages!(chat, system_messages) if system_messages.any?
-        other_messages.each { |message| add_message(chat, message) }
+          merge_system_messages!(chat, system_messages) if system_messages.any?
+          other_messages.each { |message| add_message(chat, message) }
+        end
       end
 
       def provider_safe_prepared_input(prepared_input)
@@ -114,18 +116,14 @@ module Smith
       # { text:, ...attachments } and opens each value as a file, so replaying a prior structured
       # output to the next agent in a workflow session raises Errno::ENOENT. Serialize non-string
       # content to JSON so the provider sees the prior output as text; the session store keeps the raw
-      # value (last_output stays structured), only this provider-facing copy is serialized. Genuine
-      # multimodal attachments are supplied through the provider's own with: mechanism, never as a bare
-      # Hash message content in a workflow session.
+      # value (last_output stays structured), only this provider-facing copy is serialized. The only
+      # content that passes as it is: what Smith built from content parts for this very chat
+      # (ContentParts), never a RubyLLM object a session, output or host put there.
       def provider_safe_message(attributes)
         content = attributes[:content]
-        return attributes if content.nil? || content.is_a?(String) || provider_built_content?(content)
+        return attributes if content.nil? || content.is_a?(String) || built_content?(content)
 
         attributes.merge(content: json_message_content(content))
-      end
-
-      def provider_built_content?(content)
-        content.is_a?(::RubyLLM::Content) || content.is_a?(::RubyLLM::Content::Raw)
       end
 
       def json_message_content(content)

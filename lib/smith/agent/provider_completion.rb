@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "provider_failure_handling"
+require_relative "content_bytes"
 require_relative "content_parts"
 require_relative "invocation_preparation"
 require_relative "provider_attempt"
@@ -19,8 +20,16 @@ module Smith
 
       private
 
+      # The input's documents and images are read once (ContentBytes), and
+      # its cached parts checked against every Anthropic model in the chain,
+      # before the first attempt.
       def complete_with_provider(agent_class, prepared_input, shape:)
-        candidates = ProviderCandidateSequence.new(build_model_chain(agent_class))
+        chain = build_model_chain(agent_class).tap { check_chain_cache_breakpoints!(_1, prepared_input) }
+        ContentBytes.with(prepared_input) { attempt_candidates(agent_class, prepared_input, chain, shape) }
+      end
+
+      def attempt_candidates(agent_class, prepared_input, chain, shape)
+        candidates = ProviderCandidateSequence.new(chain)
         candidates.each do |model_reference, index|
           check_deadline! if index.positive?
           attempt = attempt_model(agent_class, prepared_input, model_reference, shape:, attempt_index: index)
@@ -110,7 +119,7 @@ module Smith
           agent_class, observed_reference, new_chat_messages(chat, message_count), attempt_id: facts[:attempt_id]
         )
         attempt = failed_provider_attempt(e, observed_reference, timer, facts, prefix_usages)
-        raise unless provider_failure?(e)
+        raise unless provider_failure?(e) || unsupported_content?(e)
 
         attempt
       end

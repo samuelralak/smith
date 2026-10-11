@@ -251,6 +251,12 @@ module Smith
     end
   end
 
+  # A step's content parts cannot be sent: a document or image is missing,
+  # unreadable, empty, not what its media type says, or past a bound, or no
+  # model in the chain takes it. Raised before the provider call, so it is
+  # never retried as a provider failure.
+  class ContentUnavailable < WorkflowError; end
+
   class SerializationError < Error; end
   class AgentRegistryError < Error; end
 

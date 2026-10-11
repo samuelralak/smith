@@ -29,6 +29,11 @@ module Smith
         @store[ref]
       end
 
+      # Whether a run (its execution namespace) stored this ref.
+      def stored_by?(ref, execution_namespace)
+        (owns_ref?(ref) && @metadata.dig(ref, :execution_namespaces)&.include?(execution_namespace)) || false
+      end
+
       def expired(retention: nil, execution_namespace: nil)
         effective_retention = retention || Smith.config.artifact_retention
         return [] unless effective_retention

@@ -1796,6 +1796,18 @@ Documented contracts covered:
 - review fixes: each child's `key` (token and ref) differs across two child-run steps of one run; a spawn taken as a failure route launches; results are checked against the count the step launched (`Wait#children`), not items derived again, and an unpersisted items key is refused; only an `inline?` launcher's return value is taken, and it must be an Array; a strict run that crashed mid-launch launches again; a map or call that fails on a failed child needs `on_failure`, and no map, call or spawn takes `retry_on`; outputs a map does not collect are dropped before the 4 MiB bound, live and inline; a map over no items completes at once; an `await :children` keeps the wait bound; child untrusted key names are checked and symbolized at build; inline children run under the parent's deadline but apart from its tool evidence and attribution, and a waiting, raising or self-handled failing child is reported failed with its error; a spawn launches under a token of its own, from items given a copy of the context, and not past the deadline; a stored wait's children count is checked; readiness flags an in-process nested workflow that maps, lets a durable map recurse, and warns (not errors) of a child agent reading a parent's untrusted key; child inputs are bounded at 16 MiB together as they are built; split-step persistence refuses child-run steps; `ChildRunsFailed` details must add up
 - these contracts are mutation-verified against the full suite
 
+### `spec/smith/artifacts/ownership_spec.rb`
+
+Purpose:
+
+- asserts that a run reads only the artifacts it, or a run whose namespace it may read, stored
+
+Documented contracts covered:
+
+- Memory and File stores answer `stored_by?`, and a scoped read asks them: another run's ref, under its own prefix or the reader's, and a guessed content hash read nothing; a child that may read its parent's namespace reads its refs
+- a File store reads no ref with a path, dot or NUL, nothing outside its directory, and no other tenant's ref
+- identical bytes stored by two runs share an inner ref, and each run reads it only once it stored it
+
 ### `spec/smith/content_parts_spec.rb`
 
 Purpose:
@@ -1813,7 +1825,8 @@ Documented contracts covered:
 - an agent step's `input:` gives Anthropic native blocks (base64 PDF or image, `text/plain` as text, `cache_control` on cached parts) and other providers the joined text with attachments; a missing artifact, a ref of another run, an artifact that is too large, more than 4 cache points on Anthropic, or a system message in `input:` fails the step before the call
 - seed messages keep their parts, reach Anthropic's system blocks cached, restore, and keep their digest; a restored session refuses parts outside the seed messages or malformed ones; `append_session_messages!` refuses parts; an output shaped like parts reaches the provider as JSON text; hand-built parts messages are checked in `input:` and `seed_messages`
 - a child run, restored from job arguments or run inline, and a grandchild read the documents their ancestors stored; an unrelated run's ref reads nothing, and a parent cannot read its child's; inherited namespaces are bounded (nearest 16), checked at build and on restore, deduplicated and persisted; a step's artifact scope ends with the step
-- these contracts are mutation-verified against the full suite (29/29)
+- review fixes: refs follow a closed format and are read only from a store that records which run stored them, so a crafted, guessed or another run's ref, or a path outside a file store or another tenant's, reads nothing; only user messages and only `input:` take documents and images (seeds, system and assistant take text); parts are UTF-8, non-blank, Symbol-valued or not, and the `"parts" => true` marker alone marks a parts message; restored seed parts work however the payload was parsed; documents are read once per call, checked against their media type, empty or oversized ones (5 MiB images, 24 MiB documents) and requests past 32 MiB as sent refused with `Smith::ContentUnavailable`, and a store error is that error, not a provider failure; cache points count the chat's own and every Anthropic model in the chain; other providers get parts in order with attachments named in place and `text/plain` inline; a model that takes no such content passes to the next; RubyLLM content found in a session goes as text
+- these contracts are mutation-verified against the full suite
 
 ### `spec/smith/workflow/durable_retry_spec.rb`
 

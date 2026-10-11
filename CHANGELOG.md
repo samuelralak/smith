@@ -8,8 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Upgrade notes
 
-- `Smith::EXECUTION_SEMANTICS_VERSION` is now `"6"`: routing, context writes,
-  restore admission, nested failure and retry semantics changed. Hosts that
+- `Smith::EXECUTION_SEMANTICS_VERSION` is now `"7"`: routing, context writes,
+  restore admission, nested failure and retry semantics changed, and durable
+  composite plans may carry content parts, which an earlier build would send
+  as JSON text. Hosts that
   fold it into definition digests or cache keys see new values, and durable
   composite plans prepared under 0.11.0 are refused by their integrity check.
   Drain or clear in-flight persisted runs before upgrading.
@@ -44,12 +46,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 - Content parts. `Smith::Message.user`, `.assistant` and `.system` take a String
   or `Smith::Content` parts (`text`, and `document` and `image`, which name an
-  artifact of the run and a media type), in a step's `input:` and in
-  `seed_messages`. Anthropic gets native blocks with `cache_control` on parts
-  marked `cache: true` (at most 4 per request); other providers get the text
-  and attachments. Documents and images are read from the run's artifacts when
-  the chat is built and fail the step before the call when missing or larger
-  than 32 MiB. A message with parts carries a marker no agent output or
+  artifact of the run and a media type) in a step's `input:`; seed messages
+  take text parts, and only user messages take documents and images.
+  Anthropic gets native blocks with `cache_control` on parts marked
+  `cache: true` (at most 4 breakpoints per request, the chat's own included);
+  other providers get the parts in order as text with the files attached where
+  they stand, and a model that takes no such content passes the step to the
+  next in the chain. Documents and images are read once per call, only from a
+  store that records which run stored them, and checked against their media
+  type, a 24 MiB document and 5 MiB image bound, and a 32 MiB request bound;
+  any failure raises `Smith::ContentUnavailable` before the call. A message
+  with parts carries `"parts" => true`, which no agent output or
   host-admitted message can carry, and a restored session holds parts only in
   its seed messages. A child run may read its parent's artifacts and those of
   the parent's nearest ancestors (`Smith::ChildRun#artifact_namespaces`, which
@@ -76,6 +83,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - A step that runs inside another run's step (an inline child run) scopes its
   artifacts over the configured store itself, not over the outer run's
   scoped view, through which it could read nothing of its own.
+- A run's scoped artifact reads check, with a store that records it
+  (`stored_by?`, added to `Smith::Artifacts::Memory` and
+  `Smith::Artifacts::File`), that one of the runs it may read stored the ref,
+  not only the ref's prefix. `Smith::Artifacts::File` no longer reads a ref
+  outside its directory or another tenant's.
 - `Smith::Workflow::Wait` gains `attempt` and `error` (nil except for a retry
   wait). A wait as long as the persistence TTL is now refused too (it was
   refused only when longer), since the stored run would expire as it ends.

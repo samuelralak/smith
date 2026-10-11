@@ -157,17 +157,20 @@ module Smith
       end
 
       # Content parts come only from seed messages: anywhere else in a
-      # stored session they are refused, and a seed's are checked.
+      # stored session they are refused, and a seed's are checked and kept
+      # as checked (String-keyed parts), however the payload was parsed.
       def validate_session_parts!
-        @session_messages.each_with_index do |message, index|
-          next unless Message.parts?(message)
+        @session_messages = @session_messages.each_with_index.map do |message, index|
+          next message unless Message.parts?(message)
 
-          valid = index < @seed_message_count && begin
-            Message.check!(message)
+          checked = index < @seed_message_count && begin
+            Message.check_seed!(message)
           rescue WorkflowError
-            false
+            nil
           end
-          raise Smith::SerializationError, "persisted session content parts must be valid seed messages" unless valid
+          raise Smith::SerializationError, "persisted session content parts must be valid seed messages" unless checked
+
+          { role: checked["role"], content: checked["content"], parts: true }
         end
       end
 

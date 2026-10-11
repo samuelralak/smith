@@ -49,7 +49,8 @@ module Smith
       end
 
       def fallback_eligible?(error)
-        transient_failure?(error) ||
+        unsupported_content?(error) ||
+          transient_failure?(error) ||
           transport_failure?(error) ||
           provider_account_failure?(error) ||
           model_permission_failure?(error) ||
@@ -80,6 +81,9 @@ module Smith
 
       def terminal_provider_error(error, model_reference)
         return Smith::AgentError.new(error.message) if transient_failure?(error) || transport_failure?(error)
+        if unsupported_content?(error)
+          return Smith::ContentUnavailable.new("#{model_reference} takes none of this content: #{error.message}")
+        end
 
         Smith::ProviderPermanentFailure.new(
           error.message,

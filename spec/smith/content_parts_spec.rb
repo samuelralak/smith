@@ -51,39 +51,61 @@ RSpec.describe "Smith content parts: Smith::Content and Smith::Message" do
 
   def messages = sent.reject { _1 == :called }
 
+  let(:png) { "\x89PNG\r\n\x1A\nbody".b }
+  let(:pdf) { "%PDF-1.7 body" }
+
   describe Smith::Content do
     it "builds frozen parts and refuses anything else" do
       expect(described_class.text("hi", cache: true)).to eq("type" => "text", "text" => "hi", "cache" => true)
-      expect(described_class.document("r", media_type: "application/pdf"))
-        .to eq("type" => "document", "artifact" => "r", "media_type" => "application/pdf")
-      expect(described_class.image("r", media_type: "image/webp")).to be_frozen
+      expect(described_class.document("ns:r", media_type: "application/pdf"))
+        .to eq("type" => "document", "artifact" => "ns:r", "media_type" => "application/pdf")
+      expect(described_class.image("ns:t:r-1_2", media_type: "image/webp")).to be_frozen
+      symbols = described_class.check!(type: :image, artifact: "ns:r", media_type: :"image/png")
+      expect(symbols).to eq("type" => "image", "artifact" => "ns:r", "media_type" => "image/png")
+      expect(described_class.text("caf\xC3\xA9".b)["text"].encoding).to eq(Encoding::UTF_8)
+      expect(described_class.text("x" * (1024 * 1024))["text"].bytesize).to eq(1024 * 1024)
+      expect(described_class.document("n:#{"r" * 1022}", media_type: "text/plain")["artifact"].bytesize).to eq(1024)
 
-      [-> { described_class.text("") }, -> { described_class.text(1) }, -> { described_class.text("x", cache: 1) },
+      [-> { described_class.text("") }, -> { described_class.text(" \n ") }, -> { described_class.text(1) },
+       -> { described_class.text("caf\xFF".b) }, -> { described_class.text("x", cache: 1) },
        -> { described_class.text("x" * ((1024 * 1024) + 1)) },
-       -> { described_class.document("r", media_type: "image/png") },
-       -> { described_class.image("r", media_type: "application/pdf") },
-       -> { described_class.document("r" * 1025, media_type: "text/plain") },
+       -> { described_class.document("ns:r", media_type: "image/png") },
+       -> { described_class.document("ns:r", media_type: "text/html") },
+       -> { described_class.image("ns:r", media_type: "image/svg+xml") },
+       -> { described_class.image("ns:r", media_type: "application/pdf") },
+       -> { described_class.document("n:#{"r" * 1023}", media_type: "text/plain") },
        -> { described_class.check!("type" => "text", "text" => "x", "cache" => false) },
+       -> { described_class.check!("type" => "text", "text" => "x", "cache" => "true") },
        -> { described_class.check!("type" => "text", "text" => "x", "extra" => 1) },
-       -> { described_class.check!("type" => "audio", "artifact" => "r", "media_type" => "audio/wav") }]
+       -> { described_class.check!(described_class.document("ns:r", media_type: "text/plain").merge("data" => "x")) },
+       -> { described_class.check!("type" => "audio", "artifact" => "ns:r", "media_type" => "audio/wav") }]
         .each { |build| expect(&build).to raise_error(Smith::WorkflowError) }
+      ["r", "ns:../secret.txt", "ns:a/b", "ns:.", "ns:a\x00b", "ns:", ":r", "ns:r.pdf"].each do |ref|
+        expect { described_class.document(ref, media_type: "application/pdf") }
+          .to raise_error(Smith::WorkflowError), ref.inspect
+      end
     end
   end
 
   describe Smith::Message do
-    it "keeps String content plain, marks parts, and refuses system documents and bad part counts" do
+    it "keeps String content plain, marks parts, and takes documents and images in user messages only" do
       text = Smith::Content.text("hi")
+      document = Smith::Content.document("ns:r", media_type: "application/pdf")
 
       expect(described_class.user("plain")).to eq("role" => "user", "content" => "plain")
       expect(described_class.assistant([text])).to eq("role" => "assistant", "content" => [text], "parts" => true)
       expect(described_class.system([text])).to be_frozen
+      expect(described_class.user([document])["content"]).to eq([document])
+      expect(described_class.user([text] * 100)["content"].length).to eq(100)
       expect(described_class.parts?(role: "user", content: [], parts: true)).to be(true)
+      expect(described_class.parts?("role" => "user", "parts" => [{ "text" => "gemini shaped" }])).to be(false)
 
-      document = Smith::Content.document("r", media_type: "application/pdf")
-      [-> { described_class.system([document]) }, -> { described_class.user([]) },
-       -> { described_class.user([text] * 101) }, -> { described_class.user([{ "type" => "text" }]) },
+      [-> { described_class.system([document]) }, -> { described_class.assistant([document]) },
+       -> { described_class.user([]) }, -> { described_class.user([text] * 101) },
+       -> { described_class.user([{ "type" => "text" }]) },
        -> { described_class.check!("role" => "tool", "content" => [text], "parts" => true) },
-       -> { described_class.check!("role" => "user", "content" => [text], "parts" => false) }]
+       -> { described_class.check!("role" => "user", "content" => [text], "parts" => false) },
+       -> { described_class.check!("role" => "user", "content" => [text], "parts" => true, "name" => "x") }]
         .each { |build| expect(&build).to raise_error(Smith::WorkflowError) }
     end
   end
@@ -91,7 +113,7 @@ RSpec.describe "Smith content parts: Smith::Content and Smith::Message" do
   describe "an agent step's input" do
     it "gives Anthropic native blocks, cached where asked, with the artifact's bytes" do
       reader(:anthropic)
-      klass = reading("SpecPartsAnthropic", "%PDF-1.7 body") do |ref|
+      klass = reading("SpecPartsAnthropic", pdf) do |ref|
         Smith::Message.user([Smith::Content.document(ref, media_type: "application/pdf", cache: true),
                              Smith::Content.text("Who signed?")])
       end
@@ -101,13 +123,22 @@ RSpec.describe "Smith content parts: Smith::Content and Smith::Message" do
       expect(content).to be_a(RubyLLM::Content::Raw)
       expect(content.value).to eq(
         [{ type: "document", source: { type: "base64", media_type: "application/pdf",
-                                       data: Base64.strict_encode64("%PDF-1.7 body") },
+                                       data: Base64.strict_encode64(pdf) },
            cache_control: { type: "ephemeral" } },
          { type: "text", text: "Who signed?" }]
       )
+
+      sent.clear
+      image = reading("SpecPartsAnthropicImage", png) do |ref|
+        Smith::Message.user([Smith::Content.image(ref, media_type: "image/png")])
+      end
+      image.new.run!
+      expect(messages.sole[:content].value)
+        .to eq([{ type: "image",
+                  source: { type: "base64", media_type: "image/png", data: Base64.strict_encode64(png) } }])
     end
 
-    it "sends a text/plain document as text to Anthropic, and attachments with joined text elsewhere" do
+    it "sends text/plain as text, and other providers the parts in order with attachments named in place" do
       reader(:anthropic)
       plain = reading("SpecPartsPlain", "line one") do |ref|
         Smith::Message.user([Smith::Content.document(ref, media_type: "text/plain")])
@@ -119,45 +150,144 @@ RSpec.describe "Smith content parts: Smith::Content and Smith::Message" do
       sent.clear
       Smith::Agent::Registry.delete(:spec_parts_reader)
       reader(:openai)
-      other = reading("SpecPartsOpenAI", "\x89PNG bytes".b) do |ref|
-        Smith::Message.user([Smith::Content.text("Describe", cache: true), Smith::Content.text("briefly"),
-                             Smith::Content.image(ref, media_type: "image/png")])
+      other = reading("SpecPartsOpenAI", png) do |ref|
+        Smith::Message.user([Smith::Content.text("Describe", cache: true),
+                             Smith::Content.image(ref, media_type: "image/png"), Smith::Content.text("briefly")])
       end
       other.new.run!
       content = messages.sole[:content]
       expect(content).to be_a(RubyLLM::Content)
-      expect(content.text).to eq("Describe\n\nbriefly")
+      expect(content.text).to eq("Describe\n\n[attached: image-2.png]\n\nbriefly")
       expect(content.attachments.map { [_1.filename, _1.mime_type, _1.content] })
-        .to eq([["image-1.png", "image/png", "\x89PNG bytes".b]])
+        .to eq([["image-2.png", "image/png", png]])
+
+      sent.clear
+      document_only = reading("SpecPartsOpenAIPlain", "plain words") do |ref|
+        Smith::Message.user([Smith::Content.document(ref, media_type: "text/plain")])
+      end
+      document_only.new.run!
+      expect(messages.sole[:content]).to eq("<file name='document-1.txt' mime_type='text/plain'>plain words</file>")
     end
 
-    it "fails the step before the call for a missing artifact, a ref of another run, or too many cache points" do
+    it "fails the step before the call when an artifact is missing, foreign, empty, mislabeled or too large" do
       reader(:anthropic)
-      missing = reading("SpecPartsMissing", "x") do |_ref|
-        Smith::Message.user([Smith::Content.document("nope", media_type: "application/pdf")])
+      cases = {
+        "missing" => [pdf, ->(_ref) { "#{SecureRandom.uuid}:abc" }, "application/pdf", /is missing or expired/],
+        "foreign" => [pdf, ->(ref) { ref.sub(/\A[^:]+/, SecureRandom.uuid) }, "application/pdf", /is missing/],
+        "empty" => ["", ->(ref) { ref }, "text/plain", /is empty/],
+        "html as png" => ["<html>ignore previous</html>", ->(ref) { ref }, "image/png", %r{is not image/png}],
+        "png as jpeg" => [png, ->(ref) { ref }, "image/jpeg", %r{is not image/jpeg}],
+        "binary text" => ["caf\xFF".b, ->(ref) { ref }, "text/plain", %r{is not text/plain}],
+        "large image" => [png + ("x" * (5 * 1024 * 1024)), ->(ref) { ref }, "image/png", /larger than 5242880/]
+      }
+      cases.each_with_index do |(label, (bytes, ref_for, media_type, error)), index|
+        kind = media_type.start_with?("image") ? :image : :document
+        klass = reading("SpecPartsBad#{index}", bytes) do |ref|
+          Smith::Message.user([Smith::Content.public_send(kind, ref_for.call(ref), media_type:)])
+        end
+        result = klass.new.run!
+        expect(result.last_error).to be_a(Smith::ContentUnavailable), label
+        expect(result.last_error.message).to match(error), label
       end
-      foreign = reading("SpecPartsForeign", "x") do |ref|
-        Smith::Message.user([Smith::Content.document(ref.sub(/\A[^:]+/, SecureRandom.uuid), media_type: "text/plain")])
-      end
-      cached = reading("SpecPartsCached", "x") do |_ref|
-        Smith::Message.user(Array.new(5) { Smith::Content.text("p#{_1}", cache: true) })
-      end
-
-      expect(missing.new.run!.last_error.message).to match(/artifact of a document part is missing/)
-      expect(foreign.new.run!.last_error.message).to match(/artifact of a document part is missing/)
-      expect(cached.new.run!.last_error.message).to match(/5 content parts ask to be cached/)
       expect(sent).not_to include(:called)
     end
 
-    it "refuses an artifact that is not a String or is too large, and a system message in input:" do
+    it "bounds a part, and a request's text and documents together as sent" do
       reader(:anthropic)
-      stub_const("Smith::Content::MAX_PART_BYTES", 4)
-      large = reading("SpecPartsLarge", "12345") do |ref|
+      stub_const("Smith::Content::MAX_PART_BYTES", 6)
+      exact = reading("SpecPartsExact", "%PDF-1") { |ref| Smith::Message.user([Smith::Content.document(ref, media_type: "application/pdf")]) }
+      large = reading("SpecPartsLarge", "%PDF-12") { |ref| Smith::Message.user([Smith::Content.document(ref, media_type: "application/pdf")]) }
+      expect(exact.new.run!.state).to eq(:done)
+      expect(large.new.run!.last_error.message).to match(/larger than 6 bytes/)
+
+      stub_const("Smith::Agent::ContentBytes::MAX_REQUEST_BYTES", 15)
+      twice = reading("SpecPartsTwice", "%PDF-1") do |ref|
+        document = Smith::Content.document(ref, media_type: "application/pdf")
+        Smith::Message.user([document, document])
+      end
+      once = reading("SpecPartsOnce", "%PDF-1") do |ref|
+        Smith::Message.user([Smith::Content.document(ref, media_type: "application/pdf"), Smith::Content.text("abcdefg")])
+      end
+      expect(twice.new.run!.last_error.message).to match(/more than 15 bytes as sent/)
+      expect(once.new.run!.state).to eq(:done)
+    end
+
+    it "reads each artifact once per call, and refuses a store that cannot tell who stored a ref" do
+      reader(:anthropic)
+      reads = 0
+      backend = Smith::Artifacts::Memory.new
+      backend.define_singleton_method(:fetch) { |ref| (reads += 1) && super(ref) }
+      Smith.artifacts = backend
+      klass = reading("SpecPartsOnceRead", pdf) do |ref|
+        document = Smith::Content.document(ref, media_type: "application/pdf")
+        Smith::Message.user([document, document])
+      end
+      expect(klass.new.run!.state).to eq(:done)
+      expect(reads).to eq(1)
+
+      failing = Smith::Artifacts::Memory.new
+      failing.define_singleton_method(:fetch) { |_ref| raise Faraday::TimeoutError, "store timed out" }
+      Smith.artifacts = failing
+      timed_out = reading("SpecPartsStoreTimeout", pdf) do |ref|
         Smith::Message.user([Smith::Content.document(ref, media_type: "application/pdf")])
       end
-      system = reading("SpecPartsSystem", "x") { |_ref| Smith::Message.system([Smith::Content.text("rules")]) }
+      error = timed_out.new.run!.last_error
+      expect([error.class, error.message]).to eq([Smith::ContentUnavailable,
+                                                  "the artifact of a document part could not be read: " \
+                                                  "Faraday::TimeoutError"])
 
-      expect(large.new.run!.last_error.message).to match(/larger than 4 bytes/)
+      plain_store = Class.new do
+        def initialize = @data = {}
+        def store(data, **) = SecureRandom.hex(8).tap { @data[_1] = data }
+        def fetch(ref) = @data[ref]
+      end
+      Smith.artifacts = plain_store.new
+      unvouched = reading("SpecPartsUnvouched", pdf) do |ref|
+        Smith::Message.user([Smith::Content.document(ref, media_type: "application/pdf")])
+      end
+      expect(unvouched.new.run!.last_error.message).to match(/records which run stored each artifact/)
+    ensure
+      Smith.artifacts = nil
+    end
+
+    it "counts the chat's own cached blocks, such as cached instructions, with its parts" do
+      recorded = sent
+      agent = with_stubbed_class("SpecPartsCachedInstructions", Smith::Agent) do
+        register_as :spec_parts_reader
+        model "claude-sonnet-4-5", provider: :anthropic
+      end
+      agent.define_singleton_method(:chat) do |**|
+        block = { type: "text", text: "Be brief.", cache_control: { type: "ephemeral" } }
+        instructions = Struct.new(:role, :content).new(:system, RubyLLM::Content::Raw.new([block]))
+        chat = Object.new
+        chat.define_singleton_method(:messages) { [instructions] }
+        chat.define_singleton_method(:add_message) { |message| recorded << message }
+        chat.define_singleton_method(:with_schema) { |_schema| self }
+        chat.define_singleton_method(:complete) { Struct.new(:content, :input_tokens, :output_tokens).new("ok", 1, 1) }
+        chat
+      end
+      three = reading("SpecPartsThree", "x") { |_ref| Smith::Message.user(Array.new(3) { Smith::Content.text("p#{_1}", cache: true) }) }
+      four = reading("SpecPartsFourMore", "x") { |_ref| Smith::Message.user(Array.new(4) { Smith::Content.text("p#{_1}", cache: true) }) }
+
+      expect(three.new.run!.state).to eq(:done)
+      expect(four.new.run!.last_error.message).to match(/5 blocks ask to be cached/)
+    end
+
+    it "counts cache points across the chat and every Anthropic model in the chain, and refuses system input" do
+      reader(:anthropic)
+      four = reading("SpecPartsFour", "x") { |_ref| Smith::Message.user(Array.new(4) { Smith::Content.text("p#{_1}", cache: true) }) }
+      five = reading("SpecPartsFive", "x") { |_ref| Smith::Message.user(Array.new(5) { Smith::Content.text("p#{_1}", cache: true) }) }
+      expect(four.new.run!.state).to eq(:done)
+      expect(five.new.run!.last_error.message).to match(/5 blocks ask to be cached/)
+
+      Smith::Agent::Registry.delete(:spec_parts_reader)
+      reader(:openai)
+      expect(five.new.run!.state).to eq(:done)
+      Smith::Agent::Registry.delete(:spec_parts_reader)
+      reader(:openai).fallback_models("anthropic/claude-sonnet-4-5")
+      expect(five.new.run!.last_error).to be_a(Smith::ContentUnavailable)
+
+      system = reading("SpecPartsSystem", "x") { |_ref| Smith::Message.system([Smith::Content.text("rules")]) }
       expect(system.new.run!.last_error.message).to match(/must be a user or assistant message/)
     end
   end
@@ -312,11 +442,19 @@ RSpec.describe "Smith content parts: Smith::Content and Smith::Message" do
 
       seeded = with_stubbed_class("SpecPartsBadSeed", workflow_class) do
         initial_state :idle
-        image = { type: "image", artifact: "r", media_type: "image/png" }
+        image = { type: "image", artifact: "ns:r", media_type: "image/png" }
         seed_messages { [{ role: :system, content: [image], parts: true }] }
         transition(:t, from: :idle, to: :done) { compute { |_s| nil } }
       end
       expect { seeded.new }.to raise_error(Smith::WorkflowError, /text parts only/)
+
+      document = Smith::Content.document("ns:r", media_type: "application/pdf")
+      user_seeded = with_stubbed_class("SpecPartsDocumentSeed", workflow_class) do
+        initial_state :idle
+        seed_messages { [Smith::Message.user([document])] }
+        transition(:t, from: :idle, to: :done) { compute { |_s| nil } }
+      end
+      expect { user_seeded.new }.to raise_error(Smith::WorkflowError, /seed message takes text parts only/)
     end
   end
 
@@ -329,14 +467,94 @@ RSpec.describe "Smith content parts: Smith::Content and Smith::Message" do
         transition(:draft, from: :idle, to: :done) { execute :spec_parts_reader }
       end
 
+      cached = [{ type: "text", text: "House style.", cache_control: { type: "ephemeral" } }]
       workflow = klass.new
-      restored = klass.from_state(JSON.parse(JSON.generate(workflow.to_state)))
-      restored.run!
+      payload = JSON.generate(workflow.to_state)
+      workflow.run!
+      expect(messages.find { _1[:role] == :system }[:content].value).to eq(cached)
 
-      system = messages.find { _1[:role] == :system }
-      expect(system[:content].value)
-        .to eq([{ type: "text", text: "House style.", cache_control: { type: "ephemeral" } }])
-      expect(restored.to_state[:seed_digest]).to eq(workflow.to_state[:seed_digest])
+      [JSON.parse(payload), JSON.parse(payload, symbolize_names: true)].each do |state|
+        sent.clear
+        restored = klass.from_state(state)
+        restored.run!
+        expect(messages.find { _1[:role] == :system }[:content].value).to eq(cached)
+        expect(restored.to_state[:seed_digest]).to eq(workflow.to_state[:seed_digest])
+      end
+
+      sent.clear
+      Smith::Agent::Registry.delete(:spec_parts_reader)
+      reader(:openai)
+      klass.new.run!
+      expect(messages.find { _1[:role] == :system }[:content]).to eq("House style.")
+    end
+
+    it "uses the provider the chat reports over the one the agent declares" do
+      recorded = sent
+      agent = with_stubbed_class("SpecPartsObserved", Smith::Agent) do
+        register_as :spec_parts_reader
+        model "claude-sonnet-4-5"
+      end
+      agent.define_singleton_method(:chat) do |**|
+        chat = Object.new
+        chat.define_singleton_method(:model) { Struct.new(:id, :provider).new("claude-sonnet-4-5", "anthropic") }
+        chat.define_singleton_method(:add_message) { |message| recorded << message }
+        chat.define_singleton_method(:with_schema) { |_schema| self }
+        chat.define_singleton_method(:complete) { Struct.new(:content, :input_tokens, :output_tokens).new("ok", 1, 1) }
+        chat
+      end
+      klass = reading("SpecPartsObservedRun", "x") { |_ref| Smith::Message.user([Smith::Content.text("hi", cache: true)]) }
+
+      klass.new.run!
+
+      expect(messages.sole[:content].value).to eq([{ type: "text", text: "hi", cache_control: { type: "ephemeral" } }])
+    end
+
+    it "falls back past a model that takes no such content, and fails typed when none does" do
+      calls = []
+      register = lambda do |fallbacks|
+        Smith::Agent::Registry.delete(:spec_parts_reader)
+        agent = with_stubbed_class("SpecPartsFallback", Smith::Agent) do
+          register_as :spec_parts_reader
+          model "deepseek-chat", provider: :deepseek
+          fallback_models(*fallbacks) if fallbacks.any?
+        end
+        agent.define_singleton_method(:chat) do |model:, provider: nil, **|
+          chat = Object.new
+          chat.define_singleton_method(:add_message) { |_message| nil }
+          chat.define_singleton_method(:with_schema) { |_schema| self }
+          chat.define_singleton_method(:complete) do
+            calls << model
+            raise RubyLLM::UnsupportedAttachmentError, "application/pdf" if provider.to_s == "deepseek"
+
+            Struct.new(:content, :input_tokens, :output_tokens).new("read", 1, 1)
+          end
+          chat
+        end
+      end
+      klass = reading("SpecPartsFallbackRun", pdf) do |ref|
+        Smith::Message.user([Smith::Content.document(ref, media_type: "application/pdf")])
+      end
+
+      register.call(["anthropic/claude-sonnet-4-5"])
+      expect(klass.new.run!.output).to eq("read")
+      expect(calls).to eq(%w[deepseek-chat claude-sonnet-4-5])
+
+      register.call([])
+      expect(klass.new.run!.last_error).to be_a(Smith::ContentUnavailable)
+    end
+
+    it "sends RubyLLM content found in the session as text, never as content" do
+      reader(:anthropic)
+      klass = with_stubbed_class("SpecPartsForeignContent", workflow_class) do
+        initial_state :idle
+        transition(:b, from: :idle, to: :done) { execute :spec_parts_reader }
+      end
+      workflow = klass.new
+      workflow.instance_variable_set(:@session_messages, [{ role: :user, content: RubyLLM::Content.new("hello") }])
+
+      workflow.run!
+
+      expect(messages.first[:content]).to be_a(String)
     end
 
     it "refuses parts outside the seed messages, malformed seed parts, and parts a host admits" do
@@ -351,7 +569,9 @@ RSpec.describe "Smith content parts: Smith::Content and Smith::Message" do
       expect(klass.from_state(state).to_state[:session_messages].length).to eq(1)
       later = state.merge("session_messages" => [seed, seed])
       broken = state.merge("session_messages" => [seed.merge("content" => [{ "type" => "text" }])])
-      [later, broken].each do |bad|
+      document = Smith::Content.document("ns:r", media_type: "application/pdf")
+      held = state.merge("session_messages" => [seed.merge("content" => [document])])
+      [later, broken, held].each do |bad|
         expect { klass.from_state(bad) }.to raise_error(Smith::SerializationError)
       end
       expect { klass.new.append_session_messages!(Smith::Message.user([Smith::Content.text("x")])) }
@@ -366,7 +586,7 @@ RSpec.describe "Smith content parts: Smith::Content and Smith::Message" do
         transition(:b, from: :b, to: :done) { execute :spec_parts_reader }
       end
       workflow = klass.new
-      shaped = { "role" => "user", "content" => [Smith::Content.document("r", media_type: "application/pdf")],
+      shaped = { "role" => "user", "content" => [Smith::Content.document("ns:r", media_type: "application/pdf")],
                  "parts" => true }
       workflow.append_session_messages!({ role: "assistant", content: shaped })
 
