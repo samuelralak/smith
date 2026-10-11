@@ -1,0 +1,15 @@
+# frozen_string_literal: true
+
+<%- namespaces.each_with_index do |namespace, depth| -%>
+<%= "  " * depth %>module <%= namespace %>
+<%- end -%>
+<%- indent = "  " * namespaces.length -%>
+<%= indent %># A workflow run's stored state (Smith's :active_record persistence
+<%= indent %># adapter). Keep it to persistence: Smith writes it under optimistic
+<%= indent %># locking, and a callback that raises after the commit leaves a write it
+<%= indent %># cannot confirm. `encrypts :payload` keeps states encrypted at rest.
+<%= indent %>class <%= state_model.demodulize %> < ApplicationRecord
+<%= indent %>end
+<%- namespaces.length.times.reverse_each do |depth| -%>
+<%= "  " * depth %>end
+<%- end -%>

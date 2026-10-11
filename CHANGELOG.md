@@ -412,8 +412,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   none, `:child_run_unbudgeted`). Runtime readiness warns of an agent whose
   model has no price wherever the ledger is charged
   (`:budget_ledger_unpriced`), and its metrics name the scope keys.
+- Testing kit: `require "smith/testing"` (and `smith/testing/minitest`,
+  `smith/testing/rspec`). `Smith::Testing.stub_agent(agent, outputs:,
+  usage:, stop_reason:, stream:)` answers an agent's requests where they
+  would go over the wire, so the tool loop, budget holds, the response
+  memo, streaming and output checks run as for a provider's reply. Outputs
+  are taken in turn: a String, a Hash as JSON text, or
+  `tool_call(ToolClass, **arguments)`, which runs the agent's own tool (a
+  tool the agent lacks fails the call). Only the stubbed call's own
+  requests are answered, and a batch step's capture and delivery are left
+  to batch mode. `run_until_waiting`, `resume_with` and `expire` drive a
+  run through its waits (a durable retry's backoff ends at once);
+  `batch_result` and `batch_payload` build a batch delivery. Minitest
+  assertions (`assert_waiting_for`, `assert_transitioned_through`,
+  `assert_usage_recorded`) and RSpec matchers (`be_waiting_for`,
+  `have_transitioned_through`, `have_recorded_usage`) drop the stubs after
+  each test.
+- `Smith.config.persistence_max_bytes`: a stored workflow state's bound (nil
+  by default). A state past it raises `Smith::PersistedStateTooLarge` before
+  anything is written.
+- `rails g smith:install` also writes a workflow-state migration and model
+  for the `:active_record` adapter (a unique key, a text payload, a
+  `lock_version`, a payload-size CHECK a third above
+  `persistence_max_bytes`, room for `encrypts`) and configures them; options
+  `--state-model`, `--key-type=uuid`, `--references=TABLE` (a cascading
+  foreign key on the key), `--max-state-bytes` and `--skip-state-model`.
+- `smith doctor` checks an `:active_record` adapter's model on every run
+  (`persistence.state_model`: its `lock_version`, a text payload, a unique
+  key), through `ActiveRecordStore#check_schema!`.
 
 ### Changed
+
+- The doctor's durability probe writes as runs write (`Workflow#persist!`:
+  `store_versioned` where the adapter has it, and `persistence_max_bytes`),
+  so it now fails where runs would, an `:active_record` adapter with a
+  `persistence_ttl` included.
 
 - Smith's OpenAI Responses path (`openai_api_mode: :auto`) given a streaming
   block no longer raises `NotImplementedError`: it completes, then passes the

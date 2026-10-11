@@ -1,0 +1,35 @@
+# frozen_string_literal: true
+
+# Workflow runs' stored state, for Smith's :active_record persistence
+# adapter: a key the database keeps unique, the state as JSON text (Rails
+# `encrypts` works on it), and the lock_version Smith's writes compare.
+class Create<%= table_name.camelize %> < ActiveRecord::Migration[<%= ActiveRecord::Migration.current_version %>]
+  def change
+    create_table :<%= table_name %> do |t|
+      t.<%= options[:key_type] %> :key, null: false, index: { unique: true }
+      t.text :payload, null: false
+      t.integer :lock_version, null: false, default: 0
+      t.timestamps
+    end
+<%- if options[:references] -%>
+
+    # A state goes with the <%= options[:references] %> row whose id is its key.
+    add_foreign_key :<%= table_name %>, :<%= options[:references] %>, column: :key, on_delete: :cascade
+<%- end -%>
+<%- if check_bytes -%>
+
+    # Smith refuses a state past persistence_max_bytes (<%= literal(max_state_bytes) %>) before
+    # writing it; this bounds the stored bytes, with room for `encrypts`.
+    add_check_constraint :<%= table_name %>, "#{payload_bytes} <= <%= check_bytes %>",
+                         name: "<%= table_name %>_payload_size"
+<%- end -%>
+  end
+<%- if check_bytes -%>
+
+  private
+
+  def payload_bytes
+    connection.adapter_name.match?(/sqlite/i) ? "length(CAST(payload AS BLOB))" : "octet_length(payload)"
+  end
+<%- end -%>
+end

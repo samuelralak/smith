@@ -29,8 +29,13 @@ module Smith
       REFUSAL = "refusal"
       PROMPT_BLOCKED = "prompt_blocked"
 
+      KEPT = "smith.response"
+      # A response Smith made or kept itself (a response memo's, a test
+      # stub's) carries its facts as a raw body of this shape.
+      Kept = Struct.new(:body)
+
       READERS = [
-        [->(body) { body["object"] == "smith.response_memo" }, ->(body) { [body["stop_reason"], body["id"]] }],
+        [->(body) { body["object"] == KEPT }, ->(body) { [body["stop_reason"], body["id"]] }],
         [->(body) { body["type"] == "message" }, ->(body) { [body["stop_reason"], body["id"]] }],
         [->(body) { body["object"] == "chat.completion" },
          lambda do |body|
@@ -52,6 +57,8 @@ module Smith
       private_constant :READERS
 
       module_function
+
+      def kept(stop_reason:, id:) = Kept.new({ "object" => KEPT, "stop_reason" => stop_reason, "id" => id })
 
       def from_message(message)
         body = raw_body(message)

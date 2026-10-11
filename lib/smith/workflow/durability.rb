@@ -439,6 +439,9 @@ module Smith
       # external duck-typed adapters that don't accept a `ttl:` kwarg
       # keep working; they only break if the host opts into TTL.
       def dispatch_store!(store, key, payload, previous_version:)
+        limit = Smith.config.persistence_max_bytes
+        raise PersistedStateTooLarge.new(key:, bytes: payload.bytesize, limit:) if limit && payload.bytesize > limit
+
         kwargs = ttl_kwarg(effective_persistence_ttl)
 
         if Smith::PersistenceAdapters.supports?(store, :store_versioned)

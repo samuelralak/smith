@@ -47,6 +47,13 @@ module Smith
   # Per-workflow `Workflow.persistence_ttl 1.day.to_i` DSL overrides this.
   setting :persistence_ttl, default: nil
 
+  # The most bytes a stored workflow state may take, or nil for no bound.
+  # A state past it is refused before anything is written
+  # (Smith::PersistedStateTooLarge). A database CHECK on the payload column
+  # (`rails g smith:install` writes one) bounds the stored bytes the same.
+  setting :persistence_max_bytes,
+          default: nil, constructor: SettingConstructors.optional_positive_integer(:persistence_max_bytes)
+
   # Starts the runs `map`, `call` and `spawn` steps launch:
   # `launch(children:, parent_key:, await_token:)`, idempotent on each
   # `child.key`. Smith::Launchers::Inline runs them in process.
@@ -83,11 +90,8 @@ module Smith
   # (`max_tokens`, else the model's maximum, which can be tens of thousands
   # for an agent that sets none). Only the hold changes, not the request: a
   # longer reply is reconciled at what it cost, past its hold.
-  setting :budget_hold_output_tokens, default: nil, constructor: lambda { |tokens|
-    next tokens if tokens.nil? || (tokens.is_a?(Integer) && tokens.positive?)
-
-    raise ArgumentError, "Smith.config.budget_hold_output_tokens must be nil or a positive Integer"
-  }
+  setting :budget_hold_output_tokens,
+          default: nil, constructor: SettingConstructors.optional_positive_integer(:budget_hold_output_tokens)
 
   # Retry policy for transient persistence I/O failures.
   #   attempts:    total attempts (including the first)

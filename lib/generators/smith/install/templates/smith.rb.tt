@@ -3,7 +3,21 @@
 Smith.configure do |config|
   config.logger = Rails.logger
 
+<%- unless options[:skip_state_model] -%>
+  # Workflow state in the <%= table_name %> table, through <%= state_model %>.
+  config.persistence_adapter = :active_record
+  config.persistence_options = { model: "<%= state_model %>" }
+<%- if max_state_bytes.positive? -%>
+  # The most bytes a run's state may take: past it Smith raises
+  # Smith::PersistedStateTooLarge before writing. The payload column's
+  # CHECK sits above it.
+  config.persistence_max_bytes = <%= literal(max_state_bytes) %>
+<%- end -%>
+
+  # Other persistence adapters:
+<%- else -%>
   # Host durability verification / persistence adapter options:
+<%- end -%>
   # config.persistence_adapter = :rails_cache
   # config.persistence_options = { namespace: "smith" }
   #
@@ -16,13 +30,15 @@ Smith.configure do |config|
   #   namespace: "smith"
   # }
   #
-  # config.persistence_adapter = :active_record
+<%- if options[:skip_state_model] -%>
+  # config.persistence_adapter = :active_record   # `rails g smith:install` writes its table and model
   # config.persistence_options = {
-  #   model: WorkflowState,
+  #   model: "WorkflowState",
   #   key_column: :key,
   #   payload_column: :payload
   # }
   #
+<%- end -%>
   # Custom adapters are also supported if they implement:
   #   store(key, payload)
   #   fetch(key)

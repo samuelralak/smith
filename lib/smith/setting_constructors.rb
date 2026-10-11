@@ -15,6 +15,14 @@ module Smith
       end
     end
 
+    def optional_positive_integer(name)
+      lambda do |value|
+        next value if value.nil? || (value.is_a?(Integer) && value.positive?)
+
+        raise ArgumentError, "Smith.config.#{name} must be nil or a positive Integer, got #{value.inspect}"
+      end
+    end
+
     def bounded_positive_integer(name, maximum)
       lambda do |value|
         unless value.is_a?(Integer) && value.positive? && value <= maximum

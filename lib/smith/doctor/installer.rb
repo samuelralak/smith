@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "erb"
 require "fileutils"
 
 module Smith
@@ -41,8 +42,9 @@ module Smith
       end
 
       def rails_template
+        # The generator's initializer, as `rails g smith:install --skip-state-model` writes it.
         template_path = File.expand_path("../../generators/smith/install/templates/smith.rb.tt", __dir__)
-        File.read(template_path)
+        ERB.new(File.read(template_path), trim_mode: "-").result_with_hash(options: { skip_state_model: true })
       end
 
       def plain_template

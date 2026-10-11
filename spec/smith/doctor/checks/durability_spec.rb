@@ -40,8 +40,27 @@ RSpec.describe Smith::Doctor::Checks::Durability do
     expect(check.status).to eq(:fail)
     expect(check.message).to eq("ActiveRecordStore cannot expire workflow state; persistence_ttl must be nil")
     expect(check.detail).to include("3600")
-    expect(report.checks.find { |c| c.name == "durability.persist_restore" }.status).to eq(:pass)
+    # The probe writes as runs write, so it meets the refusal they would.
+    expect(report.checks.find { |c| c.name == "durability.persist_restore" }.status).to eq(:fail)
+    expect(untimed.checks.find { |c| c.name == "durability.persist_restore" }.status).to eq(:pass)
     expect(untimed.checks.map(&:name)).not_to include("durability.ttl")
+  ensure
+    Smith.configure { |c| original.each { |name, value| c.public_send(:"#{name}=", value) } }
+  end
+
+  it "probes an ActiveRecord state model with the versioned writes runs make", :ar do
+    settings = %i[persistence_adapter persistence_options]
+    original = settings.to_h { |name| [name, Smith.config.public_send(name)] }
+    Smith.configure do |c|
+      c.persistence_adapter = :active_record
+      c.persistence_options = { model: "SmithWorkflowStateRecord" }
+    end
+    checks = Smith::Doctor::Report.new.tap { described_class.run(_1) }.checks.to_h { [_1.name, _1] }
+
+    expect(checks.values_at("durability.persist_restore", "durability.resume_after_restore").map(&:status))
+      .to eq(%i[pass pass])
+    expect(checks["durability.persist_restore"].detail).to eq("Written as runs write, with store_versioned")
+    expect(SmithWorkflowStateRecord.where(key: "smith_doctor_probe")).to be_empty
   ensure
     Smith.configure { |c| original.each { |name, value| c.public_send(:"#{name}=", value) } }
   end

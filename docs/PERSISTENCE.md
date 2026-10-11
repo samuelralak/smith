@@ -1235,7 +1235,15 @@ Valid JSON scalars are not workflow-state documents, and explicit null,
 negative, or non-integer versions fail closed instead of being overwritten.
 
 The default host model needs a unique key, a JSON/text payload, and Rails'
-standard optimistic-locking column:
+standard optimistic-locking column. `bin/rails generate smith:install`
+writes its migration, model and initializer (`--state-model`, `--key-type`,
+`--references`, `--max-state-bytes`; see the README's Installation), with a
+CHECK on the payload's size a third above `persistence_max_bytes`: Smith
+refuses a state past the bound before writing it
+(`Smith::PersistedStateTooLarge`), and the CHECK bounds the stored bytes,
+encrypted ones included. `smith doctor` checks the model on every run (its
+locking column, a text payload, and a key the database keeps unique), and its
+durability probe writes with `store_versioned`, as runs do. By hand:
 
 ```ruby
 create_table :workflow_states do |t|

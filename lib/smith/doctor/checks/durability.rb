@@ -52,19 +52,13 @@ module Smith
         end
 
         def self.check_persist_and_restore(report, adapter)
-          workflow_class = build_probe_class
-          payload = JSON.generate(workflow_class.new.to_state)
-
-          adapter.store(PROBE_KEY, payload)
-          restored_payload = adapter.fetch(PROBE_KEY)
-          restored = workflow_class.from_state(JSON.parse(restored_payload))
-          adapter.delete(PROBE_KEY)
-
+          restored = probe_round_trip(adapter)
           valid = restored.state == :idle
           report.add(
             name: "durability.persist_restore",
             status: valid ? :pass : :fail,
-            message: valid ? "Host persistence round-trip works" : "Host persistence round-trip failed"
+            message: valid ? "Host persistence round-trip works" : "Host persistence round-trip failed",
+            detail: "Written as runs write, with #{probe_write(adapter)}"
           )
         rescue StandardError => e
           report.add(
@@ -74,15 +68,7 @@ module Smith
         end
 
         def self.check_resume_after_restore(report, adapter)
-          workflow_class = build_probe_class
-          payload = JSON.generate(workflow_class.new.to_state)
-
-          adapter.store(PROBE_KEY, payload)
-          restored_payload = adapter.fetch(PROBE_KEY)
-          restored = workflow_class.from_state(JSON.parse(restored_payload))
-          adapter.delete(PROBE_KEY)
-
-          result = restored.run!
+          result = probe_round_trip(adapter).run!
           valid = result.state == :done
 
           report.add(
@@ -93,6 +79,22 @@ module Smith
         rescue StandardError => e
           report.add(name: "durability.resume_after_restore", status: :fail,
                      message: "Resume after restore failed", detail: e.message)
+        end
+
+        # A probe run stored as runs are (Workflow#persist!: store_versioned
+        # where the adapter has it, and persistence_max_bytes) and restored.
+        def self.probe_round_trip(adapter)
+          workflow_class = build_probe_class
+          adapter.delete(PROBE_KEY)
+          workflow_class.new.persist!(PROBE_KEY, adapter:)
+          workflow_class.restore(PROBE_KEY, adapter:)
+        ensure
+          adapter.delete(PROBE_KEY)
+        end
+
+        def self.probe_write(adapter)
+          versioned = ::Smith::PersistenceAdapters.supports?(adapter, :store_versioned)
+          versioned ? "store_versioned" : "plain store (the adapter has no store_versioned)"
         end
 
         def self.build_probe_class

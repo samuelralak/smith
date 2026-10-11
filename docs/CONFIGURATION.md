@@ -176,6 +176,7 @@ from JSON or YAML has.
 | `persistence_adapter` | Adapter for durable workflow state | `:redis`, `:rails_cache`, `:active_record`, `:memory`, or a custom object |
 | `persistence_options` | Per-adapter options (client, namespace, model, columns) | See "Built-In Persistence Adapters" |
 | `persistence_ttl` | Global TTL for persisted state (Integer/Float seconds; nil = no expiry). `:active_record` cannot expire state, so its writes refuse a non-nil TTL (reads and deletes still work, and `smith doctor --durability` flags the combination) | Set when long-tail abandoned workflows accumulate in storage |
+| `persistence_max_bytes` | The most bytes a stored workflow state may take (nil, the default: no bound). A state past it raises `Smith::PersistedStateTooLarge` (its `key`, `bytes` and `limit`) before anything is written, so the stored state stays as it was; the bound holds on every replay too. `rails g smith:install` sets it to 1 MiB and puts a CHECK a third above it on the payload column, room for `encrypts` | Set it with a database CHECK on the payload, so a state that outgrows the bound fails as a typed error instead of a database one |
 | `persistence_retry_policy` | Exponential-backoff policy for transient adapter I/O failures | Defaults to `{ attempts: 3, base_delay: 0.1, max_delay: 1.0 }` |
 | `retry_attempt_limit` | Maximum attempts accepted by workflow and persistence retry policies | Defaults to `100` |
 | `parallel_branch_limit` | Maximum branches accepted by one homogeneous or heterogeneous fan-out | Defaults to `1_000` |

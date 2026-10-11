@@ -16,6 +16,7 @@ require_relative "doctor/checks/models_registry"
 require_relative "doctor/checks/openai_api_mode"
 require_relative "doctor/checks/persistence_capabilities"
 require_relative "doctor/checks/artifacts"
+require_relative "doctor/checks/state_model"
 
 module Smith
   module Doctor
@@ -25,6 +26,7 @@ module Smith
       Checks::Baseline.run(report)
       Checks::Configuration.run(report)
       Checks::Artifacts.run(report)
+      Checks::StateModel.run(report)
       Checks::ModelsRegistry.run(report)
       Checks::OpenaiApiMode.run(report)
       Checks::Rails.run(report) if detect_rails?

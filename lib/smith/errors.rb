@@ -359,6 +359,21 @@ module Smith
     end
   end
 
+  # Raised before a workflow state past Smith.config.persistence_max_bytes
+  # is written: nothing is stored, and the run's stored state stays as it
+  # was. The bound holds on every replay too, so the host raises it (and the
+  # payload column's CHECK) or keeps less in the run.
+  class PersistedStateTooLarge < Error
+    attr_reader :key, :bytes, :limit
+
+    def initialize(key:, bytes:, limit:)
+      @key = key
+      @bytes = bytes
+      @limit = limit
+      super("the workflow state for #{key.inspect} is #{bytes} bytes, past persistence_max_bytes (#{limit})")
+    end
+  end
+
   # Raised when an adapter's optimistic-lock check detects a concurrent
   # write: another process modified the key between this process's
   # restore and persist. Hosts can rescue + restore + retry, or fail

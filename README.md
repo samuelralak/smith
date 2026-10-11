@@ -17,12 +17,28 @@ environment before calling the slice complete.
 
 ```ruby
 # Gemfile
-gem "smith-agents", "0.5.0", require: "smith"
+gem "smith-agents", "0.12.0", require: "smith"
 ```
 
 ```bash
 bundle install
+bin/rails generate smith:install   # in a Rails app
+bin/rails db:migrate
 ```
+
+`smith:install` writes `config/initializers/smith.rb` and a table and model
+for workflow state (`WorkflowState`, Smith's `:active_record` persistence
+adapter): a unique key, the state as JSON text (Rails `encrypts` works on
+it), the `lock_version` Smith's versioned writes compare, and a CHECK on the
+payload's size. The initializer sets `persistence_max_bytes` (1 MiB), so a
+state past it is refused before anything is written
+(`Smith::PersistedStateTooLarge`); the CHECK sits a third above it, room for
+an encrypted payload. Options: `--state-model=NAME`, `--key-type=uuid`
+(PostgreSQL), `--references=TABLE` (a state's key is that table's row id,
+and deleting the row deletes the state; child runs are stored under keys of
+their own, so the launcher creates a row for each), `--max-state-bytes=N`
+(`0` for no bound and no CHECK), and `--skip-state-model` (the initializer
+only).
 
 The Ruby module namespace stays `Smith::`; only the gem name is namespaced because `smith` on RubyGems is taken. The `require: "smith"` in the Gemfile tells bundler to load the actual file name.
 
@@ -440,6 +456,7 @@ Smith.configure do |config|
   config.persistence_adapter = :rails_cache
   config.persistence_options = { namespace: "smith" }
   config.persistence_ttl = 1.day.to_i
+  config.persistence_max_bytes = 1_048_576 # a stored state's bound, refused before writing (nil: none)
   config.persistence_retry_policy = { attempts: 3, base_delay: 0.1, max_delay: 1.0 }
 
   # Generic runtime resource bounds
@@ -455,7 +472,7 @@ Smith.configure do |config|
     %w[openai gpt-4.1-nano] => {
       input_cost_per_token: 1.0e-7, output_cost_per_token: 4.0e-7,
       cache_read_cost_per_token: 2.5e-8, # optional: prompt-cache reads (0 when absent)
-      batch_discount: 0.5                # optional: off the cost of batch-mode calls (0 when absent; batch steps arrive later in 0.12)
+      batch_discount: 0.5                # optional: off the cost of batch-mode calls (0 when absent)
     }
   )
 end
@@ -635,11 +652,24 @@ cache invalidation.
 
 Smith ships `Tools::WebSearch`, `Tools::UrlFetcher`, and `Tools::Think`. Tools declare provider compatibility via `compatible_with`; Smith's normalizer routes or drops them per-attempt.
 
+`Tools::WebSearch` and `Tools::UrlFetcher` are stubs: they declare each
+tool's parameters and description, and their `perform` raises
+`NotImplementedError`. A host subclasses them with its own search or fetch
+behind `perform`. `Tools::Think` works as shipped.
+
 ```ruby
+class WebSearch < Smith::Tools::WebSearch
+  def perform(query:, max_results: 5) = SearchClient.search(query, limit: max_results)
+end
+
+class UrlFetcher < Smith::Tools::UrlFetcher
+  def perform(url:) = PageClient.fetch(url)
+end
+
 class SearchAgent < Smith::Agent
   register_as :search_agent
   model "claude-opus-4-7"
-  tools Smith::Tools::WebSearch, Smith::Tools::UrlFetcher
+  tools WebSearch, UrlFetcher # the host's subclasses
   budget tool_calls: 3
   tool_budget_exhaustion :complete
 end
@@ -831,6 +861,67 @@ bin/rails generate smith:install
 ```
 
 Doctor verifies: Smith loads, RubyLLM loads, minimal workflow boots, configuration is non-empty, serialization round-trips, persistence adapter works, and (with `--live`) a real provider call succeeds.
+An `:active_record` persistence adapter's model is checked on every run: its
+`lock_version` (Rails' locking column), a text payload, and a key the
+database keeps unique, read from schema metadata. The durability probe writes
+as runs write (`store_versioned` where the adapter has it, and
+`persistence_max_bytes`), so it meets what a run would.
+
+## Testing
+
+`require "smith/testing"` runs a host's workflows in its tests without a
+provider. A stubbed agent's requests are answered where they would go over
+the wire, so everything above runs as for a provider's reply: the tool loop,
+budget holds, the response memo, streaming, output checks and repairs, usage
+entries and budgets.
+
+```ruby
+# test/test_helper.rb
+require "smith/testing/minitest"   # or "smith/testing/rspec" for matchers
+
+class NoticeTest < ActiveSupport::TestCase
+  include Smith::Testing::Assertions
+
+  test "drafts with the venue's hours, then waits for approval" do
+    Smith::Testing.stub_agent(Writer, outputs: [Smith::Testing.tool_call(Lookup, venue: "the hall"),
+                                                "The hall opens at 8."],
+                                      usage: { input_tokens: 30, output_tokens: 6 })
+    run = Notice.new(context: {})
+
+    Smith::Testing.run_until_waiting(run)
+    assert_waiting_for run, :approval
+    Smith::Testing.resume_with(run, payload: { approved: true })
+    assert_transitioned_through run, :draft, :approve, :publish
+    assert_usage_recorded run, agent_name: Writer, stop_reason: "end_turn", input_tokens: 30
+  end
+end
+```
+
+- `stub_agent(agent, outputs:, usage:, stop_reason:, stream:)` answers the
+  agent's requests (its class, or its registered name) with `outputs` in
+  turn, the last answering every request after it: a String reply, a Hash as
+  JSON text (for an output schema), or `tool_call(ToolClass, **arguments)`
+  (an Array of them for one round), which runs the agent's own tools before
+  its next request. A tool request naming a tool the agent does not have
+  fails the call. `stop_reason: "max_tokens"` tests a truncated reply;
+  `stream: n` sends a streamed step's reply in pieces of n characters. The
+  stub keeps the messages each request sent (`calls`). Only the agent's own
+  requests are answered, never a tool's own provider call. The chat is still
+  built, so configure the provider (any key).
+- `run_until_waiting(run)` runs until the run waits or ends and returns its
+  wait (a durable retry's backoff is ended at once unless `retries: false`);
+  `resume_with(run, payload:)` delivers the wait's event and runs on;
+  `expire(run)` ends the wait as if its deadline had passed and runs on.
+- A batch step's request is captured as ever (the batch queue gets it);
+  `resume_with(run, payload: Smith::Testing.batch_payload(run, Smith::Testing.batch_result("text")))`
+  answers it, and a fan-out's `batch_payload` takes results by branch key.
+- Minitest: `assert_waiting_for(run, :event)` (or `kind: :batch`),
+  `assert_transitioned_through(run, *transitions)` (in order),
+  `assert_usage_recorded(run, count:, **usage_entry_attributes)`. RSpec:
+  `be_waiting_for`, `have_transitioned_through`, `have_recorded_usage`.
+- Stubs belong to the process; both helpers drop them after each test. An
+  in-process `retry_on` backoff still sleeps: stub `sleep` on the workflow,
+  or declare the retry `durable: true`.
 
 ## Capability-aware request shaping
 
@@ -1081,5 +1172,5 @@ bundle exec rspec
 bundle exec rubocop
 ```
 
-1,175 examples, MIT licensed. See [`CHANGELOG.md`](CHANGELOG.md) for the current
+2,406 examples, MIT licensed. See [`CHANGELOG.md`](CHANGELOG.md) for the current
 release surface.

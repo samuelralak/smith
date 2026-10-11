@@ -17,8 +17,6 @@ module Smith
       MAX_BYTES = 1024 * 1024
       ROLES = %w[assistant tool user].freeze
       TOKENS = %w[input_tokens output_tokens cached_tokens cache_creation_tokens thinking_tokens].freeze
-      # What Providers::ResponseFacts reads a kept response's facts from.
-      Raw = Struct.new(:body)
 
       module_function
 
@@ -93,8 +91,7 @@ module Smith
         return {} unless usage
 
         { **usage.fetch("tokens", {}).transform_keys(&:to_sym),
-          raw: Raw.new({ "object" => "smith.response_memo", "stop_reason" => usage["stop_reason"],
-                         "id" => usage["id"] }) }
+          raw: Providers::ResponseFacts.kept(stop_reason: usage["stop_reason"], id: usage["id"]) }
       end
 
       def valid?(list)

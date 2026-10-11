@@ -22,6 +22,16 @@ module Smith
         raise Smith::PersistenceIOError.new(operation: :replace_exact, cause: e)
       end
 
+      # Raises ArgumentError unless the model's table holds runs as their
+      # writes need: the locking column, a text payload, and a key the
+      # database keeps unique (smith:doctor reports it). Returns self.
+      def check_schema!
+        ensure_version_column!
+        ensure_locking_configuration!
+        ensure_exact_schema!(model_class)
+        self
+      end
+
       private
 
       def ensure_versioned_write!(ttl)
