@@ -10,14 +10,12 @@ RSpec.describe "Smith::Workflow parallel execution" do
   let(:workflow_class) { require_const("Smith::Workflow") }
   let(:workflow_error) { require_const("Smith::WorkflowError") }
   let!(:parallel_agent) do
-    with_stubbed_class("SpecParallelAgent", agent_class) do
-      register_as :spec_parallel_agent
-    end
+    answering(with_stubbed_class("SpecParallelAgent", agent_class) { register_as :spec_parallel_agent })
   end
   let!(:nested_fanout_agent) do
-    with_stubbed_class("SpecParallelNestedFanoutAgent", agent_class) do
+    answering(with_stubbed_class("SpecParallelNestedFanoutAgent", agent_class) do
       register_as :spec_parallel_nested_fanout_agent
-    end
+    end)
   end
 
   it "returns one branch result per configured branch when a parallel transition succeeds" do
@@ -36,9 +34,9 @@ RSpec.describe "Smith::Workflow parallel execution" do
     expect(result.steps.length).to eq(1)
     expect(result.output).to eq(
       [
-        { branch: 0, agent: :spec_parallel_agent, output: nil },
-        { branch: 1, agent: :spec_parallel_agent, output: nil },
-        { branch: 2, agent: :spec_parallel_agent, output: nil }
+        { branch: 0, agent: :spec_parallel_agent, output: "ok" },
+        { branch: 1, agent: :spec_parallel_agent, output: "ok" },
+        { branch: 2, agent: :spec_parallel_agent, output: "ok" }
       ]
     )
   end
@@ -1120,9 +1118,9 @@ RSpec.describe "Smith::Workflow parallel execution" do
       [:reserve, :total_cost, 0.5]
     )
     expect(reconcile_entries).to contain_exactly(
-      [:reconcile, :total_tokens, 50, 0],
+      [:reconcile, :total_tokens, 50, 2],
       [:reconcile, :total_cost, 0.5, 0],
-      [:reconcile, :total_tokens, 50, 0],
+      [:reconcile, :total_tokens, 50, 2],
       [:reconcile, :total_cost, 0.5, 0]
     )
     expect(release_entries).to eq([])

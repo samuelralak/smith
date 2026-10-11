@@ -36,7 +36,7 @@ RSpec.describe "Smith::Workflow execution context lifecycle" do
 
   it "preserves agent cleanup extension points" do
     events = []
-    Smith::Agent::Registry.register(:context_lifecycle_agent, Class.new(Smith::Agent))
+    Smith::Agent::Registry.register(:context_lifecycle_agent, answering(Class.new(Smith::Agent)))
     base = Class.new(Smith::Workflow) do
       initial_state :idle
       state :done

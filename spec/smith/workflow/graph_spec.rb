@@ -316,7 +316,10 @@ RSpec.describe "Smith::Workflow graph inspection" do
     original_limit = Smith.config.parallel_branch_limit
     Smith.config.parallel_branch_limit = 4
     agents = %i[one two three].to_h do |name|
-      klass = Class.new(Smith::Agent) { register_as :"spec_graph_limit_#{name}" }
+      klass = Class.new(Smith::Agent) do
+        register_as :"spec_graph_limit_#{name}"
+        model "gpt-5-mini"
+      end
       [name, klass]
     end
     workflow = Class.new(workflow_class) do
@@ -490,10 +493,10 @@ RSpec.describe "Smith::Workflow graph inspection" do
     expect(report.to_h).to include(:graph, :topology_diagnostics, :runtime_diagnostics)
   end
 
-  it "warns for registered agents that have no model configured" do
+  it "reports registered agents that have neither a model nor fallback models" do
     agent_class = require_const("Smith::Agent")
 
-    with_stubbed_class("SpecGraphNoModelAgent", agent_class) do
+    agent = with_stubbed_class("SpecGraphNoModelAgent", agent_class) do
       register_as :spec_graph_no_model_agent
     end
 
@@ -508,10 +511,12 @@ RSpec.describe "Smith::Workflow graph inspection" do
 
     report = workflow.runtime_readiness
 
-    expect(report).to be_ready
-    expect(report.status).to eq(:warning)
-    expect(report.warnings.map(&:code)).to include(:agent_without_model)
+    expect(report).not_to be_ready
+    expect(report.errors.map(&:code)).to include(:agent_without_model)
     expect(report.metrics.fetch(:modelless_agent_bindings_count)).to eq(1)
+
+    agent.fallback_models("openai/gpt-5-mini")
+    expect(workflow.runtime_readiness.diagnostics.map(&:code)).not_to include(:agent_without_model)
   end
 
   it "does not resolve lazy registry bindings while reporting them" do

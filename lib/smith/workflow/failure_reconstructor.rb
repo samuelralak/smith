@@ -23,6 +23,7 @@ module Smith
         "guardrail_failed" => ->(record) { Smith::GuardrailFailed.new(record[:error_message]) },
         "agent_error" => ->(record) { Smith::AgentError.new(record[:error_message]) },
         "workflow_error" => ->(record) { Smith::WorkflowError.new(record[:error_message]) },
+        "output_failure" => ->(record) { Smith::OutputFailure.from_details(record.fetch(:error_details)) },
         "wait_timed_out" => lambda { |record|
           Smith::WaitTimedOut.from_details(record.fetch(:error_details), message: record[:error_message])
         },
@@ -32,7 +33,10 @@ module Smith
         "Smith::Workflow::Composite::BranchFailure" => lambda { |record|
           Smith::Workflow::Composite::BranchFailure.from_details(record[:error_details])
         },
-        "Smith::BlankAgentOutputError" => ->(record) { blank_agent_output_failure(record) }
+        "Smith::BlankAgentOutputError" => ->(record) { blank_agent_output_failure(record) },
+        **Smith::OutputFailure.restorers.transform_values do |restore|
+          ->(record) { restore.call(record.fetch(:error_details)) }
+        end
       }.freeze
       private_constant :FAMILY_BUILDERS, :SPECIAL_CLASS_BUILDERS
 

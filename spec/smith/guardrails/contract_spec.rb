@@ -78,10 +78,10 @@ RSpec.describe "Smith::Guardrails contract" do
       output :agent_output
     end
 
-    with_stubbed_class("SpecRuntimeGuardedAgent", agent_class) do
+    answering(with_stubbed_class("SpecRuntimeGuardedAgent", agent_class) do
       guardrails agent_guardrails
       register_as :spec_runtime_guarded_agent
-    end
+    end)
 
     workflow = with_stubbed_class("SpecRuntimeGuardedWorkflow", workflow_class) do
       initial_state :idle

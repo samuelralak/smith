@@ -40,13 +40,18 @@ module Smith
         (Thread.current[:smith_failed_agent_results] ||= []).concat(results)
       end
 
-      def snapshot_and_finalize(agent_class, completion, model_reference, attempt_id: nil)
+      # Records and settles one completed attempt's usage and returns its
+      # result, whether or not the result becomes the output.
+      def account_attempt(agent_class, completion, model_reference, attempt_id: nil)
         model_reference = coerce_model_reference(model_reference)
         agent_result = completion_agent_result(completion, model_reference)
         Thread.current[:smith_last_agent_result] = agent_result
         emit_token_usage(agent_result)
         account_completion!(agent_class, completion, model_reference, agent_result, attempt_id)
+        agent_result
+      end
 
+      def finalize_output(agent_class, agent_result)
         agent_result.content = run_after_completion(agent_class, agent_result.content, @context)
         raise_blank_output!(agent_class, agent_result)
         agent_result

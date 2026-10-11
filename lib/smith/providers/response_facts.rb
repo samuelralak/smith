@@ -15,20 +15,29 @@ module Smith
     #   Gemini                  "candidates" => [...]         candidates[0].finishReason, responseId
     #   Bedrock Converse        "stopReason" => String        stopReason
     #
+    # OpenAI reports a refusal on the message rather than as a finish
+    # reason (Chat Completions `message.refusal`, a Responses `refusal`
+    # content item); it is read as the stop reason "refusal".
+    #
     # Both facts are metadata: bounded Strings, absent when the body is of
     # none of these shapes, does not carry them, or cannot be read (streamed
     # responses keep no raw body). Reading never raises.
     module ResponseFacts
       MAX_BYTES = 256
+      REFUSAL = "refusal"
 
       READERS = [
         [->(body) { body["type"] == "message" }, ->(body) { [body["stop_reason"], body["id"]] }],
         [->(body) { body["object"] == "chat.completion" },
-         ->(body) { [first_entry(body["choices"])&.fetch("finish_reason", nil), body["id"]] }],
+         lambda do |body|
+           choice = first_entry(body["choices"])
+           [(REFUSAL if chat_refusal?(choice)) || choice&.fetch("finish_reason", nil), body["id"]]
+         end],
         [->(body) { body["object"] == "response" },
          lambda do |body|
            details = body["incomplete_details"]
-           [(details["reason"] if details.is_a?(Hash)) || body["status"], body["id"]]
+           reason = (REFUSAL if responses_refusal?(body["output"])) || (details["reason"] if details.is_a?(Hash))
+           [reason || body["status"], body["id"]]
          end],
         [->(body) { body["candidates"].is_a?(Array) },
          ->(body) { [first_entry(body["candidates"])&.fetch("finishReason", nil), body["responseId"]] }],
@@ -56,6 +65,20 @@ module Smith
 
         raw = message.raw
         raw.respond_to?(:body) ? raw.body : raw
+      end
+
+      def chat_refusal?(choice)
+        message = choice&.fetch("message", nil)
+        message.is_a?(Hash) && message["refusal"].is_a?(String) && !message["refusal"].empty?
+      end
+
+      def responses_refusal?(output)
+        return false unless output.is_a?(Array)
+
+        output.any? do |item|
+          item.is_a?(Hash) && item["content"].is_a?(Array) &&
+            item["content"].any? { |part| part.is_a?(Hash) && part["type"] == REFUSAL }
+        end
       end
 
       def first_entry(list)

@@ -3,6 +3,7 @@
 require "dry-initializer"
 
 require_relative "../errors"
+require_relative "../output_failure"
 require_relative "composite/branch_failure"
 
 module Smith
@@ -19,6 +20,7 @@ module Smith
         "Smith::PersistedFailureInvalid" => "persisted_failure_invalid",
         "Smith::AgentError" => "agent_error",
         "Smith::BlankAgentOutputError" => "agent_error",
+        **Smith::OutputFailure.restorers.transform_values { "output_failure" },
         "Smith::DeadlineExceeded" => "deadline_exceeded",
         "Smith::ProviderPermanentFailure" => "provider_permanent_failure",
         "Smith::BudgetExceeded" => "budget_exceeded",
@@ -39,7 +41,7 @@ module Smith
         deterministic_step_failure tool_guardrail_failed tool_failure_notification_failed tool_capture_failed
         tool_outcome_uncertain tool_execution_not_admitted bounded_completion_error persisted_failure_invalid
         deadline_exceeded provider_permanent_failure budget_exceeded guardrail_failed agent_error workflow_error
-        wait_timed_out other
+        wait_timed_out output_failure other
       ].freeze
       RETRY_FORBIDDEN_FAMILIES = %w[
         tool_capture_failed tool_failure_notification_failed tool_outcome_uncertain tool_execution_not_admitted
@@ -57,7 +59,8 @@ module Smith
         "Smith::WaitTimedOut" => ->(details) { Smith::WaitTimedOut.from_details(details) },
         "Smith::BlankAgentOutputError" => lambda { |details|
           Smith::BlankAgentOutputError.from_details(details) unless details.nil?
-        }
+        },
+        **Smith::OutputFailure.restorers
       }.freeze
       BOOLEAN_VALUES = [true, false].freeze
       private_constant :KNOWN_ERROR_FAMILIES, :LEGACY_ERROR_FAMILIES, :KNOWN_FAMILIES, :RETRY_FORBIDDEN_FAMILIES,

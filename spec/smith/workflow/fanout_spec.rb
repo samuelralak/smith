@@ -8,15 +8,11 @@ RSpec.describe "Smith::Workflow heterogeneous fan-out" do
   let(:workflow_error) { require_const("Smith::WorkflowError") }
 
   let!(:static_agent) do
-    with_stubbed_class("SpecFanoutStaticAgent", agent_class) do
-      register_as :spec_fanout_static_agent
-    end
+    answering(with_stubbed_class("SpecFanoutStaticAgent", agent_class) { register_as :spec_fanout_static_agent })
   end
 
   let!(:security_agent) do
-    with_stubbed_class("SpecFanoutSecurityAgent", agent_class) do
-      register_as :spec_fanout_security_agent
-    end
+    answering(with_stubbed_class("SpecFanoutSecurityAgent", agent_class) { register_as :spec_fanout_security_agent })
   end
 
   it "declares a fan_out transition with stable branch keys" do
@@ -223,8 +219,8 @@ RSpec.describe "Smith::Workflow heterogeneous fan-out" do
     expect(result.state).to eq(:reviewed)
     expect(result.output).to eq(
       [
-        { branch: :static, agent: :spec_fanout_static_agent, output: nil },
-        { branch: :security, agent: :spec_fanout_security_agent, output: nil }
+        { branch: :static, agent: :spec_fanout_static_agent, output: "ok" },
+        { branch: :security, agent: :spec_fanout_security_agent, output: "ok" }
       ]
     )
   end

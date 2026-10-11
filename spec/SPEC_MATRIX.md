@@ -1681,6 +1681,29 @@ Documented contracts covered:
 - the OpenAI Responses adapter parses a body end to end, reporting input with cached and cache-written input taken out, capping cache counts at the reported input and ignoring non-Integer counts, so the provider's total is kept
 - the review fixes above are mutation-verified against the full suite
 
+### `spec/smith/agent/output_integrity_spec.rb`
+
+Purpose:
+
+- asserts that a cut-off, refused or invalid response is never accepted as a step's output, that each is billed, and that the agent's retry, fallback and repair settings are honored
+
+Architecture basis:
+
+- Section 4.1, Agents
+- Section 4.4, Guardrails
+
+Documented contracts covered:
+
+- `Smith::Providers::StopReason` reads each provider's cut-off and refusal stop reasons and nothing else; OpenAI's message-level refusals (Chat Completions and Responses) read as `refusal`
+- a cut-off response raises `OutputTruncated` (billed), is kept under `on_truncation :accept`, and under `retry_with:` is retried once on the same model with the provider's own limit parameter (Anthropic, OpenAI chat and Responses, Gemini, Vertex AI, Bedrock), never for another provider
+- a refused response raises `OutputRefused`, or falls back once to the declared model, never to the model that refused
+- a structured output is sent to Anthropic without the constraints it rejects and with closed objects; broken constraints, a non-object output and a failed output contract go back for repair with the rejected reply and the problems, up to `output_repairs`, then raise `OutputInvalid`; JSON text is read as its object; a step with no messages repairs from the rejected reply alone
+- `SchemaConstraints` strips for Anthropic only, refuses an open object, and reports problems by path through `$ref`, `anyOf` and arrays, at most 20
+- the output errors form the `output_failure` family, are not retryable or caught by `retry_on Smith::AgentError`, persist and restore with bounded details (an unknown class of the family restores as `OutputFailure`), and refuse unbounded details
+- the agent macros validate their settings and pass to subclasses
+- an agent with no model fails its serial or fan-out step
+- these contracts are mutation-verified against the full suite
+
 ### `spec/smith/workflow/isolation_spec.rb`
 
 Purpose:

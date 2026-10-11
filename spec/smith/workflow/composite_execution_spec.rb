@@ -3,7 +3,7 @@
 RSpec.describe "Smith::Workflow durable composite execution" do
   let(:adapter) { Smith::PersistenceAdapters::Memory.new }
 
-  def register_composite_agent(name, agent = Class.new(Smith::Agent))
+  def register_composite_agent(name, agent = answering(Class.new(Smith::Agent)))
     agent.execution_identity(Digest::SHA256.hexdigest("spec-composite-agent:#{name}"))
     Smith::Agent::Registry.register(name, agent)
     agent
@@ -421,7 +421,7 @@ RSpec.describe "Smith::Workflow durable composite execution" do
   end
 
   it "reduces a host-committed primary branch failure through on_failure" do
-    successful = Class.new(Smith::Agent)
+    successful = answering(Class.new(Smith::Agent))
     failing = Class.new(Smith::Agent) { model "gpt-5-mini" }
     register_composite_agent(:composite_successful, successful)
     register_composite_agent(:composite_failing, failing)

@@ -26,9 +26,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   restored payload must hold only `system`, `user`, `assistant` and `tool`
   messages; one written earlier may hold a system message the host admitted,
   which still reaches agents, so rebuild such sessions to rely on the new rule.
+- An agent with no model and no fallback models now fails its step instead
+  of returning nil, and runtime readiness reports `:agent_without_model` as an
+  error. Give placeholder agents a model (and a stubbed chat in tests).
+- A response cut off at its output limit, a refused response, and a structured
+  output that does not parse to a JSON object now fail the step
+  (`Smith::OutputTruncated`, `Smith::OutputRefused`, `Smith::OutputInvalid`)
+  instead of passing on as the output; `on_truncation :accept` keeps the old
+  behavior for cut-off responses. These errors are not `AgentError`s, so a
+  `rescue Smith::AgentError` no longer catches such a failure.
 
 ### Added
 
+- Output integrity. Smith reads each response's stop reason (OpenAI's
+  message-level refusals included) as cut off or refused. A cut-off response
+  raises `Smith::OutputTruncated` unless the agent declares
+  `on_truncation :accept` or `on_truncation retry_with: { max_tokens: n }` (one
+  more call on the same model, with the limit mapped to the provider's own
+  parameter); a refused one raises `Smith::OutputRefused` unless the agent
+  declares `on_refusal fallback: "provider/model"` (one call on that model). A
+  structured output that is not a JSON object, breaks a schema constraint, or
+  fails `output_contract` (any object whose `call(hash)` answers `success?` and
+  `errors`) goes back to the model with its problems up to `output_repairs`
+  times (default 1), then raises `Smith::OutputInvalid` with the problems as
+  "path: problem" lines. For Anthropic, Smith sends the schema without the
+  numeric, string-length and array-size constraints it rejects, with
+  `additionalProperties: false` on every object, and checks those constraints
+  on the parsed output for every provider. The three errors share the failure
+  family `output_failure`, persist and restore with their details, and are not
+  retryable. Every response is billed and settles into budgets.
 - Usage carries prompt-cache, thinking and response facts. Each provider
   response's usage (`Smith::Agent::ProviderUsage`), each `UsageEntry`, each
   `AgentResult`, and the `:provider_call` trace gain `cache_read_tokens`,
@@ -225,7 +251,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   `active_seconds` and `active_step_started_at`; a payload without them
   restores as not waiting with no active time spent.
 - Rollback: an earlier 0.12 build, and 0.11.0, refuse a persisted failure whose
-  family is `wait_timed_out`; clear or settle such runs before rolling back.
+  family is `wait_timed_out` or `output_failure`; clear or settle such runs
+  before rolling back.
 - A workflow's execution namespace (the persisted UUID that scopes its
   artifacts and now its idempotency keys) is assigned when the workflow is
   built instead of on first artifact use, so `to_state` always carries it,

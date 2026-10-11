@@ -34,6 +34,9 @@ module Smith
         subclass.instance_variable_set(:@fallback_models_block, @fallback_models_block)
         subclass.instance_variable_set(:@model_block, @model_block)
         subclass.instance_variable_set(:@tool_budget_exhaustion, @tool_budget_exhaustion)
+        %i[@on_truncation @on_refusal @output_contract @output_repairs].each do |name|
+          subclass.instance_variable_set(name, instance_variable_get(name))
+        end
         subclass.instance_variable_set(:@execution_identity, nil)
         subclass.instance_variable_set(:@registered_name, nil)
       end
@@ -148,8 +151,10 @@ require_relative "agent/dynamic_configuration"
 require_relative "agent/fallback_configuration"
 require_relative "agent/reserved_input_bridge"
 require_relative "agent/chat_construction"
+require_relative "agent/output_policy"
 
 Smith::Agent.extend(Smith::Agent::DynamicConfiguration)
 Smith::Agent.extend(Smith::Agent::FallbackConfiguration)
 Smith::Agent.extend(Smith::Agent::ReservedInputBridge)
 Smith::Agent.extend(Smith::Agent::ChatConstruction)
+Smith::Agent.extend(Smith::Agent::OutputPolicy)

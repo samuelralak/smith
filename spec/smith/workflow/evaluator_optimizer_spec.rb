@@ -750,7 +750,7 @@ RSpec.describe "Smith::Workflow::EvaluatorOptimizer runtime behavior" do
       expect(result.output).to eq("json-string draft")
     end
 
-    it "still raises a descriptive WorkflowError when a String evaluation isn't valid JSON" do
+    it "raises OutputInvalid, after one repair, when a String evaluation isn't valid JSON" do
       generator = with_stubbed_class("SpecOptGenBadString", agent_class) do
         register_as :spec_opt_gen_bad_string
         model "gpt-5-mini"
@@ -781,8 +781,8 @@ RSpec.describe "Smith::Workflow::EvaluatorOptimizer runtime behavior" do
       result = workflow.run!
 
       expect(result.state).to eq(:failed)
-      expect(result.steps.first[:error]).to be_a(workflow_error)
-      expect(result.steps.first[:error].message).to match(/Hash/)
+      expect(result.steps.first[:error]).to be_a(Smith::OutputInvalid)
+      expect(result.steps.first[:error].message).to include("/: is not a JSON object")
     end
   end
 

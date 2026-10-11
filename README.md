@@ -570,11 +570,52 @@ fallback provider from the primary model or from a model id because the same id
 may be registered by more than one provider. Unqualified fallback entries fail
 closed during agent configuration.
 
+## Agent outputs
+
+Smith reads how each response ended from the provider's stop reason. A
+response cut off at its output limit, a refused one, and a structured output
+that is not what the agent declares are not accepted as the step's output:
+
+```ruby
+class Reviewer < Smith::Agent
+  model "claude-opus-5-5", provider: :anthropic
+  output_schema ReviewSchema
+  output_contract ReviewContract                     # any object whose call(hash) answers success? and errors
+  output_repairs 1                                   # the default; 0 turns repair off
+  on_truncation retry_with: { max_tokens: 32_000 }   # or :fail (the default), or :accept
+  on_refusal fallback: "openai/gpt-5"                # or :fail (the default)
+end
+```
+
+- A cut-off response raises `Smith::OutputTruncated`, unless the agent
+  accepts it or retries it once on the same model with a larger output limit
+  (mapped to the provider's own parameter for Anthropic, OpenAI, Gemini,
+  Vertex AI and Bedrock; another provider is not retried).
+- A refused response raises `Smith::OutputRefused`, unless the agent falls
+  back once to another model.
+- A structured output that is not a JSON object, breaks a schema constraint,
+  or fails the output contract is sent back to the same model with the
+  problems listed, up to `output_repairs` times, then raises
+  `Smith::OutputInvalid`, whose `problems` lists them as "path: problem".
+- Anthropic's structured outputs reject numeric, string-length and most
+  array-size constraints: Smith sends Anthropic the schema without them, with
+  `additionalProperties: false` on every object, and checks them on the parsed
+  output for every provider.
+- An agent with no model and no fallback models fails its step; runtime
+  readiness reports it (`:agent_without_model`).
+
+Every response is billed and settles into budgets, whatever happens to its
+output. The output errors share the failure family `output_failure`, persist
+with a failed step, and are never retried by `Smith::Errors.retryable?`, a job
+retry on `Smith::Errors.retryable_classes`, or a transition's
+`retry_on Smith::AgentError`: Smith's own retry, fallback and repairs have run.
+
 ## Errors and retry
 
 ```ruby
 Smith::Errors.retryable?(error)
 # AgentError, DeadlineExceeded => true (always)
+# OutputTruncated, OutputRefused, OutputInvalid (OutputFailure) => false
 # DeterministicStepFailure, ToolGuardrailFailed => honors error.retryable
 # everything else => false
 

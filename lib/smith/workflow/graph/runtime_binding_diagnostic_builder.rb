@@ -25,7 +25,7 @@ module Smith
           return if agent_class.model_configured?
           return required_model_diagnostic if model_required?
 
-          model_warning
+          model_warning unless fallback_models?(agent_class)
         end
 
         private
@@ -80,16 +80,22 @@ module Smith
           )
         end
 
+        # An agent with neither a model nor fallback models fails when its
+        # step runs.
         def model_warning
           Diagnostic.new(
-            severity: :warning,
+            severity: :error,
             code: :agent_without_model,
             transition: transition.name,
             target: agent,
             message: "Transition #{ref(transition.name)} references #{role} #{ref(agent)}, " \
                      "but the registered agent has no model configured.",
-            suggestion: "Configure a model for agent #{ref(agent)} if this transition should call a provider."
+            suggestion: "Configure a model (or fallback models) for agent #{ref(agent)}."
           )
+        end
+
+        def fallback_models?(agent_class)
+          !agent_class.fallback_models_block.nil? || Array(agent_class.fallback_models).any?
         end
 
         def agent

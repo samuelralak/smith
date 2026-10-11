@@ -6,9 +6,7 @@ RSpec.describe "Smith::Context runtime contract" do
   let(:agent_class) { require_const("Smith::Agent") }
   let(:guardrails_class) { require_const("Smith::Guardrails") }
   let!(:context_agent) do
-    with_stubbed_class("SpecContextAgent", agent_class) do
-      register_as :spec_context_agent
-    end
+    answering(with_stubbed_class("SpecContextAgent", agent_class) { register_as :spec_context_agent })
   end
 
   it "returns the declared session strategy configuration" do
@@ -81,7 +79,7 @@ RSpec.describe "Smith::Context runtime contract" do
       state :done
 
       transition :finish, from: :idle, to: :done do
-        execute :spec_context_agent
+        execute :spec_context_agent, output_to: :reply
       end
     end.new(context: { current_findings: "stable" })
 
@@ -227,7 +225,7 @@ RSpec.describe "Smith::Context runtime contract" do
       state :done
 
       transition :finish, from: :idle, to: :done do
-        execute :spec_context_agent
+        execute :spec_context_agent, output_to: :reply
       end
     end.new(context: { current_findings: "first" })
 
@@ -262,7 +260,7 @@ RSpec.describe "Smith::Context runtime contract" do
         state :done
 
         transition :finish, from: :idle, to: :done do
-          execute :spec_context_agent
+          execute :spec_context_agent, output_to: :reply
         end
       end
     end

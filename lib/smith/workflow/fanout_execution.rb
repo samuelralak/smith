@@ -68,7 +68,7 @@ module Smith
       def guarded_fanout_branch_call(agent_class, env, signal)
         check_cancellation!(signal)
         check_deadline!
-        result = agent_class.model_configured? ? invoke_agent(agent_class, env.prepared_input) : nil
+        result = invoke_agent(agent_class, env.prepared_input)
         output = result.is_a?(AgentResult) ? result.content : result
         validate_data_volume!(output, agent_class)
         run_agent_output_guardrails(output, agent_class)

@@ -181,6 +181,10 @@ end
 # Leaf modules (no internal dependencies)
 require_relative "smith/types"
 require_relative "smith/errors"
+require_relative "smith/output_failure"
+require_relative "smith/providers/stop_reason"
+require_relative "smith/providers/output_limit"
+require_relative "smith/providers/schema_constraints"
 require_relative "smith/tool_failure_notification_failed"
 require_relative "smith/persistence_payload_conflict"
 require_relative "smith/exponential_backoff"

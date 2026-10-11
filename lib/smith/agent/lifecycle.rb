@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "output_integrity"
 require_relative "provider_completion"
 require_relative "usage_tracking"
 
@@ -8,6 +9,7 @@ module Smith
     module Lifecycle
       include ProviderCompletion
       include UsageTracking
+      include OutputIntegrity
 
       private
 
@@ -18,12 +20,23 @@ module Smith
         instance.after_completion(result, context)
       end
 
+      # One invocation: the provider call, then whatever OutputIntegrity
+      # asks for until the response can be the output.
       def invoke_agent(agent_class, prepared_input, output_schema: agent_class.output_schema)
         check_deadline!
-        attempt = complete_with_provider(agent_class, prepared_input, output_schema:)
-        snapshot_and_finalize(
-          agent_class, attempt.completion, attempt.model_reference, attempt_id: attempt.attempt_id
-        )
+        plan = output_plan(agent_class, prepared_input, output_schema)
+        attempt = complete_with_provider(agent_class, prepared_input,
+                                         shape: ProviderRequest::Shape.new(output_schema:, output_limit: nil))
+        loop do
+          result = account_attempt(agent_class, attempt.completion, attempt.model_reference,
+                                   attempt_id: attempt.attempt_id)
+          follow_up = output_follow_up(plan, attempt, result)
+          return finalize_output(agent_class, result) unless follow_up
+
+          settle_rejected(result)
+          check_deadline!
+          attempt = follow_up.call
+        end
       end
     end
   end

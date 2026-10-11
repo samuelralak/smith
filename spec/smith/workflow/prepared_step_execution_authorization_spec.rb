@@ -317,9 +317,10 @@ RSpec.describe Smith::Workflow::PreparedStepExecutionAuthorization do
   end
 
   it "executes the exact agent binding captured by the authorization" do
-    original = Class.new(Smith::Agent)
+    original = answering(Class.new(Smith::Agent))
     replacement = Class.new(Smith::Agent) do
-      def self.model_configured? = raise("replacement binding ran")
+      model "gpt-5-mini"
+      def self.chat(**) = raise("replacement binding ran")
     end
     Smith::Agent::Registry.register(:pinned_agent, original)
     agent_workflow = Class.new(Smith::Workflow) do
@@ -442,7 +443,7 @@ RSpec.describe Smith::Workflow::PreparedStepExecutionAuthorization do
   end
 
   it "keeps prepared same-agent branch workers inside the execution membrane" do
-    agent = Class.new(Smith::Agent)
+    agent = answering(Class.new(Smith::Agent))
     Smith::Agent::Registry.register(:membrane_parallel_agent, agent)
     calls = Queue.new
     base = Class.new(Smith::Workflow) do
@@ -470,8 +471,8 @@ RSpec.describe Smith::Workflow::PreparedStepExecutionAuthorization do
   end
 
   it "keeps prepared heterogeneous branch workers inside the execution membrane" do
-    Smith::Agent::Registry.register(:membrane_first_agent, Class.new(Smith::Agent))
-    Smith::Agent::Registry.register(:membrane_second_agent, Class.new(Smith::Agent))
+    Smith::Agent::Registry.register(:membrane_first_agent, answering(Class.new(Smith::Agent)))
+    Smith::Agent::Registry.register(:membrane_second_agent, answering(Class.new(Smith::Agent)))
     calls = Queue.new
     base = Class.new(Smith::Workflow) do
       definition_digest Digest::SHA256.hexdigest("membrane-fanout")

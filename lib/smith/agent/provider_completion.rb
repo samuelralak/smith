@@ -4,6 +4,7 @@ require_relative "provider_failure_handling"
 require_relative "invocation_preparation"
 require_relative "provider_attempt"
 require_relative "provider_call_timing"
+require_relative "provider_request"
 require_relative "provider_candidate_sequence"
 
 module Smith
@@ -12,14 +13,15 @@ module Smith
       include ProviderFailureHandling
       include InvocationPreparation
       include ProviderCallTiming
+      include ProviderRequest
 
       private
 
-      def complete_with_provider(agent_class, prepared_input, output_schema:)
+      def complete_with_provider(agent_class, prepared_input, shape:)
         candidates = ProviderCandidateSequence.new(build_model_chain(agent_class))
         candidates.each do |model_reference, index|
           check_deadline! if index.positive?
-          attempt = attempt_model(agent_class, prepared_input, model_reference, output_schema:, attempt_index: index)
+          attempt = attempt_model(agent_class, prepared_input, model_reference, shape:, attempt_index: index)
           return attempt if attempt.success?
 
           candidates.suppress(account_failed_provider(attempt, model_reference))
@@ -88,9 +90,9 @@ module Smith
       # cohesive lifecycle (identity, prepared chat, observed model, timed
       # completion, prefix accounting on failure); splitting it would scatter
       # the rescue-path accounting away from what it accounts for.
-      def attempt_model(agent_class, prepared_input, model_reference, output_schema:, attempt_index:)
+      def attempt_model(agent_class, prepared_input, model_reference, shape:, attempt_index:)
         facts = { attempt_id: SecureRandom.uuid, attempt_index:, agent_name: agent_class.register_as }
-        chat = prepared_attempt_chat(agent_class, prepared_input, model_reference, output_schema:)
+        chat = prepared_attempt_chat(agent_class, prepared_input, model_reference, shape)
         message_count = chat_message_count(chat)
         observed_reference = observed_model_reference(chat, fallback: model_reference)
         timer = ProviderCallTiming::Timer.start
@@ -130,10 +132,10 @@ module Smith
         model.respond_to?(:provider) && !model.provider.to_s.empty? ? model.provider : fallback.provider
       end
 
-      def prepared_attempt_chat(agent_class, prepared_input, model_reference, output_schema:)
+      def prepared_attempt_chat(agent_class, prepared_input, model_reference, shape)
         chat = agent_class.chat(**model_reference.chat_options, **bridge_workflow_inputs(agent_class))
         add_prepared_input(chat, prepared_input)
-        output_schema ? chat.with_schema(output_schema) : chat
+        shaped_chat(chat, model_reference, shape)
       end
 
       def chat_message_count(chat)

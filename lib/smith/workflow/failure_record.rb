@@ -4,6 +4,7 @@ require "dry-initializer"
 
 require_relative "../diagnostic_text"
 require_relative "../errors"
+require_relative "../output_failure"
 require_relative "failure_detail_snapshot"
 require_relative "failure_record_text"
 
@@ -23,6 +24,7 @@ module Smith
         [Smith::ProviderPermanentFailure, "provider_permanent_failure"],
         [Smith::BudgetExceeded, "budget_exceeded"],
         [Smith::GuardrailFailed, "guardrail_failed"],
+        [Smith::OutputFailure, "output_failure"],
         [Smith::AgentError, "agent_error"],
         [Smith::WaitTimedOut, "wait_timed_out"],
         [Smith::WorkflowError, "workflow_error"]

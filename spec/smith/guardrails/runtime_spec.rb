@@ -54,9 +54,7 @@ RSpec.describe "Smith::Guardrails runtime behavior" do
       output :reject_output
     end
 
-    with_stubbed_class("SpecBlockingOutputAgent", agent_class) do
-      register_as :spec_blocking_output_agent
-    end
+    answering(with_stubbed_class("SpecBlockingOutputAgent", agent_class) { register_as :spec_blocking_output_agent })
 
     workflow = with_stubbed_class("SpecBlockingOutputWorkflow", workflow_class) do
       initial_state :idle

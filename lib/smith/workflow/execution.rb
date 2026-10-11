@@ -86,13 +86,9 @@ module Smith
         @last_prepared_input = prepared_input
         return nil unless transition.agent_name
 
-        agent_class = resolve_agent_class(transition)
-        # Accepts either static `model "id"` (chat_kwargs[:model]) OR
-        # block-form `model { |ctx| ... }` (model_block). The block-form
-        # path resolves the actual id in build_model_chain at attempt time.
-        return nil unless agent_class.model_configured?
-
-        invoke_agent(agent_class, prepared_input)
+        # An agent with no model and no fallback models fails in
+        # complete_with_provider rather than skipping the step.
+        invoke_agent(resolve_agent_class(transition), prepared_input)
       end
 
       def execute_serial_step(transition, prepared_input: nil)
