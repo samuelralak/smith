@@ -23,6 +23,7 @@ module Smith
         @step_attempt = position ? position.first + 1 : 1
         @step_key_generation = position ? position.last : 0
         start_budget_pause(transition)
+        start_memo_calls
         return run_guarded_step(transition) unless config
 
         run_attempts(transition, config, *(position || pending_retry_position(transition)))

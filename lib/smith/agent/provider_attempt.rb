@@ -27,6 +27,9 @@ module Smith
       # True for a batch result that answered a request other than the one
       # the call renders now (BatchExchange); nil otherwise.
       attribute :request_changed, Types::Bool.optional.default(nil)
+      # True for a response a host's response memo kept (ResponseMemo): the
+      # call sent nothing.
+      attribute :memo, Types::Bool.optional.default(nil)
 
       def self.success(completion:, model_reference:, **facts)
         new(completion:, model_reference:, error: nil, **facts)

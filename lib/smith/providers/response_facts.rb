@@ -30,6 +30,7 @@ module Smith
       PROMPT_BLOCKED = "prompt_blocked"
 
       READERS = [
+        [->(body) { body["object"] == "smith.response_memo" }, ->(body) { [body["stop_reason"], body["id"]] }],
         [->(body) { body["type"] == "message" }, ->(body) { [body["stop_reason"], body["id"]] }],
         [->(body) { body["object"] == "chat.completion" },
          lambda do |body|

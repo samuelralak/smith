@@ -60,6 +60,7 @@ module Smith
             **provider_call_error_classes(attempt.error),
             agent_name: attempt.agent_name,
             request_changed: attempt.request_changed,
+            memo: attempt.memo,
             **provider_call_usage(attempt.usage)
           }.compact
         )

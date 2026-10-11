@@ -26,6 +26,10 @@ module Smith
         delivered = deliver_batch_result(chat, entry) if entry
         return delivered if delivered
 
+        remembered_completion(chat, model_reference, facts) { live_completion(chat, model_reference, collected, facts) }
+      end
+
+      def live_completion(chat, model_reference, collected, facts)
         ledger = run_budget_ledger
         return wire_completion(chat, model_reference, collected) unless ledger
 

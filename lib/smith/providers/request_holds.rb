@@ -57,6 +57,10 @@ module Smith
         exchange = BatchExchange.exchange_for(provider)
         return capture(provider, exchange, args, kwargs, block, &request) if exchange
 
+        ResponseMemo.round(provider, args.first) { send_held(provider, args, kwargs, block, &request) }
+      end
+
+      def send_held(provider, args, kwargs, block, &request)
         holder = holder_for(provider)
         return request.call(*args, **kwargs, &block) unless holder
 

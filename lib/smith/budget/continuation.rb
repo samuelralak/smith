@@ -10,29 +10,44 @@ module Smith
     # kept with the step's retry so that the retry continues the loop from
     # them instead of running its tools again. JSON-shaped and at most
     # MAX_BYTES; a loop whose messages cannot be kept so (an attachment in
-    # them, or too many bytes) does not pause.
+    # them, or too many bytes) does not pause. A response memo
+    # (Smith::ResponseMemo) keeps a call's messages the same way, with each
+    # response's `usage`: its token counts, stop reason and message id.
     module Continuation
       MAX_BYTES = 1024 * 1024
       ROLES = %w[assistant tool user].freeze
+      TOKENS = %w[input_tokens output_tokens cached_tokens cache_creation_tokens thinking_tokens].freeze
+      MEMO_BODY = "smith.response_memo"
+      # What Providers::ResponseFacts reads a kept response's facts from.
+      Raw = Struct.new(:body)
 
       module_function
 
-      # `kept` (an earlier pause's) followed by `messages`, or nil.
-      def dump(kept, messages)
-        dumped = messages.map { message(_1) || (return nil) }
+      # `kept` (an earlier pause's) followed by `messages`, or nil; with
+      # `usage`, each response's usage too.
+      def dump(kept, messages, usage: false)
+        dumped = messages.map { message(_1, usage:) || (return nil) }
         list = JSON.parse(JSON.generate([*kept, *dumped]))
         list if JSON.generate(list).bytesize <= MAX_BYTES
       rescue JSON::GeneratorError, JSON::NestingError, Encoding::UndefinedConversionError
         nil
       end
 
-      def message(message)
+      def message(message, usage: false)
         content = content_of(message.content)
         return if content == :unkept
 
         { "role" => message.role.to_s, "content" => content, "tool_call_id" => message.tool_call_id,
           "model_id" => message.model_id, "tool_calls" => message.tool_calls&.values&.map { tool_call(_1) },
-          "thinking" => thinking_of(message.thinking) }.compact
+          "thinking" => thinking_of(message.thinking), "usage" => (usage_of(message) if usage) }.compact
+      end
+
+      def usage_of(message)
+        tokens = message.respond_to?(:tokens) ? message.tokens&.to_h : nil
+        facts = Providers::ResponseFacts.from_message(message)
+        usage = { "tokens" => tokens&.transform_keys(&:to_s), "stop_reason" => facts[:stop_reason],
+                  "id" => facts[:provider_message_id] }.compact
+        usage unless usage.empty?
       end
 
       def thinking_of(thinking)
@@ -61,9 +76,18 @@ module Smith
           RubyLLM::Message.new(
             role: entry["role"].to_sym, content: content(entry["content"]), tool_call_id: entry["tool_call_id"],
             model_id: entry["model_id"], tool_calls: tool_calls(entry["tool_calls"]),
-            thinking: thinking(entry["thinking"])
+            thinking: thinking(entry["thinking"]), **kept_usage(entry["usage"])
           )
         end
+      end
+
+      # A kept response's token counts, and its facts as a raw body
+      # Providers::ResponseFacts reads.
+      def kept_usage(usage)
+        return {} unless usage
+
+        { **usage.fetch("tokens", {}).transform_keys(&:to_sym),
+          raw: Raw.new({ "object" => MEMO_BODY, "stop_reason" => usage["stop_reason"], "id" => usage["id"] }) }
       end
 
       def valid?(list)
@@ -74,8 +98,19 @@ module Smith
 
       def entry?(entry)
         entry.is_a?(Hash) && ROLES.include?(entry["role"]) && content?(entry["content"]) &&
-          optional_string?(entry["tool_call_id"]) && optional_string?(entry["model_id"]) &&
-          calls?(entry["tool_calls"]) && thinking?(entry["thinking"])
+          entry.values_at("tool_call_id", "model_id").all? { optional_string?(_1) } &&
+          calls?(entry["tool_calls"]) && thinking?(entry["thinking"]) && usage?(entry["usage"])
+      end
+
+      def usage?(usage)
+        return true if usage.nil?
+        return false unless usage.is_a?(Hash) && (usage.keys - %w[tokens stop_reason id]).empty?
+
+        tokens?(usage.fetch("tokens", {})) && optional_string?(usage["stop_reason"]) && optional_string?(usage["id"])
+      end
+
+      def tokens?(tokens)
+        tokens.is_a?(Hash) && (tokens.keys - TOKENS).empty? && tokens.values.all? { _1.is_a?(Integer) && !_1.negative? }
       end
 
       def calls?(calls) = calls.nil? || (calls.is_a?(Array) && calls.all? { call?(_1) })

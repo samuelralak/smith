@@ -4,30 +4,10 @@ require "dry-configurable"
 
 require_relative "smith/version"
 require_relative "smith/error"
+require_relative "smith/setting_constructors"
 
 module Smith
   extend Dry::Configurable
-
-  positive_integer_setting = lambda do |name|
-    lambda do |value|
-      unless value.is_a?(Integer) && value.positive?
-        raise ArgumentError, "Smith.config.#{name} must be a positive integer, got #{value.inspect}"
-      end
-
-      value
-    end
-  end
-
-  bounded_positive_integer_setting = lambda do |name, maximum|
-    lambda do |value|
-      unless value.is_a?(Integer) && value.positive? && value <= maximum
-        message = "Smith.config.#{name} must be a positive integer no greater than #{maximum}"
-        raise ArgumentError, "#{message}, got #{value.inspect}"
-      end
-
-      value
-    end
-  end
 
   # Artifact store (§4.7): a store, a store class, or :s3, :active_record,
   # :file or :memory, built with artifact_options. Required outside
@@ -82,19 +62,22 @@ module Smith
   # `enqueue(custom_id:, await_token:, request:, execution_key:)`, idempotent
   # on `custom_id`. The host submits them and resumes each run with its
   # results.
-  setting :batch_queue, default: nil, constructor: lambda { |queue|
-    next queue if queue.nil? || queue.respond_to?(:enqueue)
+  setting :batch_queue, default: nil, constructor: SettingConstructors.adapter(
+    :batch_queue, { enqueue: "enqueue(custom_id:, await_token:, request:, execution_key:)" }
+  )
 
-    raise ArgumentError, "Smith.config.batch_queue must respond to enqueue(custom_id:, await_token:, request:, " \
-                         "execution_key:)"
-  }
+  # Keeps what a step's provider calls got (Smith::ResponseMemo), so a step
+  # replayed after its process died reuses it instead of paying again.
+  setting :response_memo, default: nil, constructor: SettingConstructors.adapter(
+    :response_memo, { fetch: "fetch(key)", store: "store(key, record)" }
+  )
 
   # How long a provider request's hold on a host's budget ledger
   # (`budget_ledger`) lasts unsettled, in seconds: past it the request's
   # process is taken to have died, and the ledger drops the hold. It must
   # outlast the longest request (its retries and stream included). A batch
   # request's hold lasts its wait (25 hours) longer.
-  setting :budget_hold_ttl, default: 3600, constructor: positive_integer_setting.call(:budget_hold_ttl)
+  setting :budget_hold_ttl, default: 3600, constructor: SettingConstructors.positive_integer(:budget_hold_ttl)
 
   # The most output tokens a request's hold counts, or nil for its own cap
   # (`max_tokens`, else the model's maximum, which can be tens of thousands
@@ -114,12 +97,13 @@ module Smith
 
   # Generic runtime resource bounds. Branch concurrency is scoped to one
   # parallel execution; hosts retain control over process-level concurrency.
-  setting :parallel_branch_limit, default: 1_000, constructor: positive_integer_setting.call(:parallel_branch_limit)
-  setting :parallel_concurrency, default: 8, constructor: positive_integer_setting.call(:parallel_concurrency)
-  setting :parallel_nesting_limit, default: 64, constructor: bounded_positive_integer_setting.call(
+  setting :parallel_branch_limit,
+          default: 1_000, constructor: SettingConstructors.positive_integer(:parallel_branch_limit)
+  setting :parallel_concurrency, default: 8, constructor: SettingConstructors.positive_integer(:parallel_concurrency)
+  setting :parallel_nesting_limit, default: 64, constructor: SettingConstructors.bounded_positive_integer(
     :parallel_nesting_limit, 256
   )
-  setting :retry_attempt_limit, default: 100, constructor: positive_integer_setting.call(:retry_attempt_limit)
+  setting :retry_attempt_limit, default: 100, constructor: SettingConstructors.positive_integer(:retry_attempt_limit)
 
   # Test isolation: when true AND persistence_adapter is nil, Smith
   # auto-selects the in-process Memory adapter. Lets specs avoid wiring
@@ -230,6 +214,7 @@ require_relative "smith/budget/ledger"
 require_relative "smith/budget/host_ledger"
 require_relative "smith/budget/request_hold"
 require_relative "smith/budget/continuation"
+require_relative "smith/response_memo"
 
 # Pricing (depends on Smith config)
 require_relative "smith/pricing"
@@ -367,6 +352,7 @@ require_relative "smith/workflow/batch_wait"
 require_relative "smith/workflow/batch_charges"
 require_relative "smith/workflow/batch_holds"
 require_relative "smith/workflow/budget_pause"
+require_relative "smith/workflow/remembered_calls"
 require_relative "smith/workflow/child_run_results"
 require_relative "smith/workflow/child_run_execution"
 require_relative "smith/workflow/wait_execution"

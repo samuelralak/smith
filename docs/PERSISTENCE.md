@@ -1109,6 +1109,14 @@ Smith.config.run_launcher = QueueLauncher.new
 
 ## Replay Safety: Idempotency Keys
 
+A replayed step's provider calls are paid for again unless
+`Smith.config.response_memo` keeps them (README, "Response memo"): each call
+is keyed by its position's idempotency scope (so a settled failure's new key
+generation reaches new records), its attempt, its model in the fallback chain
+and its place among the attempt's calls. Nothing about a memo is persisted
+with the run.
+
+
 A step that is replayed, by a retry or by a restore after a crash, sends its
 outside requests again. Smith gives each request a key the step can pass along,
 so a receiver that honours idempotency keys can drop the repeat. Passing the key

@@ -298,7 +298,8 @@ from the stream, so cut-off and refused replies are handled as without it, and a
 stream that ends without one counts as cut off (`stream_incomplete`). Smith's
 OpenAI Responses path does not stream: its sink gets each reply as one delta.
 Streaming changes nothing durable (each usage entry keeps its response's stop
-reason and message id, with `mode: :stream`), and a replayed step streams again.
+reason and message id, with `mode: :stream`), and a replayed step streams again
+(unless a response memo kept its reply: then its sink gets the text at once).
 Graph inspection shows the stream, and runtime readiness reports a missing sink
 (`:stream_sink_missing`) and an agent whose calls go to the Responses API
 (`:stream_whole_replies`).
@@ -983,6 +984,37 @@ took effect before a timeout. An error named in `new_idempotency_key_on:` (or
 `step.fail!(..., new_idempotency_key: true)`) shows the attempt's own requests
 took no effect, and the attempts after it use new keys. See
 `docs/PERSISTENCE.md`, Replay Safety.
+
+### Response memo
+
+A step replayed after its process died makes its provider calls again, and
+pays for them again. A host's response memo keeps what they got:
+
+```ruby
+class ResponseMemo
+  def fetch(key) = Rails.cache.read("smith-memo/#{key}")
+  def store(key, record) = Rails.cache.write("smith-memo/#{key}", record, expires_in: 2.days)
+end
+
+Smith.config.response_memo = ResponseMemo.new
+```
+
+Each agent call (its tool loop included) is kept under a key of its position
+(the run, the step, any branch or nested position, the key generation), its
+attempt, its model in the fallback chain and its place among the attempt's
+calls, which a replay reaches again. Its record (`{"messages" => [...],
+"complete" => true | false}`, JSON) holds the messages the call added: the
+model's replies with their usage, stop reason and message id, its tool calls
+and their results. It is stored after each round's tool results and when the
+call ends. A replayed call that ended sends nothing: its reply is the step's
+(a streamed step's sink gets its text at once), its usage is recorded as if
+it had just come, once, and its `:provider_call` trace says `memo: true`. One
+that had not ended continues from its tools' results, running none of them
+again. A call whose messages cannot be kept (an attachment, past 1 MiB) is not
+stored; a record Smith does not keep is ignored, and an error from `fetch` or
+`store` is logged by class: a memo never fails a step. Keeping records and
+dropping them (a TTL) are the host's; batch requests are not memoized, as
+their `custom_id` already identifies them.
 
 ## Runtime Complexity
 

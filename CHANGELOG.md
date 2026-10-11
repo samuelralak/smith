@@ -363,6 +363,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   completion's `ProviderUsage`), `AgentResult.usage_details`,
   `AgentResult::USAGE_DETAIL_MEMBERS` and `UsageEntry::OPTIONAL_MEMBERS` are
   public.
+- Response memo: `Smith.config.response_memo` (`fetch(key)`,
+  `store(key, record)`) keeps what a step's provider calls got, so a step
+  replayed after its process died reuses it instead of paying again. Each
+  call is keyed by its position's idempotency scope, attempt, model
+  candidate and place among the attempt's calls; its record holds the
+  messages it added (replies with their usage and facts, tool calls and
+  results), stored after each round's tool results and when it ends. A
+  replayed call that ended sends nothing (its `:provider_call` trace says
+  `memo: true`, its usage is recorded once); one that had not continues from
+  its tools' results. A memo never fails a step: a record Smith does not keep
+  is ignored, errors are logged by class.
 - Budget ledgers: `budget_ledger(*scope_keys) { |scope| ... }` names the
   host's ledger for a run (an account's spend across runs, say). Its scope is
   the values the keys have in the run's trusted context when it is created,

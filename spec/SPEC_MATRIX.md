@@ -1904,6 +1904,25 @@ Documented contracts covered:
 - the Anthropic client submits one batch with the shared headers and the provider's key, refuses mixed headers, other providers, empty or oversized batches before sending, reads status and the JSONL results file, cancels, refuses a malformed batch id, and makes no connection retries
 - these contracts are mutation-verified against the full suite
 
+### `spec/smith/response_memo_spec.rb`
+
+Purpose:
+
+- asserts that a step replayed after its process died reuses what its provider calls got instead of paying again
+
+Architecture basis:
+
+- Section 5, Persistence and Resume; Section 6, Budgets
+
+Documented contracts covered:
+
+- a call kept as complete is replayed without a request: its reply is the step's output, its usage (counts, stop reason) is recorded once, and its `:provider_call` trace says `memo: true`; the replay fetches the keys it stored
+- a tool loop kept part way continues from its tool results: the tool runs once, the resumed request carries its result, and every round's usage is counted once
+- a streamed step replaying a kept reply gives its sink the text in one delta and sends nothing
+- a memo whose `fetch` or `store` raises is logged by class and the request goes on; a record not of the shape Smith keeps is ignored; a memo without `fetch` and `store` is refused when set
+- a call's key names its attempt, model candidate and place among the attempt's calls; a batch request is not memoized
+- these contracts are mutation-verified against the full suite
+
 ### `spec/smith/budget_ledger_spec.rb`
 
 Purpose:

@@ -38,6 +38,7 @@ module Smith
     include BatchCharges
     include BatchHolds
     include BudgetPause
+    include RememberedCalls
     include ChildRunResults
     include ChildRunExecution
     include Execution
