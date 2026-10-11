@@ -11,12 +11,9 @@ module Smith
 
       option :limits
 
-      def reserve(state, amounts)
+      def reserve(state, amounts, checked: true)
         DecimalContext.call do
-          amounts.each do |key, amount|
-            requested = state.consumed[key] + state.reserved[key] + amount
-            raise BudgetExceeded unless requested.finite? && requested <= limits.fetch(key)
-          end
+          amounts.each { |key, amount| admit!(state, key, amount, checked) }
 
           LedgerState.new(consumed: state.consumed, reserved: add(state.reserved, amounts))
         end
@@ -48,6 +45,11 @@ module Smith
       end
 
       private
+
+      def admit!(state, key, amount, checked)
+        requested = state.consumed[key] + state.reserved[key] + amount
+        raise BudgetExceeded unless requested.finite? && (!checked || requested <= limits.fetch(key))
+      end
 
       def add(current, amounts)
         merge(current, amounts) { |value, amount| value + amount }

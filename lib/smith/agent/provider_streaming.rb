@@ -18,6 +18,11 @@ module Smith
       # read its facts. The stream's collection goes into `collected` too,
       # for the facts of a call that fails part way.
       def complete_chat(chat, model_reference, collected)
+        return capture_batch_call(chat, model_reference) if @batch_capturing
+
+        result = take_batch_result
+        return [Providers::BatchExchange.deliver(chat_provider(chat), result) { chat.complete }, nil, :batch] if result
+
         stream = @step_stream
         return [chat.complete, nil] unless stream
 
@@ -36,6 +41,25 @@ module Smith
           response = chat.complete { |chunk| stream.delta(thinking.strip(chunk.content, collection.rounds.length)) }
         end
         [response, rounds]
+      end
+
+      # A batch step's call: the provider must have a batch interface (only
+      # Anthropic's, so far) and the agent no tools (a batch request is one
+      # turn). The request is thrown out of the call before it is sent.
+      def capture_batch_call(chat, model_reference)
+        provider = chat_provider(chat)
+        unless provider.respond_to?(:slug) && provider.slug.to_s == "anthropic"
+          raise BatchModeUnavailable, "#{model_reference.provider || "this provider"} has no batch interface in Smith"
+        end
+        raise BatchModeUnavailable, "a batch request is one turn: its agent cannot have tools" if chat_tools?(chat)
+
+        Providers::BatchExchange.within(Providers::BatchExchange::Exchange.new(provider, nil)) { chat.complete }
+        raise BatchModeUnavailable, "the call did not reach its provider's request"
+      end
+
+      def chat_tools?(chat)
+        tools = chat.tools if chat.respond_to?(:tools)
+        tools.respond_to?(:empty?) && !tools.empty?
       end
 
       # The facts of a streamed call that failed, if it streamed.

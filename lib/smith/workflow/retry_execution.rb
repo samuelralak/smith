@@ -19,10 +19,12 @@ module Smith
       # generation it recorded.
       def run_with_retry_policy(transition)
         config = transition.retry_config
-        @step_attempt = 1
+        position = pending_batch_position
+        @step_attempt = position ? position.first + 1 : 1
+        @step_key_generation = position ? position.last : 0
         return run_guarded_step(transition) unless config
 
-        run_attempts(transition, config, *pending_retry_position(transition))
+        run_attempts(transition, config, *(position || pending_retry_position(transition)))
       end
 
       # Attempts after the `attempt` already made, under `key_generation`.
@@ -31,6 +33,7 @@ module Smith
         begin
           attempt += 1
           @step_attempt = attempt
+          @step_key_generation = key_generation
           attempt_scope = attempt_idempotency_scope(key_generation)
           run_attempt_under_keys(transition, attempt_scope)
         rescue StandardError => e

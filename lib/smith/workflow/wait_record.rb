@@ -18,19 +18,27 @@ module Smith
       # `children` is how many runs a map or call launched; nil otherwise.
       def build(transition, token, seconds, now, children: nil)
         config = transition.await_config
-        frozen(
-          "kind" => config.fetch(:kind).to_s, "event" => config[:event]&.to_s, "token" => token,
-          "transition" => transition.name.to_s, "into" => config[:into]&.to_s,
-          "entered_at" => now.utc.iso8601(6), "deadline_at" => (now + seconds).utc.iso8601(6), "children" => children
-        )
+        frozen(timing(transition, token, seconds, now).merge(
+                 "kind" => config.fetch(:kind).to_s, "event" => config[:event]&.to_s, "into" => config[:into]&.to_s,
+                 "children" => children
+               ))
+      end
+
+      # A batch step's wait for the results of its `count` requests.
+      def build_batch(transition, token, seconds, now, count)
+        frozen(timing(transition, token, seconds, now)
+          .merge("kind" => "batch", "event" => Batch::EVENT, "into" => nil, "children" => count))
       end
 
       # A durable retry's wait: no event or context key.
       def build_retry(transition, token, seconds, now)
-        frozen(
-          "kind" => "retry", "event" => nil, "token" => token, "transition" => transition.name.to_s, "into" => nil,
-          "entered_at" => now.utc.iso8601(6), "deadline_at" => (now + seconds).utc.iso8601(6), "children" => nil
-        )
+        frozen(timing(transition, token, seconds, now)
+          .merge("kind" => "retry", "event" => nil, "into" => nil, "children" => nil))
+      end
+
+      def timing(transition, token, seconds, now)
+        { "token" => token, "transition" => transition.name.to_s, "entered_at" => now.utc.iso8601(6),
+          "deadline_at" => (now + seconds).utc.iso8601(6) }
       end
 
       # A wait's timeout in seconds: the declared number, or what its
@@ -43,16 +51,22 @@ module Smith
       end
 
       # The event and context key read as the transition declares them; a
-      # retry's attempt and error read from the run's pending retry.
-      def to_wait(record, transition, pending_retry)
-        retrying = record["kind"] == "retry"
-        config = retrying ? { kind: :retry } : transition.await_config
+      # retry's attempt and error read from the run's pending retry, a
+      # batch's attempt from its pending batch.
+      def to_wait(record, transition, pending_retry, pending_batch = nil)
+        config = wait_config(record, transition)
+        pending = { "retry" => pending_retry, "batch" => pending_batch }[record["kind"]]
         Wait.new(
           kind: config.fetch(:kind), event: config[:event], token: record.fetch("token"), transition: transition.name,
           into: config[:into], entered_at: Time.iso8601(record.fetch("entered_at")),
           deadline_at: Time.iso8601(record.fetch("deadline_at")), children: record["children"],
-          attempt: (pending_retry&.fetch("attempt") if retrying), error: (pending_retry&.fetch("error") if retrying)
+          attempt: pending&.fetch("attempt"), error: pending&.fetch("error", nil)
         )
+      end
+
+      def wait_config(record, transition)
+        { "retry" => { kind: :retry }, "batch" => { kind: :batch, event: Batch::EVENT.to_sym } }
+          .fetch(record["kind"]) { transition.await_config }
       end
 
       # A persisted wait, checked: a malformed one raises SerializationError,
@@ -81,23 +95,30 @@ module Smith
       end
 
       def well_formed?(record)
-        %w[await delay children retry].include?(record["kind"]) && TOKEN.match?(record["token"].to_s) &&
+        %w[await delay children retry batch].include?(record["kind"]) && TOKEN.match?(record["token"].to_s) &&
           nonempty_string?(record["transition"]) && await_fields?(record) && times?(record) && children_count?(record)
       end
 
-      # A map's or call's wait holds how many children it launched.
+      # A map's or call's wait holds how many children it launched, a
+      # batch's how many requests it sent.
       def children_count?(record)
         count = record["children"]
-        return count.nil? unless record["kind"] == "children"
-
-        count.is_a?(Integer) && count.between?(0, 10_000)
+        case record["kind"]
+        when "batch" then count.is_a?(Integer) && count.between?(1, 10_000)
+        when "children" then count.is_a?(Integer) && count.between?(0, 10_000)
+        else count.nil?
+        end
       end
 
       # An await or a map's wait for its children names its event and
-      # context key; a delay or a retry has neither.
+      # context key; a batch its event alone; a delay or a retry neither.
       def await_fields?(record)
-        named = !%w[delay retry].include?(record["kind"])
-        %w[event into].all? { |field| named ? nonempty_string?(record[field]) : record[field].nil? }
+        event, into = record.values_at("event", "into")
+        case record["kind"]
+        when "batch" then event == Batch::EVENT && into.nil?
+        when "delay", "retry" then event.nil? && into.nil?
+        else nonempty_string?(event) && nonempty_string?(into)
+        end
       end
 
       # Both times carry their zone, and the deadline is not before entry.
@@ -111,12 +132,21 @@ module Smith
 
       def declared_wait?(transition, record, state)
         return false unless transition && [nil, state.to_s].include?(transition.from&.to_s)
-        return transition.durable_retry? if record["kind"] == "retry"
 
-        transition.awaits? && declared_fields(transition.await_config) == record.values_at("kind", "event", "into")
+        declared_kind?(transition, record)
+      end
+
+      def declared_kind?(transition, record)
+        case record["kind"]
+        when "retry" then transition.durable_retry?
+        when "batch" then transition.batches? && record["children"] == batch_count(transition)
+        else transition.awaits? && declared_fields(transition.await_config) == record.values_at("kind", "event", "into")
+        end
       end
 
       def declared_fields(config) = [config.fetch(:kind), config[:event], config[:into]].map { _1&.to_s }
+
+      def batch_count(transition) = transition.fanout? ? transition.fanout_config.fetch(:branches).length : 1
 
       def nonempty_string?(value) = value.is_a?(String) && !value.empty?
 

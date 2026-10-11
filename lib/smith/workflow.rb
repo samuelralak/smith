@@ -33,6 +33,8 @@ module Smith
     include WaitCompletion
     include WaitExecution
     include RetryWait
+    include BatchExecution
+    include BatchWait
     include ChildRunResults
     include ChildRunExecution
     include Execution

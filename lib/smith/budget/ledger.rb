@@ -100,14 +100,14 @@ module Smith
         @representation.internalize(external)
       end
 
-      def create_reservation(amounts)
+      def create_reservation(amounts, checked: true)
         token = Object.new.freeze
         receipt = Reservation.new(
           ledger_identity: @identity,
           token:,
           amounts: @representation.externalize(amounts)
         )
-        next_state = @state_transition.reserve(@publication.state, amounts)
+        next_state = @state_transition.reserve(@publication.state, amounts, checked:)
         @publication.add(@public_state_validator.call(next_state), token:, amounts:)
         receipt
       end
@@ -136,3 +136,5 @@ module Smith
     end
   end
 end
+
+require_relative "spent_reservation"

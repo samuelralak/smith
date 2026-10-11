@@ -50,9 +50,16 @@ module Smith
             parallel_count: static_parallel_count,
             step_input: !transition.step_input.nil?,
             output_to: transition.output_to,
-            stream: transition.stream,
+            **call_attributes,
             children_config: children_config
           }
+        end
+
+        # How the step's calls are made: streamed to a sink, and :sync,
+        # :batch or :callable (a mode chosen per attempt).
+        def call_attributes
+          mode = transition.batch_mode
+          { stream: transition.stream, batch_mode: mode.respond_to?(:call) ? :callable : mode }
         end
 
         def children_config

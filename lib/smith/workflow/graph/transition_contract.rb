@@ -28,6 +28,7 @@ module Smith
         option :step_input, default: proc { false }
         option :output_to, default: proc {}
         option :stream, default: proc {}
+        option :batch_mode, default: proc {}
         option :children_config, default: proc {}
         option :deterministic_kind, default: proc {}
         option :deterministic_routes, default: proc {}
@@ -53,6 +54,7 @@ module Smith
         def agent_step? = !agent_name.nil? || optimized? || orchestrated? || fanout?
         def child_runs? = !children_config.nil?
         def spawns? = children_config&.fetch(:kind) == :spawn
+        def batches? = !batch_mode.nil? && batch_mode != :sync
 
         # The workflow class this step runs: nested in process, or launched
         # as runs of their own.

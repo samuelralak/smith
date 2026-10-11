@@ -191,7 +191,7 @@ RSpec.describe "Smith::Workflow contract" do
       state :failed
 
       transition :fail, from: :processing, to: :failed do
-        execute :failure_agent, mode: :cleanup
+        execute :failure_agent, purpose: :cleanup
       end
     end
 
@@ -200,7 +200,7 @@ RSpec.describe "Smith::Workflow contract" do
     expect(fail_transition.from).to eq(:processing)
     expect(fail_transition.to).to eq(:failed)
     expect(fail_transition.agent_name).to eq(:failure_agent)
-    expect(fail_transition.agent_opts).to eq(mode: :cleanup)
+    expect(fail_transition.agent_opts).to eq(purpose: :cleanup)
   end
 
   it "fails a step loudly when an execute transition references an unregistered agent symbol" do

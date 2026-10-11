@@ -6,10 +6,11 @@ require "socket"
 # A local HTTP server for specs that drive RubyLLM's real provider code:
 # each request is answered by the next queued reply, either server-sent
 # events (`events:`, each a Hash sent as one `data:` line, or a String sent
-# as is) or a JSON body (`json:`); a request with no reply queued gets a 500.
-# Requests are recorded with their paths and parsed bodies.
+# as is), a JSON body (`json:`), or a text body (`text:`, a results file);
+# a request with no reply queued gets a 500. Requests are recorded with
+# their method, path, headers and parsed bodies.
 class SseServer
-  Request = Struct.new(:path, :body)
+  Request = Struct.new(:path, :body, :verb, :headers)
 
   attr_reader :requests
 
@@ -22,8 +23,11 @@ class SseServer
 
   def url = "http://127.0.0.1:#{@server.addr[1]}"
 
-  def reply(events: nil, json: nil)
-    @replies << (events ? [:events, events] : [:json, json])
+  def reply(events: nil, json: nil, text: nil, status: "200 OK")
+    @replies << if events then [:events, events]
+                elsif text then [:text, text]
+                else [:json, json, status]
+                end
     self
   end
 
@@ -44,24 +48,33 @@ class SseServer
   end
 
   def handle(client)
-    path, length = read_head(client)
+    verb, path, headers = read_head(client)
+    length = headers.fetch("content-length", "0").to_i
     body = length.positive? ? client.read(length) : ""
-    @requests << Request.new(path, (JSON.parse(body) unless body.empty?))
+    @requests << Request.new(path, (JSON.parse(body) unless body.empty?), verb, headers)
+    respond(client)
+  end
+
+  def respond(client)
     return write_json(client, { error: { message: "no reply queued" } }, status: "500 Internal Server Error") if
       @replies.empty?
 
-    kind, payload = @replies.pop
-    kind == :events ? write_events(client, payload) : write_json(client, payload)
+    kind, payload, status = @replies.pop
+    case kind
+    when :events then write_events(client, payload)
+    when :text then write_text(client, payload)
+    else write_json(client, payload, status:)
+    end
   end
 
   def read_head(client)
-    path = client.gets.to_s.split[1]
-    length = 0
+    method, path = client.gets.to_s.split.first(2)
+    headers = {}
     while (line = client.gets) && line != "\r\n"
       name, value = line.split(":", 2)
-      length = value.to_i if name.casecmp?("content-length")
+      headers[name.downcase] = value.to_s.strip
     end
-    [path, length]
+    [method, path, headers]
   end
 
   def write_events(client, events)
@@ -70,6 +83,11 @@ class SseServer
       client.write(event.is_a?(String) ? event : "data: #{JSON.generate(event)}\n\n")
       client.flush
     end
+  end
+
+  def write_text(client, text)
+    client.write("HTTP/1.1 200 OK\r\nContent-Type: application/binary\r\nContent-Length: #{text.bytesize}\r\n" \
+                 "Connection: close\r\n\r\n#{text}")
   end
 
   def write_json(client, payload, status: "200 OK")

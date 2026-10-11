@@ -43,6 +43,7 @@ module Smith
 
       def expire_claimed_wait(transition, record)
         return end_retry_wait(transition) if record["kind"] == "retry"
+        return complete_batch_wait(transition, missing_batch_results(transition), :expired) if record["kind"] == "batch"
 
         complete_claimed_wait(transition, :expired) { expire_step(transition, record) }
       end

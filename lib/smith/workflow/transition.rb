@@ -9,7 +9,7 @@ module Smith
                   :router_config, :workflow_class, :optimization_config, :orchestrator_config,
                   :fanout_config, :retry_config, :deterministic_block, :deterministic_kind,
                   :deterministic_routes, :deterministic_fallthrough, :await_config, :timeout_transition,
-                  :step_input, :output_to, :stream
+                  :step_input, :output_to, :stream, :batch_mode
 
       def initialize(name, from:, to:, &)
         @name = own_identifier(name)
@@ -18,6 +18,7 @@ module Smith
         instance_eval(&) if block_given?
         validate_child_run_controls!
         validate_durable_retry!
+        validate_batch_mode!
         validate_timeout_route!
       end
 
@@ -63,16 +64,20 @@ module Smith
       # step's output is written to, instead of the transcript.
       # `stream:` names the sink in `Smith.config.stream_sinks` the reply's
       # text is streamed to as the model writes it (Smith::Streaming).
-      def execute(agent_name, input: nil, output_to: nil, stream: nil, **opts)
+      # `mode:` is :sync (the default), :batch, or a callable of the context
+      # and the step attempt returning one: a batch step sends its request
+      # through the host's batch queue and waits for the result.
+      def execute(agent_name, input: nil, output_to: nil, **opts)
         validate_execution_primitive_conflict!("execute")
 
         normalized_agent = normalize_agent_reference!(agent_name, "agent")
         validate_parallel_options!(opts)
         assign_step_io!(input, output_to)
-        @stream = stream_name!(stream, opts)
+        @stream = stream_name!(opts[:stream], opts)
+        @batch_mode = batch_mode!(opts[:mode], stream: opts[:stream], parallel: opts[:parallel] == true)
 
         @agent_name = normalized_agent
-        @agent_opts = opts.freeze
+        @agent_opts = opts.except(:stream, :mode).freeze
         commit_execution_primitive!("execute")
       end
 
@@ -163,9 +168,10 @@ module Smith
         commit_execution_primitive!("orchestrate")
       end
 
-      def fan_out(branches:, input: nil, output_to: nil)
+      def fan_out(branches:, input: nil, output_to: nil, mode: nil)
         validate_execution_primitive_conflict!("fan_out")
         assign_step_io!(input, output_to)
+        @batch_mode = batch_mode!(mode, stream: nil, parallel: false)
 
         normalized = normalize_fanout_branches!(branches)
         @fanout_branch_lookup = normalized.to_h do |key, agent|
@@ -212,6 +218,10 @@ module Smith
       # rubocop:enable Metrics/ParameterLists
 
       def durable_retry? = @retry_config&.fetch(:durable, false) == true
+
+      # Whether the step may send its requests as a batch: its mode is not
+      # :sync.
+      def batches? = !@batch_mode.nil? && @batch_mode != :sync
 
       def validate_durable_policy!(durable, policy)
         raise WorkflowError, "retry_on durable: must be true or false" unless [true, false].include?(durable)
@@ -296,6 +306,19 @@ module Smith
         @output_to = output_to
       end
 
+      # A batch request is one turn of one model, sent and answered apart
+      # from the step: a streamed or parallel step has nothing to send it as.
+      def batch_mode!(mode, stream:, parallel:)
+        return if mode.nil?
+        unless %i[sync batch].include?(mode) || mode.respond_to?(:call)
+          raise WorkflowError, "mode: must be :sync, :batch, or a callable of the context and attempt returning one"
+        end
+        raise WorkflowError, "mode: :batch cannot stream" if stream && mode != :sync
+        raise WorkflowError, "mode: is not available on a parallel step" if parallel
+
+        mode
+      end
+
       # One reply streams to one sink: a parallel step has several.
       def stream_name!(stream, opts)
         return if stream.nil?
@@ -330,6 +353,14 @@ module Smith
 
         raise WorkflowError, "retry_on durable: needs on_failure, so the last failure settles the run instead of " \
                              "being made again by a host that runs the job again"
+      end
+
+      # A batch result can fail or never come, as an await's event can: the
+      # step must say where that goes.
+      def validate_batch_mode!
+        return unless batches? && @failure_transition.nil?
+
+        raise WorkflowError, "mode: :batch needs on_failure, where a batch result that fails or never comes goes"
       end
 
       def refuse_durable_retry_on_waiting_step!

@@ -112,6 +112,9 @@ Smith.configure do |config|
   # step's info and returns its sink, or nil to stream nothing.
   config.stream_sinks = { answer: ->(info) { AnswerStream.new(info[:execution_key]) } }
 
+  # Batch steps (`execute Agent, mode: :batch`): the host's queue of requests.
+  config.batch_queue = HostBatchQueue.new
+
   config.logger = Logger.new($stdout)
 end
 ```
@@ -162,6 +165,7 @@ from JSON or YAML has.
 | `trace_attribution` | Merge ambient execution attribution into trace payloads | Usually leave on |
 | `pricing` | Best-known model-call cost catalog | Add once you care about `total_cost` |
 | `logger` | Smith's runtime logger | Usually the first setting to add |
+| `batch_queue` | Takes the requests `mode: :batch` steps send: `enqueue(custom_id:, await_token:, request:, execution_key:)`, idempotent on `custom_id`; the host submits them (`Smith::Providers::Anthropic::Batches`) and resumes each run with its results | Set before any workflow batches; readiness reports a missing one |
 | `stream_sinks` | The sinks `execute Agent, stream: :name` steps send text to, by name: callables that take a step's info (`stream`, `execution_key`, `transition`) and return that step's sink, or nil to stream nothing | Register each name a workflow streams to; readiness reports a missing one |
 | `persistence_adapter` | Adapter for durable workflow state | `:redis`, `:rails_cache`, `:active_record`, `:memory`, or a custom object |
 | `persistence_options` | Per-adapter options (client, namespace, model, columns) | See "Built-In Persistence Adapters" |
@@ -194,8 +198,8 @@ it, and `thinking_tokens` are already inside `output_tokens`. `stop_reason` and
 from its raw body when the body is one Smith recognizes (Anthropic, OpenAI Chat
 Completions and Responses, Gemini, Bedrock Converse), or from its stream when
 the step streamed. Each of these is omitted when the provider did not report
-it. `mode` is `:stream` for a streamed attempt and omitted for a synchronous
-one. `:token_usage` and `:cost` traces carry
+it. `mode` is `:stream` for a streamed attempt, `:batch` for one answered by a
+batch result, and omitted for a synchronous one. `:token_usage` and `:cost` traces carry
 `cache_read_tokens` and `cache_write_tokens` too, and `:cost` adds
 `cache_unpriced: true` when cache tokens were priced at 0 for lack of a rate. A
 failed or aborted attempt adds `error_class`,

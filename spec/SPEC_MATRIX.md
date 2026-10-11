@@ -1884,6 +1884,26 @@ Documented contracts covered:
 - review fixes: each streamed response's usage entry keeps its stop reason, message id and `mode: :stream` (a tool loop's rounds apart, a failed call's completed rounds too), as an unstreamed step's does; only the step's own provider is read, so a tool's own streamed call cannot change the step's stop reason; a real stream that ends before its stop event fails as cut off (`stream_incomplete`); `<think>` text never reaches the sink, split across chunks or not, per request; `finish` waits for the step to be stored, and a failed store gives `fail` with its error; a sink or callable raising a `ScriptError` is logged and the step goes on; the sink gets a frozen copy of the execution key; a durable retry that waits before any call still ends the sink with `reset(:retry_wait)`; Gemini's public `build_chunk` stays public; readiness's Responses warning follows runtime routing (thinking, tool compatibility, an `openai_api_mode` param, block-given tools) and no longer warns for a plain tool; `JsonField#push` returns only the added text, reads escaped keys, and takes a later string member after a non-string one; collection lives in fiber storage, read from child fibers
 - these contracts are mutation-verified against the full suite
 
+### `spec/smith/batch_spec.rb` and `spec/smith/providers/anthropic/batches_spec.rb`
+
+Purpose:
+
+- asserts that a step in batch mode sends the exact request a synchronous call would post through the host's queue, waits, and takes each result as the reply it would have got
+
+Architecture basis:
+
+- Section 4.3, Context and Sessions; Section 6, Budgets; Section 7, Observability
+
+Documented contracts covered:
+
+- `mode:` takes :sync, :batch or a callable (of the context, or the context and the attempt), needs `on_failure`, is refused with a stream or on a parallel step, works on `fan_out`, and shows in graph snapshots and contracts; readiness reports a missing queue and an agent with tools or a non-Anthropic model (an error for :batch, a warning for a callable)
+- sending captures RubyLLM's own payload (model, messages, `stream: false`) and the call's headers, frozen, under the wait token as `custom_id` and the run's execution key, makes no HTTP request, and stores a `:batch` wait and `pending_batch`; a missing queue, a provider without a batch interface, tools, or split-step execution fail the step before anything is queued
+- completing takes the result through RubyLLM's parser into `output_to`, with usage `mode: :batch`, its stop reason and message id, priced with `batch_discount`; a follow-up repair goes over the wire; a refused request fails without retry; a failed result is retried in process under a new token, or synchronously when the mode callable says so, or after a durable retry's backoff; a wait past its deadline fails as missing; a delivery naming other ids, an unknown result type, a succeeded result without its message, a non-Hash or non-JSON payload raises ArgumentError and leaves the wait, and a wrong event or token is stale; a result that comes after the budget ran out is still charged
+- a fan-out captures each branch's request in its branch, under ids derived from one token, waits once, and gives each branch its own result and usage entry
+- restore refuses a malformed pending batch, a wait whose request count or event no longer matches, and a step no longer in batch mode
+- the Anthropic client submits one batch with the shared headers and the provider's key, refuses mixed headers, other providers, empty or oversized batches before sending, reads status and the JSONL results file, cancels, refuses a malformed batch id, and makes no connection retries
+- these contracts are mutation-verified against the full suite
+
 ### `spec/smith/workflow/durable_retry_spec.rb`
 
 Purpose:

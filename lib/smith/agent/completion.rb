@@ -17,15 +17,15 @@ module Smith
       # `stream` is set for a streamed call: the facts of each of its
       # requests, read from the stream, and the request's output limit
       # (Providers::StreamFacts). Each response's usage carries its facts and
-      # `mode: :stream`.
-      def self.from_messages(response:, messages:, stream: nil)
+      # `mode: :stream`. `mode` marks another call's usage (:batch).
+      def self.from_messages(response:, messages:, stream: nil, mode: nil)
         assistant_messages = Array(messages).select do |message|
           message.respond_to?(:role) && message.role.to_s == "assistant"
         end
         usage_source = assistant_messages.empty? ? [response] : assistant_messages
         facts = response_facts(usage_source, stream)
 
-        provider_usages = build_provider_usages(usage_source, stream && facts)
+        provider_usages = build_provider_usages(usage_source, stream && facts, mode)
         new(
           response: response,
           provider_usages:,
@@ -59,10 +59,11 @@ module Smith
         Providers::StreamFacts.per_message(messages, stream.fetch(:rounds), stream.fetch(:output_limit))
       end
 
-      def self.build_provider_usages(messages, streamed_facts)
+      def self.build_provider_usages(messages, streamed_facts, mode)
         messages.each_with_index.filter_map do |message, index|
           usage = ProviderUsage.from_message(message)
-          streamed_facts && usage ? usage.streamed(streamed_facts[index]) : usage
+          usage = usage.streamed(streamed_facts[index]) if streamed_facts && usage
+          mode && usage ? usage.new(mode:) : usage
         end.freeze
       end
       private_class_method :response_facts, :build_provider_usages

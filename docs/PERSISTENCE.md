@@ -938,6 +938,43 @@ end
   declares fewer attempts than the recorded one, raises
   `Smith::UnknownTransitionOnRestore`.
 
+### Batch Waits
+
+A step whose mode is `:batch` (`execute` or `fan_out`, README "Batch mode")
+sends no request: it captures each call's request as a synchronous call would
+post it, hands it to `Smith.config.batch_queue` and waits.
+
+- The wait is of kind `:batch` (event `:batch_result`, `children` the number
+  of requests, `attempt` the step attempt), due 25 hours after entry (batches
+  end within 24). Its token is a key of the step's position and attempt, and
+  is the `custom_id` of an agent step's request; a fan-out branch's is
+  `Smith::Batch.custom_id(token, branch_key)`. The run records its pending
+  batch (`pending_batch`: transition, attempt, key generation), checked on
+  restore like a pending retry: a malformed one raises `SerializationError`,
+  and one the class no longer batches (or a wait whose request count no longer
+  matches the step's branches) is refused like an unknown position.
+- The host resumes the run once, with every result of the wait:
+  `resume!(key, event: :batch_result, token:, payload: {custom_id => result})`,
+  each result as the provider's results file gives it (`succeeded` with its
+  `message`, `errored`, `canceled` or `expired`). A payload that names other
+  ids, or a result of an unknown shape, raises ArgumentError and leaves the
+  wait for a good one. `expire_wait!` past the deadline completes the step as
+  if every result were missing.
+- The step runs again at its attempt and key generation, each call taking its
+  result instead of going over the wire, then goes on as after a synchronous
+  call; the completion is the step. A failed result raises
+  `Smith::BatchResultFailed`, which `retry_on` retries: in process, the next
+  attempt sends a new batch under a new token (or goes over the wire, if the
+  mode callable says :sync); a durable retry waits its backoff first, and the
+  batch its next attempt sends takes the place of its pending retry. A request
+  the provider refused raises `Smith::BatchRequestInvalid`, never retried.
+- Admission against the budget happens when the request is queued; nothing is
+  held while the run waits. The result's usage is charged when it comes, past
+  the limits if need be (`Budget::Ledger#reserve_spent!`).
+- A batch step cannot wait inside split-step execution, and an in-process
+  child (a nested workflow, or a child run run inline) with a batch step fails
+  its parent's step, as any wait does (readiness: `:nested_workflow_waits`).
+
 ## Child Runs
 
 `map`, `call` and `spawn` steps start other workflows as runs of their own.

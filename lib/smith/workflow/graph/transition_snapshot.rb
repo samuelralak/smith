@@ -43,6 +43,7 @@ module Smith
         option :input, default: proc {}
         option :output_to, default: proc {}
         option :stream, default: proc {}
+        option :mode, default: proc {}
         option :children, default: proc {}
 
         def self.from_transition(transition, workflow_class: nil)
@@ -82,6 +83,7 @@ module Smith
             input: (:callable if transition.step_input),
             output_to: transition.output_to,
             stream: transition.stream,
+            mode: transition.batch_mode,
             children: children_for(transition)
           }
         end
@@ -91,15 +93,10 @@ module Smith
           return unless config
 
           new_key_classes = config.fetch(:new_idempotency_key_on, [])
-          {
-            attempts: config.fetch(:attempts),
-            error_classes: config.fetch(:error_classes).map(&:name),
-            backoff: config.fetch(:backoff),
-            max_delay: config[:max_delay],
-            jitter: config.fetch(:jitter),
+          { attempts: config.fetch(:attempts), error_classes: config.fetch(:error_classes).map(&:name),
+            backoff: config.fetch(:backoff), max_delay: config[:max_delay], jitter: config.fetch(:jitter),
             new_idempotency_key_on: (new_key_classes.map(&:name) if new_key_classes.any?),
-            durable: (true if config[:durable])
-          }.compact
+            durable: (true if config[:durable]) }.compact
         end
 
         # A map, call or spawn: its child workflow (by name), bound, collect

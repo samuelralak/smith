@@ -78,6 +78,12 @@ module Smith
   # reset(reason), finish(output) and fail(error_class).
   setting :stream_sinks, default: {}.freeze, constructor: ->(sinks) { Smith::Streaming.check_sinks!(sinks) }
 
+  # Takes the requests `mode: :batch` steps send (Smith::Batch):
+  # `enqueue(custom_id:, await_token:, request:, execution_key:)`, idempotent
+  # on `custom_id`. The host submits them and resumes each run with its
+  # results.
+  setting :batch_queue, default: nil
+
   # Retry policy for transient persistence I/O failures.
   #   attempts:    total attempts (including the first)
   #   base_delay:  initial sleep between attempts, doubled each retry
@@ -237,9 +243,12 @@ require_relative "smith/trace/memory"
 require_relative "smith/trace/logger"
 require_relative "smith/trace/open_telemetry"
 
-# Streaming (no internal deps)
+# Streaming and batch mode (no internal deps)
 require_relative "smith/streaming"
 require_relative "smith/providers/stream_facts"
+require_relative "smith/batch"
+require_relative "smith/providers/batch_exchange"
+require_relative "smith/providers/anthropic/batches"
 
 # Artifact store (no internal deps)
 require_relative "smith/artifacts"
@@ -327,6 +336,8 @@ require_relative "smith/workflow/active_clock"
 require_relative "smith/workflow/wait_record"
 require_relative "smith/workflow/wait_completion"
 require_relative "smith/workflow/retry_wait"
+require_relative "smith/workflow/batch_execution"
+require_relative "smith/workflow/batch_wait"
 require_relative "smith/workflow/child_run_results"
 require_relative "smith/workflow/child_run_execution"
 require_relative "smith/workflow/wait_execution"

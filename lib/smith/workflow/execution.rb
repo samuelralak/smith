@@ -68,7 +68,12 @@ module Smith
         run_input_guardrails(agent_class)
         apply_tool_guardrails(agent_class)
         prepared_input = step_prepared_input(transition)
+        return send_agent_batch(transition, agent_class, prepared_input) if batch_send?(transition)
 
+        guarded_agent_output(transition, agent_class, prepared_input)
+      end
+
+      def guarded_agent_output(transition, agent_class, prepared_input)
         output = with_agent_context(agent_class) do
           dispatch_step(transition, prepared_input: prepared_input)
         end
@@ -125,19 +130,6 @@ module Smith
       def reserve_for_serial(transition, ledger)
         agent_class = resolve_agent_class(transition)
         reserve_serial_budget(ledger, agent_budget: agent_class&.budget)
-      end
-
-      def resolve_agent_class(transition)
-        parallel_binding = Thread.current[:smith_parallel_agent_binding]
-        parallel_agent_class = parallel_binding&.resolve(workflow: self, transition:)
-        return parallel_agent_class if parallel_agent_class
-
-        transition.agent_name && resolve_registered_agent!(
-          transition.agent_name,
-          workflow_class: self.class,
-          transition_name: transition.name,
-          role: :agent
-        )
       end
     end
   end

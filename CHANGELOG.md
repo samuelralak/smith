@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Upgrade notes
 
+- `execute` reads `mode:` as the call mode (`:sync`, `:batch`, or a callable)
+  and `stream:` as a stream name; neither stays in `agent_opts`, and any other
+  `mode:` value raises `Smith::WorkflowError` at declaration.
+
 - The artifact store must be configured: outside `test_mode`, storing or
   reading an artifact with no `artifact_store` raises
   `Smith::ArtifactStoreMissing` instead of using a store in process memory
@@ -140,6 +144,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   (`:stream_sink_missing`) and an agent whose calls go to the Responses API,
   which does not stream (`:stream_whole_replies`, decided as Smith's tool
   routing decides at runtime: `Smith::Models::ToolRouting.responses?`).
+- Batch mode. `execute Agent, mode: :batch` (or `:sync`, or a callable of the
+  context and the step attempt returning one), and the same on `fan_out`,
+  sends the step's requests through a provider's batch API. Smith prepares
+  each call as a synchronous one, admits it against the budget, captures the
+  exact request at RubyLLM's `sync_response` (`Smith::Providers::BatchExchange`,
+  bound to the call's own provider object; the connection's credentials never
+  leave it), and hands it to `Smith.config.batch_queue.enqueue(custom_id:,
+  await_token:, request:, execution_key:)`; the run waits on `:batch_result`
+  (kind `:batch`, 25 hours) with its `pending_batch` recorded. The host
+  submits, polls and collects with `Smith::Providers::Anthropic::Batches`
+  (`submit`, `status`, `results`, `cancel`; no connection retries, so a batch
+  is never submitted twice) and resumes the run once with
+  `{custom_id => result}`. The step runs again at its attempt, each call taking
+  its result through RubyLLM's own parser: usage with `mode: :batch` priced
+  with `batch_discount` and charged even past a budget
+  (`Budget::Ledger#reserve_spent!`), output checks, follow-up calls over the
+  wire, guardrails and `output_to:` as after a synchronous call. A refused
+  request raises `Smith::BatchRequestInvalid`; a failed, canceled, expired or
+  missing result raises `Smith::BatchResultFailed`, which `retry_on` sends
+  again. A missing queue raises `Smith::BatchQueueMissing`, and a provider
+  without a batch interface in Smith (only Anthropic has one) or an agent with
+  tools `Smith::BatchModeUnavailable`, before anything is sent. A batch step
+  needs `on_failure` and cannot stream or be `parallel:`; graph inspection
+  shows the mode, and runtime readiness reports `:batch_queue_missing`,
+  `:batch_unavailable` and an in-process child with a batch step.
 - A step that runs inside another run's step (an inline child run) scopes its
   artifacts over the configured store itself, not over the outer run's
   scoped view, through which it could read nothing of its own.

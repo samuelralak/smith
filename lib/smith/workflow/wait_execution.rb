@@ -8,9 +8,11 @@ require_relative "message_value_normalizer"
 module Smith
   class Workflow
     # The wait a run is in: an `await` for `event` (delivered under `token`
-    # by `resume!`), a `delay`, a map's or call's wait for its `children`, or
-    # a durable retry's backoff (`:retry`, with the `attempt` it waits to make
-    # and the class name of the `error` that failed the last one), entered at
+    # by `resume!`), a `delay`, a map's or call's wait for its `children`, a
+    # batch step's wait for the results of its `children` requests
+    # (`:batch`, event `:batch_result`, with its `attempt`), or a durable
+    # retry's backoff (`:retry`, with the `attempt` it waits to make and the
+    # class name of the `error` that failed the last one), entered at
     # `entered_at` and due to expire at `deadline_at`. Hosts index it to deliver events and to schedule the
     # `expire_wait!` call; Smith never sleeps, polls or wakes a run itself.
     Wait = Data.define(:kind, :event, :token, :transition, :into, :entered_at, :deadline_at, :children, :attempt,
@@ -33,7 +35,7 @@ module Smith
       # The run's wait, or nil.
       def awaiting
         record = @awaiting
-        WaitRecord.to_wait(record, awaited_transition(record), @pending_retry) if record
+        WaitRecord.to_wait(record, awaited_transition(record), @pending_retry, @pending_batch) if record
       end
 
       # Delivers the event this run awaits: writes the normalized payload to
@@ -46,6 +48,7 @@ module Smith
       def resume!(event:, token:, payload:)
         transition = claim_wait { resumable_transition(event.to_s, token.to_s) }
         return :stale unless transition
+        return complete_batch_wait(transition, batch_results!(transition, payload), :resumed) if batch_waiting?
 
         value = claimed_payload(transition, payload)
         complete_claimed_wait(transition, :resumed) do

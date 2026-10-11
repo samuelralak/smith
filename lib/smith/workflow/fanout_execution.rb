@@ -21,12 +21,9 @@ module Smith
         run_workflow_input_guardrails
         run_fanout_agent_input_guardrails(branch_agent_classes)
         prepared_input = step_prepared_input(transition)
-        output = execute_fanout_step(
-          transition,
-          branches: branches,
-          branch_agent_classes: branch_agent_classes,
-          prepared_input: prepared_input
-        )
+        return send_fanout_batch(transition, branches, branch_agent_classes, prepared_input) if batch_send?(transition)
+
+        output = execute_fanout_step(transition, branches:, branch_agent_classes:, prepared_input:)
         run_workflow_output_guardrails(output)
         output
       end

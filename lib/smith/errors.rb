@@ -276,6 +276,40 @@ module Smith
     end
   end
 
+  # A step sends its request as a batch and Smith.config.batch_queue is not
+  # configured. Raised before anything is sent.
+  class BatchQueueMissing < WorkflowError
+    def initialize(message = "Smith.config.batch_queue is not configured; batch mode hands its requests to it")
+      super
+    end
+  end
+
+  # A batch step's call cannot go as a batch: its model's provider has no
+  # batch interface in Smith (Anthropic has), or its agent has tools (a batch
+  # request is one turn). Raised before anything is sent.
+  class BatchModeUnavailable < WorkflowError; end
+
+  # A batch result that did not answer: a server error (`errored`), a
+  # `canceled` or `expired` request, or none by the wait's deadline
+  # (`missing`). An AgentError, so `retry_on` sends it again.
+  class BatchResultFailed < AgentError
+    attr_reader :kind, :error_type
+
+    def initialize(kind:, error_type: nil)
+      @kind = kind.to_s.dup.freeze
+      @error_type = error_type.to_s.dup.freeze if error_type
+      super("batch result #{@kind}#{" (#{@error_type})" if @error_type}")
+    end
+  end
+
+  # The provider refused a batch request as invalid; sending it again would
+  # be refused again.
+  class BatchRequestInvalid < WorkflowError
+    def initialize(message = "the provider refused the batch request as invalid")
+      super
+    end
+  end
+
   class SerializationError < Error; end
   class AgentRegistryError < Error; end
 

@@ -62,7 +62,7 @@ module Smith
 
         # An in-process child cannot wait: a nested workflow, or a child run
         # the launcher runs in process (`inline?`), that reaches an await, a
-        # delay or a durable retry fails its parent's step. A nested
+        # delay, a durable retry or a batch step fails its parent's step. A nested
         # workflow cannot launch runs either, unless the launcher runs them
         # in process; a child run of a queueing launcher is a run of its own
         # and may wait.
@@ -82,7 +82,10 @@ module Smith
           entry.fetch(:report).topology_report.transitions.any? { waits?(_1, kinds) }
         end
 
-        def waits?(snapshot, kinds) = kinds.include?(snapshot.kind) || snapshot.retry_policy&.dig(:durable) == true
+        def waits?(snapshot, kinds)
+          kinds.include?(snapshot.kind) || snapshot.retry_policy&.dig(:durable) == true ||
+            %i[batch callable].include?(snapshot.mode)
+        end
 
         def inherited_untrusted_diagnostics
           entries = report_entries.map do |entry|
