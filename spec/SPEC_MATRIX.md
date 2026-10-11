@@ -1796,6 +1796,24 @@ Documented contracts covered:
 - review fixes: each child's `key` (token and ref) differs across two child-run steps of one run; a spawn taken as a failure route launches; results are checked against the count the step launched (`Wait#children`), not items derived again, and an unpersisted items key is refused; only an `inline?` launcher's return value is taken, and it must be an Array; a strict run that crashed mid-launch launches again; a map or call that fails on a failed child needs `on_failure`, and no map, call or spawn takes `retry_on`; outputs a map does not collect are dropped before the 4 MiB bound, live and inline; a map over no items completes at once; an `await :children` keeps the wait bound; child untrusted key names are checked and symbolized at build; inline children run under the parent's deadline but apart from its tool evidence and attribution, and a waiting, raising or self-handled failing child is reported failed with its error; a spawn launches under a token of its own, from items given a copy of the context, and not past the deadline; a stored wait's children count is checked; readiness flags an in-process nested workflow that maps, lets a durable map recurse, and warns (not errors) of a child agent reading a parent's untrusted key; child inputs are bounded at 16 MiB together as they are built; split-step persistence refuses child-run steps; `ChildRunsFailed` details must add up
 - these contracts are mutation-verified against the full suite
 
+### `spec/smith/content_parts_spec.rb`
+
+Purpose:
+
+- asserts that `Smith::Content` parts and `Smith::Message` messages reach providers in their own forms, from `input:` and `seed_messages`, and stay data everywhere else
+
+Architecture basis:
+
+- Section 4.3, Context and Sessions
+
+Documented contracts covered:
+
+- parts are frozen and closed: text (1 byte to 1 MiB), documents (`application/pdf`, `text/plain`) and images (png, jpeg, gif, webp) by artifact ref (at most 1 KiB), `cache` only as true; anything else is refused
+- messages keep String content plain and mark parts with `"parts" => true`; a system message takes text parts only; 1 to 100 parts; roles system, user and assistant
+- an agent step's `input:` gives Anthropic native blocks (base64 PDF or image, `text/plain` as text, `cache_control` on cached parts) and other providers the joined text with attachments; a missing artifact, a ref of another run, an artifact that is too large, more than 4 cache points on Anthropic, or a system message in `input:` fails the step before the call
+- seed messages keep their parts, reach Anthropic's system blocks cached, restore, and keep their digest; a restored session refuses parts outside the seed messages or malformed ones; `append_session_messages!` refuses parts; an output shaped like parts reaches the provider as JSON text; hand-built parts messages are checked in `input:` and `seed_messages`
+- these contracts are mutation-verified against the full suite (29/29)
+
 ### `spec/smith/workflow/durable_retry_spec.rb`
 
 Purpose:

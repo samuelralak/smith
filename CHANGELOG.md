@@ -42,6 +42,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Added
 
+- Content parts. `Smith::Message.user`, `.assistant` and `.system` take a String
+  or `Smith::Content` parts (`text`, and `document` and `image`, which name an
+  artifact of the run and a media type), in a step's `input:` and in
+  `seed_messages`. Anthropic gets native blocks with `cache_control` on parts
+  marked `cache: true` (at most 4 per request); other providers get the text
+  and attachments. Documents and images are read from the run's artifacts when
+  the chat is built and fail the step before the call when missing or larger
+  than 32 MiB. A message with parts carries a marker no agent output or
+  host-admitted message can carry, and a restored session holds parts only in
+  its seed messages.
 - Durable retry. `retry_on ..., durable: true` waits out each backoff as a
   wait of the run (`awaiting.kind == :retry`, due when the backoff ends)
   instead of sleeping in the worker. `expire_wait!` past the deadline ends the

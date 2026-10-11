@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "provider_failure_handling"
+require_relative "content_parts"
 require_relative "invocation_preparation"
 require_relative "provider_attempt"
 require_relative "provider_call_timing"
@@ -12,6 +13,7 @@ module Smith
     module ProviderCompletion
       include ProviderFailureHandling
       include InvocationPreparation
+      include ContentParts
       include ProviderCallTiming
       include ProviderRequest
 
@@ -134,7 +136,7 @@ module Smith
 
       def prepared_attempt_chat(agent_class, prepared_input, model_reference, shape)
         chat = agent_class.chat(**model_reference.chat_options, **bridge_workflow_inputs(agent_class))
-        add_prepared_input(chat, prepared_input)
+        add_prepared_input(chat, prepared_input, observed_model_reference(chat, fallback: model_reference).provider)
         shaped_chat(chat, model_reference, shape)
       end
 

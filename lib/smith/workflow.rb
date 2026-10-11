@@ -377,11 +377,12 @@ module Smith
     end
 
     def normalize_seed_messages(seeded)
-      return [] if seeded.nil?
-      return [seeded] if seeded.is_a?(Hash)
-      return seeded.to_a if seeded.respond_to?(:to_a)
-
-      raise WorkflowError, "seed_messages must return a message Hash or an Array of message Hashes"
+      messages = if seeded.nil? then []
+                 elsif seeded.is_a?(Hash) then [seeded]
+                 elsif seeded.respond_to?(:to_a) then seeded.to_a
+                 else raise WorkflowError, "seed_messages must return a message Hash or an Array of message Hashes"
+                 end
+      messages.map { |message| Message.parts?(message) ? Message.check!(message) : message }
     end
 
     def snapshot_context

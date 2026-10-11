@@ -52,6 +52,7 @@ module Smith
         reject!("each session message requires a non-empty role") unless
           role.is_a?(String) && !role.strip.empty?
         reject!("session messages admitted by the host cannot have the system role") if role.strip.casecmp?("system")
+        reject!("session messages admitted by the host cannot carry content parts") if Message.parts?(message)
         return if MessageRoles.role(message, MessageRoles::ADMITTED)
 
         reject!("session messages admitted by the host must have the role user, assistant or tool")

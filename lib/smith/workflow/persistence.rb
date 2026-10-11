@@ -92,6 +92,7 @@ module Smith
         @next_transition_name = normalized[:next_transition_name]
         @session_messages = normalized[:session_messages] || []
         @seed_message_count = validated_seed_message_count(normalized)
+        validate_session_parts!
         @total_cost = normalized[:total_cost] || 0.0
         @total_tokens = normalized[:total_tokens] || 0
         @outcome = normalized[:outcome]
@@ -151,6 +152,21 @@ module Smith
 
         raise Smith::SerializationError,
               "persisted workflow persistence_version must be a non-negative integer, got #{version.inspect}"
+      end
+
+      # Content parts come only from seed messages: anywhere else in a
+      # stored session they are refused, and a seed's are checked.
+      def validate_session_parts!
+        @session_messages.each_with_index do |message, index|
+          next unless Message.parts?(message)
+
+          valid = index < @seed_message_count && begin
+            Message.check!(message)
+          rescue WorkflowError
+            false
+          end
+          raise Smith::SerializationError, "persisted session content parts must be valid seed messages" unless valid
+        end
       end
 
       def validated_seed_message_count(normalized)

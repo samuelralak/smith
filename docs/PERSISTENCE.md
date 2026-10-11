@@ -686,6 +686,51 @@ end
   written by an earlier version may hold a system message the host admitted;
   it still reaches agents, so rebuild such sessions before relying on this.
 
+### Content Parts
+
+A message in a step's `input:` or in `seed_messages` can carry content parts
+instead of a String:
+
+```ruby
+ref = Smith.artifacts.store(pdf_bytes, content_type: "application/pdf")   # inside a step
+Smith::Message.user([Smith::Content.document(ref, media_type: "application/pdf", cache: true),
+                     Smith::Content.text("Who signed?")])
+Smith::Message.system([Smith::Content.text(house_style, cache: true)])     # in seed_messages
+```
+
+- `Smith::Content.text(text, cache: false)`,
+  `Smith::Content.document(ref, media_type:, cache: false)` and
+  `Smith::Content.image(ref, media_type:, cache: false)` build frozen,
+  JSON-shaped parts. A document (`application/pdf`, `text/plain`) or image
+  (`image/png`, `image/jpeg`, `image/gif`, `image/webp`) is a ref from
+  `Smith.artifacts.store`, never bytes, so a message with parts stays small in
+  sessions, payloads and digests. A ref belongs to the run whose step stored it
+  (and the workflows it nests): another run, a child run included, reads
+  nothing from it.
+- `Smith::Message.user`, `.assistant` and `.system` take a String or 1 to 100
+  parts; a system message takes text parts only, and `input:` takes user and
+  assistant messages. A message with parts carries `"parts" => true` beside its
+  role and content, which no agent output and no `append_session_messages!`
+  message can carry (the host is refused), so a structured output that looks
+  like parts stays data and reaches providers as JSON text.
+- When an agent step's chat is built, Smith reads each document and image from
+  the run's artifacts; one that is missing, expired, not a String, or larger
+  than 32 MiB fails the step before the call with a `Smith::WorkflowError`.
+  Anthropic gets native blocks (`RubyLLM::Content::Raw`): a PDF or image as
+  base64, a `text/plain` document as text, and `cache_control: { type:
+  "ephemeral" }` on a part marked `cache: true`, at most 4 of them in one
+  request (more fails the step). Any other provider gets the text parts joined
+  and the documents and images as attachments after them, and `cache:` is
+  ignored (those providers cache on their own). Each attempt builds its own
+  chat, so a fallback model on another provider gets its own form.
+- Seed messages keep their parts in the session, digests included, and reach
+  the agent steps that read the session: a step with `input:` sees only its
+  input and its agent's instructions, so a cached seed prefix serves the
+  steps without one. A restored session may hold parts only among its seed
+  messages, each valid, or the restore raises `Smith::SerializationError`. A document is outside content by
+  nature and cannot be wrapped like text; give a step that reads one an
+  isolated session or a narrow `input:`.
+
 ## Waiting
 
 `await` and `delay` steps let a run wait, durably and bounded, without anything

@@ -34,10 +34,16 @@ module Smith
                              "#{untrusted.first.inspect} as an input"
       end
 
-      def add_prepared_input(chat, prepared_input)
+      # The messages, with their content parts (ContentParts) as `provider`
+      # takes them.
+      def add_prepared_input(chat, prepared_input, provider = nil)
         return unless prepared_input
 
         prepared_input = provider_safe_prepared_input(prepared_input)
+        check_cache_breakpoints!(prepared_input, provider)
+        prepared_input = prepared_input.map do |message|
+          Message.parts?(message) ? provider_parts_message(message, provider) : message
+        end
         system_messages, other_messages = prepared_input.partition do |message|
           message_role(message) == :system
         end
@@ -113,9 +119,13 @@ module Smith
       # Hash message content in a workflow session.
       def provider_safe_message(attributes)
         content = attributes[:content]
-        return attributes if content.nil? || content.is_a?(String)
+        return attributes if content.nil? || content.is_a?(String) || provider_built_content?(content)
 
         attributes.merge(content: json_message_content(content))
+      end
+
+      def provider_built_content?(content)
+        content.is_a?(::RubyLLM::Content) || content.is_a?(::RubyLLM::Content::Raw)
       end
 
       def json_message_content(content)

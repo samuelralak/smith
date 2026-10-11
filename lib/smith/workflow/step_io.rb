@@ -88,12 +88,22 @@ module Smith
       end
 
       def step_input_message(message)
+        return step_input_parts_message(message) if Message.parts?(message)
         unless message.is_a?(Hash) && message.keys.sort == %w[content role] && INPUT_ROLES.include?(message["role"]) &&
                !message["content"].nil?
           raise WorkflowError, "each input: message must be { role: :user or :assistant, content: } with content"
         end
 
         { role: message["role"].to_sym, content: message["content"] }
+      end
+
+      # A message with content parts (Smith::Message), user or assistant.
+      def step_input_parts_message(message)
+        checked = Message.check!(message)
+        raise WorkflowError, "an input: message with content parts must be a user or assistant message" unless
+          INPUT_ROLES.include?(checked["role"])
+
+        { role: checked["role"].to_sym, content: checked["content"], parts: true }
       end
 
       # Checked before the step runs, so a key the persist list refuses

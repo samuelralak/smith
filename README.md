@@ -149,6 +149,28 @@ Context keys declared `untrusted` never reach `inject_state`, the
 workflow it nests. See [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md), Step
 Isolation and Untrusted Content.
 
+A message in `input:` or `seed_messages` can carry content parts: text, and
+documents and images stored as artifacts of the run, with `cache: true`
+marking a prefix Anthropic may cache:
+
+```ruby
+transition :store, from: :fetched, to: :stored do
+  compute { |step| step.write_context(:contract_ref, Smith.artifacts.store(Contracts.pdf(step.read_context(:id)))) }
+end
+
+transition :extract, from: :stored, to: :extracted do
+  execute :field_extractor,
+          input: lambda { |ctx|
+            [Smith::Message.user([Smith::Content.document(ctx[:contract_ref], media_type: "application/pdf"),
+                                  Smith::Content.text("List the parties and the term.")])]
+          },
+          output_to: :fields
+end
+```
+
+Anthropic gets native blocks; other providers get the text and the files as
+attachments. See [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md), Content Parts.
+
 ### Waiting
 
 A step can wait, durably and bounded, for an event the host delivers or for a
