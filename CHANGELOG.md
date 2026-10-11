@@ -86,9 +86,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   caught in it raises `Smith::StepInProgressOnRestore`). No retry wait is
   entered past the deadline, after a tool ran, or for a backoff that does not
   end within the persistence TTL, which runtime readiness reports
-  (`:durable_retry_outlasts_ttl`). `durable:` needs 2 attempts and a positive
-  backoff, and is refused on await, delay, parallel, fan_out, optimize and
-  orchestrate steps; graph inspection shows it, and runtime readiness reports
+  (`:durable_retry_outlasts_ttl`). `durable:` needs 2 attempts, a positive
+  backoff and `on_failure` (so a last failure settles the run rather than
+  being made again by a job that runs again), and is refused on await, delay,
+  parallel, fan_out, optimize and orchestrate steps; graph inspection shows it, and runtime readiness reports
   an in-process child with a durable retry (a nested workflow, or a child run
   the launcher runs inline) as `:nested_workflow_waits`. Split-step
   persistence refuses a step with a durable retry. Traces gain the outcomes

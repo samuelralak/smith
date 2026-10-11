@@ -1861,7 +1861,7 @@ Architecture basis:
 
 Documented contracts covered:
 
-- `durable:` takes true or false and is refused on await, delay, parallel and fan_out steps; graph inspection and the transition contract show `durable: true`
+- `durable:` takes true or false, needs `on_failure`, and is refused on await, delay, parallel and fan_out steps; graph inspection and the transition contract show `durable: true`
 - a retried failure enters a `:retry` wait (no event or `into:`, due after the backoff) without sleeping, counting a step or completing it, and stores `pending_retry`; a waiting run does not advance; `expire_wait!` before the deadline is `:not_due`, with a stale token `:stale`, and `resume!` never completes it; past the deadline the wait ends with the transition next, and continuing the run makes the next attempt under the same key, then clears `pending_retry`
 - the last attempt fails for good through `on_failure`; a settled failure moves the attempts after it to new keys across durable waits, as in-process
 - an unpersisted run waits in memory and continues after `expire_wait!`

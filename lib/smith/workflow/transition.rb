@@ -306,8 +306,22 @@ module Smith
       # A durable retry waits between attempts, so its step must be one a
       # run can wait in: not a step that waits itself, nor one whose
       # branches keep durable state of their own.
+      # Its last failure must settle the run through `on_failure`: a failure
+      # raised to the host leaves the stored run before that attempt, so a
+      # job that runs again would make the attempt again at once, past the
+      # policy's attempts.
       def validate_durable_retry!
-        return unless durable_retry? && (awaits? || parallel? || fanout? || optimized? || orchestrated?)
+        return unless durable_retry?
+
+        refuse_durable_retry_on_waiting_step!
+        return if @failure_transition
+
+        raise WorkflowError, "retry_on durable: needs on_failure, so the last failure settles the run instead of " \
+                             "being made again by a host that runs the job again"
+      end
+
+      def refuse_durable_retry_on_waiting_step!
+        return unless awaits? || parallel? || fanout? || optimized? || orchestrated?
 
         raise WorkflowError, "retry_on durable: is not available on await, delay, parallel, fan_out, optimize or " \
                              "orchestrate steps"

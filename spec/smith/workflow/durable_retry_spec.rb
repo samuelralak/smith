@@ -15,8 +15,8 @@ RSpec.describe "Smith::Workflow durable retry" do
 
   # A workflow whose :charge step records each attempt and its key, then
   # runs `body` (failing on the attempts it chooses).
-  def charging(name, mode: :lax, errors: [SpecDurableTransient], route: true, **policy, &body)
-    attempts, backoff = { attempts: 3, backoff: 30 }.merge(policy).values_at(:attempts, :backoff)
+  def charging(name, mode: :lax, errors: [SpecDurableTransient], route: :fail, **policy, &body)
+    policy = { attempts: 3, backoff: 30 }.merge(policy)
     recorded = seen
     with_stubbed_class(name, workflow_class) do
       idempotency_mode mode
@@ -27,9 +27,10 @@ RSpec.describe "Smith::Workflow durable retry" do
           recorded << [step.attempt, step.idempotency_key]
           instance_exec(step, &body)
         end
-        retry_on(*errors, attempts:, backoff:, durable: true)
-        on_failure :fail if route
+        retry_on(*errors, **policy, durable: true)
+        on_failure route
       end
+      transition :stray, from: :elsewhere, to: :failed
     end
   end
 
@@ -50,6 +51,8 @@ RSpec.describe "Smith::Workflow durable retry" do
       end
 
       schema = Struct.new(:required_keys).new([:accept])
+      expect { declare.call(proc { retry_on attempts: 2, backoff: 1, durable: true }) }
+        .to raise_error(Smith::WorkflowError, /durable: needs on_failure/)
       expect { declare.call(proc { retry_on attempts: 2, backoff: 1, durable: "yes" }) }
         .to raise_error(Smith::WorkflowError, /durable: must be true or false/)
       [{ attempts: 1, backoff: 1 }, { attempts: 2, backoff: 0, jitter: 5 }].each do |policy|
@@ -296,28 +299,15 @@ RSpec.describe "Smith::Workflow durable retry" do
       Smith::Trace.reset!
     end
 
-    it "clears the pending retry of a step that raised or was routed to :fail, so the run restores" do
-      raising = charging("SpecDurableRaisingWorkflow", attempts: 2, route: false, &fail_until(5))
+    it "clears the pending retry of a step whose failure route could not run, so the run restores" do
+      raising = charging("SpecDurableRaisingWorkflow", attempts: 2, route: :stray, &fail_until(5))
       raising.new.run_persisted!("raise-1", adapter:)
       expire(raising, "raise-1")
       due = raising.restore("raise-1", adapter:)
-      expect { due.run_persisted!("raise-1", adapter:) }.to raise_error(SpecDurableTransient)
+      expect { due.run_persisted!("raise-1", adapter:) }.to raise_error(Smith::WorkflowError, /cannot run from state/)
       expect(due.to_state[:pending_retry]).to be_nil
       due.persist!("raise-1", adapter:)
       expect(raising.restore("raise-1", adapter:)).not_to be_waiting
-
-      unresolved = charging("SpecDurableUnresolvedWorkflow", route: false) do |step|
-        raise SpecDurableTransient, "busy" if step.attempt == 1
-
-        raise Smith::UnresolvedTransitionError.new(:nowhere, SpecDurableUnresolvedWorkflow, :idle)
-      end
-      unresolved.transition(:fail, from: :idle, to: :failed)
-      unresolved.new.run_persisted!("unresolved-1", adapter:)
-      expire(unresolved, "unresolved-1")
-      result = unresolved.restore("unresolved-1", adapter:).run_persisted!("unresolved-1", adapter:)
-
-      expect(result.state).to eq(:failed)
-      expect(unresolved.restore("unresolved-1", adapter:).to_state[:pending_retry]).to be_nil
     end
 
     it "lets one instance wait and expire twice, refreshing updated_at, and traces both ends with the run's key" do
@@ -385,9 +375,11 @@ RSpec.describe "Smith::Workflow durable retry" do
       jittered = with_stubbed_class("SpecDurableReadyJitterWorkflow", workflow_class) do
         initial_state :idle
         persistence_ttl 80
+        state :failed
         transition :t, from: :idle, to: :done do
           compute { |_s| nil }
           retry_on attempts: 2, backoff: 60, jitter: 30, durable: true
+          on_failure :fail
         end
       end
       expect(jittered.graph.runtime_readiness.diagnostics.map(&:code)).to include(:durable_retry_outlasts_ttl)
@@ -462,6 +454,7 @@ RSpec.describe "Smith::Workflow durable retry" do
         transition :recover, from: nil, to: :done do
           workflow kid
           retry_on SpecDurableTransient, attempts: 2, backoff: 5, durable: true
+          on_failure :fail
         end
       end
       nesting.new.run_persisted!("nest-1", adapter:)

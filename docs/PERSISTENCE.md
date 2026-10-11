@@ -902,11 +902,7 @@ end
   it completes, fails, or raises. A crash during the attempt makes the same
   attempt again under the same keys in lax mode; in strict mode the attempt
   runs under the step-in-progress mark, so the restore of a run caught in it
-  raises `Smith::StepInProgressOnRestore`. A step whose last attempt raises
-  to the host (no `on_failure`) leaves the stored run at the checkpoint
-  before that attempt, as a crash does, so continuing it makes that attempt
-  again at once; declare `on_failure` to settle a durable retry's last
-  failure.
+  raises `Smith::StepInProgressOnRestore`.
 - No retry wait is entered once the run's wall-clock deadline has passed, after
   a tool ran (`Smith::ToolOutcomeUncertain` is never retried), or for a backoff
   that does not end within the store's persistence TTL (the step fails with a
@@ -914,8 +910,12 @@ end
   reports a policy whose longest backoff, jitter included, reaches the TTL
   (`:durable_retry_outlasts_ttl`). Time spent waiting does not count toward
   `wall_clock`.
-- `durable:` needs at least 2 attempts and a positive backoff, and is refused
-  on an await, delay, parallel, fan_out, optimize or orchestrate step; a map,
+- `durable:` needs at least 2 attempts, a positive backoff and `on_failure`,
+  and is refused on an await, delay, parallel, fan_out, optimize or
+  orchestrate step. `on_failure` is required because a last failure raised to
+  the host would leave the stored run before that attempt, as a crash does,
+  so a job that runs again would make the attempt again at once, past the
+  policy's attempts; through `on_failure` the failure settles the run; a map,
   call or spawn takes no `retry_on` at all. A durable retry inside an
   in-process nested workflow, or a child run that `Smith::Launchers::Inline`
   runs, fails the parent's step (a nested workflow's with the child's error as
