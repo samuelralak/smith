@@ -86,9 +86,13 @@ module Smith
             max_delay: config[:max_delay],
             jitter: config.fetch(:jitter)
           }
+          exported.merge(optional_retry_fields(config)).freeze
+        end
+
+        def optional_retry_fields(config)
           new_key_classes = config.fetch(:new_idempotency_key_on, [])
-          exported[:new_idempotency_key_on] = new_key_classes.dup.freeze if new_key_classes.any?
-          exported.freeze
+          { new_idempotency_key_on: (new_key_classes.dup.freeze if new_key_classes.any?),
+            durable: (true if config[:durable]) }.compact
         end
 
         def own_hash(hash)

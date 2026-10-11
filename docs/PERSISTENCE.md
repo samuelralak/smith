@@ -775,10 +775,57 @@ end
 - A wait that would outlast the store's persistence TTL is refused when it is
   entered, before the block runs. `stuck_for?` reports a waiting run as stuck
   only once its deadline has passed by the threshold.
-- Not in 0.12: split-step persistence refuses to prepare an `await`, `delay`,
-  `map`, `call` or `spawn` step, or any step while the run waits, and an in-process nested workflow
-  that reaches a wait fails its parent's step (runtime readiness reports
-  `:nested_workflow_waits`).
+- Not in 0.12: split-step persistence refuses to prepare a step that waits or
+  launches runs (an `await`, `delay`, `map`, `call` or `spawn`, or a step with
+  a durable retry), or any step while the run waits, and an in-process nested
+  workflow that reaches a wait fails its parent's step (runtime readiness
+  reports `:nested_workflow_waits`).
+
+### Durable Retry
+
+`retry_on ..., durable: true` waits out each backoff as a wait of the run
+instead of sleeping in the worker:
+
+```ruby
+transition :charge, from: :approved, to: :charged do
+  compute { |step| Payments.charge(order, idempotency_key: step.idempotency_key) }
+  retry_on Payments::Timeout, attempts: 5, backoff: 60, max_delay: 3600, durable: true
+  on_failure :charge_failed
+end
+```
+
+- An attempt that fails in a way the policy retries, with attempts left,
+  enters a wait of kind `:retry` for the transition (no event, no `into:`),
+  due when the backoff ends, under a token of the attempt it waits for. The
+  step does not complete or count, and the run records its pending retry (the
+  transition, the next attempt and the key generation) as `pending_retry`.
+- `expire_wait!` past the deadline ends the wait without a step and returns
+  `:expired`; the transition becomes the run's next. The host continues the run
+  (`run_persisted!` or `advance_persisted!`), as after any wait, and the step
+  makes the recorded attempt under the recorded keys: the same as the failed
+  attempt's, unless that attempt was declared settled (see Replay Safety).
+  It may succeed, fail for good (`on_failure`, or the error), or wait again.
+  `resume!` never completes a retry wait.
+- The pending retry persists until the step completes or fails. A crash during
+  the attempt makes the same attempt again under the same keys in lax mode; in
+  strict mode the attempt runs under the step-in-progress mark, so the restore
+  of a run caught in it raises `Smith::StepInProgressOnRestore`.
+- No retry wait is entered once the run's wall-clock deadline has passed, after
+  a tool ran (`Smith::ToolOutcomeUncertain` is never retried), or for a backoff
+  longer than the store's persistence TTL (the step fails with a
+  `Smith::WorkflowError`). Time spent waiting does not count toward
+  `wall_clock`.
+- `durable:` is refused on an await, delay, parallel, fan_out, optimize or
+  orchestrate step; a map, call or spawn takes no `retry_on` at all. A durable
+  retry inside an in-process nested workflow fails the parent's step, and
+  runtime readiness reports it as `:nested_workflow_waits`. Graph inspection
+  shows `durable: true` in the retry policy.
+- A stored `pending_retry` is checked on restore: it must name the transition
+  of the stored retry wait, or the run's next transition when the run does not
+  wait, which must still declare a durable retry; its attempt must be one the
+  policy makes after a failure and its key generation one an earlier attempt
+  could reach. A stored retry wait needs one. Anything else raises
+  `Smith::SerializationError`.
 
 ## Child Runs
 

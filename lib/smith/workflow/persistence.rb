@@ -14,6 +14,8 @@ module Smith
           budget_consumed: ledger_consumed,
           step_count: @step_count,
           awaiting: @awaiting&.dup,
+          # The attempt a durable retry makes next, and its key generation.
+          pending_retry: @pending_retry&.dup,
           active_seconds: @active_seconds || 0.0,
           active_step_started_at: @active_step_started_at,
           execution_namespace: @execution_namespace,
@@ -123,6 +125,7 @@ module Smith
         @awaiting = WaitRecord.restore(normalized[:awaiting], workflow_class: self.class,
                                                               persistence_key: normalized[:persistence_key],
                                                               state: @state, next_transition: @next_transition_name)
+        @pending_retry = restore_pending_retry(normalized[:pending_retry])
         @active_seconds = restored_active_seconds(normalized[:active_seconds])
         charge_unfinished_step!(normalized[:active_step_started_at])
         @wait_mutex = Mutex.new

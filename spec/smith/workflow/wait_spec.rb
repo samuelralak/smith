@@ -437,7 +437,7 @@ RSpec.describe "Smith::Workflow waits: await, delay, resume! and expire_wait!" d
       end
 
       expect { klass.new.prepare_persisted_step!("split-1", adapter:) }
-        .to raise_error(Smith::WorkflowError, /does not run await, delay, map, call or spawn/)
+        .to raise_error(Smith::WorkflowError, /does not run steps that wait or launch runs/)
       waiting = klass.new.tap(&:run!)
       expect { waiting.prepare_persisted_step!("split-2", adapter:) }.to raise_error(Smith::WorkflowError, /waits/)
     end

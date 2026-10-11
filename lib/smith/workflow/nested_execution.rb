@@ -32,7 +32,8 @@ module Smith
         return unless child.waiting?
 
         roll_up_child_totals(child_result)
-        raise WorkflowError, "a nested workflow reached an await or delay step; an in-process child cannot wait"
+        raise WorkflowError, "a nested workflow reached a step that waits (an await, delay or durable retry); " \
+                             "an in-process child cannot wait"
       end
 
       RaisedChildUsage = Struct.new(:usage_entries, :total_cost, :total_tokens)

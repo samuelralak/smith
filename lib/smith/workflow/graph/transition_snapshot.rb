@@ -95,7 +95,8 @@ module Smith
             backoff: config.fetch(:backoff),
             max_delay: config[:max_delay],
             jitter: config.fetch(:jitter),
-            new_idempotency_key_on: (new_key_classes.map(&:name) if new_key_classes.any?)
+            new_idempotency_key_on: (new_key_classes.map(&:name) if new_key_classes.any?),
+            durable: (true if config[:durable])
           }.compact
         end
 

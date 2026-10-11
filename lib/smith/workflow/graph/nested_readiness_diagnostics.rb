@@ -60,19 +60,21 @@ module Smith
           end
         end
 
-        # An in-process child that reaches an await or delay fails its
-        # parent's step at runtime; a child run of its own may wait.
+        # An in-process child that reaches an await, a delay or a durable
+        # retry fails its parent's step at runtime; a child run of its own
+        # may wait.
         # An in-process child has no persisted key, so it cannot wait, nor
         # launch runs of its own unless the launcher runs them in process.
         def waiting_child_diagnostics
           kinds = waiting_kinds
           in_process_entries.filter_map do |entry|
-            transitions = entry.fetch(:report).topology_report.transitions
-            next unless transitions.any? { |snapshot| kinds.include?(snapshot.kind) }
+            next unless entry.fetch(:report).topology_report.transitions.any? { waits?(_1, kinds) }
 
             waiting_child_diagnostic(entry.fetch(:transition), workflow_label(entry.fetch(:workflow_class)))
           end
         end
+
+        def waits?(snapshot, kinds) = kinds.include?(snapshot.kind) || snapshot.retry_policy&.dig(:durable) == true
 
         def waiting_kinds
           launcher = Smith.config.run_launcher

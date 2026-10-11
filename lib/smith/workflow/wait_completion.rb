@@ -41,6 +41,12 @@ module Smith
         end
       end
 
+      def expire_claimed_wait(transition, record)
+        return end_retry_wait(transition) if record["kind"] == "retry"
+
+        complete_claimed_wait(transition, :expired) { expire_step(transition, record) }
+      end
+
       def complete_claimed_wait(transition, done, &)
         step = finish_wait(transition, &)
         step.key?(:error) && done == :resumed ? :failed : done

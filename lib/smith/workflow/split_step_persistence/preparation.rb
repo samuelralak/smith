@@ -75,9 +75,9 @@ module Smith
           transition = pending_split_step_transition
           transition_name = @next_transition_name || transition&.name
           raise WorkflowError, "workflow has no pending transition" unless transition_name
-          if transition&.awaits? || transition&.child_runs?
-            raise WorkflowError, "split-step persistence does not run await, delay, map, call or spawn steps"
-          end
+
+          refusal = "split-step persistence does not run steps that wait or launch runs"
+          raise WorkflowError, refusal if transition&.may_wait?
 
           ensure_transition_budget!
           resolved_key = normalize_split_step_persistence_key(candidate_split_step_persistence_key(key))

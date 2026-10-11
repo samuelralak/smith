@@ -42,6 +42,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Added
 
+- Durable retry. `retry_on ..., durable: true` waits out each backoff as a
+  wait of the run (`awaiting.kind == :retry`, due when the backoff ends)
+  instead of sleeping in the worker. `expire_wait!` past the deadline ends the
+  wait without a step, and the host continues the run, which makes the next
+  attempt under the recorded attempt number and key generation; the pending
+  retry persists (`pending_retry`) until the step completes or fails, so a
+  crash makes the same attempt again under the same keys (in strict mode, the
+  restore of a run caught in it raises `Smith::StepInProgressOnRestore`). No
+  retry wait is entered past the deadline, after a tool ran, or for a backoff
+  longer than the persistence TTL. `durable:` is refused on await, delay,
+  parallel, fan_out, optimize and orchestrate steps; graph inspection shows
+  it, and runtime readiness reports an in-process nested workflow with a
+  durable retry as `:nested_workflow_waits`. Split-step persistence refuses a
+  step with a durable retry.
 - Child runs. `map items, workflow:, max_items:, input:, timeout:, into:,
   collect:, on_item_failure:` launches a run of its own per item and waits,
   bounded by `timeout:`, for the host to resume the parent with
@@ -294,7 +308,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   waiting run whose wait is a map's or call's (`kind: "children"`); clear or
   settle such runs before rolling back. An earlier build ignores
   `inherited_untrusted_keys`, so a child run restored there loses its parent's
-  untrusted marks.
+  untrusted marks. It refuses a run waiting on a durable retry
+  (`kind: "retry"`) and ignores `pending_retry`, so a run due for a retry
+  would start the step over at its first attempt and key generation; settle
+  such runs first.
 - A workflow's execution namespace (the persisted UUID that scopes its
   artifacts and now its idempotency keys) is assigned when the workflow is
   built instead of on first artifact use, so `to_state` always carries it,

@@ -1796,6 +1796,28 @@ Documented contracts covered:
 - review fixes: each child's `key` (token and ref) differs across two child-run steps of one run; a spawn taken as a failure route launches; results are checked against the count the step launched (`Wait#children`), not items derived again, and an unpersisted items key is refused; only an `inline?` launcher's return value is taken, and it must be an Array; a strict run that crashed mid-launch launches again; a map or call that fails on a failed child needs `on_failure`, and no map, call or spawn takes `retry_on`; outputs a map does not collect are dropped before the 4 MiB bound, live and inline; a map over no items completes at once; an `await :children` keeps the wait bound; child untrusted key names are checked and symbolized at build; inline children run under the parent's deadline but apart from its tool evidence and attribution, and a waiting, raising or self-handled failing child is reported failed with its error; a spawn launches under a token of its own, from items given a copy of the context, and not past the deadline; a stored wait's children count is checked; readiness flags an in-process nested workflow that maps, lets a durable map recurse, and warns (not errors) of a child agent reading a parent's untrusted key; child inputs are bounded at 16 MiB together as they are built; split-step persistence refuses child-run steps; `ChildRunsFailed` details must add up
 - these contracts are mutation-verified against the full suite
 
+### `spec/smith/workflow/durable_retry_spec.rb`
+
+Purpose:
+
+- asserts that `retry_on ..., durable: true` waits out each backoff as a wait of the run and resumes at the recorded attempt and key generation
+
+Architecture basis:
+
+- Section 4.2, Workflows
+- Section 5, Persistence and Resume
+
+Documented contracts covered:
+
+- `durable:` takes true or false and is refused on await, delay, parallel and fan_out steps; graph inspection and the transition contract show `durable: true`
+- a retried failure enters a `:retry` wait (no event or `into:`, due after the backoff) without sleeping, counting a step or completing it, and stores `pending_retry`; a waiting run does not advance; `expire_wait!` before the deadline is `:not_due`, with a stale token `:stale`, and `resume!` never completes it; past the deadline the wait ends with the transition next, and continuing the run makes the next attempt under the same key, then clears `pending_retry`
+- the last attempt fails for good through `on_failure`; a settled failure moves the attempts after it to new keys across durable waits, as in-process
+- an unpersisted run waits in memory and continues after `expire_wait!`
+- a crash during the retried attempt makes the same attempt again under the same key (lax); in strict mode the restore raises `StepInProgressOnRestore`
+- no retry wait past the wall-clock deadline, after a tool ran, or for a backoff longer than the persistence TTL; an in-process nested workflow with a durable retry fails the parent's step and readiness reports `:nested_workflow_waits`; split-step persistence refuses the step
+- restore refuses a `pending_retry` that is malformed, out of the policy's bounds, names another transition, or is missing beside a retry wait, a due retry without its next transition, and a retry wait, or a due retry, whose transition no longer declares a durable retry
+- these contracts are mutation-verified against the full suite (40/40)
+
 ### `spec/smith/workflow/wait_spec.rb`
 
 Purpose:

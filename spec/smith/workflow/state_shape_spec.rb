@@ -19,7 +19,8 @@ RSpec.describe "Smith::Workflow state serialization shape" do
 
     expect(state.keys).to eq(
       %i[
-        class state persistence_key context budget_consumed step_count awaiting active_seconds active_step_started_at
+        class state persistence_key context budget_consumed step_count awaiting pending_retry active_seconds
+        active_step_started_at
         execution_namespace
         inherited_untrusted_keys
         created_at updated_at

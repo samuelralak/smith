@@ -745,7 +745,7 @@ RSpec.describe "Smith::Workflow child runs: map, call and spawn" do
       end
 
       expect { klass.new(context: { ids: [1] }).prepare_persisted_step!("split-spawn", adapter:) }
-        .to raise_error(Smith::WorkflowError, /does not run await, delay, map, call or spawn/)
+        .to raise_error(Smith::WorkflowError, /does not run steps that wait or launch runs/)
     end
 
     it "warns, rather than refuses, when a child run's agent reads a key its parent marks untrusted" do

@@ -702,8 +702,24 @@ end
 
 When no classes are passed, `retry_on` uses `Smith::Errors.retryable?`. No
 attempt starts once the workflow's wall-clock deadline has passed.
-This is a bounded local transition retry policy. Durable scheduling, long
-waits, and what a receiver does with an idempotency key remain host-owned.
+This is a bounded local transition retry policy. What a receiver does with an
+idempotency key remains host-owned.
+
+For backoffs too long to sleep through in a worker, `durable: true` makes each
+one a wait of the run instead:
+
+```ruby
+transition :charge, from: :approved, to: :charged do
+  compute { |step| Payments.charge(order, idempotency_key: step.idempotency_key) }
+  retry_on Payments::Timeout, attempts: 5, backoff: 60, max_delay: 3600, durable: true
+  on_failure :charge_failed
+end
+```
+
+A failed attempt the policy retries stores the run waiting (`awaiting.kind ==
+:retry`, due when the backoff ends); the host schedules `expire_wait!` for that
+time and then continues the run, which makes the next attempt under the same
+keys. See `docs/PERSISTENCE.md`, Waiting.
 
 Steps and tools get idempotency keys for the requests they send outside the
 system, the same on every attempt and after a restore:

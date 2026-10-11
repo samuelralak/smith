@@ -14,15 +14,20 @@ module Smith
       # failed in a way the step declares settled moves later attempts to
       # new keys. Attempts replay in the same order after a restore, so a
       # replay reaches the same keys as long as the receivers answer the
-      # replayed requests as before.
+      # replayed requests as before. A durable policy waits out the backoff
+      # as a wait of the run (RetryWait) and resumes at the attempt and key
+      # generation it recorded.
       def run_with_retry_policy(transition)
         config = transition.retry_config
         @step_attempt = 1
         return run_guarded_step(transition) unless config
 
+        run_attempts(transition, config, *pending_retry_position(transition))
+      end
+
+      # Attempts after the `attempt` already made, under `key_generation`.
+      def run_attempts(transition, config, attempt, key_generation)
         schedule = retry_schedule(config)
-        attempt = 0
-        key_generation = 0
         begin
           attempt += 1
           @step_attempt = attempt
@@ -32,7 +37,10 @@ module Smith
           raise unless retry_transition_error?(config, e, attempt)
 
           key_generation += 1 if new_idempotency_key_after?(config, e, attempt_scope)
-          sleep_for_retry(schedule, attempt)
+          delay = retry_delay(schedule, attempt)
+          return wait_to_retry(transition, delay, attempt + 1, key_generation) if config[:durable]
+
+          sleep(delay) if delay.positive?
           retry
         end
       end
@@ -90,11 +98,6 @@ module Smith
 
       def terminal_retry_error?(error)
         Smith::Errors.retry_forbidden?(error)
-      end
-
-      def sleep_for_retry(schedule, failed_attempt)
-        delay = retry_delay(schedule, failed_attempt)
-        sleep(delay) if delay.positive?
       end
 
       def retry_delay(config_or_schedule, failed_attempt)

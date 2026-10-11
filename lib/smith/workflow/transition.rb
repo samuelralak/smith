@@ -17,6 +17,7 @@ module Smith
         @to = own_identifier(to)
         instance_eval(&) if block_given?
         validate_child_run_controls!
+        validate_durable_retry!
         validate_timeout_route!
       end
 
@@ -181,10 +182,17 @@ module Smith
       # come from several steps or branches (a nested workflow, parallel or
       # fan-out branches, an optimizer or an orchestrator), where one error
       # cannot speak for every request of the attempt.
+      #
+      # `durable: true` waits out each backoff as a wait of the run (kind
+      # `:retry`) instead of sleeping in the worker: the host wakes it with
+      # `expire_wait!` and continues the run, which makes the next attempt
+      # under the recorded attempt number and key generation.
       # rubocop:disable Metrics/ParameterLists
-      def retry_on(*error_classes, attempts:, backoff: 0, max_delay: nil, jitter: 0, new_idempotency_key_on: [])
+      def retry_on(*error_classes, attempts:, backoff: 0, max_delay: nil, jitter: 0, new_idempotency_key_on: [],
+                   durable: false)
         policy = normalize_retry_policy!(error_classes, attempts:, backoff:, max_delay:, jitter:)
         new_key_classes = normalize_new_idempotency_key_on!(new_idempotency_key_on, error_classes)
+        raise WorkflowError, "retry_on durable: must be true or false" unless [true, false].include?(durable)
 
         config = {
           error_classes: error_classes.freeze,
@@ -194,10 +202,17 @@ module Smith
           jitter: policy.jitter
         }
         config[:new_idempotency_key_on] = new_key_classes if new_key_classes.any?
+        config[:durable] = true if durable
         @retry_config = config.freeze
         reject_new_idempotency_key_on_composite!
       end
       # rubocop:enable Metrics/ParameterLists
+
+      def durable_retry? = @retry_config&.fetch(:durable, false) == true
+
+      # A step that waits (an await, delay, map or call), launches runs of
+      # its own (a spawn), or waits between attempts (a durable retry).
+      def may_wait? = awaits? || child_runs? || durable_retry?
 
       %i[compute run].each do |method_name|
         define_method(method_name) do |routes: nil, fallthrough: false, &block|
@@ -280,6 +295,16 @@ module Smith
       # An await must say where its timeout goes: past its deadline it takes
       # `on_timeout`, or else `on_failure` with Smith::WaitTimedOut. Without
       # either, an expired wait could never end.
+      # A durable retry waits between attempts, so its step must be one a
+      # run can wait in: not a step that waits itself, nor one whose
+      # branches keep durable state of their own.
+      def validate_durable_retry!
+        return unless durable_retry? && (awaits? || parallel? || fanout? || optimized? || orchestrated?)
+
+        raise WorkflowError, "retry_on durable: is not available on await, delay, parallel, fan_out, optimize or " \
+                             "orchestrate steps"
+      end
+
       def validate_timeout_route!
         if @timeout_transition
           return if @await_config && !delay?

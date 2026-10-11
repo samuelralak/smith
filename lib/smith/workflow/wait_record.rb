@@ -25,6 +25,14 @@ module Smith
         )
       end
 
+      # A durable retry's wait: no event or context key.
+      def build_retry(transition, token, seconds, now)
+        frozen(
+          "kind" => "retry", "event" => nil, "token" => token, "transition" => transition.name.to_s, "into" => nil,
+          "entered_at" => now.utc.iso8601(6), "deadline_at" => (now + seconds).utc.iso8601(6), "children" => nil
+        )
+      end
+
       # A wait's timeout in seconds: the declared number, or what its
       # callable returns for the context, which must be positive.
       def seconds(timeout, context)
@@ -36,7 +44,7 @@ module Smith
 
       # The event and context key read as the transition declares them.
       def to_wait(record, transition)
-        config = transition.await_config
+        config = record["kind"] == "retry" ? { kind: :retry } : transition.await_config
         Wait.new(
           kind: config.fetch(:kind), event: config[:event], token: record.fetch("token"), transition: transition.name,
           into: config[:into], entered_at: Time.iso8601(record.fetch("entered_at")),
@@ -70,7 +78,7 @@ module Smith
       end
 
       def well_formed?(record)
-        %w[await delay children].include?(record["kind"]) && TOKEN.match?(record["token"].to_s) &&
+        %w[await delay children retry].include?(record["kind"]) && TOKEN.match?(record["token"].to_s) &&
           nonempty_string?(record["transition"]) && await_fields?(record) && times?(record) && children_count?(record)
       end
 
@@ -83,9 +91,9 @@ module Smith
       end
 
       # An await or a map's wait for its children names its event and
-      # context key; a delay has neither.
+      # context key; a delay or a retry has neither.
       def await_fields?(record)
-        named = record["kind"] != "delay"
+        named = !%w[delay retry].include?(record["kind"])
         %w[event into].all? { |field| named ? nonempty_string?(record[field]) : record[field].nil? }
       end
 
@@ -99,12 +107,13 @@ module Smith
       end
 
       def declared_wait?(transition, record, state)
-        return false unless transition&.awaits? && (transition.from.nil? || transition.from.to_s == state.to_s)
+        return false unless transition && [nil, state.to_s].include?(transition.from&.to_s)
+        return transition.durable_retry? if record["kind"] == "retry"
 
-        config = transition.await_config
-        [config.fetch(:kind), config[:event], config[:into]].map { _1&.to_s } ==
-          record.values_at("kind", "event", "into")
+        transition.awaits? && declared_fields(transition.await_config) == record.values_at("kind", "event", "into")
       end
+
+      def declared_fields(config) = [config.fetch(:kind), config[:event], config[:into]].map { _1&.to_s }
 
       def nonempty_string?(value) = value.is_a?(String) && !value.empty?
 

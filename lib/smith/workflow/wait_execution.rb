@@ -8,10 +8,15 @@ require_relative "message_value_normalizer"
 module Smith
   class Workflow
     # The wait a run is in: an `await` for `event` (delivered under `token`
-    # by `resume!`) or a `delay`, entered at `entered_at` and due to expire at
-    # `deadline_at`. Hosts index it to deliver events and to schedule the
+    # by `resume!`), a `delay`, a map's or call's wait for its `children`, or
+    # a durable retry's backoff (`:retry`), entered at `entered_at` and due
+    # to expire at `deadline_at`. Hosts index it to deliver events and to schedule the
     # `expire_wait!` call; Smith never sleeps, polls or wakes a run itself.
     Wait = Data.define(:kind, :event, :token, :transition, :into, :entered_at, :deadline_at, :children)
+
+    # What a step that entered a wait returns instead of its output.
+    WAIT_PENDING = Object.new.freeze
+    private_constant :WAIT_PENDING
 
     # Entering, resuming and expiring `await` and `delay` steps. Entering a
     # wait is not a step: `step_count` stays, so the step's position and its
@@ -21,9 +26,6 @@ module Smith
     # deadline) is the step. One completion at a time claims the wait, so a
     # delivery and an expiry racing on one instance cannot both win.
     module WaitExecution
-      WAIT_PENDING = Object.new.freeze
-      private_constant :WAIT_PENDING
-
       def waiting? = !@awaiting.nil?
 
       # The run's wait, or nil.
@@ -52,9 +54,10 @@ module Smith
 
       # Ends a wait whose deadline has passed at `now` (a Time, or an
       # ISO 8601 String): a `delay` continues to its `to:`, an `await` takes
-      # `on_timeout`, or else its `on_failure` with Smith::WaitTimedOut.
-      # Returns `:expired`, `:not_due`, or `:stale` unless the run waits
-      # under this token.
+      # `on_timeout`, or else its `on_failure` with Smith::WaitTimedOut, and
+      # a durable retry's wait ends with its step next (RetryWait). Returns
+      # `:expired`, `:not_due`, or `:stale` unless the run waits under this
+      # token.
       def expire_wait!(token:, now: Time.now.utc)
         now = wait_time(now)
         record = @awaiting
@@ -67,7 +70,7 @@ module Smith
         end
         return not_due ? :not_due : :stale unless transition
 
-        complete_claimed_wait(transition, :expired) { expire_step(transition, record) }
+        expire_claimed_wait(transition, record)
       end
 
       private
@@ -127,13 +130,20 @@ module Smith
       # in-process child cannot wait), so the position is the run's own.
       def await_token_for(transition)
         config = transition.await_config
+        wait_token_for(transition, [config.fetch(:kind), config[:event]].compact)
+      end
+
+      def wait_token_for(transition, scope)
         IdempotencyKey.__send__(:root_scope, ArtifactIntegration.instance_method(:execution_namespace).bind_call(self))
-                      .within(:step, @step_count + 1, transition.name.to_s).within(:wait)
-                      .key([config.fetch(:kind), config[:event]].compact)
+                      .within(:step, @step_count + 1, transition.name.to_s).within(:wait).key(scope)
       end
 
       def check_wait_admissible!(transition, seconds)
         writable_wait_key!(transition) if transition.await_config[:into]
+        check_wait_ttl!(seconds)
+      end
+
+      def check_wait_ttl!(seconds)
         ttl = self.class.persistence_ttl || Smith.config.persistence_ttl
         return unless @persistence_key && ttl && seconds > ttl
 

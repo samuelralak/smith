@@ -32,6 +32,7 @@ module Smith
     include StepIO
     include WaitCompletion
     include WaitExecution
+    include RetryWait
     include ChildRunResults
     include ChildRunExecution
     include Execution
@@ -210,10 +211,12 @@ module Smith
     private
 
     # Entering a wait is not a step: nothing counts, and advance! returns nil.
+    # A step that completes or fails has made its pending retry.
     def count_step(step_result)
       @updated_at = Time.now.utc.iso8601(6)
       return if wait_pending?(step_result)
 
+      @pending_retry = nil
       @step_count += 1
       record_step_snapshot(step_result)
       step_result
@@ -463,6 +466,7 @@ Smith::Workflow::SplitStepPersistence::SubclassBoundary.protect_execution_path!(
   Smith::Workflow::ChildRunResults,
   Smith::Workflow::ChildRunExecution,
   Smith::Workflow::WaitExecution,
+  Smith::Workflow::RetryWait,
   Smith::Workflow::SplitStepPersistence::DefinitionBoundary,
   Smith::Workflow::SplitStepPersistence::ExecutionVerification,
   Smith::Workflow::SplitStepPersistence::ExecutionAuthorization,
