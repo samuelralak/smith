@@ -36,7 +36,8 @@ RSpec.describe "Smith budget ledgers" do
   around do |example|
     config = RubyLLM.config
     saved = %i[anthropic_api_key anthropic_api_base max_retries].to_h { [_1, config.public_send(_1)] }
-    saved_smith = %i[pricing logger batch_queue budget_hold_ttl].to_h { [_1, Smith.config.public_send(_1)] }
+    saved_smith = %i[pricing logger batch_queue budget_hold_ttl budget_hold_output_tokens]
+                  .to_h { [_1, Smith.config.public_send(_1)] }
     example.run
   ensure
     server.close
@@ -445,5 +446,13 @@ RSpec.describe "Smith budget ledgers" do
     expect(Smith::Budget::RequestHold.output_cap({ "generationConfig" => { "maxOutputTokens" => 7 } }, small)).to eq(7)
     expect(Smith::Budget::RequestHold.output_cap({ "generationConfig" => 7 }, small)).to eq(8_000)
     expect(Smith::Budget::RequestHold.output_cap({}, Object.new)).to eq(4_096)
+
+    Smith.config.budget_hold_output_tokens = 1_000
+    held = Smith::Budget::RequestHold.for_request(provider: "anthropic", model:, messages: text, tools: {},
+                                                  schema: nil, params: {})
+    asked = Smith::Budget::RequestHold.for_request(provider: "anthropic", model:, messages: text, tools: {},
+                                                   schema: nil, params: { max_tokens: 50 })
+    expect([held.output_tokens, asked.output_tokens]).to eq([1_000, 50])
+    expect { Smith.config.budget_hold_output_tokens = 0 }.to raise_error(ArgumentError)
   end
 end

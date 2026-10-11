@@ -764,7 +764,10 @@ A hold (`Smith::Budget::Amount`: `input_tokens`, `output_tokens`, `cost`, and
 `tokens`, their sum) is the request's output cap (its `max_tokens`, else the
 model's) and an estimate of its input: text at one token per 3 bytes, an image
 at 1,600 tokens, 8 tokens a message for its framing, capped at the model's
-context window. It is priced from the
+context window; `Smith.config.budget_hold_output_tokens`, when set, caps its
+output part (an agent with no `max_tokens` is otherwise held for the model's
+maximum, which can be tens of thousands of tokens, and a longer reply is
+reconciled at what it cost). It is priced from the
 pricing catalog; `cost` is nil for an unpriced model, which runtime readiness
 warns of (`:budget_ledger_unpriced`). What a request spent replaces its hold.
 

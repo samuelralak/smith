@@ -379,6 +379,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   when its result comes. Every hold carries `expires_at`,
   `Smith.config.budget_hold_ttl` (3600 seconds by default) from now, and a
   batch request's wait longer, so a ledger drops a hold whose process died.
+  `Smith.config.budget_hold_output_tokens` caps a hold's output part (an
+  agent with no `max_tokens` is otherwise held for the model's maximum).
   A nested workflow without its own ledger charges the enclosing run's.
   Runtime readiness warns of an agent whose model has no price
   (`:budget_ledger_unpriced`).

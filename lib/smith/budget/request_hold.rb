@@ -15,6 +15,7 @@ module Smith
     # IMAGE_TOKENS, another attachment's bytes as text, and each message's
     # framing at MESSAGE_TOKENS, and is capped at the model's context window.
     # It is an estimate, not a bound: what the request spent replaces it.
+    # Smith.config.budget_hold_output_tokens, when set, caps the output part.
     module RequestHold
       BYTES_PER_TOKEN = 3
       IMAGE_TOKENS = 1_600
@@ -30,7 +31,7 @@ module Smith
       def for_request(provider:, model:, mode: :sync, **request)
         context_window = model.context_window if model.respond_to?(:context_window)
         input = [input_estimate(*request.values_at(:messages, :tools, :schema)), context_window].compact.min
-        output = output_cap(request[:params], model)
+        output = [output_cap(request[:params], model), Smith.config.budget_hold_output_tokens].compact.min
         Amount.new(input_tokens: input, output_tokens: output,
                    cost: Pricing.compute_cost(model: model.id, provider: provider.to_s, input_tokens: input,
                                               output_tokens: output, mode:))

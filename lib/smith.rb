@@ -96,6 +96,16 @@ module Smith
   # request's hold lasts its wait (25 hours) longer.
   setting :budget_hold_ttl, default: 3600, constructor: positive_integer_setting.call(:budget_hold_ttl)
 
+  # The most output tokens a request's hold counts, or nil for its own cap
+  # (`max_tokens`, else the model's maximum, which can be tens of thousands
+  # for an agent that sets none). Only the hold changes, not the request: a
+  # longer reply is reconciled at what it cost, past its hold.
+  setting :budget_hold_output_tokens, default: nil, constructor: lambda { |tokens|
+    next tokens if tokens.nil? || (tokens.is_a?(Integer) && tokens.positive?)
+
+    raise ArgumentError, "Smith.config.budget_hold_output_tokens must be nil or a positive Integer"
+  }
+
   # Retry policy for transient persistence I/O failures.
   #   attempts:    total attempts (including the first)
   #   base_delay:  initial sleep between attempts, doubled each retry

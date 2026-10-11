@@ -1925,7 +1925,7 @@ Documented contracts covered:
 - a batch refusal releases the sibling holds already taken before a retry's backoff
 - a batch request is held at capture under its `custom_id`, at the batch discount, until its 25-hour wait plus `budget_hold_ttl`; delivery reconciles a succeeded result and releases an errored one; a refusal queues nothing; an expired wait releases its holds; a step that fails before queuing releases the holds it took
 - readiness warns of an agent whose model has no price only when the workflow declares a ledger; `budget_hold_ttl` must be a positive Integer
-- the hold estimate counts text at 3 bytes a token, an image at 1,600 and each message's framing at 8, is capped at the context window, and reads the output cap from `max_tokens`, a provider's own name for it, the model, or 4,096
+- the hold estimate counts text at 3 bytes a token, an image at 1,600 and each message's framing at 8, is capped at the context window, and reads the output cap from `max_tokens`, a provider's own name for it, the model, or 4,096, at most `budget_hold_output_tokens` when set
 - these contracts are mutation-verified against the full suite
 
 ### `spec/smith/batch_request_change_spec.rb`
