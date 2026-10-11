@@ -20,7 +20,7 @@ module Smith
         result = SplitStepPersistence
                  .instance_method(:prepare_split_step_execution_result)
                  .bind_call(self, step)
-        StepCompletion.instance_method(:append_accepted_output).bind_call(self, transition, output)
+        StepCompletion.instance_method(:keep_accepted_output).bind_call(self, transition, output)
         SplitStepPersistence
           .instance_method(:commit_split_step_execution_result!)
           .bind_call(self, result)
@@ -34,12 +34,20 @@ module Smith
         step
       end
 
+      # Once the result is captured, so a step whose result is refused leaves
+      # neither the context nor the transcript changed.
+      def keep_accepted_output(transition, output)
+        StepIO.instance_method(:deliver_output_to).bind_call(self, transition, output) if transition.output_to
+        StepCompletion.instance_method(:append_accepted_output).bind_call(self, transition, output)
+      end
+
       # The transcript keeps an accepted output unless the step writes it to
       # the context (`output_to:`) or the session is isolated.
       def append_accepted_output(transition, output)
         return unless @session_messages && !output.nil? && transcript_output?(transition)
 
         @session_messages << { role: :assistant, content: output }
+        @last_transcript_output = output
       end
     end
   end

@@ -63,22 +63,27 @@ RSpec.describe "Smith::Workflow isolation: session, input:, output_to:, untruste
       expect(workflow.to_state[:context][:topic]).to eq("tides")
     end
 
-    it "refuses an input that is not a non-empty Array of user and assistant messages" do
+    it "refuses an input that is not a non-empty Array of at most 100 user and assistant messages" do
       recording_agent("SpecIsolationBadInputAgent", seen)
-      bad_inputs = [nil, [], [{ role: :system, content: "x" }], [{ role: :user, content: "x", name: "n" }],
-                    [{ role: :user, content: Object.new }], ["text"]]
+      message = { role: :user, content: "x" }
+      bad_inputs = {
+        nil => /non-empty Array/, [] => /non-empty Array/, Array.new(101, message) => /at most 100/,
+        [{ role: :system, content: "x" }] => /each input: message/, [message.merge(name: "n")] => /each input: message/,
+        [{ role: :user, content: nil }] => /with content/, [{ role: :user, content: Object.new }] => /step input/,
+        ["text"] => /each input: message/
+      }
 
-      bad_inputs.each_with_index do |input, index|
+      bad_inputs.each_with_index do |(input, error), index|
         klass = with_stubbed_class("SpecIsolationBadInputWorkflow#{index}", workflow_class) do
           initial_state :idle
           transition(:ask, from: :idle, to: :done) { execute :spec_isolation_agent, input: ->(_context) { input } }
         end
-        expect { klass.new.run! }.to raise_error(Smith::WorkflowError), input.inspect
+        expect { klass.new.run! }.to raise_error(Smith::WorkflowError, error), input.inspect[0, 80]
       end
       expect(seen).to be_empty
     end
 
-    it "gives a fan-out's branches, an optimizer's generator and an orchestrator the same kind of input" do
+    it "gives each of a fan-out's branches the step's input:" do
       recording_agent("SpecIsolationFanA", seen, register: :spec_isolation_agent)
       recording_agent("SpecIsolationFanB", seen, register: :spec_isolation_other)
       klass = with_stubbed_class("SpecIsolationFanoutWorkflow", workflow_class) do
@@ -92,6 +97,7 @@ RSpec.describe "Smith::Workflow isolation: session, input:, output_to:, untruste
 
       klass.new.run!
 
+      expect(seen.size).to eq(2)
       expect(seen.map { contents(_1) }).to all(eq([[:user, "shared brief"]]))
     end
   end
@@ -148,6 +154,7 @@ RSpec.describe "Smith::Workflow isolation: session, input:, output_to:, untruste
       result = workflow.run!
 
       expect(result.state).to eq(:done)
+      expect(seen.size).to eq(2)
       expect(seen.map { contents(_1) }).to all(eq([[:user, "review doc-1"]]))
       expect(workflow.session_messages).to eq([{ role: :user, content: "seeded" }])
       expect(result.output).to eq("answer")

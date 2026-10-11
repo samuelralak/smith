@@ -20,6 +20,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - OpenAI Responses calls cost less on upgrade unless the catalog sets
   `cache_read_cost_per_token`: their cached input was priced at the full input
   rate and is now priced at the cache-read rate, 0 when unset.
+- `append_session_messages!` now admits only the roles `user`, `assistant` and
+  `tool`. A host that admitted system notes should put that text in
+  `seed_messages`, the agent's instructions or an `inject_state` formatter. A
+  restored payload must hold only `system`, `user`, `assistant` and `tool`
+  messages; one written earlier may hold a system message the host admitted,
+  which still reaches agents, so rebuild such sessions to rely on the new rule.
 
 ### Added
 
@@ -56,19 +62,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   that is not a non-negative Integer as 0, so it still never raises. Batch mode
   is priced only through `compute_cost(mode: :batch)` until batch steps ship.
 - Step isolation. `input: ->(ctx) { [...] }` on `execute`, `route`,
-  `fan_out`, `optimize` and `orchestrate` gives a step its own messages (user
-  and assistant roles only, bounded like session messages) in place of the
-  session transcript. `output_to: :key` writes the step's output to the context
-  instead of the transcript. `session :isolated` on a workflow keeps no
-  transcript for agents: every agent step must declare `input:`, outputs are
-  not appended, and `inject_state` does not run for agent steps. Graph
-  inspection shows `input` and `output_to`, and validation reports
-  `:isolated_step_without_input`.
+  `fan_out`, `optimize` and `orchestrate` gives a step its own messages (at
+  most 100, user and assistant roles only, with content, bounded like session
+  messages) in place of the session transcript. `output_to: :key` writes the
+  step's output to the context instead of the transcript, JSON-shaped, once the
+  step completes; a key an explicit persist list leaves out is refused before
+  the step runs, and validation reports `:output_to_not_persisted` (and
+  `:await_into_not_persisted` for an await's `into:`). A compute step's
+  `last_output` is the latest step output wherever it went, and the next
+  shared agent step still gets the continuation turn after the transcript's
+  last output. `session :isolated` on a workflow keeps no transcript for
+  agents: every agent step must declare `input:`, outputs are not appended,
+  and `inject_state` never runs. Graph inspection shows `input` and
+  `output_to`; validation reports `:isolated_step_without_input` and warns
+  with `:isolated_workflow_nests_shared_session`.
 - `untrusted :key` on a `Smith::Context` keeps a key from `inject_state`
-  formatters and refuses an agent that names it in `inputs` (runtime readiness
-  reports `:untrusted_agent_input`). `Smith::Untrusted.wrap(text, source:)`
-  delimits outside content with a random boundary and marks embedded role
-  labels as quoted text.
+  formatters and the `seed_messages` builder, and refuses an agent that names
+  it in `inputs`, in the workflow and in any workflow it nests (runtime
+  readiness reports `:untrusted_agent_input` and
+  `:nested_untrusted_agent_input`); reserved input names are not checked, and
+  `untrusted :auto` is refused. `Smith::Untrusted.wrap(text, source:)`
+  delimits outside content with a boundary the text cannot guess, derived
+  inside a step so a re-prepared step input is identical, and marks role
+  labels after any line break, and look-alike untrusted tags, as quoted text.
 - Durable, bounded waits. `await event, into:, timeout:` waits for an event the
   host delivers with `Workflow.resume!(key, event:, token:, payload:)`, which
   writes the payload to the context key `into:` and completes the step;
@@ -186,10 +202,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   Responses-path costs fall unless the catalog sets it. Cache counts that are
   not Integers are ignored, and counts larger than the reported input are
   capped to it, so the reported input total is kept.
-- **Breaking:** `append_session_messages!` refuses messages with the system
-  role. Only Smith and the host's `seed_messages` builder put system messages in
-  a session, so the injected-state marker is now recognized only on a system
-  message: a user, assistant or tool message that starts with
+- **Breaking:** `append_session_messages!` admits only `user`, `assistant`
+  and `tool` messages (see Upgrade notes), and a restored session message or a
+  durable composite step's prepared message must have one of those roles or
+  `system`. Only Smith and the host's `seed_messages` builder put system
+  messages in a session, so the injected-state marker is now recognized only on
+  a system message: a user, assistant or tool message that starts with
   `[smith:injected-state]` is left alone instead of being replaced or removed
   as Smith's state.
 - The parallel branch limit check moved into its own graph diagnostic class;

@@ -78,7 +78,8 @@ module Smith
           @reports[workflow_class] = RuntimeReadinessReportBuilder.new(
             current_graph,
             reports: @reports,
-            cycle_transitions: cycles_for(current_graph)
+            cycle_transitions: cycles_for(current_graph),
+            graphs: @graphs
           ).call
           @states[workflow_class] = :done
         end

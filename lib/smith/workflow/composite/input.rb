@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../../types"
+require_relative "../message_roles"
 require_relative "../message_value_normalizer"
 require_relative "../prepared_step"
 require_relative "payload"
@@ -37,10 +38,16 @@ module Smith
           private
 
           def normalized_values(agent_messages:, session_messages:)
-            {
-              agent_messages: normalize(agent_messages),
-              session_messages: normalize(session_messages)
-            }.freeze
+            values = { agent_messages: normalize(agent_messages), session_messages: normalize(session_messages) }.freeze
+            values.each_value { |messages| check_roles!(messages) }
+            values
+          end
+
+          def check_roles!(messages)
+            return unless messages.is_a?(Array)
+            return if messages.all? { |message| MessageRoles.role(message) }
+
+            raise WorkflowError, "composite input messages must have the role system, user, assistant or tool"
           end
 
           def normalize(value)

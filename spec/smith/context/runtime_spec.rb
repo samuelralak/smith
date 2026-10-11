@@ -456,7 +456,7 @@ RSpec.describe "Smith::Context runtime contract" do
       { "role" => "assistant", "content" => "stage output" },
       { "role" => "system", "content" => "runtime state" }
     ].freeze
-    workflow.instance_variable_set(:@last_output, { "status" => "accepted" })
+    workflow.instance_variable_set(:@last_transcript_output, { "status" => "accepted" })
     prepared_input[1]["content"] = { "status" => "accepted" }
 
     provider_input = workflow.send(:provider_safe_prepared_input, prepared_input)
@@ -498,7 +498,7 @@ RSpec.describe "Smith::Context runtime contract" do
 
   it "does not add a continuation to empty or system-only prepared input" do
     workflow = workflow_class.allocate
-    workflow.instance_variable_set(:@last_output, "prior output")
+    workflow.instance_variable_set(:@last_transcript_output, "prior output")
 
     expect(workflow.send(:provider_safe_prepared_input, [])).to eq([])
     expect(
@@ -509,7 +509,7 @@ RSpec.describe "Smith::Context runtime contract" do
   it "derives each provider continuation independently from shared prepared input" do
     workflow = workflow_class.allocate
     prepared_input = [{ role: :assistant, content: "shared branch input" }].freeze
-    workflow.instance_variable_set(:@last_output, "shared branch input")
+    workflow.instance_variable_set(:@last_transcript_output, "shared branch input")
 
     provider_inputs = Array.new(3) do
       workflow.send(:provider_safe_prepared_input, prepared_input)

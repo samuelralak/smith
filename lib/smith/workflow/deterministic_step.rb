@@ -35,7 +35,11 @@ module Smith
         @last_agent_execution && @last_agent_execution[:provider]
       end
 
+      # The output of the most recent step that produced one, whether it
+      # went to the transcript or to an `output_to:` key; before any step
+      # has, the last assistant message in the transcript.
       def last_output
+        return @step_output unless @step_output.nil?
         return @last_output if defined?(@last_output)
 
         msg = session_messages.reverse.find { |m| (m[:role] || m["role"]).to_s == "assistant" }
@@ -109,14 +113,15 @@ module Smith
 
       def assign_execution_facts(options)
         @last_agent_execution = options[:last_agent_execution]
+        @step_output = options[:last_output]
         @persisted_keys = options[:persisted_keys]&.dup&.freeze
         @idempotency_scope = options[:idempotency_scope]
         @attempt = options.fetch(:attempt, 1)
       end
 
       def validate_options!(options)
-        unknown = options.keys - %i[transition transition_name allowed_routes last_agent_execution persisted_keys
-                                    idempotency_scope attempt]
+        unknown = options.keys - %i[transition transition_name allowed_routes last_agent_execution last_output
+                                    persisted_keys idempotency_scope attempt]
         raise ArgumentError, "unknown keywords: #{unknown.join(", ")}" if unknown.any?
         return if options[:transition] || options.key?(:transition_name)
 

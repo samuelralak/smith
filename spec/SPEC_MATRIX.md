@@ -1695,12 +1695,35 @@ Architecture basis:
 Documented contracts covered:
 
 - `session` takes `:shared` (the default, inherited) or `:isolated`; `input:` must be callable and `output_to:` a Symbol
-- `input:` replaces the transcript as a step's messages, receives a copy of the context, JSON-encodes structured content, and is refused unless it is a non-empty Array of user and assistant messages with only role and content; a fan-out's branches share it
+- `input:` replaces the transcript as a step's messages, receives a copy of the context, JSON-encodes structured content, and is refused, with a message naming the fault, unless it is a non-empty Array of at most 100 user and assistant messages with only role and non-nil content; each of a fan-out's branches gets it
 - an isolated session shows each agent step only its input, appends no output, injects no state, fails an agent step without `input:` (and graph validation reports it), and asks nothing of a step that runs no agent
 - `output_to:` writes the output in the context's key shape and keeps it out of the transcript, shows in graph inspection, and stays within an explicit persist list
 - untrusted keys never reach `inject_state` formatters; an agent declaring one as an input is refused at runtime and reported by runtime readiness
 - host-admitted system messages are refused; the injected-state marker is recognized only on a system message
 - `Smith::Untrusted.wrap` uses a fresh random boundary, escapes look-alike tags and role-label lines, refuses unsafe sources and non-Strings, and replaces invalid bytes
+
+### `spec/smith/workflow/isolation_review_spec.rb`
+
+Purpose:
+
+- asserts the isolation contracts an adversarial review of slice 5 found missing: untrusted keys across nested workflows, the steps after an `output_to:` step, persist-list checks, message roles, and wrapping
+
+Architecture basis:
+
+- Section 4.3, Context and Sessions
+- Section 4.4, Guardrails
+
+Documented contracts covered:
+
+- a parent's untrusted keys reach no agent `inputs` at any nesting depth (refused at runtime before any call, reported once as `:nested_untrusted_agent_input`, including when the nested workflow marks the key itself), and no seed builder or nested `inject_state` formatter
+- reserved input names are never refused as untrusted; `untrusted :auto` is refused; the untrusted-input diagnostic keeps declared name case
+- after an `output_to:` step the next shared agent step gets the continuation turn live and after a restore, and a compute step's `last_output` is the latest step output, in a shared or an isolated session
+- an `output_to:` key outside an explicit persist list is refused before any agent call and reported by validation (`:output_to_not_persisted`, `:await_into_not_persisted` for an await's `into:`); `persist :auto` records the key; a fan-out aggregate reads the same live and restored; a step whose result is refused leaves the context unchanged
+- an isolated fan-out, optimizer or orchestrator without `input:` is refused at runtime and in validation; an isolated step that runs no agent injects no state; an isolated workflow nesting a shared one draws a warning; an isolated run restores between steps
+- route, optimize (generator, and evaluator under `evaluator_context: :inject_state`) and orchestrate run on `input:`, and optimize and orchestrate write `output_to:`
+- the host admits only user, assistant and tool messages; restored session messages and composite input messages must carry a known role
+- `Smith::Untrusted.escape` covers every line break, invisible and decorated prefixes, `human:`/`ai:`, full-width colons and look-alike tags; inside a step the boundary is the same for the same step and text and differs across runs, so a durable composite step's wrapped input is prepared identically on recovery
+- the review fixes above are mutation-verified against the full suite
 
 ### `spec/smith/workflow/wait_spec.rb`
 

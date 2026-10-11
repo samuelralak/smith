@@ -45,7 +45,9 @@ module Smith
 
       def build_child_workflow(child_class)
         @split_step_active_execution_authorization&.verify_workflow!(child_class)
-        child = child_class.new(context: @context.dup, ledger: @ledger, created_at: @created_at)
+        child = StepIO.with_inherited_untrusted_keys(untrusted_context_keys) do
+          child_class.new(context: @context.dup, ledger: @ledger, created_at: @created_at)
+        end
         unless child.instance_of?(child_class)
           raise WorkflowError, "nested workflow constructor returned #{child.class} instead of #{child_class}"
         end

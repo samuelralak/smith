@@ -5,11 +5,12 @@ module Smith
     class Session
       attr_reader :messages
 
-      def initialize(messages:, context_manager:, persisted_context:, seed_message_count: 0)
+      def initialize(messages:, context_manager:, persisted_context:, seed_message_count: 0, untrusted_keys: nil)
         @messages = messages
         @context_manager = context_manager
         @persisted_context = persisted_context
         @seed_message_count = seed_message_count
+        @untrusted_keys = untrusted_keys
       end
 
       def inject_state!
@@ -23,8 +24,12 @@ module Smith
         )
       end
 
+      # The context without its untrusted keys: the run's own and those of
+      # any workflow it is nested in, when the run passes them, or else its
+      # context manager's.
       def trusted_context
-        untrusted = @context_manager.respond_to?(:untrusted_keys) ? @context_manager.untrusted_keys : []
+        untrusted = @untrusted_keys
+        untrusted ||= @context_manager.respond_to?(:untrusted_keys) ? @context_manager.untrusted_keys : []
         return @persisted_context if untrusted.empty? || !@persisted_context.is_a?(Hash)
 
         @persisted_context.except(*untrusted)

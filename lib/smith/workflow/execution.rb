@@ -37,10 +37,10 @@ module Smith
         # The optimizer's verdict carrier resets for the same reason.
         @pending_agent_execution = nil
         @pending_evaluations = nil
+        writable_output_key!(transition) if transition.output_to
         output = with_scoped_artifacts { run_with_retry_policy(transition) }
         return output if wait_pending?(output)
 
-        deliver_output_to(transition, output) if transition.output_to
         StepCompletion.instance_method(:complete_step).bind_call(self, transition, output)
       end
 

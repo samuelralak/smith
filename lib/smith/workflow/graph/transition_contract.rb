@@ -48,6 +48,7 @@ module Smith
         def parallel? = parallel
         def awaits? = !await_config.nil?
         def delay? = await_config&.fetch(:kind) == :delay
+        def agent_step? = !agent_name.nil? || optimized? || orchestrated? || fanout?
       end
     end
   end

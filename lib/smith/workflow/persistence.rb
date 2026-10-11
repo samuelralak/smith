@@ -102,6 +102,7 @@ module Smith
         @usage_mutex = Mutex.new
         @usage_entries = restore_usage_entries(normalized)
         @last_output = restore_last_output(normalized)
+        @last_transcript_output = restored_transcript_output
         # Backward-compat: pre-patch states have no last_agent_execution key and
         # restore to nil. @pending_agent_execution and @pending_evaluations are
         # transient (nil between steps), never persisted, but must be
@@ -236,6 +237,14 @@ module Smith
         elsif normalized.key?("last_output")
           normalized["last_output"]
         end
+      end
+
+      # The last assistant message after the seeds: the output the run last
+      # added to its transcript, unless the host admitted one after it.
+      def restored_transcript_output
+        seeds = @seed_message_count || 0
+        message = @session_messages.drop(seeds).reverse_each.find { |item| MessageRoles.role(item) == "assistant" }
+        message && message[:content]
       end
 
       def restore_last_agent_execution(normalized)
@@ -436,7 +445,12 @@ module Smith
         return unless normalized[:session_messages].is_a?(Array)
 
         normalized[:session_messages] = normalized[:session_messages].map do |msg|
-          msg.is_a?(Hash) ? symbolize_keys(snapshot_value(msg)) : snapshot_value(msg)
+          unless MessageRoles.role(msg)
+            raise Smith::SerializationError,
+                  "persisted session message must have the role system, user, assistant or tool"
+          end
+
+          symbolize_keys(snapshot_value(msg))
         end
       end
 

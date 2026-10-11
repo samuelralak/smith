@@ -11,11 +11,12 @@ module Smith
         param :graph
         option :reports
         option :cycle_transitions
+        option :graphs, default: proc { {}.compare_by_identity }
 
         def call
           topology_report = graph.validate
           bindings = RuntimeBindingDiagnostics.new(graph)
-          nested = NestedReadinessDiagnostics.new(graph, reports:, cycle_transitions:)
+          nested = NestedReadinessDiagnostics.new(graph, reports:, cycle_transitions:, graphs:)
           diagnostics = [*bindings.to_a, *nested.to_a]
           RuntimeReadinessReport.new(
             workflow_class: workflow_label,

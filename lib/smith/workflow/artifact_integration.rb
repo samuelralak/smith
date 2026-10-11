@@ -34,7 +34,8 @@ module Smith
           messages: messages,
           context_manager: manager,
           persisted_context: @context,
-          seed_message_count: @seed_message_count || 0
+          seed_message_count: @seed_message_count || 0,
+          untrusted_keys: untrusted_context_keys
         )
       end
     end

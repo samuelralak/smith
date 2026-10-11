@@ -6,7 +6,7 @@ module Smith
       class TransitionDiagnostics
         TARGET_ATTRIBUTES = %i[success_transition failure_transition timeout_transition].freeze
         DECLARATION_CHECKS = [
-          BranchLimitDiagnostic, RetryPolicyDiagnostic, IsolatedInputDiagnostic
+          BranchLimitDiagnostic, RetryPolicyDiagnostic, IsolatedInputDiagnostic, OutputKeyDiagnostic
         ].freeze
         attr_reader :graph
 

@@ -20,6 +20,7 @@ module Smith
 
       param :value
       option :label, default: proc { "session message" }
+      option :max_bytes, default: proc { MAX_BYTES }
 
       def call
         @active = {}.compare_by_identity
@@ -100,7 +101,7 @@ module Smith
 
       def copy_string(string)
         @bytes += StringSnapshot.bytesize(string)
-        reject!("#{label} exceeds maximum bytes #{MAX_BYTES}") if @bytes > MAX_BYTES
+        reject!("#{label} exceeds maximum bytes #{max_bytes}") if @bytes > max_bytes
 
         StringSnapshot.copy(string, freeze: true)
       end

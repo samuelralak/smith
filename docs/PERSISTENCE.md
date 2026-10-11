@@ -610,9 +610,16 @@ By default a workflow keeps one transcript: each agent step sees the session
 for the next step. Three declarations narrow that:
 
 ```ruby
+class ReviewContext < Smith::Context
+  persist :document_id, :source, :fields
+  untrusted :source, :fields   # the document, and what an agent drew from it
+end
+
 class DocumentReview < Smith::Workflow
   session :isolated
   context_manager ReviewContext
+  initial_state :fetched
+  state :extracted
 
   transition :extract, from: :fetched, to: :extracted do
     execute :field_extractor,
@@ -620,35 +627,64 @@ class DocumentReview < Smith::Workflow
             output_to: :fields
   end
 end
-
-class ReviewContext < Smith::Context
-  persist :document_id, :source, :fields
-  untrusted :source
-end
 ```
 
 - `input:` (on `execute`, `route`, `fan_out`, `optimize` and `orchestrate`)
   is a callable of a copy of the context that returns the step's messages: a
-  non-empty Array of `{ role: :user or :assistant, content: }`, bounded and
-  JSON-shaped like session messages. They replace the transcript for that step;
-  the agent's own instructions still apply. A fan-out's branches share one
-  `input:`, and an optimizer's `input:` is its generator's.
-- `output_to: :key` writes the step's output, in the context's key shape, to
-  `key` (an explicit `persist` list must allow it) instead of the transcript.
-  The step's output and `RunResult#output` are unchanged.
+  non-empty Array of at most 100 `{ role: :user or :assistant, content: }`
+  with content, bounded and JSON-shaped like session messages (values that are
+  not JSON are copied shallowly). They replace the transcript for that step;
+  the agent's own instructions still apply, and Smith adds its continuation
+  user turn only when they end with the output the run last added to its
+  transcript, as it does for the transcript. A fan-out's branches share one
+  `input:`. An optimizer's `input:` is its generator's, and also its
+  evaluator's under `evaluator_context: :inject_state`, which then sees the
+  input followed by the candidate and no injected state.
+- `output_to: :key` writes the step's output to `key` instead of the
+  transcript, once the step completes. The value is JSON-shaped (Symbols
+  become Strings) and in the context's key shape, so it reads the same after a
+  restore; a step with no output writes nil. An explicit `persist` list must
+  allow the key: graph validation reports `:output_to_not_persisted` (and
+  `:await_into_not_persisted` for an await's `into:`), and the step is refused
+  before it runs. The step's output, `RunResult#output` and a later compute
+  step's `last_output` are this output; the next shared agent step still reads
+  the transcript, whose last output gets the continuation turn.
 - `session :isolated` (per workflow; `:shared` is the default) keeps no
   transcript for agents: every agent step must declare `input:` (it fails
   otherwise, and graph validation reports `:isolated_step_without_input`),
-  accepted outputs are never appended, and `inject_state` does not run for
-  agent steps.
-- `untrusted :key` in a `Smith::Context` marks values from outside the system:
-  `inject_state` formatters never receive them, and an agent that names one in
-  `inputs` is refused when it runs (runtime readiness reports
-  `:untrusted_agent_input`). Pass such content through a step's `input:`
-  instead, wrapped with `Smith::Untrusted.wrap(text, source:)`, which places it
-  between tags with a random boundary and marks any line that opens with a role
-  label as quoted text. Wrapping marks where outside content starts and ends;
-  it does not make the content safe to act on.
+  accepted outputs are never appended, and `inject_state` never runs. A nested
+  workflow keeps its own session mode; validation warns
+  (`:isolated_workflow_nests_shared_session`) when an isolated workflow nests a
+  shared one.
+- `untrusted :key` in a `Smith::Context` marks values from outside the system,
+  and values a step derived from them: `inject_state` formatters and the
+  `seed_messages` builder never receive them, and an agent that names one in
+  `inputs` is refused when it runs, in this workflow and in any workflow it
+  nests (runtime readiness reports `:untrusted_agent_input` and
+  `:nested_untrusted_agent_input`). Reserved input names (`provider`,
+  `model_id`, `endpoint_mode`) are never read from the context, so they are not
+  refused. Untrustedness belongs to the key, not the value: a key that an
+  agent writes from untrusted content (`output_to: :fields` above) carries the
+  outside text's influence, so declare it untrusted too.
+- `Smith::Untrusted.wrap(text, source:)` places outside text between tags with
+  a boundary the text cannot guess. Inside a step the boundary derives from the
+  run's namespace, the step's position, the source and the text, so a step that
+  prepares its input again (a durable composite step on recovery) gets the same
+  messages; elsewhere it is random. Wrapping changes the text: an untrusted tag
+  in it (with spaces, invisible characters or full-width forms) becomes
+  `untrusted-text`, and a line that opens with a role label (`system:`,
+  `assistant:`, `user:`, `tool:`, `developer:`, `human:`, `ai:`, after any line
+  break and behind spaces, invisible characters, brackets, quotes, `#`, `>`,
+  `*`, `_` or `-`) gains "(quoted text)", ordinary text such as `user: alice`
+  included. Markdown headings, XML-like tags and look-alike letters are left
+  as they are. Wrapping marks where outside content starts and ends; it does
+  not make the content safe to act on.
+- A host admits session messages with the role `user`, `assistant` or `tool`
+  only; system messages come from Smith (injected state) and the
+  `seed_messages` builder. A restored session message, and a durable composite
+  step's prepared message, must have one of those roles or `system`. A payload
+  written by an earlier version may hold a system message the host admitted;
+  it still reaches agents, so rebuild such sessions before relying on this.
 
 ## Waiting
 

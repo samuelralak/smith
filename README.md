@@ -125,8 +125,16 @@ Each agent step can get its own messages and write its output to the context
 instead of a shared transcript:
 
 ```ruby
+class ReviewContext < Smith::Context
+  persist :source, :fields
+  untrusted :source, :fields   # outside text, and what an agent drew from it
+end
+
 class DocumentReview < Smith::Workflow
+  context_manager ReviewContext
   session :isolated   # no shared transcript; every agent step declares input:
+  initial_state :fetched
+  state :extracted
 
   transition :extract, from: :fetched, to: :extracted do
     execute :field_extractor,
@@ -136,9 +144,10 @@ class DocumentReview < Smith::Workflow
 end
 ```
 
-Context keys declared `untrusted` never reach `inject_state` or an agent's
-`inputs`. See [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md), Step Isolation and
-Untrusted Content.
+Context keys declared `untrusted` never reach `inject_state`, the
+`seed_messages` builder, or an agent's `inputs`, in the workflow or any
+workflow it nests. See [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md), Step
+Isolation and Untrusted Content.
 
 ### Waiting
 

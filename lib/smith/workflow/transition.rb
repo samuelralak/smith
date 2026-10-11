@@ -253,6 +253,12 @@ module Smith
         agent_opts&.dig(:parallel) == true
       end
 
+      # Whether the step runs an agent: `execute`, `route`, `fan_out`,
+      # `optimize` or `orchestrate`.
+      def agent_step?
+        !agent_name.nil? || optimized? || orchestrated? || fanout?
+      end
+
       private
 
       def assign_step_io!(input, output_to)

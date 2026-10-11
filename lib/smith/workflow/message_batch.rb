@@ -4,6 +4,7 @@ require "dry-initializer"
 
 require_relative "../errors"
 require_relative "message_admission"
+require_relative "message_roles"
 
 module Smith
   class Workflow
@@ -51,6 +52,9 @@ module Smith
         reject!("each session message requires a non-empty role") unless
           role.is_a?(String) && !role.strip.empty?
         reject!("session messages admitted by the host cannot have the system role") if role.strip.casecmp?("system")
+        return if MessageRoles.role(message, MessageRoles::ADMITTED)
+
+        reject!("session messages admitted by the host must have the role user, assistant or tool")
       end
 
       def reject!(message)

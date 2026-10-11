@@ -62,12 +62,16 @@ module Smith
       end
 
       # Keys whose values come from outside the system (a fetched document,
-      # an inbound message): `inject_state` formatters never receive them,
-      # and an agent that names one in `inputs` is refused.
+      # an inbound message), or that a step derived from such a value:
+      # `inject_state` formatters and the `seed_messages` builder never
+      # receive them, and an agent that names one in `inputs` is refused,
+      # in this workflow and in any workflow it nests.
       def untrusted(*keys)
         return untrusted_keys if keys.empty?
 
         validate_persist_keys!(keys)
+        raise Smith::WorkflowError, "untrusted takes context keys, not :auto" if keys.include?(:auto)
+
         @untrusted_keys = (untrusted_keys + keys).uniq
       end
 

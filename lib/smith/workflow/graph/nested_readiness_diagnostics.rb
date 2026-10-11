@@ -11,9 +11,12 @@ module Smith
         param :graph
         option :reports
         option :cycle_transitions, default: proc { {}.compare_by_identity }
+        # The graphs the readiness walk built, by workflow class.
+        option :graphs, default: proc { {}.compare_by_identity }
 
         def to_a
-          cycle_diagnostics + waiting_child_diagnostics + report_entries.flat_map { |entry| diagnostics_for(entry) }
+          cycle_diagnostics + waiting_child_diagnostics + inherited_untrusted_diagnostics +
+            report_entries.flat_map { |entry| diagnostics_for(entry) }
         end
 
         def child_reports
@@ -70,6 +73,13 @@ module Smith
               suggestion: "An in-process nested workflow cannot wait; move the wait into the parent workflow."
             )
           end
+        end
+
+        def inherited_untrusted_diagnostics
+          entries = report_entries.map do |entry|
+            entry.merge(label: workflow_label(entry.fetch(:workflow_class)))
+          end
+          InheritedUntrustedDiagnostics.new(graph, entries:, graphs:).to_a
         end
 
         def cycle_diagnostic(transition, workflow_class)

@@ -75,6 +75,9 @@ module Smith
       @usage_entries = []
       @usage_mutex = Mutex.new
       @last_output = nil
+      # The last output the run added to its transcript, which the next
+      # agent step reads as a handoff; an `output_to:` step's is not one.
+      @last_transcript_output = nil
       # Durable attribution of the most recent serial `execute :agent` step:
       # { model:, provider: } of the model that actually served it (post
       # fallback resolution), exposed to the following deterministic step as
@@ -115,6 +118,9 @@ module Smith
       # also: declaration so explicit input keys round-trip.
       @persisted_keys = ::Set.new(initial_persist_auto_seed)
       @persisted_keys_mutex = Mutex.new
+      # A nested workflow's parent's untrusted keys, in force before its
+      # seed builder runs (NestedExecution).
+      @inherited_untrusted_keys = StepIO.take_inherited_untrusted_keys
       initialize_tool_result_state
       seed_initial_session_messages
     end
@@ -345,14 +351,14 @@ module Smith
     end
 
     # Fresh evaluation of the seed builder against the workflow's
-    # current @context. Returns nil when no builder is defined so
-    # callers (initialize, validate_seed_digest!) can distinguish
-    # "no builder" from "builder returned empty".
+    # current @context, without its untrusted keys. Returns nil when no
+    # builder is defined so callers (initialize, validate_seed_digest!)
+    # can distinguish "no builder" from "builder returned empty".
     def compute_seed_messages
       builder = self.class.seed_messages
       return nil unless builder
 
-      seeded = builder.arity == 1 ? builder.call(@context) : builder.call
+      seeded = builder.arity == 1 ? builder.call(trusted_context_view) : builder.call
       normalize_seed_messages(seeded)
     end
 

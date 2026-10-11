@@ -15,19 +15,19 @@ module Smith
       def bridge_workflow_inputs(agent_class)
         return {} unless @context.is_a?(Hash)
 
-        declared = agent_class.inputs || []
-        reject_untrusted_inputs!(agent_class, declared)
-        user_declared = declared - Smith::Agent::RESERVED_INPUT_NAMES
+        user_declared = (agent_class.inputs || []) - Smith::Agent::RESERVED_INPUT_NAMES
+        reject_untrusted_inputs!(agent_class, user_declared)
         user_declared.to_h do |name|
           [name, @context[name]]
         end
       end
 
-      # A key the context marks untrusted never reaches an agent as a
-      # declared input, where it would sit beside the agent's instructions.
+      # A key the run's context, or that of a workflow it is nested in,
+      # marks untrusted never reaches an agent as a declared input, where it
+      # would sit beside the agent's instructions. Reserved input names are
+      # never read from the context, so they are not checked.
       def reject_untrusted_inputs!(agent_class, declared)
-        manager = self.class.respond_to?(:context_manager) ? self.class.context_manager : nil
-        untrusted = manager.respond_to?(:untrusted_keys) ? declared & manager.untrusted_keys : []
+        untrusted = declared & untrusted_context_keys
         return if untrusted.empty?
 
         raise WorkflowError, "agent #{agent_class.register_as.inspect} declares untrusted context key " \
@@ -53,13 +53,16 @@ module Smith
         messages + [{ role: :user, content: WORKFLOW_CONTINUATION_MESSAGE }]
       end
 
+      # The input ends with the output the run last added to its transcript,
+      # so the provider gets a user turn after it rather than an assistant
+      # turn to continue.
       def workflow_handoff?(messages)
         message = messages.reverse_each.find { |candidate| message_role(candidate) != :system }
         return false unless message
         return false unless message_role(message) == :assistant
-        return false unless defined?(@last_output) && !@last_output.nil?
+        return false unless defined?(@last_transcript_output) && !@last_transcript_output.nil?
 
-        message_content(message) == @last_output
+        message_content(message) == @last_transcript_output
       end
 
       def merge_system_messages!(chat, prepared_system_messages)
