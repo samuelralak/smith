@@ -6,6 +6,7 @@ require_relative "guarded_step_execution"
 require_relative "prepared_branch_execution"
 require_relative "step_completion"
 require_relative "step_context"
+require_relative "step_stream"
 
 module Smith
   class Workflow
@@ -15,6 +16,7 @@ module Smith
       include PreparedBranchExecution
       include StepCompletion
       include StepContext
+      include StepStream
       include Agent::Lifecycle
       include NestedExecution
       include EvaluatorOptimizer
@@ -38,10 +40,12 @@ module Smith
         @pending_agent_execution = nil
         @pending_evaluations = nil
         writable_output_key!(transition) if transition.output_to
-        output = with_scoped_artifacts { run_with_retry_policy(transition) }
-        return output if wait_pending?(output)
+        with_step_stream(transition) do
+          output = with_scoped_artifacts { run_with_retry_policy(transition) }
+          next output if wait_pending?(output)
 
-        StepCompletion.instance_method(:complete_step).bind_call(self, transition, output)
+          StepCompletion.instance_method(:complete_step).bind_call(self, transition, output)
+        end
       end
 
       def setup_step_context

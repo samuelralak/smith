@@ -27,6 +27,7 @@ module Smith
         option :timeout_transition, default: proc {}
         option :step_input, default: proc { false }
         option :output_to, default: proc {}
+        option :stream, default: proc {}
         option :children_config, default: proc {}
         option :deterministic_kind, default: proc {}
         option :deterministic_routes, default: proc {}

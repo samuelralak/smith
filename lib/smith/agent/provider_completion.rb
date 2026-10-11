@@ -8,6 +8,8 @@ require_relative "provider_attempt"
 require_relative "provider_call_timing"
 require_relative "provider_request"
 require_relative "provider_candidate_sequence"
+require_relative "provider_streaming"
+require_relative "observed_model"
 
 module Smith
   class Agent
@@ -17,6 +19,8 @@ module Smith
       include ContentParts
       include ProviderCallTiming
       include ProviderRequest
+      include ProviderStreaming
+      include ObservedModel
 
       private
 
@@ -32,6 +36,7 @@ module Smith
         candidates = ProviderCandidateSequence.new(chain)
         candidates.each do |model_reference, index|
           check_deadline! if index.positive?
+          withdraw_streamed(index.positive? ? :fallback : :retry)
           attempt = attempt_model(agent_class, prepared_input, model_reference, shape:, attempt_index: index)
           return attempt if attempt.success?
 
@@ -107,9 +112,9 @@ module Smith
         message_count = chat_message_count(chat)
         observed_reference = observed_model_reference(chat, fallback: model_reference)
         timer = ProviderCallTiming::Timer.start
-        response = chat.complete
+        response, stream = complete_chat(chat, observed_reference)
         timer.stop
-        completion = Completion.from_messages(response: response, messages: new_chat_messages(chat, message_count))
+        completion = Completion.from_messages(response:, messages: new_chat_messages(chat, message_count), stream:)
 
         completed_provider_attempt(completion, observed_reference, timer, facts)
       rescue StandardError => e
@@ -124,24 +129,6 @@ module Smith
         attempt
       end
       # rubocop:enable Metrics/AbcSize
-
-      def observed_model_reference(chat, fallback:)
-        model = observable_model(chat)
-        return fallback unless model.respond_to?(:id) && !model.id.to_s.empty?
-
-        ModelReference.coerce(model.id, provider: observed_provider(model, fallback))
-      rescue StandardError
-        fallback
-      end
-
-      def observable_model(chat)
-        resolved_chat = chat.respond_to?(:to_llm) ? chat.to_llm : chat
-        resolved_chat.model if resolved_chat.respond_to?(:model)
-      end
-
-      def observed_provider(model, fallback)
-        model.respond_to?(:provider) && !model.provider.to_s.empty? ? model.provider : fallback.provider
-      end
 
       def prepared_attempt_chat(agent_class, prepared_input, model_reference, shape)
         chat = agent_class.chat(**model_reference.chat_options, **bridge_workflow_inputs(agent_class))

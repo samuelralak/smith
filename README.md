@@ -248,6 +248,58 @@ these steps take no `retry_on`. `Smith::Launchers::Inline` runs the children in
 process, for tests and scripts. See
 [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md), Child Runs.
 
+### Streaming
+
+An agent step can send its reply's text to the host as the model writes it:
+
+```ruby
+# Called when a streamed step starts; returns the step's sink, or nil to
+# stream nothing (nobody is watching). Each step execution gets its own.
+Smith.config.stream_sinks = {
+  answer: ->(info) { AnswerStream.new(info[:execution_key]) if Screens.watching?(info[:execution_key]) }
+}
+
+class AnswerStream
+  def initialize(key)
+    @key = key
+    @reply = Smith::Streaming::JsonField.new(:reply)  # the output schema's reply field, as it grows
+  end
+
+  def delta(text) = (reply = @reply.push(text)) && Screens.draft(@key, reply)
+  def reset(_reason) = @reply.reset || Screens.clear(@key)
+  def finish(output) = Screens.final(@key, output["reply"])
+  def fail(_error_class) = Screens.failed(@key)
+end
+
+class Answer < Smith::Workflow
+  initial_state :asked
+  state :failed
+
+  transition :answer, from: :asked, to: :answered do
+    execute :answerer, stream: :answer, output_to: :answer
+    on_failure :fail
+  end
+end
+```
+
+A sink defines any of `start(info)` (each provider call: the step's info with
+the attempt, model and provider), `delta(text)` (each text chunk; tool calls and
+thinking are not sent), `reset(reason)` (Smith discarded the text sent so far:
+`:retry`, `:fallback`, `:truncation`, `:repair`, or `:retry_wait` while a
+durable retry waits), `finish(output)` (the output the step accepted, after
+guardrails, the output contract and `output_to:`) and `fail(error_class)`.
+Streamed text is a draft: guardrails and output checks run on the whole reply,
+so nothing should be saved or acted on before `finish`, and a step with an
+output schema streams JSON text (`Smith::Streaming::JsonField` reads one string
+field of it). A sink that raises is logged and the step goes on; a sink name
+that is not registered fails the step before its call. Stop reasons are read
+from the stream, so cut-off and refused replies are handled as without it.
+Smith's OpenAI Responses path does not stream: its sink gets each reply as one
+delta. Streaming changes nothing durable (usage, budgets, persistence), and a
+replayed step streams again. Graph inspection shows the stream, and runtime
+readiness reports a missing sink (`:stream_sink_missing`) and an agent that may
+take the Responses path (`:stream_whole_replies`).
+
 ## Workflow Graph Inspection
 
 Smith can inspect a workflow's declared graph without running agents or advancing state. This is useful for host apps that want to render, lint, or cache a workflow shape before execution.

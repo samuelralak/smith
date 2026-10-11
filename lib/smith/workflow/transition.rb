@@ -9,7 +9,7 @@ module Smith
                   :router_config, :workflow_class, :optimization_config, :orchestrator_config,
                   :fanout_config, :retry_config, :deterministic_block, :deterministic_kind,
                   :deterministic_routes, :deterministic_fallthrough, :await_config, :timeout_transition,
-                  :step_input, :output_to
+                  :step_input, :output_to, :stream
 
       def initialize(name, from:, to:, &)
         @name = own_identifier(name)
@@ -61,12 +61,15 @@ module Smith
       # context returning the step's messages, which replace the session
       # transcript for this step. `output_to:` names the context key the
       # step's output is written to, instead of the transcript.
-      def execute(agent_name, input: nil, output_to: nil, **opts)
+      # `stream:` names the sink in `Smith.config.stream_sinks` the reply's
+      # text is streamed to as the model writes it (Smith::Streaming).
+      def execute(agent_name, input: nil, output_to: nil, stream: nil, **opts)
         validate_execution_primitive_conflict!("execute")
 
         normalized_agent = normalize_agent_reference!(agent_name, "agent")
         validate_parallel_options!(opts)
         assign_step_io!(input, output_to)
+        @stream = stream_name!(stream, opts)
 
         @agent_name = normalized_agent
         @agent_opts = opts.freeze
@@ -291,6 +294,15 @@ module Smith
 
         @step_input = input
         @output_to = output_to
+      end
+
+      # One reply streams to one sink: a parallel step has several.
+      def stream_name!(stream, opts)
+        return if stream.nil?
+        raise WorkflowError, "execute stream: must name a sink with a Symbol" unless stream.is_a?(Symbol)
+        raise WorkflowError, "execute stream: is not available on a parallel step" if opts[:parallel] == true
+
+        stream
       end
 
       def wait_seconds!(value, label)

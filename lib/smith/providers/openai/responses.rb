@@ -51,21 +51,11 @@ module Smith
         # vendored helpers, POSTs via the provider's Faraday connection,
         # parses the response back into a RubyLLM::Message.
         #
-        # Streaming is intentionally NOT supported in this initial vendor
-        # because Smith's workflow execution path doesn't use it.
-        # Block-given calls raise NotImplementedError with a clear
-        # message so the host can either disable streaming or fall back
-        # to `openai_api_mode = :off`.
+        # This path does not stream (the stream_response port from PR #770
+        # is not vendored): a call given a block completes, then passes the
+        # block the reply's whole text as one chunk.
         def self.complete(provider, messages, tools:, temperature:, model:, params: {}, headers: {},
-                          schema: nil, thinking: nil, tool_prefs: nil, &block)
-          if block
-            raise NotImplementedError,
-                  "Smith::Providers::OpenAI::Responses does not yet support streaming. " \
-                  "Streaming over /v1/responses needs a separate stream_response port from PR #770. " \
-                  "Workaround: pass no block (sync only), or set Smith.config.openai_api_mode = :off " \
-                  "to route via chat-completions with graceful tool-dropping."
-          end
-
+                          schema: nil, thinking: nil, tool_prefs: nil, &)
           payload = render_response_payload(
             messages,
             tools: tools,
@@ -86,7 +76,15 @@ module Smith
             merged_headers.each { |k, v| req.headers[k] = v }
           end
 
-          parse_response_response(http_response, provider: provider)
+          with_whole_chunk(parse_response_response(http_response, provider: provider), &)
+        end
+
+        # SMITH-AUTHORED: a block gets the reply's whole text as one chunk.
+        def self.with_whole_chunk(message)
+          text = message&.content
+          yield ::RubyLLM::Chunk.new(role: :assistant, content: text, model_id: message.model_id) if
+            block_given? && text.is_a?(String) && !text.empty?
+          message
         end
 
         # rubocop:disable Metrics/ParameterLists

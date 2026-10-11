@@ -108,6 +108,10 @@ Smith.configure do |config|
     }
   )
 
+  # Streamed steps (`execute Agent, stream: :answer`): a callable that takes the
+  # step's info and returns its sink, or nil to stream nothing.
+  config.stream_sinks = { answer: ->(info) { AnswerStream.new(info[:execution_key]) } }
+
   config.logger = Logger.new($stdout)
 end
 ```
@@ -158,6 +162,7 @@ from JSON or YAML has.
 | `trace_attribution` | Merge ambient execution attribution into trace payloads | Usually leave on |
 | `pricing` | Best-known model-call cost catalog | Add once you care about `total_cost` |
 | `logger` | Smith's runtime logger | Usually the first setting to add |
+| `stream_sinks` | The sinks `execute Agent, stream: :name` steps send text to, by name: callables that take a step's info (`stream`, `execution_key`, `transition`) and return that step's sink, or nil to stream nothing | Register each name a workflow streams to; readiness reports a missing one |
 | `persistence_adapter` | Adapter for durable workflow state | `:redis`, `:rails_cache`, `:active_record`, `:memory`, or a custom object |
 | `persistence_options` | Per-adapter options (client, namespace, model, columns) | See "Built-In Persistence Adapters" |
 | `persistence_ttl` | Global TTL for persisted state (Integer/Float seconds; nil = no expiry). `:active_record` cannot expire state, so its writes refuse a non-nil TTL (reads and deletes still work, and `smith doctor --durability` flags the combination) | Set when long-tail abandoned workflows accumulate in storage |
@@ -167,7 +172,7 @@ from JSON or YAML has.
 | `parallel_concurrency` | Maximum active branch threads within one parallel execution | Defaults to `8` |
 | `parallel_nesting_limit` | Maximum re-entrant fan-out depth; hard-capped at `256` | Defaults to `64` |
 | `test_mode` | Auto-select the in-process `:memory` adapter when `persistence_adapter` is nil, and an in-process artifact store when `artifact_store` is nil | Enable in `spec_helper.rb` to skip Redis/cache/bucket wiring in tests |
-| `openai_api_mode` | `:auto` routes (gpt-5 family + tools + thinking) via `/v1/responses` using Smith's vendored Responses adapter (sync only; streaming over `/v1/responses` is not yet supported); `:off` drops incompatible tools instead | Leave `:auto` (default) unless you need streaming with the (gpt-5 + tools + thinking) combo, in which case set `:off` for graceful tool-dropping |
+| `openai_api_mode` | `:auto` routes (gpt-5 family + tools + thinking) via `/v1/responses` using Smith's vendored Responses adapter, which does not stream (a streamed step gets each reply as one delta); `:off` drops incompatible tools instead | Leave `:auto` (default) unless you need token streaming with the (gpt-5 + tools + thinking) combo, in which case set `:off` for graceful tool-dropping |
 | `trace_normalizer` | Emit `:normalizer_decision` trace events from `Smith::Models::Normalizer` | Useful when debugging cross-provider request shaping |
 | `ruby_llm_model_registry` | `:database` to require an AR-backed RubyLLM model registry; `:bundled` for the JSON fallback | Leave at default unless you've migrated to DB-backed |
 

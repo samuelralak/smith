@@ -13,7 +13,9 @@ module Smith
       REPAIR_NOTE = "Your previous reply could not be used as the required output:\n%s\n" \
                     "Reply again with output that fixes these problems."
       REPAIR_TASK = "Reply with the required output."
-      private_constant :MAX_CALLS, :REPAIR_NOTE, :REPAIR_TASK
+      # Why a streamed step's rejected text is withdrawn (Smith::Streaming).
+      STREAM_RESETS = { OutputRefused => :fallback, OutputTruncated => :truncation }.freeze
+      private_constant :MAX_CALLS, :REPAIR_NOTE, :REPAIR_TASK, :STREAM_RESETS
 
       private
 
@@ -97,6 +99,7 @@ module Smith
       def follow_up_attempt(plan, previous, model_reference, pending)
         check_deadline!
         plan.calls += 1
+        withdraw_streamed(STREAM_RESETS.fetch(pending.class, :repair))
         attempt = attempt_model(plan.agent_class, plan.input, model_reference,
                                 shape: plan.shape, attempt_index: previous.attempt_index.to_i + 1)
         return attempt if attempt.success?

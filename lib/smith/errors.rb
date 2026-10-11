@@ -268,6 +268,14 @@ module Smith
     end
   end
 
+  # A step streams to a sink Smith.config.stream_sinks does not name.
+  # Raised before the step's provider call.
+  class StreamSinkMissing < WorkflowError
+    def initialize(name)
+      super("Smith.config.stream_sinks has no sink #{name.inspect}; register the sink the step streams to")
+    end
+  end
+
   class SerializationError < Error; end
   class AgentRegistryError < Error; end
 

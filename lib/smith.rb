@@ -72,6 +72,12 @@ module Smith
   # `child.key`. Smith::Launchers::Inline runs them in process.
   setting :run_launcher, default: nil
 
+  # The sinks `execute Agent, stream: :name` steps stream to, by name
+  # (Smith::Streaming): callables that take a step's info and return its
+  # sink (or nil), an object with any of start(info), delta(text),
+  # reset(reason), finish(output) and fail(error_class).
+  setting :stream_sinks, default: {}.freeze, constructor: ->(sinks) { Smith::Streaming.check_sinks!(sinks) }
+
   # Retry policy for transient persistence I/O failures.
   #   attempts:    total attempts (including the first)
   #   base_delay:  initial sleep between attempts, doubled each retry
@@ -103,9 +109,9 @@ module Smith
   # Default :auto reflects the "use both when possible" design intent.
   # Smith ships the Responses adapter vendored from crmne/ruby_llm PR #770
   # at a pinned SHA, so the routing path is operational for sync
-  # completions. Streaming over /v1/responses is not yet supported and
-  # raises NotImplementedError; hosts who need streaming with the
-  # (gpt-5 + tools + thinking) combo should set openai_api_mode = :off
+  # completions. It does not stream: a streamed call gets the whole reply
+  # as one chunk. Hosts who need token streaming with the
+  # (gpt-5 + tools + thinking) combo can set openai_api_mode = :off
   # for graceful tool-dropping via chat-completions.
   setting :openai_api_mode, default: :auto, constructor: lambda { |value|
     unless %i[off auto].include?(value)
@@ -230,6 +236,10 @@ require_relative "smith/trace"
 require_relative "smith/trace/memory"
 require_relative "smith/trace/logger"
 require_relative "smith/trace/open_telemetry"
+
+# Streaming (no internal deps)
+require_relative "smith/streaming"
+require_relative "smith/providers/stream_facts"
 
 # Artifact store (no internal deps)
 require_relative "smith/artifacts"

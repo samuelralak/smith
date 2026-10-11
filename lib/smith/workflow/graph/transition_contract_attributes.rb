@@ -50,6 +50,7 @@ module Smith
             parallel_count: static_parallel_count,
             step_input: !transition.step_input.nil?,
             output_to: transition.output_to,
+            stream: transition.stream,
             children_config: children_config
           }
         end

@@ -14,7 +14,9 @@ module Smith
       # whether or not that response reported usage.
       attribute :response_facts, Types::Hash.default({}.freeze)
 
-      def self.from_messages(response:, messages:)
+      # `stream` is set for a streamed call: the facts read from its stream
+      # and the request's output limit (Providers::StreamFacts.settle).
+      def self.from_messages(response:, messages:, stream: nil)
         assistant_messages = Array(messages).select do |message|
           message.respond_to?(:role) && message.role.to_s == "assistant"
         end
@@ -25,9 +27,16 @@ module Smith
           response: response,
           provider_usages:,
           usage_complete: provider_usages.length == usage_source.length,
-          response_facts: Providers::ResponseFacts.from_message(usage_source.last)
+          response_facts: response_facts(usage_source.last, stream)
         )
       end
+
+      def self.response_facts(message, stream)
+        return Providers::ResponseFacts.from_message(message) unless stream
+
+        Providers::StreamFacts.settle(message, stream.fetch(:facts), stream.fetch(:output_limit))
+      end
+      private_class_method :response_facts
 
       def content
         response.content if response.respond_to?(:content)

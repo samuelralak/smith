@@ -1863,6 +1863,26 @@ Documented contracts covered:
 - review fixes: refs follow a closed format and are read only from a store that records which run stored them, so a crafted, guessed or another run's ref, or a path outside a file store or another tenant's, reads nothing; only user messages and only `input:` take documents and images (seeds, system and assistant take text); parts are UTF-8, non-blank, Symbol-valued or not, and the `"parts" => true` marker alone marks a parts message; restored seed parts work however the payload was parsed; documents are read once per call, checked against their media type, empty or oversized ones (5 MiB images, 24 MiB documents) and requests past 32 MiB as sent refused with `Smith::ContentUnavailable`, and a store error is that error, not a provider failure; cache points count the chat's own and every Anthropic model in the chain; other providers get parts in order with attachments named in place and `text/plain` inline; a model that takes no such content passes to the next; RubyLLM content found in a session goes as text
 - these contracts are mutation-verified against the full suite
 
+### `spec/smith/streaming_spec.rb` and `spec/smith/streaming/json_field_spec.rb`
+
+Purpose:
+
+- asserts that a step declared with `stream:` sends its reply's text to a per-step host sink as the model writes it, withdraws text Smith discards, and changes nothing else
+
+Architecture basis:
+
+- Section 4.3, Context and Sessions; Section 7, Observability
+
+Documented contracts covered:
+
+- `stream:` takes a Symbol and is refused on a parallel step; graph snapshots and contracts carry it; sinks are a Hash of callables by Symbol or String name; readiness reports a missing sink and, under `openai_api_mode: :auto`, an agent with tools whose static, fallback or inferred model is OpenAI
+- the sink callable gets the step's frozen info (`stream`, `execution_key`, `transition`) once per step execution; a nil sink streams nothing and a raising callable is logged by class and the step goes on unstreamed; a step without `stream:` calls its chat without a block
+- a sink hears `start` (with attempt, model, provider) per provider call, `delta` per text chunk (no thinking, nothing empty), `reset` before a call that replaces the text (`:truncation`, `:repair`, `:fallback` after a refusal or a provider failure, `:retry` before the step's next attempt), `reset(:retry_wait)` when a durable retry waits (its resumed attempt streams to a new sink), `finish` with the output after `after_completion` and `output_to`, and `fail` with the error's class; an unregistered sink fails the step before its call; a raising sink is logged by class only; only the methods a sink defines are called; a session sends nothing outside a start and settles once
+- stop reasons and message ids come from RubyLLM's own chunk builders for Anthropic (a new message clears the last one's stop reason), OpenAI and its subclasses (choices, refusal deltas), OpenRouter, Gemini (finish reasons, prompt blocks) and Bedrock (flat and nested), collected only inside a call, nested collections kept apart, bounded, never raising; the observer is installed once per module and inherited; a streamed reply's facts win over its raw body's, and without a stop reason its output reaching the request's limit counts as cut off (`output_limit_reached`), the limit read from the request
+- over a local server, RubyLLM's real Anthropic, OpenAI Chat Completions and Gemini streams reach the sink, with a cut-off Anthropic reply retried at a larger limit, an OpenAI cut-off and a Gemini refusal read from the stream; Smith's Responses path sends one delta and keeps its body's stop reason, and passes no empty chunk
+- `JsonField` returns the field's growing text only when a piece adds to it, unescapes every JSON escape split anywhere (surrogate pairs; lone halves and bad `\u` escapes as U+FFFD), skips text before the object and strings that are not the key, reads only the first object's top-level string value, and starts over on reset
+- these contracts are mutation-verified against the full suite
+
 ### `spec/smith/workflow/durable_retry_spec.rb`
 
 Purpose:

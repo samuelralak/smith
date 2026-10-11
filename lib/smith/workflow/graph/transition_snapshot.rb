@@ -42,6 +42,7 @@ module Smith
         option :wait, default: proc {}
         option :input, default: proc {}
         option :output_to, default: proc {}
+        option :stream, default: proc {}
         option :children, default: proc {}
 
         def self.from_transition(transition, workflow_class: nil)
@@ -80,6 +81,7 @@ module Smith
             wait: transition.await_config,
             input: (:callable if transition.step_input),
             output_to: transition.output_to,
+            stream: transition.stream,
             children: children_for(transition)
           }
         end
