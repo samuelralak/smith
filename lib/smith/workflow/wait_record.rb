@@ -42,13 +42,16 @@ module Smith
         raise WorkflowError, "a wait's timeout must be a positive number of seconds"
       end
 
-      # The event and context key read as the transition declares them.
-      def to_wait(record, transition)
-        config = record["kind"] == "retry" ? { kind: :retry } : transition.await_config
+      # The event and context key read as the transition declares them; a
+      # retry's attempt and error read from the run's pending retry.
+      def to_wait(record, transition, pending_retry)
+        retrying = record["kind"] == "retry"
+        config = retrying ? { kind: :retry } : transition.await_config
         Wait.new(
           kind: config.fetch(:kind), event: config[:event], token: record.fetch("token"), transition: transition.name,
           into: config[:into], entered_at: Time.iso8601(record.fetch("entered_at")),
-          deadline_at: Time.iso8601(record.fetch("deadline_at")), children: record["children"]
+          deadline_at: Time.iso8601(record.fetch("deadline_at")), children: record["children"],
+          attempt: (pending_retry&.fetch("attempt") if retrying), error: (pending_retry&.fetch("error") if retrying)
         )
       end
 

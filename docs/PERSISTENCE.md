@@ -731,8 +731,9 @@ end
   step count and `max_transitions` do not move; `wall_clock` is charged only
   for the time the block ran. `waiting?` and `awaiting` (a
   `Smith::Workflow::Wait` with `kind`, `event`, `token`, `transition`, `into`,
-  `entered_at`, `deadline_at`; the event and key as the transition declares
-  them) let the host index the wait, and `pending_transition_name` is the
+  `entered_at`, `deadline_at`, and `children`, `attempt` and `error` for the
+  waits that have them; the event and key as the transition declares them)
+  let the host index the wait, and `pending_transition_name` is the
   awaited transition. While a run waits, `advance!` does nothing and the run is
   never terminal, so no `clear:` policy deletes it.
 - `Workflow.resume!(key, event:, token:, payload:, adapter:)` restores the run,
@@ -755,31 +756,38 @@ end
   continues to its `to:`, an `await` takes `on_timeout` (a `StepCompleted`
   whose `to` is the await's own state) or else `on_failure` with
   `Smith::WaitTimedOut`, which is never retried and restores as itself with the
-  wait it names. It returns `:expired`, `:not_due`, `:missing` or `:stale`. The
-  host's scheduler decides when to call it; Smith never wakes a run.
+  wait it names; a durable retry's wait (`kind: :retry`) ends without a step,
+  and the host must then continue the run (see Durable Retry). It returns
+  `:expired`, `:not_due`, `:missing` or `:stale`. The host's scheduler decides
+  when to call it; Smith never wakes a run. `now:` is the host's clock: passing
+  a time at or past `deadline_at` ends a wait early, as a "retry now" control
+  may.
 - Only one completion of a wait wins. On one instance, a completion claims the
   wait, so a delivery and an expiry racing there cannot both complete it. Across
   processes, the class methods need an adapter with `store_versioned` (Memory,
   Redis, Active Record), so the second store fails with
   `Smith::PersistenceVersionConflict`; they refuse adapters without it.
-- The completion, by `resume!` or `expire_wait!`, is the step: it has the
-  step's position, so the token matches the entry's, and it emits
-  `StepCompleted` (or `StepFailed`). In strict mode a waiting run is a
+- The completion of an await, delay, map or call, by `resume!` or
+  `expire_wait!`, is the step: it has the step's position, so the token matches
+  the entry's, and it emits `StepCompleted` (or `StepFailed`). The end of a
+  retry wait is not a step and emits nothing; the attempt that follows is. In strict mode a waiting run is a
   checkpoint, not a step in progress, and restores cleanly.
 - A stored wait is checked on restore: one that is malformed, whose deadline
   precedes its entry or has no time zone, or that sits beside a pending
   transition raises `Smith::SerializationError`; one whose transition the
   class no longer declares exactly (kind, event, `into:`) or that does not
   start from the run's state raises `Smith::UnknownTransitionOnRestore`. A
-  `migrate_from` that renames such things must rewrite `awaiting` too.
-- A wait that would outlast the store's persistence TTL is refused when it is
-  entered, before the block runs. `stuck_for?` reports a waiting run as stuck
+  `migrate_from` that renames such things must rewrite `awaiting` too, and
+  `pending_retry` for a retry wait.
+- A wait that does not end within the store's persistence TTL is refused when
+  it is entered, before the block runs. `stuck_for?` reports a waiting run as stuck
   only once its deadline has passed by the threshold.
 - Not in 0.12: split-step persistence refuses to prepare a step that waits or
   launches runs (an `await`, `delay`, `map`, `call` or `spawn`, or a step with
-  a durable retry), or any step while the run waits, and an in-process nested
-  workflow that reaches a wait fails its parent's step (runtime readiness
-  reports `:nested_workflow_waits`).
+  a durable retry), or any step while the run waits, and a durable retry
+  cannot wait inside split-step execution. An in-process nested workflow that
+  reaches a wait fails its parent's step (runtime readiness reports
+  `:nested_workflow_waits`).
 
 ### Durable Retry
 
@@ -798,7 +806,10 @@ end
   enters a wait of kind `:retry` for the transition (no event, no `into:`),
   due when the backoff ends, under a token of the attempt it waits for. The
   step does not complete or count, and the run records its pending retry (the
-  transition, the next attempt and the key generation) as `pending_retry`.
+  transition, the next attempt, the key generation, and the class name of the
+  error) as `pending_retry`; `awaiting.attempt` and `awaiting.error` show them.
+  Traces record `outcome: :retrying` (with the attempt, error and deadline)
+  and, when the wait ends, `:retry_due`.
 - `expire_wait!` past the deadline ends the wait without a step and returns
   `:expired`; the transition becomes the run's next. The host continues the run
   (`run_persisted!` or `advance_persisted!`), as after any wait, and the step
@@ -806,26 +817,37 @@ end
   attempt's, unless that attempt was declared settled (see Replay Safety).
   It may succeed, fail for good (`on_failure`, or the error), or wait again.
   `resume!` never completes a retry wait.
-- The pending retry persists until the step completes or fails. A crash during
-  the attempt makes the same attempt again under the same keys in lax mode; in
-  strict mode the attempt runs under the step-in-progress mark, so the restore
-  of a run caught in it raises `Smith::StepInProgressOnRestore`.
+- The pending retry persists until the step ends without entering a wait:
+  it completes, fails, or raises. A crash during the attempt makes the same
+  attempt again under the same keys in lax mode; in strict mode the attempt
+  runs under the step-in-progress mark, so the restore of a run caught in it
+  raises `Smith::StepInProgressOnRestore`. A step whose last attempt raises
+  to the host (no `on_failure`) leaves the stored run at the checkpoint
+  before that attempt, as a crash does, so continuing it makes that attempt
+  again at once; declare `on_failure` to settle a durable retry's last
+  failure.
 - No retry wait is entered once the run's wall-clock deadline has passed, after
   a tool ran (`Smith::ToolOutcomeUncertain` is never retried), or for a backoff
-  longer than the store's persistence TTL (the step fails with a
-  `Smith::WorkflowError`). Time spent waiting does not count toward
+  that does not end within the store's persistence TTL (the step fails with a
+  `Smith::WorkflowError` whose cause is the attempt's error); runtime readiness
+  reports a policy whose longest backoff, jitter included, reaches the TTL
+  (`:durable_retry_outlasts_ttl`). Time spent waiting does not count toward
   `wall_clock`.
-- `durable:` is refused on an await, delay, parallel, fan_out, optimize or
-  orchestrate step; a map, call or spawn takes no `retry_on` at all. A durable
-  retry inside an in-process nested workflow fails the parent's step, and
-  runtime readiness reports it as `:nested_workflow_waits`. Graph inspection
-  shows `durable: true` in the retry policy.
+- `durable:` needs at least 2 attempts and a positive backoff, and is refused
+  on an await, delay, parallel, fan_out, optimize or orchestrate step; a map,
+  call or spawn takes no `retry_on` at all. A durable retry inside an
+  in-process nested workflow, or a child run that `Smith::Launchers::Inline`
+  runs, fails the parent's step (a nested workflow's with the child's error as
+  the cause), and runtime readiness reports it as `:nested_workflow_waits`.
+  Graph inspection shows `durable: true` in the retry policy.
 - A stored `pending_retry` is checked on restore: it must name the transition
   of the stored retry wait, or the run's next transition when the run does not
-  wait, which must still declare a durable retry; its attempt must be one the
-  policy makes after a failure and its key generation one an earlier attempt
-  could reach. A stored retry wait needs one. Anything else raises
-  `Smith::SerializationError`.
+  wait, with an attempt after the first, a key generation an earlier attempt
+  could reach, and an error class name; a stored retry wait needs one.
+  Anything else raises `Smith::SerializationError`, except a definition
+  change: a transition that no longer declares a durable retry, or now
+  declares fewer attempts than the recorded one, raises
+  `Smith::UnknownTransitionOnRestore`.
 
 ## Child Runs
 
@@ -998,12 +1020,13 @@ no effect, the attempts after it can use new keys:
 that wants a different key on every attempt can pass it in the scope
 (`step.idempotency_key([:charge, step.attempt])`).
 
-The generation of keys lives only within one run of the step's retries. When
+The generation of keys lives only within one run of the step's retries (a
+durable retry persists it across its waits; see Durable Retry). When
 the attempts run out and the host retries the run later (a job that runs again),
 the step starts again from its first keys, so a receiver that stored a failed
 reply returns it again. A host that wants its own later retries to use new keys
 puts a counter it owns in the scope. After a crash, the step's retries run again
-from the first attempt; a replay reaches the newer keys again only if the
+from the first attempt (a durable retry's from the attempt it recorded); a replay reaches the newer keys again only if the
 receivers refuse the replayed requests as they did before, which a receiver that
 stores replies under their keys does.
 

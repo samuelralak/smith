@@ -135,9 +135,9 @@ module Smith
     def advance!
       return if waiting?
 
+      @step_work_started = false
       advance_claim = SplitStepPersistence.instance_method(:claim_split_step_advance!).bind_call(self)
       ensure_transition_budget!
-      @step_work_started = false
 
       transition = SplitStepPersistence.instance_method(:resolve_split_step_advance_transition).bind_call(self)
       transition = resolve_transition if transition.equal?(SplitStepPersistence::NO_SPLIT_TRANSITION)
@@ -157,6 +157,7 @@ module Smith
       record_step_snapshot(step_result)
       step_result
     ensure
+      clear_settled_pending_retry
       SplitStepPersistence.instance_method(:release_split_step_advance!).bind_call(self, advance_claim) if advance_claim
     end
 
@@ -211,12 +212,10 @@ module Smith
     private
 
     # Entering a wait is not a step: nothing counts, and advance! returns nil.
-    # A step that completes or fails has made its pending retry.
     def count_step(step_result)
       @updated_at = Time.now.utc.iso8601(6)
       return if wait_pending?(step_result)
 
-      @pending_retry = nil
       @step_count += 1
       record_step_snapshot(step_result)
       step_result

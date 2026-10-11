@@ -60,36 +60,29 @@ module Smith
           end
         end
 
-        # An in-process child that reaches an await, a delay or a durable
-        # retry fails its parent's step at runtime; a child run of its own
-        # may wait.
-        # An in-process child has no persisted key, so it cannot wait, nor
-        # launch runs of its own unless the launcher runs them in process.
+        # An in-process child cannot wait: a nested workflow, or a child run
+        # the launcher runs in process (`inline?`), that reaches an await, a
+        # delay or a durable retry fails its parent's step. A nested
+        # workflow cannot launch runs either, unless the launcher runs them
+        # in process; a child run of a queueing launcher is a run of its own
+        # and may wait.
         def waiting_child_diagnostics
-          kinds = waiting_kinds
-          in_process_entries.filter_map do |entry|
-            next unless entry.fetch(:report).topology_report.transitions.any? { waits?(_1, kinds) }
+          launcher = Smith.config.run_launcher
+          inline = launcher.respond_to?(:inline?) && launcher.inline? == true
+          report_entries.filter_map do |entry|
+            transition = entry.fetch(:transition)
+            next unless (transition.nested? || (inline && transition.child_runs?)) && waiting_child?(entry, inline)
 
-            waiting_child_diagnostic(entry.fetch(:transition), workflow_label(entry.fetch(:workflow_class)))
+            WaitingChildDiagnostic.build(transition, workflow_label(entry.fetch(:workflow_class)))
           end
         end
 
+        def waiting_child?(entry, inline)
+          kinds = inline ? %i[await delay] : %i[await delay map call spawn]
+          entry.fetch(:report).topology_report.transitions.any? { waits?(_1, kinds) }
+        end
+
         def waits?(snapshot, kinds) = kinds.include?(snapshot.kind) || snapshot.retry_policy&.dig(:durable) == true
-
-        def waiting_kinds
-          launcher = Smith.config.run_launcher
-          inline = launcher.respond_to?(:inline?) && launcher.inline? == true
-          inline ? %i[await delay] : %i[await delay map call spawn]
-        end
-
-        def waiting_child_diagnostic(transition, label)
-          Diagnostic.new(
-            severity: :error, code: :nested_workflow_waits, transition: transition.name, target: label,
-            message: "Transition #{ref(transition.name)} nests #{label}, which reaches a step that waits " \
-                     "or launches runs of its own.",
-            suggestion: "An in-process nested workflow cannot wait or launch; move the step into the parent workflow."
-          )
-        end
 
         def inherited_untrusted_diagnostics
           entries = report_entries.map do |entry|
@@ -97,8 +90,6 @@ module Smith
           end
           InheritedUntrustedDiagnostics.new(graph, entries:, graphs:).to_a
         end
-
-        def in_process_entries = report_entries.select { _1.fetch(:transition).nested? }
 
         def cycle_diagnostic(transition, workflow_class)
           label = workflow_label(workflow_class)

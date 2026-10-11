@@ -77,7 +77,7 @@ module Smith
           raise WorkflowError, "workflow has no pending transition" unless transition_name
 
           refusal = "split-step persistence does not run steps that wait or launch runs"
-          raise WorkflowError, refusal if transition&.may_wait?
+          raise WorkflowError, refusal if transition&.waits_or_launches?
 
           ensure_transition_budget!
           resolved_key = normalize_split_step_persistence_key(candidate_split_step_persistence_key(key))

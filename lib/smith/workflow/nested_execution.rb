@@ -32,8 +32,9 @@ module Smith
         return unless child.waiting?
 
         roll_up_child_totals(child_result)
+        cause = RetryWait.instance_method(:retry_wait_error).bind_call(child)
         raise WorkflowError, "a nested workflow reached a step that waits (an await, delay or durable retry); " \
-                             "an in-process child cannot wait"
+                             "an in-process child cannot wait", cause:
       end
 
       RaisedChildUsage = Struct.new(:usage_entries, :total_cost, :total_tokens)

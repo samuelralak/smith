@@ -38,7 +38,7 @@ module Smith
 
           key_generation += 1 if new_idempotency_key_after?(config, e, attempt_scope)
           delay = retry_delay(schedule, attempt)
-          return wait_to_retry(transition, delay, attempt + 1, key_generation) if config[:durable]
+          return wait_to_retry(transition, delay, attempt + 1, key_generation, e) if config[:durable]
 
           sleep(delay) if delay.positive?
           retry

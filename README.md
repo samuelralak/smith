@@ -718,8 +718,9 @@ end
 
 A failed attempt the policy retries stores the run waiting (`awaiting.kind ==
 :retry`, due when the backoff ends); the host schedules `expire_wait!` for that
-time and then continues the run, which makes the next attempt under the same
-keys. See `docs/PERSISTENCE.md`, Waiting.
+time and then continues the run, which makes the next attempt under the step's
+keys (new ones only after an attempt declared settled). See
+`docs/PERSISTENCE.md`, Durable Retry.
 
 Steps and tools get idempotency keys for the requests they send outside the
 system, the same on every attempt and after a restore:

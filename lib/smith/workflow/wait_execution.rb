@@ -9,10 +9,12 @@ module Smith
   class Workflow
     # The wait a run is in: an `await` for `event` (delivered under `token`
     # by `resume!`), a `delay`, a map's or call's wait for its `children`, or
-    # a durable retry's backoff (`:retry`), entered at `entered_at` and due
-    # to expire at `deadline_at`. Hosts index it to deliver events and to schedule the
+    # a durable retry's backoff (`:retry`, with the `attempt` it waits to make
+    # and the class name of the `error` that failed the last one), entered at
+    # `entered_at` and due to expire at `deadline_at`. Hosts index it to deliver events and to schedule the
     # `expire_wait!` call; Smith never sleeps, polls or wakes a run itself.
-    Wait = Data.define(:kind, :event, :token, :transition, :into, :entered_at, :deadline_at, :children)
+    Wait = Data.define(:kind, :event, :token, :transition, :into, :entered_at, :deadline_at, :children, :attempt,
+                       :error)
 
     # What a step that entered a wait returns instead of its output.
     WAIT_PENDING = Object.new.freeze
@@ -31,7 +33,7 @@ module Smith
       # The run's wait, or nil.
       def awaiting
         record = @awaiting
-        WaitRecord.to_wait(record, awaited_transition(record)) if record
+        WaitRecord.to_wait(record, awaited_transition(record), @pending_retry) if record
       end
 
       # Delivers the event this run awaits: writes the normalized payload to
@@ -145,10 +147,10 @@ module Smith
 
       def check_wait_ttl!(seconds)
         ttl = self.class.persistence_ttl || Smith.config.persistence_ttl
-        return unless @persistence_key && ttl && seconds > ttl
+        return unless @persistence_key && ttl && seconds >= ttl
 
-        raise WorkflowError, "a wait of #{seconds} seconds outlasts the persistence TTL of #{ttl} seconds; " \
-                             "the stored run would expire before the wait ends"
+        raise WorkflowError, "a wait of #{seconds} seconds does not end within the persistence TTL of #{ttl} " \
+                             "seconds; the stored run would expire before the wait ends"
       end
 
       def run_await_block(transition, token)

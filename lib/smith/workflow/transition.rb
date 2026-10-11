@@ -192,7 +192,7 @@ module Smith
                    durable: false)
         policy = normalize_retry_policy!(error_classes, attempts:, backoff:, max_delay:, jitter:)
         new_key_classes = normalize_new_idempotency_key_on!(new_idempotency_key_on, error_classes)
-        raise WorkflowError, "retry_on durable: must be true or false" unless [true, false].include?(durable)
+        validate_durable_policy!(durable, policy)
 
         config = {
           error_classes: error_classes.freeze,
@@ -210,9 +210,17 @@ module Smith
 
       def durable_retry? = @retry_config&.fetch(:durable, false) == true
 
+      def validate_durable_policy!(durable, policy)
+        raise WorkflowError, "retry_on durable: must be true or false" unless [true, false].include?(durable)
+        return unless durable && !(policy.attempts > 1 && policy.base_delay.positive?)
+
+        raise WorkflowError, "retry_on durable: needs at least 2 attempts and a positive backoff, so it has a wait"
+      end
+      private :validate_durable_policy!
+
       # A step that waits (an await, delay, map or call), launches runs of
       # its own (a spawn), or waits between attempts (a durable retry).
-      def may_wait? = awaits? || child_runs? || durable_retry?
+      def waits_or_launches? = awaits? || child_runs? || durable_retry?
 
       %i[compute run].each do |method_name|
         define_method(method_name) do |routes: nil, fallthrough: false, &block|

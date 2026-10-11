@@ -1816,7 +1816,8 @@ Documented contracts covered:
 - a crash during the retried attempt makes the same attempt again under the same key (lax); in strict mode the restore raises `StepInProgressOnRestore`
 - no retry wait past the wall-clock deadline, after a tool ran, or for a backoff longer than the persistence TTL; an in-process nested workflow with a durable retry fails the parent's step and readiness reports `:nested_workflow_waits`; split-step persistence refuses the step
 - restore refuses a `pending_retry` that is malformed, out of the policy's bounds, names another transition, or is missing beside a retry wait, a due retry without its next transition, and a retry wait, or a due retry, whose transition no longer declares a durable retry
-- these contracts are mutation-verified against the full suite (40/40)
+- review fixes: a step that raises or is routed to `:fail` after a retry wait clears its pending retry, so the run restores; one instance waits and expires twice (the claim is released), refreshing `updated_at`; `:retrying` traces carry the attempt, error and deadline and `:retry_due` the run's key; `awaiting.attempt` and `awaiting.error`; a nested child's retried error is the parent's cause; `durable:` needs 2 attempts and a positive backoff; a stored retry wait outside its transition's state, and a definition that drops the durable retry or lowers attempts, raise `UnknownTransitionOnRestore`; a wait as long as the TTL is refused; readiness reports a backoff reaching the TTL (`:durable_retry_outlasts_ttl`) and a durable child run inline; durable agent steps, nesting steps and from-less steps reached through `on_failure` retry; a non-durable policy's graph contract is pinned; a run stopped before the retried step starts (a budget check) keeps its pending retry; a durable retry cannot wait inside split-step execution
+- these contracts are mutation-verified against the full suite
 
 ### `spec/smith/workflow/wait_spec.rb`
 

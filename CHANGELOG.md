@@ -47,15 +47,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   instead of sleeping in the worker. `expire_wait!` past the deadline ends the
   wait without a step, and the host continues the run, which makes the next
   attempt under the recorded attempt number and key generation; the pending
-  retry persists (`pending_retry`) until the step completes or fails, so a
-  crash makes the same attempt again under the same keys (in strict mode, the
-  restore of a run caught in it raises `Smith::StepInProgressOnRestore`). No
-  retry wait is entered past the deadline, after a tool ran, or for a backoff
-  longer than the persistence TTL. `durable:` is refused on await, delay,
-  parallel, fan_out, optimize and orchestrate steps; graph inspection shows
-  it, and runtime readiness reports an in-process nested workflow with a
-  durable retry as `:nested_workflow_waits`. Split-step persistence refuses a
-  step with a durable retry.
+  retry persists (`pending_retry`, shown as `awaiting.attempt` and
+  `awaiting.error`) until the step ends without a wait, so a crash makes the
+  same attempt again under the same keys (in strict mode, the restore of a run
+  caught in it raises `Smith::StepInProgressOnRestore`). No retry wait is
+  entered past the deadline, after a tool ran, or for a backoff that does not
+  end within the persistence TTL, which runtime readiness reports
+  (`:durable_retry_outlasts_ttl`). `durable:` needs 2 attempts and a positive
+  backoff, and is refused on await, delay, parallel, fan_out, optimize and
+  orchestrate steps; graph inspection shows it, and runtime readiness reports
+  an in-process child with a durable retry (a nested workflow, or a child run
+  the launcher runs inline) as `:nested_workflow_waits`. Split-step
+  persistence refuses a step with a durable retry. Traces gain the outcomes
+  `:retrying` and `:retry_due`.
+- `Smith::Workflow::Wait` gains `attempt` and `error` (nil except for a retry
+  wait). A wait as long as the persistence TTL is now refused too (it was
+  refused only when longer), since the stored run would expire as it ends.
 - Child runs. `map items, workflow:, max_items:, input:, timeout:, into:,
   collect:, on_item_failure:` launches a run of its own per item and waits,
   bounded by `timeout:`, for the host to resume the parent with
@@ -311,7 +318,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   untrusted marks. It refuses a run waiting on a durable retry
   (`kind: "retry"`) and ignores `pending_retry`, so a run due for a retry
   would start the step over at its first attempt and key generation; settle
-  such runs first.
+  such runs first. It cannot load a class that declares `retry_on ...,
+  durable: true` (an unknown keyword), so remove the option first; without it
+  the retry sleeps its backoff, up to `max_delay`, in the worker.
 - A workflow's execution namespace (the persisted UUID that scopes its
   artifacts and now its idempotency keys) is assigned when the workflow is
   built instead of on first artifact use, so `to_state` always carries it,
