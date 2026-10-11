@@ -13,6 +13,8 @@ module Smith
           context: snapshot_value(persisted_context),
           budget_consumed: ledger_consumed,
           step_count: @step_count,
+          awaiting: @awaiting&.dup,
+          active_seconds: @active_seconds || 0.0,
           execution_namespace: @execution_namespace,
           created_at: @created_at,
           updated_at: @updated_at,
@@ -114,6 +116,9 @@ module Smith
         @persistence_version = persistence_version
         validate_definition_digest!(normalized)
         validate_restored_position!(normalized)
+        @awaiting = WaitRecord.restore(normalized[:awaiting], workflow_class: self.class,
+                                                              persistence_key: normalized[:persistence_key])
+        @active_seconds = restored_active_seconds(normalized[:active_seconds])
         # Preserve the seed digest from the persisted payload so it
         # round-trips on subsequent persists. validate_seed_digest!
         # compares this against a fresh evaluation of the seed builder

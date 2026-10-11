@@ -19,7 +19,8 @@ module Smith
             optimization_config: optimization_config,
             orchestrator_config: orchestrator_config,
             fanout_config: fanout_config,
-            retry_config: retry_config
+            retry_config: retry_config,
+            await_config: await_config
           }
         end
 
@@ -59,6 +60,19 @@ module Smith
         def fanout_config
           branches = transition.fanout_config&.fetch(:branches, nil)
           { branches: own_hash(branches) }.freeze if branches
+        end
+
+        # The wait's kind, event, context key and timeout (`:callable` when
+        # the timeout is computed from the context); the block is not shown.
+        def await_config
+          config = transition.await_config
+          return unless config
+
+          timeout = config.fetch(:timeout)
+          {
+            kind: config.fetch(:kind), event: own(config[:event]), into: config[:into],
+            timeout: timeout.respond_to?(:call) ? :callable : timeout
+          }.compact.freeze
         end
 
         def retry_config

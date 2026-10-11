@@ -121,6 +121,20 @@ module Smith
           age_from_payload_updated_at(payload, Time.now.utc)
         end
 
+        # Delivers `event` to the run stored under `key` (see
+        # Workflow#resume!) and stores the result with the version check.
+        # Returns `:resumed`, or `:stale` when no run is stored or it does not
+        # await this event and token.
+        def resume!(key, event:, token:, payload:, adapter: Smith.persistence_adapter)
+          stored_wait_call(key, adapter:, done: :resumed) { |workflow| workflow.resume!(event:, token:, payload:) }
+        end
+
+        # Ends the stored run's wait if its deadline has passed at `now` (see
+        # Workflow#expire_wait!). The host's scheduler decides when to call it.
+        def expire_wait!(key, token:, now: Time.now.utc, adapter: Smith.persistence_adapter)
+          stored_wait_call(key, adapter:, done: :expired) { |workflow| workflow.expire_wait!(token:, now:) }
+        end
+
         def run_persisted!(key: nil, context: {}, adapter: Smith.persistence_adapter, clear: :done, on_step: nil, **kwargs)
           clear_policy = normalize_clear_policy(clear)
           resolved_key = resolved_persistence_key(key:, context:)
@@ -132,6 +146,16 @@ module Smith
         end
 
         private
+
+        def stored_wait_call(key, adapter:, done:)
+          resolved_key = explicit_persistence_key!(key)
+          workflow = restore(resolved_key, adapter:)
+          return :stale unless workflow
+
+          result = yield(workflow)
+          workflow.persist!(resolved_key, adapter:) if result == done
+          result
+        end
 
         def fetch_persisted_payload(key, adapter:)
           persistence_adapter!(adapter).fetch(key)
@@ -235,13 +259,13 @@ module Smith
       end
 
       def run_persisted!(key = nil, adapter: Smith.persistence_adapter, on_step: nil)
-        return build_run_result([]) if terminal?
+        return build_run_result([]) if nothing_to_advance?
 
         resolved_key = resolve_persistence_key!(key)
         steps = []
         persist!(resolved_key, adapter:)
 
-        until terminal?
+        until nothing_to_advance?
           ensure_transition_budget!
 
           if strict_idempotency?
@@ -266,17 +290,14 @@ module Smith
       end
 
       def advance_persisted!(key = nil, adapter: Smith.persistence_adapter, on_step: nil)
-        return if terminal?
+        return if nothing_to_advance?
 
         resolved_key = resolve_persistence_key!(key)
         ensure_transition_budget!
         mark_step_in_progress! if strict_idempotency?
         persist!(resolved_key, adapter:)
         step = advance!
-        clear_step_in_progress!
-        persist!(resolved_key, adapter:) if step
-        invoke_on_step_callback(step, on_step) if step
-        step
+        finish_persisted_advance!(step, resolved_key, adapter, on_step)
       rescue StandardError
         clear_pre_step_marker!(resolved_key, adapter:) if defined?(resolved_key) && resolved_key
         raise
@@ -314,6 +335,14 @@ module Smith
       end
 
       private
+
+      # A step, or the wait the step entered, is stored.
+      def finish_persisted_advance!(step, key, adapter, on_step)
+        clear_step_in_progress!
+        persist!(key, adapter:) if step || waiting?
+        invoke_on_step_callback(step, on_step) if step
+        step
+      end
 
       def strict_idempotency?
         self.class.idempotency_mode == :strict

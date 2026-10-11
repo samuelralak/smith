@@ -123,7 +123,7 @@ module Smith
 
       def compute_wall_clock_deadline
         limit = self.class.budget&.dig(:wall_clock)
-        own_deadline = limit ? Time.iso8601(@created_at) + limit : nil
+        own_deadline = limit ? active_deadline(limit) : nil
 
         return own_deadline unless @inherited_deadline
         return @inherited_deadline unless own_deadline

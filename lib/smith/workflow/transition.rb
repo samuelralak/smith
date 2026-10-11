@@ -8,14 +8,51 @@ module Smith
       attr_reader :name, :from, :to, :agent_name, :agent_opts, :success_transition, :failure_transition,
                   :router_config, :workflow_class, :optimization_config, :orchestrator_config,
                   :fanout_config, :retry_config, :deterministic_block, :deterministic_kind,
-                  :deterministic_routes, :deterministic_fallthrough
+                  :deterministic_routes, :deterministic_fallthrough, :await_config, :timeout_transition
 
       def initialize(name, from:, to:, &)
         @name = own_identifier(name)
         @from = own_identifier(from, allow_nil: true)
         @to = own_identifier(to)
         instance_eval(&) if block_given?
+        validate_timeout_route!
       end
+
+      # Waits, bounded by a required timeout, for an event the host delivers
+      # with `Workflow.resume!`, writing its payload to the context key
+      # `into:`. The optional block runs on entry with an AwaitStep and may
+      # send the request the event answers, or finish at once with
+      # `resolve!`. `timeout:` is seconds, or a callable of the context
+      # returning seconds; past it, `expire_wait!` takes `on_timeout`.
+      def await(event, into:, timeout:, &block)
+        validate_execution_primitive_conflict!("await")
+        raise WorkflowError, "await into: must be a Symbol context key" unless into.is_a?(Symbol)
+
+        @await_config = {
+          kind: :await, event: Identifier.normalize(event, label: "await event"), into:,
+          timeout: wait_seconds!(timeout, "await timeout:"), block:
+        }.freeze
+        commit_execution_primitive!("await")
+      end
+
+      # Continues to `to:` no earlier than `seconds` after the step is
+      # entered (seconds, or a callable of the context returning seconds),
+      # when the host calls `expire_wait!`.
+      def delay(seconds)
+        validate_execution_primitive_conflict!("delay")
+        @await_config = { kind: :delay, event: nil, into: nil, timeout: wait_seconds!(seconds, "delay"), block: nil }
+                        .freeze
+        commit_execution_primitive!("delay")
+      end
+
+      # The transition an `await` takes when its deadline passes.
+      def on_timeout(transition_name)
+        @timeout_transition = own_identifier(transition_name)
+      end
+
+      def awaits? = !@await_config.nil?
+
+      def delay? = @await_config&.fetch(:kind) == :delay
 
       def execute(agent_name, **opts)
         validate_execution_primitive_conflict!("execute")
@@ -205,6 +242,20 @@ module Smith
       end
 
       private
+
+      def wait_seconds!(value, label)
+        return value if value.respond_to?(:call)
+        return value if (value.is_a?(Integer) || (value.is_a?(Float) && value.finite?)) && value.positive?
+
+        raise WorkflowError, "#{label} must be a positive number of seconds or a callable returning one"
+      end
+
+      def validate_timeout_route!
+        return unless @timeout_transition
+        return if @await_config && !delay?
+
+        raise WorkflowError, "on_timeout requires an await step"
+      end
 
       def own_identifier(identifier, allow_nil: false)
         Identifier.normalize(identifier, label: "workflow identifier", allow_nil:)

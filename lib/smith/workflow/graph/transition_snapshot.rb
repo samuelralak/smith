@@ -29,6 +29,7 @@ module Smith
         option :parallel_count, default: proc {}
         option :success_transition, default: proc {}
         option :failure_transition, default: proc {}
+        option :timeout_transition, default: proc {}
         option :routes, default: proc {}
         option :fallback, default: proc {}
         option :deterministic_routes, default: proc {}
@@ -38,6 +39,7 @@ module Smith
         option :optimization, default: proc {}
         option :orchestration, default: proc {}
         option :retry_policy, default: proc {}
+        option :wait, default: proc {}
 
         def self.from_transition(transition, workflow_class: nil)
           new(**attributes_for(transition, workflow_class: workflow_class))
@@ -57,6 +59,7 @@ module Smith
           {
             success_transition: transition.success_transition,
             failure_transition: transition.failure_transition,
+            timeout_transition: transition.timeout_transition,
             routes: transition.router_config&.fetch(:routes, nil),
             fallback: transition.router_config&.fetch(:fallback, nil),
             deterministic_routes: transition.deterministic_routes,
@@ -70,7 +73,8 @@ module Smith
             fanout: FanoutContract.from_transition(transition, workflow_class:),
             optimization: OptimizationContract.from_transition(transition, workflow_class:),
             orchestration: OrchestrationContract.from_transition(transition, workflow_class:),
-            retry_policy: retry_policy_for(transition)
+            retry_policy: retry_policy_for(transition),
+            wait: transition.await_config
           }
         end
 
@@ -90,6 +94,8 @@ module Smith
         end
 
         def self.kind_for(transition)
+          return transition.await_config.fetch(:kind) if transition.awaits?
+
           kind = KINDS.find { |_name, predicate| transition.public_send(predicate) }
           return kind.first if kind
           return :agent if transition.agent_name
@@ -98,24 +104,7 @@ module Smith
         end
 
         def to_h
-          {
-            name: name,
-            from: from,
-            to: to,
-            kind: kind,
-            parallel_count: parallel_count,
-            success_transition: success_transition,
-            failure_transition: failure_transition,
-            routes: routes,
-            fallback: fallback,
-            deterministic_routes: deterministic_routes,
-            deterministic_fallthrough: deterministic_fallthrough,
-            fanout_branches: fanout_branches,
-            fanout: fanout,
-            optimization: optimization,
-            orchestration: orchestration,
-            retry_policy: retry_policy
-          }.compact
+          self.class.dry_initializer.attributes(self).compact
         end
       end
     end

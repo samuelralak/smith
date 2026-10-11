@@ -184,6 +184,21 @@ module Smith
     end
   end
 
+  # An `await` step passed its deadline before `resume!` delivered its
+  # event, and the transition declares no `on_timeout` route. It takes the
+  # failure path (`on_failure`, or a raise) and is never retried.
+  class WaitTimedOut < WorkflowError
+    attr_reader :transition, :event, :deadline_at
+
+    def initialize(transition:, event:, deadline_at:)
+      @transition = transition
+      @event = event
+      @deadline_at = deadline_at
+      super("await #{DiagnosticText.capture(event.to_s, max_bytes: 256)} on transition " \
+            "#{DiagnosticText.capture(transition.to_s, max_bytes: 256)} passed its deadline #{deadline_at}")
+    end
+  end
+
   # A `compute` or `run` step that declares `routes:` finished without
   # calling `route_to`, declares no `on_success`, and did not opt into
   # `fallthrough: true`. Without this error the run would silently take the

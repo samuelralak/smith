@@ -14,6 +14,7 @@ module Smith
           transition.nested?,
           transition.optimized?,
           transition.orchestrated?,
+          transition.awaits?,
           transition.success_transition
         ].any?
       end

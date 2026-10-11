@@ -38,6 +38,8 @@ module Smith
         @pending_agent_execution = nil
         @pending_evaluations = nil
         output = with_scoped_artifacts { run_with_retry_policy(transition) }
+        return output if wait_pending?(output)
+
         StepCompletion.instance_method(:complete_step).bind_call(self, transition, output)
       end
 
@@ -48,6 +50,7 @@ module Smith
       end
 
       def run_standard_guarded_step(transition)
+        return execute_await_step(transition) if transition.awaits?
         return dispatch_step(transition) if transition.deterministic?
         return run_guarded_fanout_step(transition) if transition.fanout?
 

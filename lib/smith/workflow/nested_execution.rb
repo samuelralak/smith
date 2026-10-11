@@ -11,6 +11,7 @@ module Smith
         check_deadline!
         child = build_child_workflow(transition.workflow_class)
         child_result = run_child_workflow(child)
+        reject_waiting_child!(child, child_result)
         handle_child_result(child_result)
       end
 
@@ -23,6 +24,15 @@ module Smith
       rescue StandardError
         roll_up_child_totals(raised_child_usage(child))
         raise
+      end
+
+      # An in-process child cannot be left waiting inside its parent's step:
+      # its usage is kept, and the parent's step fails.
+      def reject_waiting_child!(child, child_result)
+        return unless child.waiting?
+
+        roll_up_child_totals(child_result)
+        raise WorkflowError, "a nested workflow reached an await or delay step; an in-process child cannot wait"
       end
 
       RaisedChildUsage = Struct.new(:usage_entries, :total_cost, :total_tokens)

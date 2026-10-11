@@ -471,7 +471,7 @@ Today that means:
 | Evaluator-Optimizer | Yes | `optimize` | Bounded refinement inside one transition using structured evaluator output. |
 | Deterministic repair | Not native | Handwritten `compute` / `run` when exact semantics are owned by the workflow author. Deterministic route targets can be declared with `routes: [...]`. | No first-class repair contract or persisted repair counts yet. |
 | Guarded state re-entry | Not native | Handwritten `compute` / `run` may declare and route to named transitions with `routes: [...]`. | No Smith-owned entry-count ledger, re-entry guard contract, or mutation policy yet. |
-| Polling / wait | No | Host queue/timer plus Smith persistence helpers. | Smith must not model durable polling with sleeps, busy-waits, or `max_transitions` cycling. |
+| Wait for an event or a time | Yes | `await`, `delay` | Bounded by a required timeout; Smith records the wait and its deadline. Delivery (`resume!`), expiry scheduling (`expire_wait!`) and wake-up stay with the host. Smith must not model durable polling with sleeps, busy-waits, or `max_transitions` cycling. |
 
 Do not hide a durable wait or unbounded repair policy inside `compute` / `run`.
 Those primitives are synchronous deterministic steps inside the current workflow
@@ -479,7 +479,7 @@ runner. They are appropriate for local verification, normalization, failure
 classification, explicit routing, and bounded retry-adjacent checks; they are
 not a durable scheduler.
 
-If a host or compiler wants deterministic repair, polling/wait, or guarded
+If a host or compiler wants deterministic repair, polling, or guarded
 state re-entry as reusable graph contracts, the contract must be added explicitly
 before code generation claims executability. Deterministic `routes: [...]`
 annotations make handwritten route targets inspectable, but they do not by

@@ -28,6 +28,8 @@ module Smith
     include ArtifactIntegration
     include DataVolumePolicy
     include DeadlineEnforcement
+    include ActiveClock
+    include WaitExecution
     include Execution
 
     DEFAULT_MAX_TRANSITIONS = 100
@@ -44,6 +46,10 @@ module Smith
       # context reads the same live and after a checkpoint round trip.
       @context = ContextKeys.normalize_context(context)
       @step_count = 0
+      # The wait the run is in (a persisted Hash of Strings), and the seconds
+      # its steps have spent running, which `wall_clock` budgets bound.
+      @awaiting = nil
+      @active_seconds = 0.0
       # The run's own identity, persisted with it: artifacts are scoped to
       # it and idempotency keys derive from it, so it exists from the start
       # and is in the checkpoint written before the first step.
@@ -113,6 +119,8 @@ module Smith
     end
 
     def advance!
+      return if waiting?
+
       advance_claim = SplitStepPersistence.instance_method(:claim_split_step_advance!).bind_call(self)
       ensure_transition_budget!
       @step_work_started = false
@@ -127,10 +135,7 @@ module Smith
                     else
                       execute_step(transition)
                     end
-      @step_count += 1
-      @updated_at = Time.now.utc.iso8601(6)
-      record_step_snapshot(step_result)
-      step_result
+      count_step(step_result)
     rescue UnresolvedTransitionError => e
       step_result = GuardrailIntegration
                     .instance_method(:handle_unresolved_transition_failure)
@@ -144,7 +149,7 @@ module Smith
     def run!
       SplitStepPersistence.instance_method(:ensure_split_step_execution_allowed!).bind_call(self)
       steps = []
-      until terminal?
+      until nothing_to_advance?
         step = advance!
         steps << step if step
       end
@@ -186,6 +191,18 @@ module Smith
     end
 
     private
+
+    # Entering a wait is not a step: nothing counts, and advance! returns nil.
+    def count_step(step_result)
+      @updated_at = Time.now.utc.iso8601(6)
+      return if wait_pending?(step_result)
+
+      @step_count += 1
+      record_step_snapshot(step_result)
+      step_result
+    end
+
+    def nothing_to_advance? = terminal? || waiting?
 
     def initial_persist_auto_seed
       manager = self.class.context_manager

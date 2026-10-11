@@ -4,6 +4,7 @@ module Smith
   class Workflow
     class Graph
       class TransitionDiagnostics
+        TARGET_ATTRIBUTES = %i[success_transition failure_transition timeout_transition].freeze
         attr_reader :graph
 
         def initialize(graph)
@@ -13,13 +14,13 @@ module Smith
         def to_a
           graph.transitions.values.flat_map do |transition|
             [
-              transition_target_diagnostic(transition, :success_transition, transition.success_transition),
-              transition_target_diagnostic(transition, :failure_transition, transition.failure_transition),
+              *TARGET_ATTRIBUTES.map { transition_target_diagnostic(transition, _1, transition.public_send(_1)) },
               *router_target_diagnostics(transition),
               *deterministic_route_diagnostics(transition),
               *target_state_mismatch_diagnostics(transition),
               branch_limit_diagnostic(transition),
-              RetryPolicyDiagnostic.new(transition:).call
+              RetryPolicyDiagnostic.new(transition:).call,
+              AwaitTimeoutRouteDiagnostic.new(transition:).call
             ].compact
           end
         end
@@ -63,8 +64,10 @@ module Smith
             transition.failure_transition,
             expected_state: transition.from
           )
+          timeout = target_state_mismatch_diagnostic(transition, transition.timeout_transition,
+                                                     expected_state: transition.from)
 
-          [*success, failure].compact
+          [*success, failure, timeout].compact
         end
 
         def branch_limit_diagnostic(transition)

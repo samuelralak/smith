@@ -745,9 +745,8 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
         end
       end
 
+      # A wall_clock of 0 leaves the step no active time at all.
       workflow = klass.new
-      # Force created_at to the past so deadline is already exceeded
-      workflow.instance_variable_set(:@created_at, (Time.now.utc - 10).iso8601)
 
       result = workflow.run!
 

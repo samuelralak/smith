@@ -238,6 +238,15 @@ module Smith
           (@transitions || {})[name]
         end
 
+        # The transition whose name has this String form, for a name read
+        # back from a payload. `O(T)`.
+        def transition_named(name)
+          return if name.nil?
+
+          find_transition(name) ||
+            (@transitions || {}).each_value.find { |transition| transition.name.to_s == name.to_s }
+        end
+
         # A state this class can hold: declared with `state` (or
         # `initial_state`), or named by any transition's `from:` or `to:`.
         # Matched by String form, so a payload's "prepared" finds a state

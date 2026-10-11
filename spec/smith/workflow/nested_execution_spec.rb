@@ -333,8 +333,9 @@ RSpec.describe "Smith::Workflow nested execution" do
       end
     end
 
+    # The parent's earlier steps already spent its whole wall_clock budget.
     workflow = parent_class.new
-    workflow.instance_variable_set(:@created_at, (Time.now.utc - 120).iso8601)
+    workflow.instance_variable_set(:@active_seconds, 120.0)
 
     result = workflow.run!
 

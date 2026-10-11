@@ -55,6 +55,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   `cache_write_tokens:` and `mode:` (defaults 0, 0, `:sync`) and treats a count
   that is not a non-negative Integer as 0, so it still never raises. Batch mode
   is priced only through `compute_cost(mode: :batch)` until batch steps ship.
+- Durable, bounded waits. `await event, into:, timeout:` waits for an event the
+  host delivers with `Workflow.resume!(key, event:, token:, payload:)`, which
+  writes the payload to the context key `into:` and completes the step;
+  `delay seconds` waits for the time alone. `timeout:` is required (seconds,
+  or a callable of the context), and `expire_wait!(key, token:, now:)` past
+  the deadline takes `on_timeout`, `on_failure` with the new
+  `Smith::WaitTimedOut`, or raises. An await's optional block runs on entry
+  with a `Smith::Workflow::AwaitStep` (`await_token`, `read_context`,
+  `idempotency_key`, `resolve!`). Entering a wait is not a step: `advance!`
+  returns nil, `run!` and `run_persisted!` stop, and step counts,
+  `max_transitions` and `wall_clock` do not move. `waiting?` and `awaiting` (a
+  `Smith::Workflow::Wait`) let the host index waits and schedule expiry; Smith
+  never polls, sleeps or wakes a run. Both class methods store the run with the
+  version check and return `:resumed`, `:expired`, `:not_due` or `:stale`.
+  Graph inspection shows `kind: :await` or `:delay`, the wait, and
+  `timeout_transition`, reaches the timeout route, and validation reports an
+  await with no timeout route (`:await_without_timeout_route`) or an
+  unresolved one. Split-step persistence refuses wait steps, and an in-process
+  nested workflow that reaches a wait fails its parent's step.
+  `Workflow.transition_named` finds a transition by the String form of its
+  name.
 - Idempotency keys for requests a step sends outside the system.
   `step.idempotency_key(scope = nil)` in `compute` and `run` steps,
   `idempotency_key(scope)` inside a `Smith::Tool`'s `perform`, and
@@ -144,6 +165,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   Responses-path costs fall unless the catalog sets it. Cache counts that are
   not Integers are ignored, and counts larger than the reported input are
   capped to it, so the reported input total is kept.
+- **Breaking:** a workflow's `wall_clock` budget bounds the time its steps
+  spend running, not the time since `created_at`. Each step gets what is left
+  of the budget after the run's persisted `active_seconds`, and adds its own
+  running time when it ends. Time spent waiting, or between steps that a host
+  advances from a queue, no longer counts, so a run that used to fail its
+  deadline while idle now continues. Payloads gain `awaiting` and
+  `active_seconds`; a payload without them restores as not waiting with no
+  active time spent.
 - A workflow's execution namespace (the persisted UUID that scopes its
   artifacts and now its idempotency keys) is assigned when the workflow is
   built instead of on first artifact use, so `to_state` always carries it,

@@ -17,7 +17,7 @@ module Smith
         end
 
         def for(transition)
-          successful_successors(transition) + failure_successors(transition)
+          successful_successors(transition) + failure_successors(transition) + timeout_successors(transition)
         end
 
         def failure_control_marker(transition)
@@ -40,6 +40,13 @@ module Smith
 
           successor = graph.first_transition_from(target.to)
           successor ? [successor] : []
+        end
+
+        # An await that times out continues at its `on_timeout` transition,
+        # which starts from the await's own state.
+        def timeout_successors(transition)
+          target = executable_target(transition.timeout_transition, expected_state: transition.from)
+          target ? [target] : []
         end
 
         def successful_target_names(transition)

@@ -36,6 +36,7 @@ module Smith
           {
             success_transition: project(transition.success_transition),
             failure_transition: project(transition.failure_transition),
+            timeout_transition: project(transition.timeout_transition),
             deterministic_routes: project_array(transition.deterministic_routes),
             deterministic_fallthrough: transition.deterministic_fallthrough == true
           }

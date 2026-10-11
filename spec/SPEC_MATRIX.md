@@ -1228,6 +1228,8 @@ Documented contracts covered:
   - `context`
   - `budget_consumed`
   - `step_count`
+  - `awaiting` (the run's wait, or nil)
+  - `active_seconds` (time the run's steps have spent running, which a workflow `wall_clock` bounds)
   - `execution_namespace`
   - `created_at`
   - `updated_at`
@@ -1248,6 +1250,7 @@ Documented contracts covered:
 - resumed workflows continue reserving and reconciling budget from restored ledger state
 - persisted `next_transition_name` preserves the selected resume path across restore
 - invalid persisted seed-prefix lengths fail closed; legacy state defaults the boundary to zero
+- a restored run's step gets what is left of its `wall_clock` after its persisted `active_seconds`; the time since `created_at` does not count, and a run that has spent its budget fails its next step with `Smith::DeadlineExceeded`
 - persisted `total_cost` and `total_tokens` preserve cumulative best-known workflow totals across restore
 - optional `definition_digest` binds persisted state to a host-supplied executable workflow definition
 - JSON-serializable state payload
@@ -1677,6 +1680,27 @@ Documented contracts covered:
 - composite effects accept entries with and without details, total cache tokens, and reject invalid details (negative or Float counts, an empty or over-256-byte response fact, an unknown mode)
 - the OpenAI Responses adapter parses a body end to end, reporting input with cached and cache-written input taken out, capping cache counts at the reported input and ignoring non-Integer counts, so the provider's total is kept
 - the review fixes above are mutation-verified against the full suite
+
+### `spec/smith/workflow/wait_spec.rb`
+
+Purpose:
+
+- asserts that `await` and `delay` steps wait durably and boundedly, and that `resume!` and `expire_wait!` complete them exactly once
+
+Architecture basis:
+
+- Section 5.3, State Serialization
+- Section 4.6, Budgets and Cost
+
+Documented contracts covered:
+
+- the DSL requires a Symbol `into:` and a positive timeout or callable, takes `on_timeout` only on an await, and allows one execution body per transition
+- entering a wait stops the run without counting a step or touching `max_transitions`, stores the wait (kind, event, token, transition, into, entered and deadline times), runs the block again under the same token after a crash in it, finishes at once when the block resolves, and computes a callable timeout from the context, refusing a non-positive one
+- `resume!` writes the normalized payload to `into:`, completes the step (StepCompleted, one step counted, the session untouched) and lets the run continue; it is `:stale` and changes nothing for another event or token, a missing run, or a run that is not waiting; it refuses a payload that is not JSON-shaped or a key outside an explicit persist list and keeps the run waiting; a racing store fails the version check
+- `expire_wait!` is `:not_due` before the deadline and `:stale` for another token; past it, an await takes `on_timeout`, or `on_failure` with the non-retryable `Smith::WaitTimedOut`, or raises and keeps the run waiting; a delay continues to its `to:` and is never resumed by an event
+- a wait round-trips and restores in strict mode as a checkpoint; a malformed wait or negative `active_seconds` raises `SerializationError`, and a wait on an undeclared transition or one of another kind raises `UnknownTransitionOnRestore`; time spent waiting does not count toward `wall_clock`
+- an in-process nested workflow that reaches a wait fails its parent's step; split-step persistence refuses an await step and any step while the run waits
+- graph inspection shows the wait and its timeout route, reaches the timeout target, and validation reports an await without a timeout route and an unresolved `on_timeout`
 
 ### `spec/smith/workflow/idempotency_key_spec.rb`
 

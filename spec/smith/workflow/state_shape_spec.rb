@@ -19,7 +19,8 @@ RSpec.describe "Smith::Workflow state serialization shape" do
 
     expect(state.keys).to eq(
       %i[
-        class state persistence_key context budget_consumed step_count execution_namespace created_at updated_at
+        class state persistence_key context budget_consumed step_count awaiting active_seconds execution_namespace
+        created_at updated_at
         next_transition_name session_messages total_cost total_tokens tool_results outcome usage_entries last_output
         last_agent_execution last_failed_step persistence_version schema_version definition_digest seed_digest seed_message_count
         step_in_progress persisted_keys
@@ -113,26 +114,29 @@ RSpec.describe "Smith::Workflow state serialization shape" do
       end
     end
 
-    it "keeps a restored wall_clock deadline at the live instant instead of up to a second early" do
-      created = Time.utc(2026, 9, 24, 12, 0, 0) + Rational(9, 10)
-      allow(Time).to receive(:now).and_return(created)
-      workflow = deadline_workflow.new
-      restored = deadline_workflow.from_state(JSON.parse(JSON.generate(workflow.to_state)))
-
-      allow(Time).to receive(:now).and_return(created + Rational(1, 2))
-      result = restored.run!
-
-      expect(workflow.to_state[:created_at]).to eq("2026-09-24T12:00:00.900000Z")
-      expect(restored.send(:wall_clock_deadline)).to eq(created + 1)
-      expect(result.state).to eq(:done)
-    end
-
-    it "still reads a created_at persisted with whole seconds" do
-      state = deadline_workflow.new.to_state.merge(created_at: "2026-09-24T12:00:00Z")
-
+    it "gives a restored run's step what is left of its wall_clock after the active time it already spent" do
+      started = Time.utc(2026, 9, 24, 12, 0, 0) + Rational(9, 10)
+      state = deadline_workflow.new.to_state.merge(active_seconds: 0.75)
       restored = deadline_workflow.from_state(JSON.parse(JSON.generate(state)))
 
-      expect(restored.send(:wall_clock_deadline)).to eq(Time.utc(2026, 9, 24, 12, 0, 1))
+      allow(Time).to receive(:now).and_return(started)
+      result = restored.run!
+
+      expect(restored.send(:wall_clock_deadline)).to eq(started + 0.25)
+      expect(result.state).to eq(:done)
+      expect(restored.to_state[:active_seconds]).to be > 0.75
+    end
+
+    it "does not count the time since created_at, only the time steps spend running" do
+      state = deadline_workflow.new.to_state.merge(created_at: "2026-01-01T00:00:00Z")
+      restored = deadline_workflow.from_state(JSON.parse(JSON.generate(state)))
+
+      expect(restored.run!.state).to eq(:done)
+
+      spent = deadline_workflow.from_state(JSON.parse(JSON.generate(state.merge(active_seconds: 1.0))))
+      result = spent.run!
+      expect(result.state).to eq(:failed)
+      expect(result.last_error).to be_a(Smith::DeadlineExceeded)
     end
 
     it "writes updated_at with the microsecond precision of created_at, so it never precedes it" do

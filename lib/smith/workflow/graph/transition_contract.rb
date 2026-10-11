@@ -23,6 +23,8 @@ module Smith
         option :orchestrator_config, default: proc {}
         option :fanout_config, default: proc {}
         option :retry_config, default: proc {}
+        option :await_config, default: proc {}
+        option :timeout_transition, default: proc {}
         option :deterministic_kind, default: proc {}
         option :deterministic_routes, default: proc {}
         option :deterministic_fallthrough, default: proc { false }
@@ -42,6 +44,8 @@ module Smith
         def nested? = !workflow_class.nil?
         def routed? = !router_config.nil?
         def parallel? = parallel
+        def awaits? = !await_config.nil?
+        def delay? = await_config&.fetch(:kind) == :delay
       end
     end
   end

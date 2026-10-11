@@ -10,6 +10,7 @@ module Smith
 
       def with_step_context(transition, &block)
         ThreadContextSnapshot.new.around do
+          start_active_clock!
           setup_step_context
           install_step_attribution(transition)
           install_step_idempotency_scope(transition)
@@ -19,6 +20,7 @@ module Smith
           GuardrailIntegration.instance_method(:handle_step_failure).bind_call(self, transition, e)
         ensure
           teardown_step_context
+          stop_active_clock!
         end
       ensure
         flush_step_failure_emission
