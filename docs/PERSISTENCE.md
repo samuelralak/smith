@@ -657,6 +657,9 @@ sleeping or polling:
 
 ```ruby
 class DocumentReview < Smith::Workflow
+  initial_state :requested
+  state :failed
+
   transition :fetch_source, from: :requested, to: :fetched do
     await :source_ready, into: :source, timeout: 6 * 3600 do |step|
       reply = SourceClient.request(ref: step.read_context(:source_ref), idempotency_key: step.await_token)
@@ -671,47 +674,75 @@ end
 ```
 
 - `await event, into:, timeout:` waits for `event`. `into:` is the Symbol
-  context key its payload is written to (an explicit `persist` list must allow
-  it). `timeout:` is required: positive seconds, or a callable that receives
-  the context and returns them. `delay seconds` waits for the time alone and
-  then continues to its `to:` state. Either is the transition's one execution
-  body.
+  context key its payload is written to; an explicit `persist` list must allow
+  it, which is checked before the block runs. `timeout:` is required: positive
+  seconds, or a callable that receives the context and returns them. An await
+  must also declare where its timeout goes, `on_timeout` or `on_failure`; one
+  with neither is refused when the class is defined. `delay seconds` waits for
+  the time alone and then continues to its `to:` state. Either is the
+  transition's one execution body.
 - The optional block runs when the step is entered, with a step object that
   reads the context (`read_context`, `context`), names the wait (`await_token`,
   the key whatever the block sends must carry), gives other keys
-  (`idempotency_key`), and may finish at once with `resolve!(payload)`. It
-  cannot write the context. It runs again if the process dies before the wait
-  is stored, under the same token, so what it sends must be idempotent by that
-  token. `retry_on` retries the block, never a timeout.
+  (`idempotency_key`), and may finish at once with `resolve!(payload)`, which
+  takes a copy of the payload. It cannot write the context. In lax mode it runs
+  again if the process dies before the wait is stored, under the same token, so
+  what it sends must be idempotent by that token; in strict mode the restore of
+  such a run raises `Smith::StepInProgressOnRestore` instead. `retry_on`
+  retries the block, never a timeout.
 - Entering a wait is not a step. `advance!` returns nil, `run!`,
   `run_persisted!` and `advance_persisted!` stop with the wait stored, and the
-  step count, `max_transitions` and `wall_clock` do not move. `waiting?` and
-  `awaiting` (a `Smith::Workflow::Wait` with `kind`, `event`, `token`,
-  `transition`, `into`, `entered_at`, `deadline_at`) let the host index the
-  wait. While a run waits, `advance!` does nothing.
+  step count and `max_transitions` do not move; `wall_clock` is charged only
+  for the time the block ran. `waiting?` and `awaiting` (a
+  `Smith::Workflow::Wait` with `kind`, `event`, `token`, `transition`, `into`,
+  `entered_at`, `deadline_at`; the event and key as the transition declares
+  them) let the host index the wait, and `pending_transition_name` is the
+  awaited transition. While a run waits, `advance!` does nothing and the run is
+  never terminal, so no `clear:` policy deletes it.
 - `Workflow.resume!(key, event:, token:, payload:, adapter:)` restores the run,
   checks that it awaits that event under that token, writes the payload to
   `into:` (bounded and JSON-shaped like a session message, with the context's
   key shape; it never enters the session), completes the step, and stores the
-  run with the version check. It returns `:resumed`, or `:stale` and changes
-  nothing when no such run or wait exists. A concurrent resume or expiry fails
-  the second store with `Smith::PersistenceVersionConflict`. The instance
-  method `resume!(event:, token:, payload:)` does the same without storing.
+  run with the version check. It returns `:resumed`, `:failed` when the
+  completion took the failure path, `:missing` when no run is stored, or
+  `:stale`, changing nothing, for any other event or token.
+- A reply can arrive before its wait is stored, when the block's request is
+  answered at once. If the stored run stands at that await and the token is
+  the one it is entering the wait with, `resume!` completes the step at once
+  (in strict mode too, where the run is caught mid-step) and the process still
+  entering the wait loses its next store with
+  `Smith::PersistenceVersionConflict`; restoring the run shows it past the
+  await. Any other delivery to a strict run caught mid-step raises
+  `Smith::StepInProgressOnRestore`.
 - `Workflow.expire_wait!(key, token:, now:, adapter:)` ends a wait whose
-  `deadline_at` has passed at `now`: a `delay` continues to its `to:`, an
-  `await` takes `on_timeout`, or else the failure path with
-  `Smith::WaitTimedOut` (a `WorkflowError`, never retried), so `on_failure`
-  applies or it raises and the run stays waiting. It returns `:expired`,
-  `:not_due` or `:stale`. The host's scheduler decides when to call it; Smith
-  never wakes a run. Graph validation reports an `await` with neither
-  `on_timeout` nor `on_failure` as `:await_without_timeout_route`.
+  `deadline_at` has passed at `now` (a Time or an ISO 8601 String): a `delay`
+  continues to its `to:`, an `await` takes `on_timeout` (a `StepCompleted`
+  whose `to` is the await's own state) or else `on_failure` with
+  `Smith::WaitTimedOut`, which is never retried and restores as itself with the
+  wait it names. It returns `:expired`, `:not_due`, `:missing` or `:stale`. The
+  host's scheduler decides when to call it; Smith never wakes a run.
+- Only one completion of a wait wins. On one instance, a completion claims the
+  wait, so a delivery and an expiry racing there cannot both complete it. Across
+  processes, the class methods need an adapter with `store_versioned` (Memory,
+  Redis, Active Record), so the second store fails with
+  `Smith::PersistenceVersionConflict`; they refuse adapters without it.
 - The completion, by `resume!` or `expire_wait!`, is the step: it has the
-  step's position, so the token and idempotency keys match the entry's, and it
-  emits `StepCompleted` (or `StepFailed`). In strict mode a waiting run is a
+  step's position, so the token matches the entry's, and it emits
+  `StepCompleted` (or `StepFailed`). In strict mode a waiting run is a
   checkpoint, not a step in progress, and restores cleanly.
+- A stored wait is checked on restore: one that is malformed, whose deadline
+  precedes its entry or has no time zone, or that sits beside a pending
+  transition raises `Smith::SerializationError`; one whose transition the
+  class no longer declares exactly (kind, event, `into:`) or that does not
+  start from the run's state raises `Smith::UnknownTransitionOnRestore`. A
+  `migrate_from` that renames such things must rewrite `awaiting` too.
+- A wait that would outlast the store's persistence TTL is refused when it is
+  entered, before the block runs. `stuck_for?` reports a waiting run as stuck
+  only once its deadline has passed by the threshold.
 - Not in 0.12: split-step persistence refuses to prepare an `await` or `delay`
   step, or any step while the run waits, and an in-process nested workflow
-  that reaches a wait fails its parent's step.
+  that reaches a wait fails its parent's step (runtime readiness reports
+  `:nested_workflow_waits`).
 
 ## Replay Safety: Idempotency Keys
 

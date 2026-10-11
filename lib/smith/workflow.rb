@@ -30,6 +30,7 @@ module Smith
     include DeadlineEnforcement
     include ActiveClock
     include StepIO
+    include WaitCompletion
     include WaitExecution
     include Execution
 
@@ -50,7 +51,10 @@ module Smith
       # The wait the run is in (a persisted Hash of Strings), and the seconds
       # its steps have spent running, which `wall_clock` budgets bound.
       @awaiting = nil
+      @wait_mutex = Mutex.new
+      @wait_claimed = false
       @active_seconds = 0.0
+      @active_step_started_at = nil
       # The run's own identity, persisted with it: artifacts are scoped to
       # it and idempotency keys derive from it, so it exists from the start
       # and is in the checkpoint written before the first step.
@@ -157,12 +161,16 @@ module Smith
       build_run_result(steps)
     end
 
+    # The awaited transition while the run waits.
     def pending_transition_name
+      return awaiting.transition if waiting?
+
       @next_transition_name || self.class.first_transition_from(@state)&.name
     end
 
+    # A waiting run is never terminal, whatever its state.
     def terminal?
-      !self.class.transition_from?(@state) && @next_transition_name.nil?
+      !waiting? && !self.class.transition_from?(@state) && @next_transition_name.nil?
     end
 
     def done?
@@ -441,6 +449,10 @@ Smith::Workflow::SplitStepPersistence::SubclassBoundary.protect_execution_path!(
   Smith::Workflow::ArtifactIntegration,
   Smith::Workflow::DataVolumePolicy,
   Smith::Workflow::DeadlineEnforcement,
+  Smith::Workflow::ActiveClock,
+  Smith::Workflow::StepIO,
+  Smith::Workflow::WaitCompletion,
+  Smith::Workflow::WaitExecution,
   Smith::Workflow::SplitStepPersistence::DefinitionBoundary,
   Smith::Workflow::SplitStepPersistence::ExecutionVerification,
   Smith::Workflow::SplitStepPersistence::ExecutionAuthorization,

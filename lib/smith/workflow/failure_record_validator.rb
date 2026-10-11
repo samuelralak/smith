@@ -23,6 +23,7 @@ module Smith
         "Smith::ProviderPermanentFailure" => "provider_permanent_failure",
         "Smith::BudgetExceeded" => "budget_exceeded",
         "Smith::GuardrailFailed" => "guardrail_failed",
+        "Smith::WaitTimedOut" => "wait_timed_out",
         "Smith::WorkflowError" => "workflow_error",
         "Smith::UnresolvedTransitionError" => "workflow_error",
         "Smith::Workflow::Composite::BranchFailure" => "workflow_error"
@@ -38,7 +39,7 @@ module Smith
         deterministic_step_failure tool_guardrail_failed tool_failure_notification_failed tool_capture_failed
         tool_outcome_uncertain tool_execution_not_admitted bounded_completion_error persisted_failure_invalid
         deadline_exceeded provider_permanent_failure budget_exceeded guardrail_failed agent_error workflow_error
-        other
+        wait_timed_out other
       ].freeze
       RETRY_FORBIDDEN_FAMILIES = %w[
         tool_capture_failed tool_failure_notification_failed tool_outcome_uncertain tool_execution_not_admitted
@@ -53,6 +54,7 @@ module Smith
           Smith::Workflow::Composite::BranchFailure.from_details(details)
         },
         "Smith::ProviderPermanentFailure" => ->(details) { Smith::ProviderPermanentFailure.from_details(details) },
+        "Smith::WaitTimedOut" => ->(details) { Smith::WaitTimedOut.from_details(details) },
         "Smith::BlankAgentOutputError" => lambda { |details|
           Smith::BlankAgentOutputError.from_details(details) unless details.nil?
         }

@@ -104,7 +104,24 @@ module Smith
             return false if fallback_age.nil? || fallback_age < threshold_seconds
           end
 
+          stuck_payload?(payload, now, threshold_seconds)
+        end
+
+        # A waiting run is not stuck until its deadline has passed by the
+        # threshold without the host expiring the wait; a run that waits is
+        # never terminal.
+        def stuck_payload?(payload, now, threshold_seconds)
+          wait_deadline = payload_wait_deadline(payload)
+          return (now - wait_deadline) > threshold_seconds if wait_deadline
+
           !terminal_in_payload?(payload)
+        end
+
+        def payload_wait_deadline(payload)
+          deadline = JSON.parse(payload).dig("awaiting", "deadline_at")
+          deadline && Time.iso8601(deadline)
+        rescue JSON::ParserError, ArgumentError, TypeError
+          nil
         end
 
         def heartbeat_age(persistence_key:, adapter: Smith.persistence_adapter)
@@ -147,14 +164,38 @@ module Smith
 
         private
 
-        def stored_wait_call(key, adapter:, done:)
+        # Exactly one completion of a wait must win, so the store must check
+        # versions. A run caught mid-step (strict mode) can still take an
+        # early delivery for the await it is entering; anything else about it
+        # is refused as an unfinished step.
+        def stored_wait_call(key, adapter:, done:, &)
           resolved_key = explicit_persistence_key!(key)
-          workflow = restore(resolved_key, adapter:)
-          return :stale unless workflow
+          store = persistence_adapter!(adapter)
+          unless Smith::PersistenceAdapters.supports?(store, :store_versioned)
+            raise WorkflowError, "resume! and expire_wait! need a persistence adapter with store_versioned"
+          end
 
+          payload = fetch_persisted_payload(resolved_key, adapter: store)
+          return :missing unless payload
+
+          stored_wait_result(JSON.parse(payload), resolved_key, store, done, &)
+        end
+
+        def stored_wait_result(state, key, store, done)
+          workflow, in_progress = restore_for_wait(state)
+          workflow.instance_variable_set(:@persistence_key, key)
           result = yield(workflow)
-          workflow.persist!(resolved_key, adapter:) if result == done
+          raise in_progress if in_progress && result != :resumed && result != :failed
+
+          workflow.clear_step_in_progress!
+          workflow.persist!(key, adapter: store) if [done, :failed].include?(result)
           result
+        end
+
+        def restore_for_wait(state)
+          [from_state(state), nil]
+        rescue Smith::StepInProgressOnRestore => e
+          [allocate.tap { |workflow| workflow.send(:restore_state, state, allow_step_in_progress: true) }, e]
         end
 
         def fetch_persisted_payload(key, adapter:)
@@ -263,6 +304,7 @@ module Smith
 
         resolved_key = resolve_persistence_key!(key)
         steps = []
+        mark_active_step_start!(true)
         persist!(resolved_key, adapter:)
 
         until nothing_to_advance?
@@ -270,6 +312,7 @@ module Smith
 
           if strict_idempotency?
             mark_step_in_progress!
+            mark_active_step_start!(true)
             persist!(resolved_key, adapter:)
           end
 
@@ -282,6 +325,7 @@ module Smith
           steps << step if step
 
           clear_step_in_progress!
+          mark_active_step_start!(!nothing_to_advance?)
           persist!(resolved_key, adapter:)
           invoke_on_step_callback(step, on_step) if step
         end
@@ -295,6 +339,7 @@ module Smith
         resolved_key = resolve_persistence_key!(key)
         ensure_transition_budget!
         mark_step_in_progress! if strict_idempotency?
+        mark_active_step_start!(true)
         persist!(resolved_key, adapter:)
         step = advance!
         finish_persisted_advance!(step, resolved_key, adapter, on_step)
@@ -336,10 +381,12 @@ module Smith
 
       private
 
-      # A step, or the wait the step entered, is stored.
+      # The step, or the wait it entered, is stored, and the mark of a step
+      # under way is cleared.
       def finish_persisted_advance!(step, key, adapter, on_step)
         clear_step_in_progress!
-        persist!(key, adapter:) if step || waiting?
+        mark_active_step_start!(false)
+        persist!(key, adapter:)
         invoke_on_step_callback(step, on_step) if step
         step
       end
@@ -353,6 +400,7 @@ module Smith
         return if step_work_started?
 
         clear_step_in_progress!
+        mark_active_step_start!(false)
         persist!(key, adapter:)
       end
 

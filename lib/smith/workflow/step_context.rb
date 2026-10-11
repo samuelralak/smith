@@ -50,12 +50,17 @@ module Smith
         end
       end
 
+      # A durable composite branch runs here, in its own restored instance:
+      # it starts from what is left of the run's wall_clock, and its running
+      # time is not added back to the run's active_seconds.
       def within_raw_step_context(&block)
         ThreadContextSnapshot.new.around do
+          start_active_clock!
           setup_step_context
           Thread.handle_interrupt(Object => :immediate, &block)
         ensure
           teardown_step_context
+          stop_active_clock!
         end
       end
 

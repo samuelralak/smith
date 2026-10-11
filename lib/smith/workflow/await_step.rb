@@ -31,8 +31,8 @@ module Smith
       def resolve!(payload)
         raise WorkflowError, "resolve! was already called" if @resolved
 
+        @payload = MessageValueNormalizer.new(payload, label: "wait payload").call
         @resolved = true
-        @payload = payload
         nil
       end
 

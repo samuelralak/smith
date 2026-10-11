@@ -188,14 +188,31 @@ module Smith
   # event, and the transition declares no `on_timeout` route. It takes the
   # failure path (`on_failure`, or a raise) and is never retried.
   class WaitTimedOut < WorkflowError
+    DETAIL_NAMES = %w[transition event deadline_at].freeze
+    private_constant :DETAIL_NAMES
+
     attr_reader :transition, :event, :deadline_at
 
-    def initialize(transition:, event:, deadline_at:)
-      @transition = transition
-      @event = event
-      @deadline_at = deadline_at
-      super("await #{DiagnosticText.capture(event.to_s, max_bytes: 256)} on transition " \
-            "#{DiagnosticText.capture(transition.to_s, max_bytes: 256)} passed its deadline #{deadline_at}")
+    def initialize(transition:, event:, deadline_at:, message: nil)
+      @transition = DiagnosticText.capture(transition.to_s, max_bytes: 256)
+      @event = DiagnosticText.capture(event.to_s, max_bytes: 256)
+      @deadline_at = DiagnosticText.capture(deadline_at.to_s, max_bytes: 64)
+      super(message || "await #{@event} on transition #{@transition} passed its deadline #{@deadline_at}")
+    end
+
+    # Kept with the failure record, so a restored run's error is still a
+    # WaitTimedOut that names its wait.
+    def details = { transition:, event:, deadline_at: }.freeze
+
+    def self.from_details(details, message: nil)
+      raise ArgumentError, "wait timeout details must be a Hash" unless details.is_a?(Hash)
+
+      values = details.to_h { |key, value| [key.to_s, value] }
+      unless values.keys.sort == DETAIL_NAMES.sort && values.values.all?(String)
+        raise ArgumentError, "wait timeout details are invalid"
+      end
+
+      new(transition: values["transition"], event: values["event"], deadline_at: values["deadline_at"], message:)
     end
   end
 

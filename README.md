@@ -117,7 +117,7 @@ For bounded dynamic delegation, use the separate Orchestrator-Worker pattern.
 | Evaluator-Optimizer | Executable | `optimize`, bounded by `max_rounds` plus structured evaluator output. |
 | Deterministic repair | Not first-class yet | Can be handwritten with `compute` / `run` only when the workflow author owns the exact guard, repair, revalidation, and exit policy. Deterministic steps may declare inspectable `routes: [...]`, but that is not a native repair-loop contract. |
 | Guarded state re-entry | Not first-class yet | `compute` / `run` can declare and route to named transitions with `routes: [...]`, but Smith does not yet own persisted entry counts, mutation policy, or safe re-entry contracts. |
-| Wait for an event or a time | Executable | `await` and `delay`, bounded by a required timeout. Smith records the wait and its deadline; delivering the event (`resume!`), scheduling the expiry (`expire_wait!`) and waking the run stay host-owned. Smith never polls, sleeps or busy-waits. |
+| Wait for an event or a time | Executable | `await` and `delay`, bounded by a required timeout and timeout route. Smith records the wait and its deadline; delivering the event (`resume!`), scheduling the expiry (`expire_wait!`) and waking the run stay host-owned. Smith never polls for an event or sleeps until a deadline. |
 
 ### Isolation
 
@@ -147,6 +147,8 @@ time to pass:
 
 ```ruby
 class DocumentReview < Smith::Workflow
+  initial_state :requested
+
   transition :fetch_source, from: :requested, to: :fetched do
     await :source_ready, into: :source, timeout: 6 * 3600 do |step|
       SourceClient.request(ref: step.read_context(:source_ref), idempotency_key: step.await_token)
@@ -162,8 +164,8 @@ workflow.run_persisted!(key)       # stops when the run waits
 workflow.waiting?                  # => true
 workflow.awaiting                  # => Smith::Workflow::Wait (event, token, deadline_at, ...)
 
-DocumentReview.resume!(key, event: :source_ready, token:, payload: reply)  # => :resumed or :stale
-DocumentReview.expire_wait!(key, token:, now: Time.now.utc)                # => :expired, :not_due or :stale
+DocumentReview.resume!(key, event: :source_ready, token:, payload: reply)  # => :resumed, :failed, :missing or :stale
+DocumentReview.expire_wait!(key, token:, now: Time.now.utc)                # => :expired, :not_due, :missing or :stale
 ```
 
 The host indexes `awaiting` to route events and to schedule the expiry call.
@@ -471,7 +473,11 @@ end
 `wall_clock` is in seconds. A workflow's `wall_clock` bounds the time its steps
 spend running, counted across restores in the persisted `active_seconds`, not
 the time since the run was created: time spent waiting, or between steps a host
-advances from a queue, does not count. An agent's `wall_clock` bounds each of
+advances from a queue, does not count. A step that raised or whose process died
+is charged, on the next restore, the time from its start, at most what is left
+of the budget, so a run that keeps failing stays bounded across retries.
+Durable composite branches each start from what is left; their running time is
+not added back. An agent's `wall_clock` bounds each of
 its calls. A workflow budget accepts `total_tokens`,
 `token_limit`, `total_cost`, `tool_calls`, and `wall_clock`; an agent budget
 accepts `token_limit`, `cost`, `wall_clock`, `tool_calls`, `total_tokens`, and

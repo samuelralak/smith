@@ -24,6 +24,7 @@ module Smith
         [Smith::BudgetExceeded, "budget_exceeded"],
         [Smith::GuardrailFailed, "guardrail_failed"],
         [Smith::AgentError, "agent_error"],
+        [Smith::WaitTimedOut, "wait_timed_out"],
         [Smith::WorkflowError, "workflow_error"]
       ].freeze
       BOOLEAN_VALUES = [true, false].freeze

@@ -13,7 +13,7 @@ module Smith
         option :cycle_transitions, default: proc { {}.compare_by_identity }
 
         def to_a
-          cycle_diagnostics + report_entries.flat_map { |entry| diagnostics_for(entry) }
+          cycle_diagnostics + waiting_child_diagnostics + report_entries.flat_map { |entry| diagnostics_for(entry) }
         end
 
         def child_reports
@@ -53,6 +53,23 @@ module Smith
 
         def nested_workflow_transitions
           @nested_workflow_transitions ||= graph.reachable_transitions.select(&:nested?)
+        end
+
+        # An in-process child that reaches an await or delay fails its
+        # parent's step at runtime.
+        def waiting_child_diagnostics
+          report_entries.filter_map do |entry|
+            transitions = entry.fetch(:report).topology_report.transitions
+            next unless transitions.any? { |snapshot| %i[await delay].include?(snapshot.kind) }
+
+            transition = entry.fetch(:transition)
+            label = workflow_label(entry.fetch(:workflow_class))
+            Diagnostic.new(
+              severity: :error, code: :nested_workflow_waits, transition: transition.name, target: label,
+              message: "Transition #{ref(transition.name)} nests #{label}, which reaches an await or delay step.",
+              suggestion: "An in-process nested workflow cannot wait; move the wait into the parent workflow."
+            )
+          end
         end
 
         def cycle_diagnostic(transition, workflow_class)

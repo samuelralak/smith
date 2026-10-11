@@ -270,11 +270,18 @@ module Smith
         raise WorkflowError, "#{label} must be a positive number of seconds or a callable returning one"
       end
 
+      # An await must say where its timeout goes: past its deadline it takes
+      # `on_timeout`, or else `on_failure` with Smith::WaitTimedOut. Without
+      # either, an expired wait could never end.
       def validate_timeout_route!
-        return unless @timeout_transition
-        return if @await_config && !delay?
+        if @timeout_transition
+          return if @await_config && !delay?
 
-        raise WorkflowError, "on_timeout requires an await step"
+          raise WorkflowError, "on_timeout requires an await step"
+        end
+        return unless @await_config && !delay? && @failure_transition.nil?
+
+        raise WorkflowError, "an await step must declare on_timeout or on_failure for its deadline"
       end
 
       def own_identifier(identifier, allow_nil: false)

@@ -15,6 +15,7 @@ module Smith
           step_count: @step_count,
           awaiting: @awaiting&.dup,
           active_seconds: @active_seconds || 0.0,
+          active_step_started_at: @active_step_started_at,
           execution_namespace: @execution_namespace,
           created_at: @created_at,
           updated_at: @updated_at,
@@ -117,8 +118,12 @@ module Smith
         validate_definition_digest!(normalized)
         validate_restored_position!(normalized)
         @awaiting = WaitRecord.restore(normalized[:awaiting], workflow_class: self.class,
-                                                              persistence_key: normalized[:persistence_key])
+                                                              persistence_key: normalized[:persistence_key],
+                                                              state: @state, next_transition: @next_transition_name)
         @active_seconds = restored_active_seconds(normalized[:active_seconds])
+        charge_unfinished_step!(normalized[:active_step_started_at])
+        @wait_mutex = Mutex.new
+        @wait_claimed = false
         # Preserve the seed digest from the persisted payload so it
         # round-trips on subsequent persists. validate_seed_digest!
         # compares this against a fresh evaluation of the seed builder

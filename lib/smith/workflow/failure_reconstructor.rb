@@ -23,6 +23,9 @@ module Smith
         "guardrail_failed" => ->(record) { Smith::GuardrailFailed.new(record[:error_message]) },
         "agent_error" => ->(record) { Smith::AgentError.new(record[:error_message]) },
         "workflow_error" => ->(record) { Smith::WorkflowError.new(record[:error_message]) },
+        "wait_timed_out" => lambda { |record|
+          Smith::WaitTimedOut.from_details(record.fetch(:error_details), message: record[:error_message])
+        },
         "other" => ->(record) { RuntimeError.new(record[:error_message]) }
       }.freeze
       SPECIAL_CLASS_BUILDERS = {

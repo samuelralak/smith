@@ -73,23 +73,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   host delivers with `Workflow.resume!(key, event:, token:, payload:)`, which
   writes the payload to the context key `into:` and completes the step;
   `delay seconds` waits for the time alone. `timeout:` is required (seconds,
-  or a callable of the context), and `expire_wait!(key, token:, now:)` past
-  the deadline takes `on_timeout`, `on_failure` with the new
-  `Smith::WaitTimedOut`, or raises. An await's optional block runs on entry
-  with a `Smith::Workflow::AwaitStep` (`await_token`, `read_context`,
+  or a callable of the context), and an await must declare `on_timeout` or
+  `on_failure`; `expire_wait!(key, token:, now:)` past the deadline takes
+  `on_timeout` (with a `StepCompleted` ending in the await's own state) or
+  `on_failure` with the new `Smith::WaitTimedOut` (failure family
+  `wait_timed_out`, restored with its details). An await's optional block runs
+  on entry with a `Smith::Workflow::AwaitStep` (`await_token`, `read_context`,
   `idempotency_key`, `resolve!`). Entering a wait is not a step: `advance!`
-  returns nil, `run!` and `run_persisted!` stop, and step counts,
-  `max_transitions` and `wall_clock` do not move. `waiting?` and `awaiting` (a
-  `Smith::Workflow::Wait`) let the host index waits and schedule expiry; Smith
-  never polls, sleeps or wakes a run. Both class methods store the run with the
-  version check and return `:resumed`, `:expired`, `:not_due` or `:stale`.
-  Graph inspection shows `kind: :await` or `:delay`, the wait, and
-  `timeout_transition`, reaches the timeout route, and validation reports an
-  await with no timeout route (`:await_without_timeout_route`) or an
-  unresolved one. Split-step persistence refuses wait steps, and an in-process
-  nested workflow that reaches a wait fails its parent's step.
-  `Workflow.transition_named` finds a transition by the String form of its
-  name.
+  returns nil, `run!` and `run_persisted!` stop, the run is never terminal,
+  and step counts and `max_transitions` do not move. `waiting?` and `awaiting`
+  (a `Smith::Workflow::Wait`) let the host index waits and schedule expiry;
+  Smith never polls or wakes a run. The class methods store the run with the
+  version check, require an adapter with `store_versioned`, and return
+  `:resumed`, `:failed`, `:expired`, `:not_due`, `:missing` or `:stale`. A
+  reply that arrives before its wait is stored completes the await at once
+  when the token is the one the run is entering it with, and the entering
+  process loses its next store. One completion at a time claims a wait on an
+  instance. A wait longer than the persistence TTL is refused on entry, and
+  `stuck_for?` treats a waiting run as stuck only past its deadline. Graph
+  inspection shows `kind: :await` or `:delay`, the wait and
+  `timeout_transition`, and runtime readiness reports a nested workflow that
+  reaches a wait (`:nested_workflow_waits`). Split-step persistence refuses
+  wait steps, and an in-process nested workflow that reaches a wait fails its
+  parent's step. `Workflow.transition_named` finds a transition by the String
+  form of its name.
 - Idempotency keys for requests a step sends outside the system.
   `step.idempotency_key(scope = nil)` in `compute` and `run` steps,
   `idempotency_key(scope)` inside a `Smith::Tool`'s `perform`, and
@@ -190,11 +197,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - **Breaking:** a workflow's `wall_clock` budget bounds the time its steps
   spend running, not the time since `created_at`. Each step gets what is left
   of the budget after the run's persisted `active_seconds`, and adds its own
-  running time when it ends. Time spent waiting, or between steps that a host
-  advances from a queue, no longer counts, so a run that used to fail its
-  deadline while idle now continues. Payloads gain `awaiting` and
-  `active_seconds`; a payload without them restores as not waiting with no
-  active time spent.
+  running time when it ends. A step that raised, or whose process died, is
+  charged on the next restore the time since it began (recorded in the
+  checkpoint written before it), at most what is left of the budget. Time spent
+  waiting, or between steps that a host advances from a queue, no longer
+  counts, so a run that used to fail its deadline while idle now continues.
+  Durable composite branches each start from what is left of the budget, and
+  their running time is not added back. Payloads gain `awaiting`,
+  `active_seconds` and `active_step_started_at`; a payload without them
+  restores as not waiting with no active time spent.
+- Rollback: an earlier 0.12 build, and 0.11.0, refuse a persisted failure whose
+  family is `wait_timed_out`; clear or settle such runs before rolling back.
 - A workflow's execution namespace (the persisted UUID that scopes its
   artifacts and now its idempotency keys) is assigned when the workflow is
   built instead of on first artifact use, so `to_state` always carries it,

@@ -14,10 +14,12 @@ module Smith
     Wait = Data.define(:kind, :event, :token, :transition, :into, :entered_at, :deadline_at)
 
     # Entering, resuming and expiring `await` and `delay` steps. Entering a
-    # wait is not a step: `step_count` stays, so the step's position, its
-    # idempotency keys and its token are the same when the wait is entered,
-    # when its block runs again after a crash, and when it completes. The
-    # completion (`resume!`, or `expire_wait!` past the deadline) is the step.
+    # wait is not a step: `step_count` stays, so the step's position and its
+    # token (a key under a position reserved for the wait) are the same when
+    # the wait is entered, when its block runs again after a crash, and when
+    # it completes. The completion (`resume!`, or `expire_wait!` past the
+    # deadline) is the step. One completion at a time claims the wait, so a
+    # delivery and an expiry racing on one instance cannot both win.
     module WaitExecution
       WAIT_PENDING = Object.new.freeze
       private_constant :WAIT_PENDING
@@ -31,53 +33,57 @@ module Smith
       end
 
       # Delivers the event this run awaits: writes the normalized payload to
-      # the step's `into:` key and completes the step. Returns `:resumed`, or
-      # `:stale` (and changes nothing) unless the run awaits this event under
-      # this token.
+      # the step's `into:` key and completes the step. A delivery can arrive
+      # before the wait is stored (the block's request answered at once);
+      # when the run stands at that await and the token is the one it will
+      # use, the step completes at once, without running the block.
+      # Returns `:resumed`, `:failed` when the completion took the failure
+      # path, or `:stale` (changing nothing) for any other event or token.
       def resume!(event:, token:, payload:)
-        record = @awaiting
-        # A delay has no event, so no delivery ever matches one.
-        return :stale unless record && record["event"] == event.to_s && record["token"] == token.to_s
-
-        transition = awaited_transition(record)
         value = wait_payload(payload)
-        finish_wait(transition) do
+        transition = claim_wait { resumable_transition(event.to_s, token.to_s) }
+        return :stale unless transition
+
+        complete_claimed_wait(transition, :resumed) do
           write_wait_payload(transition, value)
           StepCompletion.instance_method(:complete_step).bind_call(self, transition, nil)
         end
-        :resumed
       end
 
-      # Ends a wait whose deadline has passed at `now`: a `delay` continues to
-      # its `to:`, an `await` takes `on_timeout`, or else the failure path
-      # with Smith::WaitTimedOut. Returns `:expired`, `:not_due`, or `:stale`
-      # unless the run waits under this token.
+      # Ends a wait whose deadline has passed at `now` (a Time, or an
+      # ISO 8601 String): a `delay` continues to its `to:`, an `await` takes
+      # `on_timeout`, or else its `on_failure` with Smith::WaitTimedOut.
+      # Returns `:expired`, `:not_due`, or `:stale` unless the run waits
+      # under this token.
       def expire_wait!(token:, now: Time.now.utc)
+        now = wait_time(now)
         record = @awaiting
-        return :stale unless record && record["token"] == token.to_s
-        return :not_due if now < Time.iso8601(record.fetch("deadline_at"))
+        not_due = false
+        transition = claim_wait do
+          next if record.nil? || !record.equal?(@awaiting) || record["token"] != token.to_s
 
-        transition = awaited_transition(record)
-        finish_wait(transition) do
-          next StepCompletion.instance_method(:complete_step).bind_call(self, transition, nil) if transition.delay?
-
-          time_out!(transition, record)
+          not_due = now < wait_deadline(record)
+          awaited_transition(record) unless not_due
         end
-        :expired
+        return not_due ? :not_due : :stale unless transition
+
+        complete_claimed_wait(transition, :expired) { expire_step(transition, record) }
       end
 
       private
 
       # Runs the step's block, if any, then either finishes inline (the
       # block called `resolve!`) or records the wait and returns
-      # WAIT_PENDING, which tells `advance!` the step has not completed.
+      # WAIT_PENDING, which tells `advance!` the step has not completed. The
+      # payload key and the store's TTL are checked before the block sends
+      # anything.
       def execute_await_step(transition)
         check_deadline!
         config = transition.await_config
-        scope = IdempotencyKey.__send__(:current_scope!)
-        token = await_token(scope, config)
         seconds = WaitRecord.seconds(config.fetch(:timeout), snapshot_value(@context))
-        step = run_await_block(transition, scope, token) if config[:block]
+        check_wait_admissible!(transition, seconds)
+        token = await_token_for(transition)
+        step = run_await_block(transition, token) if config[:block]
         return write_wait_payload(transition, wait_payload(step.payload)) if step&.resolved?
 
         enter_wait(transition, token, seconds)
@@ -86,11 +92,29 @@ module Smith
 
       def wait_pending?(value) = value.equal?(WAIT_PENDING)
 
-      # The step's key for its wait: the same each time the step is entered.
-      def await_token(scope, config) = scope.key([config.fetch(:kind), config[:event]].compact)
+      # The wait's token: a key of the step's position under a segment only
+      # waits use, so no `idempotency_key` scope can produce it, and
+      # computable before the wait is stored. A wait is never nested (an
+      # in-process child cannot wait), so the position is the run's own.
+      def await_token_for(transition)
+        config = transition.await_config
+        IdempotencyKey.__send__(:root_scope, ArtifactIntegration.instance_method(:execution_namespace).bind_call(self))
+                      .within(:step, @step_count + 1, transition.name.to_s).within(:wait)
+                      .key([config.fetch(:kind), config[:event]].compact)
+      end
 
-      def run_await_block(transition, scope, token)
-        step = AwaitStep.new(context: snapshot_value(@context), await_token: token, idempotency_scope: scope,
+      def check_wait_admissible!(transition, seconds)
+        writable_wait_key!(transition) if transition.await_config[:into]
+        ttl = self.class.persistence_ttl || Smith.config.persistence_ttl
+        return unless @persistence_key && ttl && seconds > ttl
+
+        raise WorkflowError, "a wait of #{seconds} seconds outlasts the persistence TTL of #{ttl} seconds; " \
+                             "the stored run would expire before the wait ends"
+      end
+
+      def run_await_block(transition, token)
+        step = AwaitStep.new(context: snapshot_value(@context), await_token: token,
+                             idempotency_scope: IdempotencyKey.__send__(:current_scope!),
                              attempt: @step_attempt || 1, transition_name: transition.name)
         transition.await_config.fetch(:block).call(step)
         step
@@ -98,65 +122,13 @@ module Smith
 
       def enter_wait(transition, token, seconds)
         @awaiting = WaitRecord.build(transition, token, seconds, Time.now.utc)
+        record_wait_trace(transition, :waiting)
+      end
+
+      def record_wait_trace(transition, outcome)
         Smith::Trace.record(
-          type: :transition,
-          data: { transition: transition.name, from: transition.from, to: transition.to, outcome: :waiting }
+          type: :transition, data: { transition: transition.name, from: transition.from, to: transition.to, outcome: }
         )
-      end
-
-      # A payload is bounded and JSON-shaped like a session message, and
-      # takes the context's key shape. It never enters the session.
-      def wait_payload(payload)
-        ContextKeys.normalize(MessageValueNormalizer.new(payload, label: "wait payload").call)
-      end
-
-      # Returns nil, the inline-resolved step's output.
-      def write_wait_payload(transition, value)
-        key = transition.await_config.fetch(:into)
-        keys = declared_persist_keys
-        raise UndeclaredContextKey.new(key:, persisted_keys: keys) if keys && !keys.include?(key)
-
-        @context[key] = value
-        record_persisted_key!(key)
-        nil
-      end
-
-      def time_out!(transition, record)
-        unless transition.timeout_transition
-          raise WaitTimedOut.new(transition: transition.name, event: record["event"],
-                                 deadline_at: record.fetch("deadline_at"))
-        end
-
-        route_to_timeout!(transition)
-      end
-
-      def route_to_timeout!(transition)
-        name = transition.timeout_transition
-        target = self.class.find_transition(name) || raise(UnresolvedTransitionError.new(name, self.class, @state))
-        validate_transition_origin!(target)
-        @next_transition_name = name
-        Smith::Trace.record(
-          type: :transition,
-          data: { transition: transition.name, from: transition.from, to: transition.to, outcome: :timed_out }
-        )
-        { transition: transition.name, from: transition.from, to: nil, timed_out: true }
-      end
-
-      # The completion of a wait is the step: it runs in the step's context
-      # (so its position, attribution and events are the step's), then
-      # counts. A completion that raises leaves the run waiting.
-      def finish_wait(transition, &)
-        step = with_step_context(transition, &)
-        @awaiting = nil
-        @step_count += 1
-        @updated_at = Time.now.utc.iso8601(6)
-        record_step_snapshot(step)
-        step
-      end
-
-      def awaited_transition(record)
-        self.class.transition_named(record.fetch("transition")) ||
-          raise(WorkflowError, "the awaited transition is not declared")
       end
     end
   end
