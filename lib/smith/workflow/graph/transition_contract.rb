@@ -25,6 +25,8 @@ module Smith
         option :retry_config, default: proc {}
         option :await_config, default: proc {}
         option :timeout_transition, default: proc {}
+        option :step_input, default: proc { false }
+        option :output_to, default: proc {}
         option :deterministic_kind, default: proc {}
         option :deterministic_routes, default: proc {}
         option :deterministic_fallthrough, default: proc { false }

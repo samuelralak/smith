@@ -10,6 +10,7 @@ module Smith
         subclass.instance_variable_set(:@persist_mode, @persist_mode || :explicit)
         subclass.instance_variable_set(:@persist_auto_seed, (@persist_auto_seed || []).dup)
         subclass.instance_variable_set(:@inject_state, @inject_state)
+        subclass.instance_variable_set(:@untrusted_keys, (@untrusted_keys || []).dup)
       end
 
       def session_strategy(strategy = nil, **opts)
@@ -58,6 +59,20 @@ module Smith
 
       def persist_auto_seed
         @persist_auto_seed || []
+      end
+
+      # Keys whose values come from outside the system (a fetched document,
+      # an inbound message): `inject_state` formatters never receive them,
+      # and an agent that names one in `inputs` is refused.
+      def untrusted(*keys)
+        return untrusted_keys if keys.empty?
+
+        validate_persist_keys!(keys)
+        @untrusted_keys = (untrusted_keys + keys).uniq
+      end
+
+      def untrusted_keys
+        @untrusted_keys || []
       end
 
       def inject_state(&block)

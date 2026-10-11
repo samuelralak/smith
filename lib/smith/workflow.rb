@@ -29,6 +29,7 @@ module Smith
     include DataVolumePolicy
     include DeadlineEnforcement
     include ActiveClock
+    include StepIO
     include WaitExecution
     include Execution
 

@@ -8,7 +8,8 @@ module Smith
       attr_reader :name, :from, :to, :agent_name, :agent_opts, :success_transition, :failure_transition,
                   :router_config, :workflow_class, :optimization_config, :orchestrator_config,
                   :fanout_config, :retry_config, :deterministic_block, :deterministic_kind,
-                  :deterministic_routes, :deterministic_fallthrough, :await_config, :timeout_transition
+                  :deterministic_routes, :deterministic_fallthrough, :await_config, :timeout_transition,
+                  :step_input, :output_to
 
       def initialize(name, from:, to:, &)
         @name = own_identifier(name)
@@ -54,11 +55,16 @@ module Smith
 
       def delay? = @await_config&.fetch(:kind) == :delay
 
-      def execute(agent_name, **opts)
+      # `input:` (on every agent primitive) is a callable of a copy of the
+      # context returning the step's messages, which replace the session
+      # transcript for this step. `output_to:` names the context key the
+      # step's output is written to, instead of the transcript.
+      def execute(agent_name, input: nil, output_to: nil, **opts)
         validate_execution_primitive_conflict!("execute")
 
         normalized_agent = normalize_agent_reference!(agent_name, "agent")
         validate_parallel_options!(opts)
+        assign_step_io!(input, output_to)
 
         @agent_name = normalized_agent
         @agent_opts = opts.freeze
@@ -77,8 +83,9 @@ module Smith
         @failure_transition = own_identifier(transition_name)
       end
 
-      def route(agent_name, routes:, confidence_threshold:, fallback:)
+      def route(agent_name, routes:, confidence_threshold:, fallback:, input: nil)
         validate_execution_primitive_conflict!("route")
+        assign_step_io!(input, nil)
         if @success_transition
           raise WorkflowError, "routed transitions cannot declare on_success; router routes select the next transition"
         end
@@ -111,8 +118,11 @@ module Smith
                    before_eval: nil,
                    on_exhaustion: :raise,
                    on_converged: :raise,
-                   on_threshold: :raise)
+                   on_threshold: :raise,
+                   input: nil,
+                   output_to: nil)
         validate_execution_primitive_conflict!("optimize")
+        assign_step_io!(input, output_to)
         validate_optimize_controls!(generator, evaluator, max_rounds, evaluator_schema)
         validate_optimize_exit_modes!(on_exhaustion: on_exhaustion, on_converged: on_converged,
                                       on_threshold: on_threshold)
@@ -135,8 +145,9 @@ module Smith
         commit_execution_primitive!("optimize")
       end
 
-      def orchestrate(**opts)
+      def orchestrate(input: nil, output_to: nil, **opts)
         validate_execution_primitive_conflict!("orchestrate")
+        assign_step_io!(input, output_to)
         validate_orchestrate_controls!(opts)
         config = opts.merge(
           orchestrator: normalize_agent_reference!(opts.fetch(:orchestrator), "orchestrator"),
@@ -147,8 +158,9 @@ module Smith
         commit_execution_primitive!("orchestrate")
       end
 
-      def fan_out(branches:)
+      def fan_out(branches:, input: nil, output_to: nil)
         validate_execution_primitive_conflict!("fan_out")
+        assign_step_io!(input, output_to)
 
         normalized = normalize_fanout_branches!(branches)
         @fanout_branch_lookup = normalized.to_h do |key, agent|
@@ -242,6 +254,14 @@ module Smith
       end
 
       private
+
+      def assign_step_io!(input, output_to)
+        raise WorkflowError, "input: must be a callable of the context" unless input.nil? || input.respond_to?(:call)
+        raise WorkflowError, "output_to: must be a Symbol context key" unless output_to.nil? || output_to.is_a?(Symbol)
+
+        @step_input = input
+        @output_to = output_to
+      end
 
       def wait_seconds!(value, label)
         return value if value.respond_to?(:call)

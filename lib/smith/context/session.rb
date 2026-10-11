@@ -19,8 +19,15 @@ module Smith
         return unless formatter
 
         @messages.replace(
-          StateInjection.inject(@messages, formatter: formatter, persisted: @persisted_context)
+          StateInjection.inject(@messages, formatter: formatter, persisted: trusted_context)
         )
+      end
+
+      def trusted_context
+        untrusted = @context_manager.respond_to?(:untrusted_keys) ? @context_manager.untrusted_keys : []
+        return @persisted_context if untrusted.empty? || !@persisted_context.is_a?(Hash)
+
+        @persisted_context.except(*untrusted)
       end
 
       def masked_view

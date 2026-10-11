@@ -184,6 +184,8 @@ appends the batch under the workflow lifecycle mutex, and returns an immutable
 `Smith::Workflow::MessageAdmission`. Its `message_digest` is the SHA-256 digest
 of the canonical message batch and can be correlated with host-owned evidence.
 
+A host-admitted message cannot have the system role: only Smith (its injected
+state) and the host's `seed_messages` builder put system messages in a session.
 Admission is bounded to 100 messages, 64 levels, 100,000 visited values, and one
 MiB of canonical JSON. Integers must fit a signed 64-bit value, Floats must be
 finite, Hash keys must be String or Symbol values, and cyclic or unsupported
@@ -600,6 +602,53 @@ replacement but does not claim to sandbox Ruby's open object model. Subclass
 entry points remain guarded even when a host prepends modules after class
 creation, and prepared execution bypasses host `advance!` wrappers so they
 cannot become transition execution authority.
+
+## Step Isolation and Untrusted Content
+
+By default a workflow keeps one transcript: each agent step sees the session
+(with `inject_state` and masking applied) and its accepted output is appended
+for the next step. Three declarations narrow that:
+
+```ruby
+class DocumentReview < Smith::Workflow
+  session :isolated
+  context_manager ReviewContext
+
+  transition :extract, from: :fetched, to: :extracted do
+    execute :field_extractor,
+            input: ->(ctx) { [{ role: :user, content: Smith::Untrusted.wrap(ctx[:source], source: "document") }] },
+            output_to: :fields
+  end
+end
+
+class ReviewContext < Smith::Context
+  persist :document_id, :source, :fields
+  untrusted :source
+end
+```
+
+- `input:` (on `execute`, `route`, `fan_out`, `optimize` and `orchestrate`)
+  is a callable of a copy of the context that returns the step's messages: a
+  non-empty Array of `{ role: :user or :assistant, content: }`, bounded and
+  JSON-shaped like session messages. They replace the transcript for that step;
+  the agent's own instructions still apply. A fan-out's branches share one
+  `input:`, and an optimizer's `input:` is its generator's.
+- `output_to: :key` writes the step's output, in the context's key shape, to
+  `key` (an explicit `persist` list must allow it) instead of the transcript.
+  The step's output and `RunResult#output` are unchanged.
+- `session :isolated` (per workflow; `:shared` is the default) keeps no
+  transcript for agents: every agent step must declare `input:` (it fails
+  otherwise, and graph validation reports `:isolated_step_without_input`),
+  accepted outputs are never appended, and `inject_state` does not run for
+  agent steps.
+- `untrusted :key` in a `Smith::Context` marks values from outside the system:
+  `inject_state` formatters never receive them, and an agent that names one in
+  `inputs` is refused when it runs (runtime readiness reports
+  `:untrusted_agent_input`). Pass such content through a step's `input:`
+  instead, wrapped with `Smith::Untrusted.wrap(text, source:)`, which places it
+  between tags with a random boundary and marks any line that opens with a role
+  label as quoted text. Wrapping marks where outside content starts and ends;
+  it does not make the content safe to act on.
 
 ## Waiting
 

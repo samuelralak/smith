@@ -36,7 +36,7 @@ module Smith
             # The step's position, as in-process guardrails run with it.
             install_step_idempotency_scope(transition)
             run_composite_input_guardrails(authorization, transition, specs)
-            agent_messages = build_session&.prepare!
+            agent_messages = step_prepared_input(transition)
             Composite::Input.build(agent_messages:, session_messages: snapshot_session_messages)
           end
         end

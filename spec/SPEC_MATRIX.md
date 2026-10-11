@@ -1681,6 +1681,27 @@ Documented contracts covered:
 - the OpenAI Responses adapter parses a body end to end, reporting input with cached and cache-written input taken out, capping cache counts at the reported input and ignoring non-Integer counts, so the provider's total is kept
 - the review fixes above are mutation-verified against the full suite
 
+### `spec/smith/workflow/isolation_spec.rb`
+
+Purpose:
+
+- asserts that steps can be isolated from the shared transcript and that untrusted context never reaches injected state or agent inputs
+
+Architecture basis:
+
+- Section 4.3, Context and Sessions
+- Section 4.4, Guardrails
+
+Documented contracts covered:
+
+- `session` takes `:shared` (the default, inherited) or `:isolated`; `input:` must be callable and `output_to:` a Symbol
+- `input:` replaces the transcript as a step's messages, receives a copy of the context, JSON-encodes structured content, and is refused unless it is a non-empty Array of user and assistant messages with only role and content; a fan-out's branches share it
+- an isolated session shows each agent step only its input, appends no output, injects no state, fails an agent step without `input:` (and graph validation reports it), and asks nothing of a step that runs no agent
+- `output_to:` writes the output in the context's key shape and keeps it out of the transcript, shows in graph inspection, and stays within an explicit persist list
+- untrusted keys never reach `inject_state` formatters; an agent declaring one as an input is refused at runtime and reported by runtime readiness
+- host-admitted system messages are refused; the injected-state marker is recognized only on a system message
+- `Smith::Untrusted.wrap` uses a fresh random boundary, escapes look-alike tags and role-label lines, refuses unsafe sources and non-Strings, and replaces invalid bytes
+
 ### `spec/smith/workflow/wait_spec.rb`
 
 Purpose:

@@ -47,7 +47,9 @@ module Smith
             deterministic_kind: transition.deterministic_kind,
             deterministic: transition.deterministic?,
             parallel: transition.parallel?,
-            parallel_count: static_parallel_count
+            parallel_count: static_parallel_count,
+            step_input: !transition.step_input.nil?,
+            output_to: transition.output_to
           }
         end
 

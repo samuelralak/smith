@@ -50,6 +50,7 @@ module Smith
         role = message["role"]
         reject!("each session message requires a non-empty role") unless
           role.is_a?(String) && !role.strip.empty?
+        reject!("session messages admitted by the host cannot have the system role") if role.strip.casecmp?("system")
       end
 
       def reject!(message)

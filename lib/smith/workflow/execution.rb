@@ -40,6 +40,7 @@ module Smith
         output = with_scoped_artifacts { run_with_retry_policy(transition) }
         return output if wait_pending?(output)
 
+        deliver_output_to(transition, output) if transition.output_to
         StepCompletion.instance_method(:complete_step).bind_call(self, transition, output)
       end
 
@@ -57,7 +58,7 @@ module Smith
         agent_class = resolve_agent_class(transition)
         run_input_guardrails(agent_class)
         apply_tool_guardrails(agent_class)
-        prepared_input = build_session&.prepare!
+        prepared_input = step_prepared_input(transition)
 
         output = with_agent_context(agent_class) do
           dispatch_step(transition, prepared_input: prepared_input)

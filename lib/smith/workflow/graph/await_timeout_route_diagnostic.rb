@@ -11,6 +11,7 @@ module Smith
         extend Dry::Initializer
 
         option :transition
+        option :workflow_class, optional: true
 
         def call
           return unless transition.awaits? && !transition.delay?

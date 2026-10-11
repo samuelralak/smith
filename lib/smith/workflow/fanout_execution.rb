@@ -20,7 +20,7 @@ module Smith
         branch_agent_classes = fanout_agent_classes(transition, branches)
         run_workflow_input_guardrails
         run_fanout_agent_input_guardrails(branch_agent_classes)
-        prepared_input = build_session&.prepare!
+        prepared_input = step_prepared_input(transition)
         output = execute_fanout_step(
           transition,
           branches: branches,

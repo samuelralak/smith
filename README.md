@@ -72,7 +72,7 @@ result.steps    # => [{ transition: :reply, from: :idle, to: :done, output: ... 
 |---|---|
 | `Smith::Agent` | A `RubyLLM` agent plus model, instructions, output schema, tools, budget, and fallback models. Identifies itself to the workflow via `register_as :name`. |
 | `Smith::Workflow` | A state machine of named transitions. Each transition calls an agent, runs deterministic code, routes, or composes a nested workflow. |
-| `Smith::Context` | Declares which workflow context keys persist across restore, and how those keys become agent-visible input via `inject_state`. |
+| `Smith::Context` | Declares which workflow context keys persist across restore, how those keys become agent-visible input via `inject_state`, and which keys hold untrusted outside content (`untrusted`). |
 | `Smith::Tool` | A `RubyLLM` tool plus provider-compatibility metadata and guardrail hooks. |
 | Persistence adapters | Host-owned storage. Smith ships `Memory`, `RedisStore`, `CacheStore`, `RailsCache`, `ActiveRecordStore`. |
 | Trace adapters | Host-owned observability. Smith ships `Memory`, `Logger`, `OpenTelemetry`. |
@@ -118,6 +118,27 @@ For bounded dynamic delegation, use the separate Orchestrator-Worker pattern.
 | Deterministic repair | Not first-class yet | Can be handwritten with `compute` / `run` only when the workflow author owns the exact guard, repair, revalidation, and exit policy. Deterministic steps may declare inspectable `routes: [...]`, but that is not a native repair-loop contract. |
 | Guarded state re-entry | Not first-class yet | `compute` / `run` can declare and route to named transitions with `routes: [...]`, but Smith does not yet own persisted entry counts, mutation policy, or safe re-entry contracts. |
 | Wait for an event or a time | Executable | `await` and `delay`, bounded by a required timeout. Smith records the wait and its deadline; delivering the event (`resume!`), scheduling the expiry (`expire_wait!`) and waking the run stay host-owned. Smith never polls, sleeps or busy-waits. |
+
+### Isolation
+
+Each agent step can get its own messages and write its output to the context
+instead of a shared transcript:
+
+```ruby
+class DocumentReview < Smith::Workflow
+  session :isolated   # no shared transcript; every agent step declares input:
+
+  transition :extract, from: :fetched, to: :extracted do
+    execute :field_extractor,
+            input: ->(ctx) { [{ role: :user, content: Smith::Untrusted.wrap(ctx[:source], source: "document") }] },
+            output_to: :fields
+  end
+end
+```
+
+Context keys declared `untrusted` never reach `inject_state` or an agent's
+`inputs`. See [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md), Step Isolation and
+Untrusted Content.
 
 ### Waiting
 

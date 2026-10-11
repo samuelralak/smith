@@ -11,9 +11,12 @@ module Smith
         param :graph
 
         def to_a
-          agent_bindings.filter_map do |binding|
-            RuntimeBindingDiagnosticBuilder.new(graph, binding: binding).to_diagnostic
-          end
+          agent_bindings.flat_map do |binding|
+            [
+              RuntimeBindingDiagnosticBuilder.new(graph, binding: binding).to_diagnostic,
+              UntrustedInputDiagnostic.new(graph, binding:).call
+            ]
+          end.compact
         end
 
         def agent_bindings

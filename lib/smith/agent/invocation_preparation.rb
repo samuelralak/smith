@@ -16,10 +16,22 @@ module Smith
         return {} unless @context.is_a?(Hash)
 
         declared = agent_class.inputs || []
+        reject_untrusted_inputs!(agent_class, declared)
         user_declared = declared - Smith::Agent::RESERVED_INPUT_NAMES
         user_declared.to_h do |name|
           [name, @context[name]]
         end
+      end
+
+      # A key the context marks untrusted never reaches an agent as a
+      # declared input, where it would sit beside the agent's instructions.
+      def reject_untrusted_inputs!(agent_class, declared)
+        manager = self.class.respond_to?(:context_manager) ? self.class.context_manager : nil
+        untrusted = manager.respond_to?(:untrusted_keys) ? declared & manager.untrusted_keys : []
+        return if untrusted.empty?
+
+        raise WorkflowError, "agent #{agent_class.register_as.inspect} declares untrusted context key " \
+                             "#{untrusted.first.inspect} as an input"
       end
 
       def add_prepared_input(chat, prepared_input)

@@ -9,6 +9,7 @@ module Smith
         extend Dry::Initializer
 
         option :transition
+        option :workflow_class, optional: true
 
         def call
           attempts = transition.retry_config&.fetch(:attempts, nil)

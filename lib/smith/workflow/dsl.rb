@@ -33,6 +33,7 @@ module Smith
           subclass.instance_variable_set(:@migrations, (@migrations || {}).dup)
           subclass.instance_variable_set(:@seed_validation_mode, @seed_validation_mode)
           subclass.instance_variable_set(:@idempotency_mode, @idempotency_mode)
+          subclass.instance_variable_set(:@session_mode, @session_mode)
           subclass.instance_variable_set(:@persistence_ttl, @persistence_ttl)
         end
 
@@ -185,6 +186,20 @@ module Smith
         #            set, indicating a previous worker crashed mid-step
         #            and re-running could double-execute non-idempotent
         #            agent calls or tools.
+        # `:shared` (the default) keeps one transcript: each agent step sees
+        # the session and its accepted output is appended to it. `:isolated`
+        # keeps no transcript for agents: every agent step must declare
+        # `input:`, its output is never appended, and `inject_state` does
+        # not run for it.
+        def session(mode = nil)
+          return @session_mode || :shared if mode.nil?
+          unless %i[shared isolated].include?(mode)
+            raise ArgumentError, "session must be :shared or :isolated, got #{mode.inspect}"
+          end
+
+          @session_mode = mode
+        end
+
         def idempotency_mode(mode = nil)
           return @idempotency_mode || :lax if mode.nil?
 

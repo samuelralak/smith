@@ -5,6 +5,9 @@ module Smith
     class Graph
       class TransitionDiagnostics
         TARGET_ATTRIBUTES = %i[success_transition failure_transition timeout_transition].freeze
+        DECLARATION_CHECKS = [
+          BranchLimitDiagnostic, RetryPolicyDiagnostic, AwaitTimeoutRouteDiagnostic, IsolatedInputDiagnostic
+        ].freeze
         attr_reader :graph
 
         def initialize(graph)
@@ -18,9 +21,7 @@ module Smith
               *router_target_diagnostics(transition),
               *deterministic_route_diagnostics(transition),
               *target_state_mismatch_diagnostics(transition),
-              branch_limit_diagnostic(transition),
-              RetryPolicyDiagnostic.new(transition:).call,
-              AwaitTimeoutRouteDiagnostic.new(transition:).call
+              *declaration_diagnostics(transition)
             ].compact
           end
         end
@@ -70,25 +71,8 @@ module Smith
           [*success, failure, timeout].compact
         end
 
-        def branch_limit_diagnostic(transition)
-          branch_count = static_branch_count(transition)
-          limit = Smith.config.parallel_branch_limit
-          return unless branch_count && branch_count > limit
-
-          Diagnostic.new(
-            severity: :error,
-            code: :parallel_branch_limit_exceeded,
-            transition: transition.name,
-            message: "Transition #{ref(transition.name)} declares #{branch_count} parallel branches, " \
-                     "exceeding the configured limit #{limit}.",
-            suggestion: "Reduce the branch count or explicitly raise Smith.config.parallel_branch_limit."
-          )
-        end
-
-        def static_branch_count(transition)
-          return transition.fanout_config.fetch(:branches).length if transition.fanout?
-
-          transition.parallel_count if transition.parallel?
+        def declaration_diagnostics(transition)
+          DECLARATION_CHECKS.map { _1.new(transition:, workflow_class: graph.workflow_class).call }
         end
 
         def successful_target_names(transition)

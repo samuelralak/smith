@@ -55,6 +55,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   `cache_write_tokens:` and `mode:` (defaults 0, 0, `:sync`) and treats a count
   that is not a non-negative Integer as 0, so it still never raises. Batch mode
   is priced only through `compute_cost(mode: :batch)` until batch steps ship.
+- Step isolation. `input: ->(ctx) { [...] }` on `execute`, `route`,
+  `fan_out`, `optimize` and `orchestrate` gives a step its own messages (user
+  and assistant roles only, bounded like session messages) in place of the
+  session transcript. `output_to: :key` writes the step's output to the context
+  instead of the transcript. `session :isolated` on a workflow keeps no
+  transcript for agents: every agent step must declare `input:`, outputs are
+  not appended, and `inject_state` does not run for agent steps. Graph
+  inspection shows `input` and `output_to`, and validation reports
+  `:isolated_step_without_input`.
+- `untrusted :key` on a `Smith::Context` keeps a key from `inject_state`
+  formatters and refuses an agent that names it in `inputs` (runtime readiness
+  reports `:untrusted_agent_input`). `Smith::Untrusted.wrap(text, source:)`
+  delimits outside content with a random boundary and marks embedded role
+  labels as quoted text.
 - Durable, bounded waits. `await event, into:, timeout:` waits for an event the
   host delivers with `Workflow.resume!(key, event:, token:, payload:)`, which
   writes the payload to the context key `into:` and completes the step;
@@ -165,6 +179,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   Responses-path costs fall unless the catalog sets it. Cache counts that are
   not Integers are ignored, and counts larger than the reported input are
   capped to it, so the reported input total is kept.
+- **Breaking:** `append_session_messages!` refuses messages with the system
+  role. Only Smith and the host's `seed_messages` builder put system messages in
+  a session, so the injected-state marker is now recognized only on a system
+  message: a user, assistant or tool message that starts with
+  `[smith:injected-state]` is left alone instead of being replaced or removed
+  as Smith's state.
+- The parallel branch limit check moved into its own graph diagnostic class;
+  its code and output are unchanged.
 - **Breaking:** a workflow's `wall_clock` budget bounds the time its steps
   spend running, not the time since `created_at`. Each step gets what is left
   of the budget after the run's persisted `active_seconds`, and adds its own

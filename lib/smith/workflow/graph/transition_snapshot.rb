@@ -40,6 +40,8 @@ module Smith
         option :orchestration, default: proc {}
         option :retry_policy, default: proc {}
         option :wait, default: proc {}
+        option :input, default: proc {}
+        option :output_to, default: proc {}
 
         def self.from_transition(transition, workflow_class: nil)
           new(**attributes_for(transition, workflow_class: workflow_class))
@@ -74,7 +76,9 @@ module Smith
             optimization: OptimizationContract.from_transition(transition, workflow_class:),
             orchestration: OrchestrationContract.from_transition(transition, workflow_class:),
             retry_policy: retry_policy_for(transition),
-            wait: transition.await_config
+            wait: transition.await_config,
+            input: (:callable if transition.step_input),
+            output_to: transition.output_to
           }
         end
 
