@@ -26,6 +26,9 @@ module Smith
         "output_failure" => lambda { |record|
           Smith::OutputFailure.from_details(record.fetch(:error_details), message: record[:error_message])
         },
+        "child_runs_failed" => lambda { |record|
+          Smith::ChildRunsFailed.from_details(record.fetch(:error_details), message: record[:error_message])
+        },
         "wait_timed_out" => lambda { |record|
           Smith::WaitTimedOut.from_details(record.fetch(:error_details), message: record[:error_message])
         },

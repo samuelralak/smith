@@ -33,7 +33,7 @@ module Smith
 
         def cycle_diagnostics
           cycle_transitions.keys.map do |transition|
-            workflow_class = transition.workflow_class
+            workflow_class = transition.target_workflow_class
             cycle_diagnostic(transition, workflow_class)
           end
         end
@@ -42,7 +42,7 @@ module Smith
           @report_entries ||= nested_workflow_transitions.filter_map do |transition|
             next if cycle_transitions.key?(transition)
 
-            workflow_class = transition.workflow_class
+            workflow_class = transition.target_workflow_class
             report = reports[workflow_class]
             next unless report
 
@@ -55,13 +55,15 @@ module Smith
         end
 
         def nested_workflow_transitions
-          @nested_workflow_transitions ||= graph.reachable_transitions.select(&:nested?)
+          @nested_workflow_transitions ||= graph.reachable_transitions.select do |transition|
+            transition.nested? || transition.child_runs?
+          end
         end
 
         # An in-process child that reaches an await or delay fails its
-        # parent's step at runtime.
+        # parent's step at runtime; a child run of its own may wait.
         def waiting_child_diagnostics
-          report_entries.filter_map do |entry|
+          in_process_entries.filter_map do |entry|
             transitions = entry.fetch(:report).topology_report.transitions
             next unless transitions.any? { |snapshot| %i[await delay].include?(snapshot.kind) }
 
@@ -81,6 +83,8 @@ module Smith
           end
           InheritedUntrustedDiagnostics.new(graph, entries:, graphs:).to_a
         end
+
+        def in_process_entries = report_entries.select { _1.fetch(:transition).nested? }
 
         def cycle_diagnostic(transition, workflow_class)
           label = workflow_label(workflow_class)

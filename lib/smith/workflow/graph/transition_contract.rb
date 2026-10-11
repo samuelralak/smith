@@ -27,6 +27,7 @@ module Smith
         option :timeout_transition, default: proc {}
         option :step_input, default: proc { false }
         option :output_to, default: proc {}
+        option :children_config, default: proc {}
         option :deterministic_kind, default: proc {}
         option :deterministic_routes, default: proc {}
         option :deterministic_fallthrough, default: proc { false }
@@ -49,6 +50,12 @@ module Smith
         def awaits? = !await_config.nil?
         def delay? = await_config&.fetch(:kind) == :delay
         def agent_step? = !agent_name.nil? || optimized? || orchestrated? || fanout?
+        def child_runs? = !children_config.nil?
+        def spawns? = children_config&.fetch(:kind) == :spawn
+
+        # The workflow class this step runs: nested in process, or launched
+        # as runs of their own.
+        def target_workflow_class = workflow_class || children_config&.fetch(:workflow)
       end
     end
   end

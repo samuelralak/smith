@@ -49,8 +49,17 @@ module Smith
             parallel: transition.parallel?,
             parallel_count: static_parallel_count,
             step_input: !transition.step_input.nil?,
-            output_to: transition.output_to
+            output_to: transition.output_to,
+            children_config: children_config
           }
+        end
+
+        def children_config
+          config = transition.children_config
+          return unless config
+
+          items = config[:items].respond_to?(:call) ? :callable : config[:items]
+          config.slice(:kind, :workflow, :max_items, :collect, :on_item_failure).merge(items:).freeze
         end
 
         def static_parallel_count

@@ -1770,6 +1770,31 @@ Documented contracts covered:
 - `Smith::Untrusted.escape` covers every line break, invisible and decorated prefixes, `human:`/`ai:`, full-width colons and look-alike tags; inside a step the boundary is the same for the same step and text and differs across runs, so a durable composite step's wrapped input is prepared identically on recovery
 - the review fixes above are mutation-verified against the full suite
 
+### `spec/smith/workflow/child_runs_spec.rb`
+
+Purpose:
+
+- asserts that map, call and spawn steps start runs of their own through the host's launcher, wait for and check their results, and keep untrusted keys and bounds
+
+Architecture basis:
+
+- Section 4.2, Workflows
+- Section 5, Persistence and Resume
+
+Documented contracts covered:
+
+- the DSL validates the child workflow, items, `max_items` (1 to 10,000), `input:`, `timeout:`, `into:`, collect and failure modes, refuses unknown or missing options, and needs a timeout route for map and call
+- map launches one child per item (ref = index, input, workflow) with the parent key and the wait's token, waits as `kind: :children`, and on resume writes the entries in ref order; `collect: :states` and `:none` write states or counts; a failed child under `on_item_failure: :fail` takes `on_failure` with `ChildRunsFailed` (family `child_runs_failed`, refs and counts persisted)
+- results that do not match the children (count, refs, status, extra keys, shape) raise to the host and leave the run waiting
+- more than `max_items`, non-Array items, or a non-persisted run with a queueing launcher fail before anything launches; a replay launches the same refs under the same token
+- a map's deadline takes its timeout route; a delivery before the wait is stored completes it
+- call writes the child's output itself and fails on a failed child; spawn launches and continues
+- `Smith::Launchers::Inline` runs children in process and completes the step at once, recording a raising child as failed
+- untrusted keys passed under the same name reach the child and persist with it; malformed persisted keys are refused
+- graph inspection shows the kind and child; readiness reports a missing launcher and walks the child without flagging its waits
+- `Smith::ChildRun.result` builds an entry from a run result
+- these contracts are mutation-verified against the full suite
+
 ### `spec/smith/workflow/wait_spec.rb`
 
 Purpose:

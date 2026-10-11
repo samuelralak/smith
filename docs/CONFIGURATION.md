@@ -9,6 +9,7 @@ Use this for shared runtime services:
 - artifact backend
 - tracing
 - pricing catalog
+- run launcher (`run_launcher`, for child runs)
 - logger
 
 ### 2. Agent configuration: `Smith::Agent`
@@ -43,6 +44,9 @@ Use workflow classes for orchestration behavior:
 - `max_transitions`
 - `guardrails`
 - `context_manager`
+
+Transition steps that start runs of their own (`map`, `call`, `spawn`) need
+`Smith.config.run_launcher`; see the PERSISTENCE guide, Child Runs.
 
 ### If You Are Unsure Where Something Goes
 

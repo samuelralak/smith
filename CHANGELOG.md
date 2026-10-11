@@ -42,6 +42,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Added
 
+- Child runs. `map items, workflow:, max_items:, input:, timeout:, into:,
+  collect:, on_item_failure:` launches a run of its own per item and waits,
+  bounded by `timeout:`, for the host to resume the parent with
+  `resume!(key, event: :children, token:, payload:)` and one
+  `Smith::ChildRun.result` entry per child; `call workflow, input:, timeout:,
+  into:` is a map of one whose `into:` gets the child's output; `spawn items,
+  workflow:, max_items:, input:` launches and continues. Runs start through
+  `Smith.config.run_launcher.launch(children:, parent_key:, await_token:)`,
+  which must be idempotent on `(parent_key, child.ref)`; a child's ref is the
+  index of its item, so a replayed step launches the same children.
+  `Smith::Launchers::Inline` runs them in process. More than `max_items` fails
+  the step before anything launches; results that do not match the children
+  raise to the host and leave the run waiting; `collect:` writes outputs,
+  states or counts; `on_item_failure: :fail` fails the step with
+  `Smith::ChildRunsFailed` (failure family `child_runs_failed`). A child gets
+  only what `input:` returns and keeps any of its parent's untrusted keys passed
+  under the same name, persisted with it as `inherited_untrusted_keys`. Graph
+  inspection shows `kind: :map`, `:call` or `:spawn` with the child and its
+  bounds; runtime readiness walks child workflows and reports
+  `:run_launcher_missing`.
 - Output integrity. Smith reads each response's stop reason (OpenAI's
   message-level refusals and Gemini's prompt blocks included) as cut off or
   refused. A cut-off response raises `Smith::OutputTruncated` unless the agent
@@ -264,8 +284,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   `active_seconds` and `active_step_started_at`; a payload without them
   restores as not waiting with no active time spent.
 - Rollback: an earlier 0.12 build, and 0.11.0, refuse a persisted failure whose
-  family is `wait_timed_out` or `output_failure`; clear or settle such runs
-  before rolling back.
+  family is `wait_timed_out`, `output_failure` or `child_runs_failed`, and a
+  waiting run whose wait is a map's or call's (`kind: "children"`); clear or
+  settle such runs before rolling back.
 - A workflow's execution namespace (the persisted UUID that scopes its
   artifacts and now its idempotency keys) is assigned when the workflow is
   built instead of on first artifact use, so `to_state` always carries it,

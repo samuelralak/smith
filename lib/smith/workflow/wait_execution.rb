@@ -40,12 +40,13 @@ module Smith
       # Returns `:resumed`, `:failed` when the completion took the failure
       # path, or `:stale` (changing nothing) for any other event or token.
       def resume!(event:, token:, payload:)
-        value = wait_payload(payload)
+        value = event.to_s == "children" ? child_results_payload(payload) : wait_payload(payload)
         transition = claim_wait { resumable_transition(event.to_s, token.to_s) }
         return :stale unless transition
 
+        check_claimed_child_results!(transition, value) if transition.child_runs?
         complete_claimed_wait(transition, :resumed) do
-          write_wait_payload(transition, value)
+          transition.child_runs? ? deliver_child_results(transition, value) : write_wait_payload(transition, value)
           StepCompletion.instance_method(:complete_step).bind_call(self, transition, nil)
         end
       end
@@ -79,15 +80,27 @@ module Smith
       # anything.
       def execute_await_step(transition)
         check_deadline!
-        config = transition.await_config
-        seconds = WaitRecord.seconds(config.fetch(:timeout), snapshot_value(@context))
+        seconds = WaitRecord.seconds(transition.await_config.fetch(:timeout), snapshot_value(@context))
         check_wait_admissible!(transition, seconds)
         token = await_token_for(transition)
-        step = run_await_block(transition, token) if config[:block]
-        return write_wait_payload(transition, wait_payload(step.payload)) if step&.resolved?
+        settled = settle_on_entry(transition, token)
+        return settled unless wait_pending?(settled)
 
         enter_wait(transition, token, seconds)
         WAIT_PENDING
+      end
+
+      # Runs the step's entry: an await's block, or a map's or call's
+      # launch. The step settles at once when the block resolves the wait or
+      # the launcher ran the children itself; otherwise WAIT_PENDING.
+      def settle_on_entry(transition, token)
+        if transition.child_runs?
+          results = launch_child_runs(transition, token)
+          return results ? deliver_child_results(transition, child_results_payload(results)) : WAIT_PENDING
+        end
+
+        step = run_await_block(transition, token) if transition.await_config[:block]
+        step&.resolved? ? write_wait_payload(transition, wait_payload(step.payload)) : WAIT_PENDING
       end
 
       def wait_pending?(value) = value.equal?(WAIT_PENDING)

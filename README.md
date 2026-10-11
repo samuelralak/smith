@@ -180,6 +180,47 @@ DocumentReview.expire_wait!(key, token:, now: Time.now.utc)                # => 
 The host indexes `awaiting` to route events and to schedule the expiry call.
 See [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md), Waiting.
 
+### Child runs
+
+A step can start other workflows as runs of their own, which the host launches,
+persists and runs, and wait for their results:
+
+```ruby
+Smith.config.run_launcher = MyLauncher.new   # launch(children:, parent_key:, await_token:)
+
+class DocumentReview < Smith::Workflow
+  initial_state :split
+  state :failed
+
+  transition :review_sections, from: :split, to: :reviewed do
+    map :section_ids, workflow: SectionReview, max_items: 500, timeout: 6 * 3600,
+        input: ->(section_id, ctx) { { document_id: ctx[:document_id], section_id: } },
+        into: :section_reviews, collect: :outputs, on_item_failure: :collect
+    on_failure :fail
+  end
+
+  transition :summarize, from: :reviewed, to: :summarized do
+    call Summarize, input: ->(ctx) { { document_id: ctx[:document_id] } }, timeout: 3600, into: :summary
+    on_failure :fail
+  end
+
+  transition :notify, from: :summarized, to: :done do
+    spawn :watcher_ids, workflow: NotifyWatcher, max_items: 1_000, input: ->(id, _ctx) { { watcher_id: id } }
+  end
+end
+```
+
+`map` launches a run per item (more than `max_items` fails the step before
+anything launches) and waits, bounded by `timeout:`, for the host to resume the
+parent with `resume!(key, event: :children, token:, payload:)`, one
+`Smith::ChildRun.result` entry per child. `call` is a map of one whose `into:`
+gets the child's output; `spawn` launches and continues. A child starts with
+only what `input:` returns, and keeps any of its parent's untrusted keys passed
+under the same name. With `on_item_failure: :fail` (the default) a failed child
+fails the step with `Smith::ChildRunsFailed`. `Smith::Launchers::Inline` runs the
+children in process, for tests and scripts. See
+[`docs/PERSISTENCE.md`](docs/PERSISTENCE.md), Child Runs.
+
 ## Workflow Graph Inspection
 
 Smith can inspect a workflow's declared graph without running agents or advancing state. This is useful for host apps that want to render, lint, or cache a workflow shape before execution.

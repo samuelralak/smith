@@ -17,6 +17,8 @@ module Smith
           active_seconds: @active_seconds || 0.0,
           active_step_started_at: @active_step_started_at,
           execution_namespace: @execution_namespace,
+          # Untrusted keys inherited from a parent run (a durable child's).
+          inherited_untrusted_keys: (@inherited_untrusted_keys || []).map(&:to_s),
           created_at: @created_at,
           updated_at: @updated_at,
           next_transition_name: @next_transition_name,
@@ -306,9 +308,21 @@ module Smith
         @context = filter_persisted_context(normalized[:context] || {})
         @step_count = normalized[:step_count] || 0
         @execution_namespace = restored_execution_namespace(normalized)
+        @inherited_untrusted_keys = restored_inherited_untrusted_keys(normalized)
         @created_at = normalized[:created_at]
         @updated_at = normalized[:updated_at]
       end
+
+      def restored_inherited_untrusted_keys(normalized)
+        keys = normalized.fetch(:inherited_untrusted_keys, [])
+        unless keys.is_a?(Array) && keys.length <= 1_000 && keys.all? { untrusted_key_name?(_1) }
+          raise Smith::SerializationError, "persisted workflow inherited_untrusted_keys are invalid"
+        end
+
+        keys.map(&:to_sym).uniq.freeze
+      end
+
+      def untrusted_key_name?(key) = (key.is_a?(String) || key.is_a?(Symbol)) && key.length.between?(1, 256)
 
       # A payload written before namespaces were assigned at construction
       # gets one derived from its own durable facts, the same on every

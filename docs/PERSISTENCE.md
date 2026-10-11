@@ -780,6 +780,61 @@ end
   that reaches a wait fails its parent's step (runtime readiness reports
   `:nested_workflow_waits`).
 
+## Child Runs
+
+`map`, `call` and `spawn` steps start other workflows as runs of their own.
+Smith decides which runs to start and checks what comes back; the host's run
+launcher starts them, and the host persists them, runs them and reports their
+results. Smith never queues, polls or waits on a child.
+
+```ruby
+class QueueLauncher
+  # children: Smith::ChildRun (ref, workflow, input, untrusted_keys, #build)
+  def launch(children:, parent_key:, await_token:)
+    children.each do |child|
+      ChildRunJob.perform_later(parent_key:, await_token:, ref: child.ref,
+                                workflow: child.workflow.name, input: child.input,
+                                untrusted_keys: child.untrusted_keys)
+    end
+    nil
+  end
+end
+
+Smith.config.run_launcher = QueueLauncher.new
+```
+
+- A child's `ref` is the index of its item. Items come from the context (a key
+  holding an Array, or a callable of the context, which must give the same list
+  on a replay), so a replayed step launches the same children under the same
+  `await_token`: the launcher must be idempotent on `(parent_key, ref)`.
+- A child gets only the context `input:` returns (JSON-shaped, bounded) and no
+  session. A key the parent treats as untrusted that `input:` passes under the
+  same name stays untrusted in the child: `ChildRun#build` constructs the child
+  with those keys in force, and they persist with it
+  (`inherited_untrusted_keys`).
+- A map or call needs a persisted run (`run_persisted!` or
+  `advance_persisted!`), except with a launcher that runs the children itself
+  (`inline?` true, as `Smith::Launchers::Inline`): it returns their results and
+  the step completes at once.
+- Otherwise the step waits like an `await` for the event `:children`, bounded by
+  its `timeout:` and routed by `on_timeout` or `on_failure`. Once every child is
+  terminal the host resumes the parent with one entry per ref,
+  `Smith::ChildRun.result(ref:, run_result:)`:
+  `{ ref:, status: "succeeded" | "failed", state:, output: }`. Results that do
+  not match the children raise to the host and leave the run waiting. They are
+  bounded at 4 MiB together; prefer `collect: :states` or `:none` for large
+  maps.
+- `collect: :outputs` writes the entries to `into:` in ref order, `:states`
+  drops the outputs, and `:none` writes `{ succeeded:, failed: }`. A `call`
+  writes its child's output itself. With `on_item_failure: :fail` any failed
+  child fails the step with `Smith::ChildRunsFailed` (failure family
+  `child_runs_failed`, up to 20 failed refs with the counts).
+- A `spawn` launches and completes its step; nothing comes back.
+- Graph inspection shows the kind (`:map`, `:call`, `:spawn`) and the child
+  workflow, bound, items, collect and failure modes. Runtime readiness walks
+  the child workflow like a nested one (a child may wait: it is a run of its
+  own) and reports `:run_launcher_missing` when no launcher is configured.
+
 ## Replay Safety: Idempotency Keys
 
 A step that is replayed, by a retry or by a restore after a crash, sends its

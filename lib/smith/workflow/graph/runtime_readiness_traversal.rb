@@ -62,7 +62,7 @@ module Smith
         end
 
         def visit_child(parent_graph, transition, frames)
-          workflow_class = transition.workflow_class
+          workflow_class = transition.target_workflow_class
           case @states[workflow_class]
           when :visiting then mark_cycle(parent_graph, transition)
           when :done then nil
@@ -89,7 +89,9 @@ module Smith
         end
 
         def nested_transitions_for(current_graph)
-          @nested_transitions[current_graph] ||= current_graph.reachable_transitions.select(&:nested?).freeze
+          @nested_transitions[current_graph] ||= current_graph.reachable_transitions.select do |transition|
+            transition.nested? || transition.child_runs?
+          end.freeze
         end
 
         def mark_cycle(current_graph, transition)

@@ -32,6 +32,7 @@ module Smith
     include StepIO
     include WaitCompletion
     include WaitExecution
+    include ChildRunExecution
     include Execution
 
     DEFAULT_MAX_TRANSITIONS = 100
@@ -458,6 +459,7 @@ Smith::Workflow::SplitStepPersistence::SubclassBoundary.protect_execution_path!(
   Smith::Workflow::ActiveClock,
   Smith::Workflow::StepIO,
   Smith::Workflow::WaitCompletion,
+  Smith::Workflow::ChildRunExecution,
   Smith::Workflow::WaitExecution,
   Smith::Workflow::SplitStepPersistence::DefinitionBoundary,
   Smith::Workflow::SplitStepPersistence::ExecutionVerification,

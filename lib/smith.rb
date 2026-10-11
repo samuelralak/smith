@@ -64,6 +64,11 @@ module Smith
   # Per-workflow `Workflow.persistence_ttl 1.day.to_i` DSL overrides this.
   setting :persistence_ttl, default: nil
 
+  # Starts the runs `map`, `call` and `spawn` steps launch:
+  # `launch(children:, parent_key:, await_token:)`, idempotent on
+  # `(parent_key, child.ref)`. Smith::Launchers::Inline runs them in process.
+  setting :run_launcher, default: nil
+
   # Retry policy for transient persistence I/O failures.
   #   attempts:    total attempts (including the first)
   #   base_delay:  initial sleep between attempts, doubled each retry
@@ -182,6 +187,7 @@ end
 require_relative "smith/types"
 require_relative "smith/errors"
 require_relative "smith/output_failure"
+require_relative "smith/child_runs_failed"
 require_relative "smith/providers/stop_reason"
 require_relative "smith/providers/output_limit"
 require_relative "smith/providers/schema_constraints"
@@ -276,6 +282,7 @@ require_relative "smith/agent/registry"
 require_relative "smith/workflow/identifier"
 require_relative "smith/workflow/context_keys"
 require_relative "smith/workflow/transition"
+require_relative "smith/workflow/child_run_declarations"
 require_relative "smith/workflow/transition_actionability"
 require_relative "smith/workflow/graph"
 require_relative "smith/workflow/graph_dsl"
@@ -318,9 +325,12 @@ require_relative "smith/workflow/step_io"
 require_relative "smith/workflow/active_clock"
 require_relative "smith/workflow/wait_record"
 require_relative "smith/workflow/wait_completion"
+require_relative "smith/workflow/child_run_execution"
 require_relative "smith/workflow/wait_execution"
 require_relative "smith/workflow/execution"
 require_relative "smith/workflow"
+require_relative "smith/child_run"
+require_relative "smith/launchers/inline"
 require_relative "smith/workflow/claim"
 require_relative "smith/workflow/execution_frame"
 require_relative "smith/workflow/pipeline"

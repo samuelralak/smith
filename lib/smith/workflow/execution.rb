@@ -50,8 +50,13 @@ module Smith
         Tool.current_tool_result_collector = tool_result_collector
       end
 
+      # An await, delay, map or call waits; a spawn launches and continues.
+      def execute_waiting_step(transition)
+        transition.spawns? ? execute_spawn_step(transition) : execute_await_step(transition)
+      end
+
       def run_standard_guarded_step(transition)
-        return execute_await_step(transition) if transition.awaits?
+        return execute_waiting_step(transition) if transition.awaits? || transition.spawns?
         return dispatch_step(transition) if transition.deterministic?
         return run_guarded_fanout_step(transition) if transition.fanout?
 

@@ -4,6 +4,7 @@ require "dry-initializer"
 
 require_relative "../errors"
 require_relative "../output_failure"
+require_relative "../child_runs_failed"
 require_relative "composite/branch_failure"
 
 module Smith
@@ -26,6 +27,7 @@ module Smith
         "Smith::BudgetExceeded" => "budget_exceeded",
         "Smith::GuardrailFailed" => "guardrail_failed",
         "Smith::WaitTimedOut" => "wait_timed_out",
+        "Smith::ChildRunsFailed" => "child_runs_failed",
         "Smith::WorkflowError" => "workflow_error",
         "Smith::UnresolvedTransitionError" => "workflow_error",
         "Smith::Workflow::Composite::BranchFailure" => "workflow_error"
@@ -41,7 +43,7 @@ module Smith
         deterministic_step_failure tool_guardrail_failed tool_failure_notification_failed tool_capture_failed
         tool_outcome_uncertain tool_execution_not_admitted bounded_completion_error persisted_failure_invalid
         deadline_exceeded provider_permanent_failure budget_exceeded guardrail_failed agent_error workflow_error
-        wait_timed_out output_failure other
+        wait_timed_out output_failure child_runs_failed other
       ].freeze
       RETRY_FORBIDDEN_FAMILIES = %w[
         tool_capture_failed tool_failure_notification_failed tool_outcome_uncertain tool_execution_not_admitted
@@ -56,7 +58,7 @@ module Smith
           Smith::Workflow::Composite::BranchFailure.from_details(details)
         },
         "Smith::ProviderPermanentFailure" => ->(details) { Smith::ProviderPermanentFailure.from_details(details) },
-        "Smith::WaitTimedOut" => ->(details) { Smith::WaitTimedOut.from_details(details) },
+        **[Smith::WaitTimedOut, Smith::ChildRunsFailed].to_h { |error| [error.name, error.method(:from_details)] },
         "Smith::BlankAgentOutputError" => lambda { |details|
           Smith::BlankAgentOutputError.from_details(details) unless details.nil?
         },

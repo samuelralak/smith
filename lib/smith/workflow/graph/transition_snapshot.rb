@@ -42,6 +42,7 @@ module Smith
         option :wait, default: proc {}
         option :input, default: proc {}
         option :output_to, default: proc {}
+        option :children, default: proc {}
 
         def self.from_transition(transition, workflow_class: nil)
           new(**attributes_for(transition, workflow_class: workflow_class))
@@ -78,7 +79,8 @@ module Smith
             retry_policy: retry_policy_for(transition),
             wait: transition.await_config,
             input: (:callable if transition.step_input),
-            output_to: transition.output_to
+            output_to: transition.output_to,
+            children: children_for(transition)
           }
         end
 
@@ -97,7 +99,18 @@ module Smith
           }.compact
         end
 
+        # A map, call or spawn: its child workflow (by name), bound, collect
+        # and failure modes, and its items (a context key, or :callable).
+        def self.children_for(transition)
+          config = transition.children_config
+          return unless config
+
+          workflow = config[:workflow]
+          config.merge(workflow: workflow.name || workflow.inspect)
+        end
+
         def self.kind_for(transition)
+          return transition.children_config.fetch(:kind) if transition.child_runs?
           return transition.await_config.fetch(:kind) if transition.awaits?
 
           kind = KINDS.find { |_name, predicate| transition.public_send(predicate) }

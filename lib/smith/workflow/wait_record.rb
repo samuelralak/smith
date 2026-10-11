@@ -69,13 +69,15 @@ module Smith
       end
 
       def well_formed?(record)
-        %w[await delay].include?(record["kind"]) && TOKEN.match?(record["token"].to_s) &&
+        %w[await delay children].include?(record["kind"]) && TOKEN.match?(record["token"].to_s) &&
           nonempty_string?(record["transition"]) && await_fields?(record) && times?(record)
       end
 
+      # An await or a map's wait for its children names its event and
+      # context key; a delay has neither.
       def await_fields?(record)
-        await = record["kind"] == "await"
-        %w[event into].all? { |field| await ? nonempty_string?(record[field]) : record[field].nil? }
+        named = record["kind"] != "delay"
+        %w[event into].all? { |field| named ? nonempty_string?(record[field]) : record[field].nil? }
       end
 
       # Both times carry their zone, and the deadline is not before entry.

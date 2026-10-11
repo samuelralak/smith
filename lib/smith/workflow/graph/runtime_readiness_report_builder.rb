@@ -17,7 +17,7 @@ module Smith
           topology_report = graph.validate
           bindings = RuntimeBindingDiagnostics.new(graph)
           nested = NestedReadinessDiagnostics.new(graph, reports:, cycle_transitions:, graphs:)
-          diagnostics = [*bindings.to_a, *nested.to_a]
+          diagnostics = runtime_diagnostics(bindings, nested)
           RuntimeReadinessReport.new(
             workflow_class: workflow_label,
             topology_report: topology_report,
@@ -27,6 +27,10 @@ module Smith
         end
 
         private
+
+        def runtime_diagnostics(bindings, nested)
+          [*bindings.to_a, *RunLauncherDiagnostic.new(graph).to_a, *nested.to_a]
+        end
 
         def metrics(topology_report, diagnostics, bindings, nested)
           RuntimeReadinessMetrics.new(
