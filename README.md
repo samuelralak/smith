@@ -755,7 +755,9 @@ step or a model writes later chooses another ledger, and an untrusted key is
 refused. Smith builds the ledger at the first request a step makes, never
 persists it, and never needs it to restore a run; nil means none. A nested
 workflow without a `budget_ledger` of its own charges the enclosing run's; a
-child run (`call`, `map`, `spawn`), inline or not, uses its own class's.
+child run (`call`, `map`, `spawn`), inline or not, uses its own class's, so
+give each child workflow its own (runtime readiness warns of one that has none,
+`:child_run_unbudgeted`) and pass its scope keys in each child's input.
 
 Before a call's first request over the wire (each fallback model, each
 follow-up, streamed or not, OpenAI's Responses route included) Smith asks the
@@ -1000,19 +1002,30 @@ Smith.config.response_memo = ResponseMemo.new
 ```
 
 Each agent call (its tool loop included) is kept under a key of its position
-(the run, the step, any branch or nested position, the key generation), its
-attempt, its model in the fallback chain and its place among the attempt's
-calls, which a replay reaches again. Its record (`{"messages" => [...],
-"complete" => true | false}`, JSON) holds the messages the call added: the
-model's replies with their usage, stop reason and message id, its tool calls
-and their results. It is stored after each round's tool results and when the
-call ends. A replayed call that ended sends nothing: its reply is the step's
-(a streamed step's sink gets its text at once), its usage is recorded as if
-it had just come, once, and its `:provider_call` trace says `memo: true`. One
-that had not ended continues from its tools' results, running none of them
-again. A call whose messages cannot be kept (an attachment, past 1 MiB) is not
-stored; a record Smith does not keep is ignored, and an error from `fetch` or
-`store` is logged by class: a memo never fails a step. Keeping records and
+(the run, the step, any branch or nested position, the key generation), the
+attempts it runs under (its step's, and each enclosing run's for a nested
+workflow, so a retry never takes the attempt before's answer), its attempt
+index (its model in the fallback chain, or a follow-up's place), its place
+among the attempt's calls, and a digest of its request (model, messages,
+tools, schema, params). A replay reaches the same key; a call whose request
+changed since (a deployed prompt, another model, a date in the prompt) misses
+and is sent again, as a miss always may be.
+
+Its record (`{"version" => 1, "messages" => [...], "complete" => true | false}`,
+JSON) holds the messages the call added: the model's replies (structured ones
+too) with their usage, stop reason and message id (a stream's included), its
+tool calls and their results. It is stored after each round's tool results
+and when the call ends; a complete record ends with the model's reply. A
+replayed call that ended sends nothing: its reply is the step's (a streamed
+step's sink gets the reply's text at once, not the earlier rounds'), its usage
+is recorded as if it had just come, once, and its `:provider_call` trace says
+`memo: true`; a reply that was cut off or refused fails the step as it did.
+One that had not ended continues from its tools' results, its live part going
+on from the kept rounds (on a budget ledger, a later round). Kept tool results
+count as tools the step ran, so no retry or fallback runs them again. A call
+whose messages cannot be kept (an attachment, past 1 MiB) is not stored, and
+is logged; a record Smith does not keep is ignored, and an error from `fetch`
+or `store` is logged by class: a memo never fails a step. Keeping records and
 dropping them (a TTL) are the host's; batch requests are not memoized, as
 their `custom_id` already identifies them.
 

@@ -97,7 +97,8 @@ RSpec.describe "Smith response memo" do
     key = nil
     allow(Smith::ResponseMemo).to(receive(:key).and_wrap_original { |original, *args| key = original.call(*args) })
     allow(memo).to receive(:fetch).and_wrap_original do |original, wanted|
-      memo.records[wanted] ||= { "messages" => [{ "role" => "assistant", "content" => "Streamed before.",
+      memo.records[wanted] ||= { "version" => 1,
+                                 "messages" => [{ "role" => "assistant", "content" => "Streamed before.",
                                                   "usage" => { "tokens" => { "input_tokens" => 5,
                                                                              "output_tokens" => 3 } } }],
                                  "complete" => true }
@@ -141,7 +142,7 @@ RSpec.describe "Smith response memo" do
     record = ->(original, *args) { original.call(*(keys << args).last) }
     allow(Smith::ResponseMemo).to(receive(:key).and_wrap_original(&record))
     expect(asking("SpecMemoFallbackWorkflow").new(context: {}).run!.output).to eq("from the fallback")
-    expect(keys).to eq([[1, 0, 1], [1, 1, 2]])
+    expect(keys.map { _1.first(3) }).to eq([[[1], 0, 1], [[1], 1, 2]])
     expect(memo.records.length).to eq(1)
 
     Smith.config.batch_queue = batch_queue

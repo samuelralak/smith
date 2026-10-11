@@ -26,35 +26,39 @@ module Smith
         delivered = deliver_batch_result(chat, entry) if entry
         return delivered if delivered
 
-        remembered_completion(chat, model_reference, facts) { live_completion(chat, model_reference, collected, facts) }
+        remembered_completion(chat, model_reference, facts) do |resumed|
+          live_completion(chat, model_reference, collected, facts, resumed)
+        end
       end
 
-      def live_completion(chat, model_reference, collected, facts)
+      # The call over the wire; `resumed` (RememberedCalls) says where a
+      # call a response memo kept part of goes on from.
+      def live_completion(chat, model_reference, collected, facts, resumed)
         ledger = run_budget_ledger
         return wire_completion(chat, model_reference, collected) unless ledger
 
-        held_completion(chat, model_reference, collected, ledger, facts)
+        start = resumed ? resumed.start : chat_message_count(chat)
+        holding = { pausable: budget_pausable?, rounds: resumed&.rounds || 0 }
+        Providers::RequestHolds.within(chat_provider(chat), ledger, facts[:attempt_id], **holding) do |holder|
+          held_completion(holder, chat, start) { wire_completion(chat, model_reference, collected) }
+        end
       end
 
       # A refusal of a tool loop's later round pauses the loop (its step
       # retries for budget, BudgetPause): the error carries the messages to
-      # continue from. A loop whose messages cannot be kept goes on, unheld,
-      # from its tools' results (the chat keeps them), as when its step
-      # cannot pause.
-      def held_completion(chat, model_reference, collected, ledger, facts)
-        start = chat_message_count(chat)
-        Providers::RequestHolds.within(chat_provider(chat), ledger, facts[:attempt_id],
-                                       pausable: budget_pausable?) do |holder|
-          wire_completion(chat, model_reference, collected)
-        rescue BudgetUnavailable => e
-          raise unless holder.pausable && holder.rounds > 1 && e.continuation.nil?
+      # continue from (from `start`, a memo's kept rounds included). A loop
+      # whose messages cannot be kept goes on, unheld, from its tools'
+      # results (the chat keeps them), as when its step cannot pause.
+      def held_completion(holder, chat, start)
+        yield
+      rescue BudgetUnavailable => e
+        raise unless holder.pausable && holder.rounds > 1 && e.continuation.nil?
 
-          paused = paused_loop(e, chat, start)
-          raise paused if paused
+        paused = paused_loop(e, chat, start)
+        raise paused if paused
 
-          holder.pausable = false
-          retry
-        end
+        holder.pausable = false
+        retry
       end
 
       def paused_loop(error, chat, start)

@@ -135,6 +135,8 @@ module Smith
       initialize_tool_result_state
       seed_initial_session_messages
       initialize_budget_ledger(Budget::HostLedger.take_inherited)
+      # The attempts of the runs a nested workflow runs inside (ResponseMemo).
+      @memo_attempts = ResponseMemo.take_inherited
       @budget_ledger_scope = capture_budget_ledger_scope
     end
 

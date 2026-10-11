@@ -366,14 +366,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Response memo: `Smith.config.response_memo` (`fetch(key)`,
   `store(key, record)`) keeps what a step's provider calls got, so a step
   replayed after its process died reuses it instead of paying again. Each
-  call is keyed by its position's idempotency scope, attempt, model
-  candidate and place among the attempt's calls; its record holds the
-  messages it added (replies with their usage and facts, tool calls and
+  call is keyed by its position's idempotency scope, the attempts it runs
+  under (enclosing runs' too), its attempt index, its place among the
+  attempt's calls and a digest of its request (a changed request misses).
+  Its record (version 1) holds the messages it added (replies, structured
+  ones too, with their usage and facts, a stream's included; tool calls and
   results), stored after each round's tool results and when it ends. A
   replayed call that ended sends nothing (its `:provider_call` trace says
   `memo: true`, its usage is recorded once); one that had not continues from
-  its tools' results. A memo never fails a step: a record Smith does not keep
-  is ignored, errors are logged by class.
+  its tools' results. Kept tool results count as tools the step ran. A memo
+  never fails a step: a record Smith does not keep is ignored, errors are
+  logged by class.
 - Budget ledgers: `budget_ledger(*scope_keys) { |scope| ... }` names the
   host's ledger for a run (an account's spend across runs, say). Its scope is
   the values the keys have in the run's trusted context when it is created,
@@ -405,9 +408,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   the retry continues from them, running none of its tools again; any other
   step's later rounds go on unheld and are reconciled. A nested workflow
   without its own ledger charges the enclosing run's; a child run, inline or
-  not, its own class's. Runtime readiness warns of an agent whose model has
-  no price wherever the ledger is charged (`:budget_ledger_unpriced`), and
-  its metrics name the scope keys.
+  not, its own class's (readiness warns of a child workflow that declares
+  none, `:child_run_unbudgeted`). Runtime readiness warns of an agent whose
+  model has no price wherever the ledger is charged
+  (`:budget_ledger_unpriced`), and its metrics name the scope keys.
 
 ### Changed
 

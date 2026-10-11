@@ -30,9 +30,9 @@ module Smith
 
       # Runs the block with the provider's requests held on `ledger`, keyed
       # "<attempt_id>:<round>".
-      def within(provider, ledger, attempt_id, pausable: false)
+      def within(provider, ledger, attempt_id, pausable: false, rounds: 0)
         outer = Fiber[HELD]
-        Fiber[HELD] = Holder.new(provider, ledger, attempt_id, pausable, 0, false)
+        Fiber[HELD] = Holder.new(provider, ledger, attempt_id, pausable, rounds, false)
         yield Fiber[HELD]
       ensure
         Fiber[HELD] = outer

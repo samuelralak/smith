@@ -17,47 +17,47 @@ module Smith
       MAX_BYTES = 1024 * 1024
       ROLES = %w[assistant tool user].freeze
       TOKENS = %w[input_tokens output_tokens cached_tokens cache_creation_tokens thinking_tokens].freeze
-      MEMO_BODY = "smith.response_memo"
       # What Providers::ResponseFacts reads a kept response's facts from.
       Raw = Struct.new(:body)
 
       module_function
 
       # `kept` (an earlier pause's) followed by `messages`, or nil; with
-      # `usage`, each response's usage too.
-      def dump(kept, messages, usage: false)
-        dumped = messages.map { message(_1, usage:) || (return nil) }
+      # `usage`, each response's usage too (its facts from `facts`, by
+      # message, for a streamed response, whose facts its stream gave).
+      def dump(kept, messages, usage: false, facts: {})
+        dumped = messages.map { message(_1, usage: (facts[_1] || {} if usage)) || (return nil) }
         list = JSON.parse(JSON.generate([*kept, *dumped]))
         list if JSON.generate(list).bytesize <= MAX_BYTES
       rescue JSON::GeneratorError, JSON::NestingError, Encoding::UndefinedConversionError
         nil
       end
 
-      def message(message, usage: false)
+      def message(message, usage: nil)
         content = content_of(message.content)
         return if content == :unkept
 
         { "role" => message.role.to_s, "content" => content, "tool_call_id" => message.tool_call_id,
           "model_id" => message.model_id, "tool_calls" => message.tool_calls&.values&.map { tool_call(_1) },
-          "thinking" => thinking_of(message.thinking), "usage" => (usage_of(message) if usage) }.compact
+          "thinking" => thinking_of(message.thinking), "usage" => (usage_of(message, usage) if usage) }.compact
       end
 
-      def usage_of(message)
+      def usage_of(message, streamed)
         tokens = message.respond_to?(:tokens) ? message.tokens&.to_h : nil
-        facts = Providers::ResponseFacts.from_message(message)
+        facts = Providers::ResponseFacts.from_message(message).merge(streamed)
         usage = { "tokens" => tokens&.transform_keys(&:to_s), "stop_reason" => facts[:stop_reason],
                   "id" => facts[:provider_message_id] }.compact
         usage unless usage.empty?
       end
 
-      def thinking_of(thinking)
-        { "text" => thinking.text, "signature" => thinking.signature }.compact if thinking
-      end
+      def thinking_of(thinking) = thinking && { "text" => thinking.text, "signature" => thinking.signature }.compact
 
       def content_of(content)
         case content
         when nil, String then content
         when RubyLLM::Content::Raw then { "raw" => content.value }
+        # A structured reply, as RubyLLM parses one under a schema.
+        when Hash, Array then { "json" => content }
         else :unkept
         end
       end
@@ -72,13 +72,19 @@ module Smith
       def load(list)
         raise ArgumentError, "a budget continuation must be a list of messages" unless valid?(list)
 
-        list.map do |entry|
-          RubyLLM::Message.new(
-            role: entry["role"].to_sym, content: content(entry["content"]), tool_call_id: entry["tool_call_id"],
-            model_id: entry["model_id"], tool_calls: tool_calls(entry["tool_calls"]),
-            thinking: thinking(entry["thinking"]), **kept_usage(entry["usage"])
-          )
-        end
+        list.map { message_from(_1) }
+      end
+
+      def message_from(entry)
+        content = entry["content"]
+        message = RubyLLM::Message.new(
+          role: entry["role"].to_sym, content: content(content), tool_call_id: entry["tool_call_id"],
+          model_id: entry["model_id"], tool_calls: tool_calls(entry["tool_calls"]),
+          thinking: thinking(entry["thinking"]), **kept_usage(entry["usage"])
+        )
+        # RubyLLM's constructor reads a Hash as attachments.
+        message.content = content["json"] if structured?(content)
+        message
       end
 
       # A kept response's token counts, and its facts as a raw body
@@ -87,7 +93,8 @@ module Smith
         return {} unless usage
 
         { **usage.fetch("tokens", {}).transform_keys(&:to_sym),
-          raw: Raw.new({ "object" => MEMO_BODY, "stop_reason" => usage["stop_reason"], "id" => usage["id"] }) }
+          raw: Raw.new({ "object" => "smith.response_memo", "stop_reason" => usage["stop_reason"],
+                         "id" => usage["id"] }) }
       end
 
       def valid?(list)
@@ -117,7 +124,11 @@ module Smith
 
       def thinking?(thinking) = thinking.nil? || (thinking.is_a?(Hash) && thinking.values.all?(String))
 
-      def content?(content) = content.nil? || content.is_a?(String) || (content.is_a?(Hash) && content.keys == ["raw"])
+      def content?(content)
+        content.nil? || content.is_a?(String) || (content.is_a?(Hash) && [["raw"], ["json"]].include?(content.keys))
+      end
+
+      def structured?(content) = content.is_a?(Hash) && content.key?("json")
 
       def call?(call)
         call.is_a?(Hash) && call["id"].is_a?(String) && call["name"].is_a?(String) && call["arguments"].is_a?(Hash) &&
@@ -126,7 +137,11 @@ module Smith
 
       def optional_string?(value) = value.nil? || value.is_a?(String)
 
-      def content(value) = value.is_a?(Hash) ? RubyLLM::Content::Raw.new(value.fetch("raw")) : value
+      def content(value)
+        return value unless value.is_a?(Hash)
+
+        structured?(value) ? nil : RubyLLM::Content::Raw.new(value.fetch("raw"))
+      end
 
       def tool_calls(calls)
         calls&.to_h do |call|

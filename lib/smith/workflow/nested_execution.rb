@@ -50,7 +50,9 @@ module Smith
       def new_nested_workflow(child_class)
         StepIO.with_inherited_untrusted_keys(untrusted_context_keys) do
           Budget::HostLedger.inheriting(method(:run_budget_ledger)) do
-            child_class.new(context: @context.dup, ledger: @ledger, created_at: @created_at)
+            ResponseMemo.inheriting([*@memo_attempts, @step_attempt.to_i]) do
+              child_class.new(context: @context.dup, ledger: @ledger, created_at: @created_at)
+            end
           end
         end
       end

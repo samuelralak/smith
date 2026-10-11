@@ -231,6 +231,32 @@ RSpec.describe "Smith budget ledgers: review fixes" do
     expect(asking("SpecLedgerPlainReadiness").runtime_readiness.metrics[:budget_ledger]).to be_nil
   end
 
+  it "warns of a child run whose class declares no ledger, as its requests would be held on none" do
+    agent("SpecLedgerChildRunAgent")
+    plain_child = asking("SpecLedgerPlainChild")
+    held_child = asking("SpecLedgerHeldChild") { |_scope| nil }
+    launching = lambda do |name, child, &ledger_block|
+      with_stubbed_class(name, workflow_class) do
+        initial_state :idle
+        state :failed
+        budget_ledger(&ledger_block) if ledger_block
+        transition :fan, from: :idle, to: :done do
+          map :ids, workflow: child, max_items: 3, timeout: 60, input: ->(id, _ctx) { { id: } }, into: :results
+          on_failure :fail
+        end
+      end
+    end
+
+    unbudgeted = lambda do |klass|
+      klass.runtime_readiness.runtime_diagnostics.select { _1.code == :child_run_unbudgeted }
+                                                 .map { [_1.severity, _1.transition, _1.target] }
+    end
+    expect(unbudgeted.call(launching.call("SpecLedgerUnheldParent", plain_child) { |_scope| nil }))
+      .to eq([[:warning, :fan, "SpecLedgerPlainChild"]])
+    expect(unbudgeted.call(launching.call("SpecLedgerHeldParent", held_child) { |_scope| nil })).to eq([])
+    expect(unbudgeted.call(launching.call("SpecLedgerNoLedgerParent", plain_child))).to eq([])
+  end
+
   it "counts an image or a PDF in raw content as an attachment, not as its base64 text" do
     png = Base64.strict_encode64("\x89PNG\r\n\x1a\n".b + Random.new(1).bytes(300_000))
     pdf = "%PDF-1.4\n<< /Type /Pages >>\n<< /Type /Page >>\n<< /Type/Page >>\n<< /Type /Page >>\n".b

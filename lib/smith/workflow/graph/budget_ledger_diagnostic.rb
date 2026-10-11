@@ -13,7 +13,9 @@ module Smith
       # step (a fan-out's branches, an optimizer's generator and evaluator,
       # an orchestrator and its worker) and of a nested workflow without a
       # ledger of its own, which charges this one. A model given by a block
-      # is known only per run, and is not checked.
+      # is known only per run, and is not checked. A child run (`call`, `map`,
+      # `spawn`) is a run of its own, held on its own class's ledger: one
+      # whose class names none sends its requests unheld, also a warning.
       class BudgetLedgerDiagnostic
         extend Dry::Initializer
 
@@ -27,7 +29,8 @@ module Smith
           return [] unless self.class.declared?(graph.workflow_class)
 
           graph.reachable_transitions.flat_map do |transition|
-            agents(transition, Set[graph.workflow_class]).uniq.filter_map { unpriced(transition, _1) }
+            [*agents(transition, Set[graph.workflow_class]).uniq.filter_map { unpriced(transition, _1) },
+             *unbudgeted_child(transition)]
           end
         end
 
@@ -43,6 +46,21 @@ module Smith
           return transition.orchestrator_config.values_at(:orchestrator, :worker) if transition.orchestrated?
 
           [transition.agent_name]
+        end
+
+        def unbudgeted_child(transition)
+          child = transition.children_config&.fetch(:workflow)
+          return if child.nil? || self.class.declared?(child)
+
+          name = child.name || child.inspect
+          Diagnostic.new(
+            severity: :warning, code: :child_run_unbudgeted, transition: transition.name, target: name,
+            message: "Transition #{Reference.format(transition.name)} starts runs of #{name}, which declares no " \
+                     "budget_ledger: a child run is a run of its own, so its provider requests are held on no " \
+                     "ledger and go unapproved and uncounted.",
+            suggestion: "Declare budget_ledger on #{name}, scoped by a key the parent passes in each child's " \
+                        "input (budget_ledger(:account_id) { |scope| ... })."
+          )
         end
 
         # A nested workflow without its own ledger charges this one.

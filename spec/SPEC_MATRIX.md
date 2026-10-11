@@ -1923,6 +1923,27 @@ Documented contracts covered:
 - a call's key names its attempt, model candidate and place among the attempt's calls; a batch request is not memoized
 - these contracts are mutation-verified against the full suite
 
+### `spec/smith/response_memo_review_spec.rb`
+
+Purpose:
+
+- pins what a review of the response memo found
+
+Architecture basis:
+
+- Section 5, Persistence and Resume; Section 6, Budgets
+
+Documented contracts covered:
+
+- a structured (`output_schema`) reply is kept and replayed as itself, its stream sink getting its JSON text
+- a replayed streamed reply keeps its stop reason, so a cut-off one fails the step as it did
+- a parent's retry around a nested workflow makes, pays for and records each attempt's child call once
+- a replayed loop refused at its first live round keeps its kept tool results in the pause's continuation; one paused at a later live round keeps every round's messages
+- after a replayed tool loop, a failed live round fails with `ToolOutcomeUncertain` and no fallback runs the tool again
+- a replay whose request changed (the model, or only the agent's instructions) misses and is sent; a call that cannot be kept is logged
+- a complete record that does not end in a model reply, or of another version, is ignored
+- these contracts are mutation-verified against the full suite
+
 ### `spec/smith/budget_ledger_spec.rb`
 
 Purpose:
@@ -1966,7 +1987,7 @@ Documented contracts covered:
 - a batch hold is settled on the ledger it was taken on, whatever a step writes to the context
 - a request the queue took before it failed keeps its hold; only the rest are released
 - a reply without usage, and a stream that failed after it began, reconcile at the hold; a negative count reconciles as 0
-- readiness warns of unpriced optimizer, orchestrator and nested agents, and its metrics name the scope keys
+- readiness warns of unpriced optimizer, orchestrator and nested agents, and of a child run whose class declares no ledger (only when the parent declares one), and its metrics name the scope keys
 - an image or a PDF in raw content (base64 data or a data URL) counts as an attachment, a PDF by its pages
 - a batch capture without a ledger computes no hold
 - these contracts are mutation-verified against the full suite

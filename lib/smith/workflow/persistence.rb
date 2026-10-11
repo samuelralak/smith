@@ -151,6 +151,7 @@ module Smith
         validate_step_in_progress!(normalized) if
           self.class.idempotency_mode == :strict && !allow_step_in_progress
         initialize_budget_ledger
+        @memo_attempts = []
         @budget_ledger_scope = restored_budget_ledger_scope(normalized[:budget_ledger_scope])
       end
 
