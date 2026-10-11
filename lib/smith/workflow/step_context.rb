@@ -89,9 +89,9 @@ module Smith
       # owned by the surrounding ThreadContextSnapshot.
       def install_step_idempotency_scope(transition)
         namespace = ArtifactIntegration.instance_method(:execution_namespace).bind_call(self)
-        outer = IdempotencyKey.current_scope
-        base = outer && outer.run == namespace ? outer : IdempotencyKey::Scope.root(namespace)
-        IdempotencyKey.install(base.within(:step, @step_count + 1, transition.name.to_s))
+        outer = IdempotencyKey.__send__(:current_scope)
+        base = outer && outer.run == namespace ? outer : IdempotencyKey.__send__(:root_scope, namespace)
+        IdempotencyKey.__send__(:install, base.within(:step, @step_count + 1, transition.name.to_s))
       end
 
       def teardown_step_context

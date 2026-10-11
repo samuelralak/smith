@@ -282,12 +282,15 @@ class SendInvoice < Smith::Tool
 end
 ```
 
-The key is unique to the run, the step and branch the tool runs in, the tool and
-the scope, and the same when the step is replayed, including in concurrent tool
-calls. The scope names the request, usually from its arguments, because the
-model can call one tool several times in a step and a replayed step's model may
-order its calls differently. Outside a workflow step it raises
-`Smith::WorkflowError`. See `docs/PERSISTENCE.md`, Replay Safety.
+The key is unique to the run, the step and branch the tool runs in, the tool's
+`name` and the scope, including in concurrent tool calls, and it is the same
+when a replay sends the same request. The scope should be the request's stable
+identity (customer and amount here), not free text such as a message body:
+the model can call one tool several times in a step, and a replayed step's
+model may word or order its calls differently. Renaming the tool class changes
+its keys. Outside a workflow step it raises `Smith::WorkflowError`. Smith
+supplies the key; holding operation receipts and reconciling outcomes stays
+with the host, as above. See `docs/PERSISTENCE.md`, Replay Safety.
 
 Hosts that reconstruct an execution may supply an explicit next ordinal:
 

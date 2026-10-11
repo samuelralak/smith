@@ -152,15 +152,23 @@ module Smith
   class WorkflowError < Error; end
 
   class DeterministicStepFailure < WorkflowError
-    attr_reader :retryable, :kind, :details, :new_idempotency_key
+    attr_reader :retryable, :kind, :details, :new_idempotency_key, :idempotency_scope
 
-    # `new_idempotency_key: true` declares that the failed attempt's
-    # requests took no effect, so a retry sends them under new keys.
-    def initialize(message, retryable: nil, kind: nil, details: nil, new_idempotency_key: false)
+    # `new_idempotency_key: true` declares that the failed attempt's own
+    # requests took no effect, so a retry of the step that raised it sends
+    # them under new keys; `idempotency_scope` is that step's position. The
+    # flag is not persisted with the failure record.
+    def initialize(message, retryable: nil, kind: nil, details: nil, new_idempotency_key: false, # rubocop:disable Metrics/ParameterLists
+                   idempotency_scope: nil)
+      unless [true, false, nil].include?(new_idempotency_key)
+        raise ArgumentError, "new_idempotency_key must be true or false"
+      end
+
       @retryable = retryable
       @kind = kind
       @details = details
       @new_idempotency_key = new_idempotency_key == true
+      @idempotency_scope = idempotency_scope
       super(message)
     end
   end

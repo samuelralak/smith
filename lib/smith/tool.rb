@@ -149,13 +149,17 @@ module Smith
     private
 
     # A key for a request this tool sends outside the system: unique to the
-    # run, the step and branch the tool runs in, this tool and `scope`, and
-    # the same when the step is replayed. A tool can run several times in
-    # one step, so `scope` is required and should name the request, usually
-    # from the tool's arguments (`idempotency_key(kwargs)`). Raises
+    # run, the step and branch the tool runs in, this tool's `name` and
+    # `scope`, and the same when a replay sends the same request. A tool can
+    # run several times in one step, and a replayed model may word or order
+    # its calls differently, so `scope` is required and should be the
+    # request's stable identity (`idempotency_key(customer_id:, invoice:)`),
+    # not free text. Renaming the tool changes its keys. Raises
     # Smith::WorkflowError outside a workflow step.
     def idempotency_key(scope)
-      IdempotencyKey.current_scope!.within(:tool, name).key(scope)
+      raise WorkflowError, "an idempotency key needs a tool with a name" if name.to_s.empty?
+
+      IdempotencyKey.__send__(:current_scope!).within(:tool, name).key(scope)
     end
 
     def run_before_execute_hook!(kwargs)

@@ -33,6 +33,8 @@ module Smith
 
         def prepare_composite_input(authorization, transition, specs)
           ThreadContextSnapshot.new.around do
+            # The step's position, as in-process guardrails run with it.
+            install_step_idempotency_scope(transition)
             run_composite_input_guardrails(authorization, transition, specs)
             agent_messages = build_session&.prepare!
             Composite::Input.build(agent_messages:, session_messages: snapshot_session_messages)

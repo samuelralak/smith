@@ -90,8 +90,8 @@ module Smith
       # from two branches gets two keys. Restoration is owned by the
       # branch's ThreadContextSnapshot.
       def narrow_idempotency_scope(*segment)
-        scope = IdempotencyKey.current_scope
-        IdempotencyKey.install(scope.within(*segment)) if scope
+        scope = IdempotencyKey.__send__(:current_scope)
+        IdempotencyKey.__send__(:install, scope.within(*segment)) if scope
       end
 
       def setup_branch_context(env, ledger)

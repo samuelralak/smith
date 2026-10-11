@@ -34,7 +34,7 @@ module Smith
           # The overlay scopes every trace and usage fact from this round's
           # generator and evaluator calls to the round that produced them.
           result = Attribution.with(round: round) do
-            IdempotencyKey.within(:round, round) { run_optimization_round(state, round) }
+            IdempotencyKey.__send__(:within, :round, round) { run_optimization_round(state, round) }
           end
           return result if result
         end
@@ -43,10 +43,13 @@ module Smith
                     "optimization exhausted #{state.config[:max_rounds]} rounds without acceptance")
       end
 
+      # Each role is a position of its own in the round, so the generator,
+      # the before_eval callback and the evaluator never share a key.
       def run_optimization_round(state, round)
-        generate_candidate!(state, round)
-        rejection = before_eval_rejection(state)
-        evaluation = rejection || normalize_evaluation(evaluate_candidate(state))
+        IdempotencyKey.__send__(:within, :generator) { generate_candidate!(state, round) }
+        rejection = IdempotencyKey.__send__(:within, :before_eval) { before_eval_rejection(state) }
+        evaluation = rejection ||
+                     normalize_evaluation(IdempotencyKey.__send__(:within, :evaluator) { evaluate_candidate(state) })
         validate_evaluation_structure!(evaluation)
         validate_evaluation_fields!(evaluation, state.config)
         record_evaluation(state, evaluation, round, rejection ? :before_eval : :evaluator)

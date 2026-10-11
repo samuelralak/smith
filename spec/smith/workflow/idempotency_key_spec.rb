@@ -70,7 +70,7 @@ RSpec.describe "Smith idempotency keys" do
       attempts = keys.first(3)
       expect(attempts.map(&:first)).to eq([1, 2, 3])
       expect(attempts.map { _1[1] }.uniq.size).to eq(1)
-      expect(attempts.first[1]).to match(/\A\h{64}\z/)
+      expect(attempts.first[1]).to match(/\A[0-9a-f]{64}\z/)
       expect(attempts.first[2]).not_to eq(attempts.first[1])
       expect(keys.last[1]).not_to eq(attempts.first[1])
     end
@@ -187,7 +187,7 @@ RSpec.describe "Smith idempotency keys" do
 
       expect(keys.size).to eq(2)
       expect(keys.uniq.size).to eq(2)
-      expect(Smith::IdempotencyKey.current_scope).to be_nil
+      expect(Smith::IdempotencyKey.__send__(:current_scope)).to be_nil
     end
 
     it "keys a workflow advanced inside another's step as a run of its own" do
@@ -254,6 +254,8 @@ RSpec.describe "Smith idempotency keys" do
                                                     transition_name: :x)
 
       expect { step.fail!("declined", new_idempotency_key: "yes") }.to raise_error(ArgumentError, /true or false/)
+      expect { Smith::DeterministicStepFailure.new("declined", new_idempotency_key: "yes") }
+        .to raise_error(ArgumentError, /true or false/)
       expect { step.fail!("declined", new_idempotency_key: true) }
         .to raise_error(Smith::DeterministicStepFailure) { |error| expect(error.new_idempotency_key).to be(true) }
     end
@@ -315,12 +317,16 @@ RSpec.describe "Smith idempotency keys" do
       %i[spec_idempotency_fan_a spec_idempotency_fan_b].each { Smith::Agent::Registry.delete(_1) }
     end
 
-    it "gives each optimizer round its own key" do
+    it "gives each optimizer round, and the generator and evaluator in it, their own key" do
       generator_keys = []
+      evaluator_keys = []
       stub_key_recording_agent(agent(:spec_idempotency_generator), generator_keys, "draft")
       evaluator = agent(:spec_idempotency_evaluator)
       verdicts = [{ accept: false, converged: false, feedback: "again", score: 0.1 }, { accept: true, score: 0.9 }]
-      allow(evaluator).to receive(:chat) { answering_chat(verdicts.shift) }
+      allow(evaluator).to receive(:chat) do
+        evaluator_keys << Smith::IdempotencyKey.current("request")
+        answering_chat(verdicts.shift)
+      end
       klass = with_stubbed_class("SpecIdempotencyOptimizeWorkflow", workflow_class) do
         initial_state :idle
 
@@ -333,35 +339,60 @@ RSpec.describe "Smith idempotency keys" do
       klass.new.run!
 
       expect(generator_keys.size).to eq(2)
-      expect(generator_keys.uniq.size).to eq(2)
+      expect((generator_keys + evaluator_keys).uniq.size).to eq(4)
     ensure
       %i[spec_idempotency_generator spec_idempotency_evaluator].each { Smith::Agent::Registry.delete(_1) }
     end
 
-    it "gives each orchestrator round and worker task its own key" do
-      orchestrator_keys = []
-      decisions = [{ tasks: [{ n: 1 }, { n: 2 }] }, { final: { summary: "done" } }]
-      orchestrator = agent(:spec_idempotency_orchestrator)
-      allow(orchestrator).to receive(:chat) do
-        orchestrator_keys << Smith::IdempotencyKey.current("request")
-        answering_chat(decisions.shift)
+    def stub_task_recording_worker(task_keys)
+      allow(agent(:spec_idempotency_worker)).to receive(:chat) do
+        chat = answering_chat({ finding: "x" })
+        chat.define_singleton_method(:add_message) { |message| @task = message[:content] }
+        chat.define_singleton_method(:complete) do
+          task_keys << [@task, Smith::IdempotencyKey.current("request")]
+          Struct.new(:content, :input_tokens, :output_tokens).new({ finding: "x" }, 1, 1)
+        end
+        chat
       end
-      stub_key_recording_agent(agent(:spec_idempotency_worker), keys, { finding: "x" })
-      klass = with_stubbed_class("SpecIdempotencyOrchestrateWorkflow", workflow_class) do
+    end
+
+    def orchestrated_workflow(name, decisions, task_keys)
+      allow(agent(:spec_idempotency_orchestrator)).to receive(:chat) { answering_chat(decisions.shift) }
+      stub_task_recording_worker(task_keys)
+      with_stubbed_class(name, workflow_class) do
         initial_state :idle
 
         transition(:research, from: :idle, to: :done) do
           orchestrate orchestrator: :spec_idempotency_orchestrator, worker: :spec_idempotency_worker,
-                      max_workers: 2, max_delegation_rounds: 2, task_schema: SpecIdempotencyLooseSchema,
+                      max_workers: 2, max_delegation_rounds: 3, task_schema: SpecIdempotencyLooseSchema,
                       worker_output_schema: SpecIdempotencyLooseSchema, final_output_schema: SpecIdempotencyLooseSchema
         end
       end
+    end
 
-      expect(klass.new.run!.state).to eq(:done)
+    it "keys an orchestrator's worker task by its content, so a replay that reorders tasks keeps each one's key" do
+      task_keys = []
+      decisions = [{ tasks: [{ to: "a" }, { to: "b" }] }, { final: { summary: "done" } },
+                   { tasks: [{ to: "b" }, { to: "a" }] }, { final: { summary: "done" } }]
+      klass = orchestrated_workflow("SpecIdempotencyReorderWorkflow", decisions, task_keys)
+      checkpoint = JSON.parse(JSON.generate(klass.new.to_state))
 
-      expect(orchestrator_keys.uniq.size).to eq(2)
-      expect(keys.uniq.size).to eq(2)
-      expect(orchestrator_keys & keys).to be_empty
+      2.times { expect(klass.from_state(checkpoint).run!.state).to eq(:done) }
+
+      first, replay = task_keys.each_slice(2).map(&:to_h)
+      expect(replay).to eq(first)
+      expect(first.values.uniq.size).to eq(2)
+    ensure
+      %i[spec_idempotency_orchestrator spec_idempotency_worker].each { Smith::Agent::Registry.delete(_1) }
+    end
+
+    it "gives equal tasks in one round, and a task repeated in a later round, their own keys" do
+      task_keys = []
+      decisions = [{ tasks: [{ to: "a" }, { to: "a" }] }, { tasks: [{ to: "a" }] }, { final: { summary: "done" } }]
+
+      expect(orchestrated_workflow("SpecIdempotencyRepeatWorkflow", decisions, task_keys).new.run!.state).to eq(:done)
+
+      expect(task_keys.map(&:last).uniq.size).to eq(3)
     ensure
       %i[spec_idempotency_orchestrator spec_idempotency_worker].each { Smith::Agent::Registry.delete(_1) }
     end
@@ -471,15 +502,267 @@ RSpec.describe "Smith idempotency keys" do
     end
   end
 
-  describe Smith::IdempotencyKey::Scope do
-    let(:scope) { described_class.root("run") }
+  describe "review fixes" do
+    it "keeps a parent's keys when a nested workflow's step declares its own failure settled" do
+      keys = self.keys
+      calls = 0
+      child = with_stubbed_class("SpecIdempotencySettledChildWorkflow", workflow_class) do
+        initial_state :idle
+
+        transition(:charge, from: :idle, to: :charged) { compute { |step| keys << step.idempotency_key } }
+        transition :notify, from: :charged, to: :done do
+          compute do |step|
+            calls += 1
+            step.fail!("refused", retryable: true, new_idempotency_key: true) if calls == 1
+          end
+        end
+      end
+      parent = with_stubbed_class("SpecIdempotencySettledParentWorkflow", workflow_class) do
+        initial_state :idle
+
+        transition :delegate, from: :idle, to: :done do
+          workflow child
+          retry_on attempts: 2
+        end
+      end
+
+      expect(parent.new.run!.state).to eq(:done)
+
+      expect(keys.size).to eq(2)
+      expect(keys.last).to eq(keys.first)
+    end
+
+    it "refuses new_idempotency_key_on on a transition whose failures can come from several steps or branches" do
+      bodies = [
+        -> { workflow Class.new(Smith::Workflow) },
+        -> { execute :spec_agent, parallel: true, count: 2 },
+        -> { fan_out branches: { a: :spec_a, b: :spec_b } },
+        -> { optimize generator: :g, evaluator: :e, max_rounds: 2, evaluator_schema: Class.new },
+        lambda do
+          orchestrate orchestrator: :o, worker: :w, max_workers: 1, max_delegation_rounds: 1,
+                      task_schema: SpecIdempotencyLooseSchema, worker_output_schema: SpecIdempotencyLooseSchema,
+                      final_output_schema: SpecIdempotencyLooseSchema
+        end
+      ]
+      bodies.each do |body|
+        [true, false].each do |retry_first|
+          expect do
+            Class.new(workflow_class) do
+              initial_state :idle
+              transition(:go, from: :idle, to: :done) do
+                retry_on ArgumentError, attempts: 2, new_idempotency_key_on: [ArgumentError] if retry_first
+                instance_exec(&body)
+                retry_on ArgumentError, attempts: 2, new_idempotency_key_on: [ArgumentError] unless retry_first
+              end
+            end
+          end.to raise_error(Smith::WorkflowError, /new_idempotency_key_on/)
+        end
+      end
+    end
+
+    it "derives the same namespace on every restore of a payload written without one" do
+      klass = recording_step_workflow("SpecIdempotencyLegacyWorkflow", keys)
+      payload = JSON.parse(JSON.generate(klass.new.to_state)).merge("execution_namespace" => nil)
+
+      first = klass.from_state(payload).to_state[:execution_namespace]
+      second = klass.from_state(payload).to_state[:execution_namespace]
+
+      expect(first).to eq(second)
+      expect(first).to match(Smith::Workflow::PreparedStep::UUID_PATTERN)
+      other = klass.from_state(payload.merge("created_at" => "2020-01-01T00:00:00.000000Z"))
+      expect(other.to_state[:execution_namespace]).not_to eq(first)
+    end
+
+    it "keeps no position out of event handlers and on_step callbacks" do
+      seen = []
+      subscription = Smith::Events.on(Smith::Events::StepCompleted) do |_event|
+        seen << Smith::IdempotencyKey.__send__(:current_scope)
+      end
+      klass = recording_step_workflow("SpecIdempotencyEventWorkflow", keys)
+
+      on_step = ->(_step) { seen << Smith::IdempotencyKey.__send__(:current_scope) }
+      klass.new.run_persisted!("events-1", adapter:, on_step:)
+
+      expect(seen.size).to eq(4)
+      expect(seen).to all(be_nil)
+    ensure
+      subscription&.cancel
+    end
+
+    it "refuses a restored execution namespace that is not a UUID" do
+      klass = recording_step_workflow("SpecIdempotencyMalformedWorkflow", keys)
+      payload = JSON.parse(JSON.generate(klass.new.to_state))
+
+      ["", 42, { "a" => 1 }, "not-a-uuid"].each do |bad|
+        expect { klass.from_state(payload.merge("execution_namespace" => bad)) }
+          .to raise_error(Smith::SerializationError, /execution_namespace/)
+      end
+    end
+
+    it "keeps a fresh run's first-step key across a crash in that step" do
+      keys = self.keys
+      crash = self.crash
+      klass = with_stubbed_class("SpecIdempotencyFirstStepWorkflow", workflow_class) do
+        initial_state :idle
+
+        transition :send_it, from: :idle, to: :done do
+          compute do |step|
+            keys << step.idempotency_key
+            raise crash if keys.size == 1
+          end
+        end
+      end
+
+      expect { klass.new.advance_persisted!("first-1", adapter:) }.to raise_error(crash)
+      klass.restore("first-1", adapter:).advance_persisted!("first-1", adapter:)
+
+      expect(keys.size).to eq(2)
+      expect(keys.last).to eq(keys.first)
+    end
+
+    it "persists a legacy payload's derived namespace before the step that uses it" do
+      klass = recording_step_workflow("SpecIdempotencyLegacyPersistWorkflow", keys)
+      klass.new.advance_persisted!("legacy-1", adapter:)
+      legacy = JSON.parse(adapter.fetch("legacy-1")).merge("execution_namespace" => nil)
+      adapter.store("legacy-1", JSON.generate(legacy))
+
+      restored = klass.restore("legacy-1", adapter:)
+      derived = restored.to_state[:execution_namespace]
+      restored.advance_persisted!("legacy-1", adapter:)
+
+      expect(JSON.parse(adapter.fetch("legacy-1"))["execution_namespace"]).to eq(derived)
+    end
+
+    it "refuses a tool key for a tool without a name" do
+      unnamed = Class.new(tool_class) { def perform(**kwargs) = idempotency_key(kwargs) }.new
+      unnamed.define_singleton_method(:name) { "" }
+      results = []
+      klass = with_stubbed_class("SpecIdempotencyUnnamedToolWorkflow", workflow_class) do
+        initial_state :idle
+        transition(:call, from: :idle, to: :done) do
+          compute do |_step|
+            unnamed.send(:idempotency_key, {})
+          rescue Smith::WorkflowError => e
+            results << e
+          end
+        end
+      end
+
+      klass.new.run!
+
+      expect(results.sole).to be_a(Smith::WorkflowError)
+    end
+
+    it "gives a durable composite preparation's input guardrails the step's position" do
+      seen = []
+      guardrails = Class.new(Smith::Guardrails) do
+        input :record
+        define_method(:record) { |_payload| seen << Smith::IdempotencyKey.__send__(:current_scope) }
+      end
+      agent = Class.new(Smith::Agent) { model "gpt-5-mini" }
+      agent.guardrails(guardrails)
+      agent.execution_identity(Digest::SHA256.hexdigest("spec-idempotency-guarded-agent"))
+      Smith::Agent::Registry.register(:spec_idempotency_guarded_agent, agent)
+      workflow_class = stub_const("SpecIdempotencyGuardedWorkflow", Class.new(Smith::Workflow) do
+        definition_digest Digest::SHA256.hexdigest("spec-idempotency-guarded")
+        idempotency_mode :strict
+        initial_state :idle
+        transition(:fan, from: :idle, to: :done) { execute :spec_idempotency_guarded_agent, parallel: true, count: 2 }
+      end)
+      workflow = workflow_class.new
+      workflow.prepare_persisted_step!("composite:guarded", adapter:)
+      workflow.claim_prepared_step_dispatch!
+
+      workflow.prepare_composite_step!
+
+      expect(seen).not_to be_empty
+      expect(seen).to all(be_truthy)
+    ensure
+      Smith::Agent::Registry.delete(:spec_idempotency_guarded_agent)
+    end
+
+    it "keeps on_step callbacks free of the enclosing step's position when a run is advanced inside another's step" do
+      seen = []
+      inner_class = recording_step_workflow("SpecIdempotencyInnerCallbackWorkflow", keys)
+      store = adapter
+      on_step = ->(_step) { seen << Smith::IdempotencyKey.__send__(:current_scope) }
+      outer = with_stubbed_class("SpecIdempotencyOuterCallbackWorkflow", workflow_class) do
+        initial_state :idle
+
+        transition(:drive, from: :idle, to: :done) do
+          compute { |_step| inner_class.new.run_persisted!("inner-callback-1", adapter: store, on_step:) }
+        end
+      end
+
+      outer.new.run!
+
+      expect(seen.size).to eq(2)
+      expect(seen).to all(be_nil)
+    end
+
+    it "derives keys from a fixed layout of positions, which must not change between releases" do
+      namespace = "00000000-0000-4000-8000-000000000000"
+      root = Smith::IdempotencyKey.__send__(:root_scope, namespace)
+      expected = lambda do |*segments, scope: "request"|
+        segments.reduce(root) { |scope_so_far, segment| scope_so_far.within(*segment) }.key(scope)
+      end
+      generator_keys = []
+      evaluator_keys = []
+      stub_key_recording_agent(agent(:spec_idempotency_generator), generator_keys, "draft")
+      evaluator = agent(:spec_idempotency_evaluator)
+      allow(evaluator).to receive(:chat) do
+        evaluator_keys << Smith::IdempotencyKey.current("request")
+        answering_chat({ accept: true, score: 0.9 })
+      end
+      klass = with_stubbed_class("SpecIdempotencyLayoutWorkflow", workflow_class) do
+        initial_state :idle
+
+        transition(:draft, from: :idle, to: :done) do
+          optimize generator: :spec_idempotency_generator, evaluator: :spec_idempotency_evaluator,
+                   max_rounds: 2, evaluator_schema: Class.new
+        end
+      end
+      payload = JSON.parse(JSON.generate(klass.new.to_state)).merge("execution_namespace" => namespace)
+
+      klass.from_state(payload).run!
+
+      expect(generator_keys).to eq([expected.call([:step, 1, "draft"], [:round, 0], [:generator])])
+      expect(evaluator_keys).to eq([expected.call([:step, 1, "draft"], [:round, 0], [:evaluator])])
+      expect(root.within(:step, 1, "draft").key(nil))
+        .to eq("75288281b3decd1e2b70067610e6bad2b3dfc39bd9b77026a449d56853f5c4df")
+    ensure
+      %i[spec_idempotency_generator spec_idempotency_evaluator].each { Smith::Agent::Registry.delete(_1) }
+    end
+
+    it "refuses to install anything but a position" do
+      expect { Smith::IdempotencyKey.__send__(:install, "not a position") }.to raise_error(ArgumentError)
+      expect(Smith::IdempotencyKey.__send__(:current_scope)).to be_nil
+    ensure
+      Smith::Tool.__send__(:current_idempotency_scope=, nil)
+    end
+
+    it "leaves retry_config's shape alone for a policy without new_idempotency_key_on" do
+      klass = with_stubbed_class("SpecIdempotencyPlainRetryWorkflow", workflow_class) do
+        initial_state :idle
+        transition(:go, from: :idle, to: :done) do
+          compute { |_step| nil }
+          retry_on ArgumentError, attempts: 2
+        end
+      end
+
+      expect(klass.find_transition(:go).retry_config).not_to have_key(:new_idempotency_key_on)
+    end
+  end
+
+  describe "scope canonicalization" do
+    let(:scope) { Smith::IdempotencyKey.__send__(:root_scope, "run") }
 
     it "hashes equal scopes alike whatever their key order or Symbol and String spelling" do
       expect(scope.key({ b: 1, "a" => [1, :x] })).to eq(scope.key({ "a" => [1, "x"], "b" => 1 }))
       expect(scope.key("1")).not_to eq(scope.key(1))
       expect(scope.key(nil)).not_to eq(scope.key(false))
       expect(scope.within(:step, 1, "x").key).not_to eq(scope.within(:step, 2, "x").key)
-      expect(described_class.root("other").key).not_to eq(scope.key)
+      expect(Smith::IdempotencyKey.__send__(:root_scope, "other").key).not_to eq(scope.key)
     end
 
     it "accepts a String in another encoding that converts to UTF-8" do
@@ -489,21 +772,50 @@ RSpec.describe "Smith idempotency keys" do
     it "refuses scopes without a stable text form" do
       nested = []
       nested << nested
-      [1.5, Object.new, "\xff".b, "\xff".dup.force_encoding("UTF-8"), { a: 1, "a" => 2 }, { 1 => 2 }, nested]
+      [Float::NAN, Float::INFINITY, Rational(1, 2), Object.new, "\xff".b, "\xff".dup.force_encoding("UTF-8"),
+       { a: 1, "a" => 2 }, { 1 => 2 }, nested]
         .each { |bad| expect { scope.key(bad) }.to raise_error(ArgumentError) }
+    end
+
+    it "keys a Float by its value, so a whole Float equals the Integer a model's JSON may send instead" do
+      expect(scope.key({ amount: 12.0 })).to eq(scope.key({ amount: 12 }))
+      expect(scope.key(-0.0)).to eq(scope.key(0))
+      expect(scope.key(12.5)).not_to eq(scope.key(12))
+      expect(scope.key(12.5)).not_to eq(scope.key("12.5"))
+      expect(scope.key(0.1 + 0.2)).not_to eq(scope.key(0.3))
+    end
+
+    it "bounds the values it reads, so shared subtrees cannot cost exponential time" do
+      shared = (1..20).reduce(["leaf"]) { |node, _| [node, node] }
+      wide = Array.new(Smith::IdempotencyKey::MAX_SCOPE_NODES - 1, 1)
+
+      expect { scope.key(shared) }.to raise_error(ArgumentError, /more than/)
+      expect(scope.key(wide)).to match(/\A[0-9a-f]{64}\z/)
+      expect { scope.key(wide + [1]) }.to raise_error(ArgumentError, /more than/)
+    end
+
+    it "takes position segments only from Strings, Symbols and Integers, as frozen copies" do
+      label = +"charge"
+      narrowed = scope.within(:step, 1, label)
+      key = narrowed.key
+      label << "-changed"
+
+      expect(narrowed.key).to eq(key)
+      [Object.new, 1.5, nil].each { |bad| expect { scope.within(:step, bad) }.to raise_error(ArgumentError) }
     end
 
     it "accepts a scope nested to the depth limit" do
       deep = (1..Smith::IdempotencyKey::MAX_SCOPE_DEPTH).reduce("leaf") { |value, _| [value] }
 
-      expect(scope.key(deep)).to match(/\A\h{64}\z/)
+      expect(scope.key(deep)).to match(/\A[0-9a-f]{64}\z/)
       expect { scope.key([deep]) }.to raise_error(ArgumentError, /deeper than/)
     end
   end
 
   describe "retry_on new_idempotency_key_on:" do
     def declare(**options)
-      with_stubbed_class("SpecIdempotencyDeclaredWorkflow#{rand(1_000_000)}", workflow_class) do
+      @declared = (@declared || 0) + 1
+      with_stubbed_class("SpecIdempotencyDeclaredWorkflow#{@declared}", workflow_class) do
         initial_state :idle
 
         transition(:go, from: :idle, to: :done) do
@@ -533,6 +845,11 @@ RSpec.describe "Smith idempotency keys" do
       end
       expect { declare(classes: [], attempts: 2, new_idempotency_key_on: [Smith::ToolOutcomeUncertain]) }
         .to raise_error(Smith::WorkflowError, /uncertain/)
+    end
+
+    it "refuses a class listed twice" do
+      expect { declare(classes: [], attempts: 2, new_idempotency_key_on: [ArgumentError, ArgumentError]) }
+        .to raise_error(Smith::WorkflowError, /more than once/)
     end
 
     it "accepts a subclass of a retried class, and any class when Smith's classification decides retries" do

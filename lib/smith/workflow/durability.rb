@@ -381,7 +381,7 @@ module Smith
       end
 
       def invoke_on_step_callback(step, callback)
-        callback&.call(step)
+        IdempotencyKey.__send__(:without) { callback&.call(step) }
       rescue StandardError => e
         Smith.config.logger&.error("Smith::Workflow on_step callback error: #{e.message} (#{e.class})")
       end

@@ -40,7 +40,7 @@ module Smith
 
       def run_orchestration_loop(state)
         state.config[:max_delegation_rounds].times do |round|
-          result = IdempotencyKey.within(:round, round) { run_orchestration_round(state, round) }
+          result = IdempotencyKey.__send__(:within, :round, round) { run_orchestration_round(state, round) }
           return result if result
         end
 
@@ -65,18 +65,20 @@ module Smith
         invoke_agent_with_budget(state.orchestrator_class, input)
       end
 
+      # A task's position is its content, not its place in the list: a
+      # replayed orchestrator may list the same tasks in another order.
       def execute_workers(state, tasks)
         runner = method(:run_worker_with_schema)
-        tasks.each_with_index.map do |task, index|
+        output_schema = state.config[:worker_output_schema]
+        copies = Hash.new(0)
+        tasks.map do |task|
           validate_task!(task, state.config[:task_schema])
-          execution = IdempotencyKey.within(:task, index) { run_worker_task(state, task, runner) }
-          validate_worker_output!(execution.output, state.config[:worker_output_schema])
+          execution = IdempotencyKey.__send__(:within_content, :task, task, copies) do
+            WorkerExecution.run(state.worker_class, task, output_schema, runner)
+          end
+          validate_worker_output!(execution.output, output_schema)
           { execution_id: execution.execution_id, task: execution.task, output: execution.output }
         end
-      end
-
-      def run_worker_task(state, task, runner)
-        WorkerExecution.run(state.worker_class, task, state.config[:worker_output_schema], runner)
       end
 
       def run_worker_with_schema(worker_class, task, worker_output_schema)

@@ -286,11 +286,23 @@ module Smith
         @state = normalized[:state]
         @context = filter_persisted_context(normalized[:context] || {})
         @step_count = normalized[:step_count] || 0
-        # A payload written before namespaces were assigned at construction
-        # gets one now, so it is in the checkpoint before the next step.
-        @execution_namespace = normalized[:execution_namespace] || SecureRandom.uuid
+        @execution_namespace = restored_execution_namespace(normalized)
         @created_at = normalized[:created_at]
         @updated_at = normalized[:updated_at]
+      end
+
+      # A payload written before namespaces were assigned at construction
+      # gets one derived from its own durable facts, the same on every
+      # restore of it, until a checkpoint stores it.
+      def restored_execution_namespace(normalized)
+        namespace = normalized[:execution_namespace]
+        if namespace.nil?
+          return IdempotencyKey.__send__(:legacy_namespace, normalized[:class] || self.class.name,
+                                         normalized[:persistence_key], normalized[:created_at])
+        end
+        return namespace if namespace.is_a?(String) && PreparedStep::UUID_PATTERN.match?(namespace)
+
+        raise Smith::SerializationError, "persisted workflow execution_namespace must be a UUID"
       end
 
       def restore_persisted_keys(normalized)

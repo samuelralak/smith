@@ -3,6 +3,8 @@
 require "digest"
 require "json"
 
+require_relative "idempotency_key/canonical"
+
 module Smith
   # Keys for requests a step sends outside the system, so that a replay of
   # the step (a retry, or a restore after a crash) repeats each request
@@ -11,118 +13,133 @@ module Smith
   # A key is the SHA-256 of the run's execution namespace (a UUID assigned
   # when the workflow is built and persisted with it), the step's position
   # (step number and transition, then any nested workflow step, parallel or
-  # fan-out branch, optimizer round or orchestrator task inside it) and a
-  # caller-chosen scope. It is the same on every attempt of the step, so a
-  # retry after a timeout cannot repeat a request that took effect, and
-  # after a restore. An attempt that fails in a way showing its request
-  # took no effect can ask for a new key on the next attempt (`fail!` with
-  # `new_idempotency_key: true`, or `retry_on ... new_idempotency_key_on:`),
-  # for receivers that store a failed reply under its key. Keys differ
-  # between runs, even two runs persisted under the same persistence key
-  # one after the other. A replay keeps its keys only when the run was
-  # persisted before the step began, as `advance_persisted!` and
-  # `run_persisted!` do.
+  # fan-out branch, optimizer round and role, or orchestrator round and
+  # task inside it) and a caller-chosen scope. It is the same on every
+  # attempt of the step, so a retry after a timeout cannot repeat a request
+  # that took effect, and after a restore. An attempt of a step that fails
+  # in a way showing its own requests took no effect can ask for new keys
+  # on the attempts after it (`fail!` with `new_idempotency_key: true`, or
+  # `retry_on ... new_idempotency_key_on:`), for receivers that store a
+  # failed reply under its key. A replay keeps its keys only when the run
+  # was persisted before the step began, as `advance_persisted!` and
+  # `run_persisted!` do. A persisted payload is a run's identity: runs
+  # built with `new` never share keys, but runs restored from copies of one
+  # payload do.
+  #
+  # Keys exist only while a step does its own work (its body, agents,
+  # tools and guardrails); event handlers and `on_step` callbacks get none.
+  # The position is thread-local state Smith carries into its own branch
+  # threads and concurrent tool calls; code in a Fiber or Thread the host
+  # creates has none, while `step.idempotency_key` works anywhere.
   #
   #   transition :notify, from: :reviewed, to: :notified do
   #     compute { |step| Mailer.deliver(review, idempotency_key: step.idempotency_key) }
   #   end
   module IdempotencyKey
     VERSION = "smith.idempotency.v1"
-    MAX_SCOPE_DEPTH = 32
 
     # Where execution is: the run's namespace and the path of positions
-    # inside it. Immutable; `within` returns a narrower scope.
+    # inside it, deeply frozen. Internal: hosts reach keys through
+    # `current`, `step.idempotency_key` and `Tool#idempotency_key`.
     Scope = Data.define(:run, :path) do
-      def self.root(run) = new(run: run.dup.freeze, path: [].freeze)
-
-      def within(*segment) = self.class.new(run:, path: [*path, segment.freeze].freeze)
+      def within(*segment)
+        self.class.new(run:, path: [*path, IdempotencyKey.__send__(:own_segment, segment)].freeze)
+      end
 
       def key(scope = nil)
-        Digest::SHA256.hexdigest(JSON.generate([VERSION, run, path, IdempotencyKey.canonical(scope)]))
+        Digest::SHA256.hexdigest(JSON.generate([VERSION, run, path, Canonical.value(scope)]))
       end
     end
+    private_constant :Scope
 
-    module_function
+    class << self
+      # The key for `scope` at the current position. Raises WorkflowError
+      # outside a running workflow step.
+      def current(scope = nil)
+        current_scope!.key(scope)
+      end
 
-    # The key for `scope` at the current position. Raises WorkflowError
-    # outside a running workflow step.
-    def current(scope = nil)
-      current_scope!.key(scope)
-    end
+      private
 
-    def current_scope
-      Tool.__send__(:current_idempotency_scope)
-    end
+      def root_scope(run) = Scope.new(run: run.dup.freeze, path: [].freeze)
 
-    def current_scope!
-      current_scope || raise(WorkflowError, "an idempotency key is only available inside a running workflow step")
-    end
+      def current_scope
+        Tool.__send__(:current_idempotency_scope)
+      end
 
-    # Narrows the current position for the block, when there is one.
-    # Interrupts are deferred while the scope is installed and restored,
-    # as for every other per-step thread value.
-    def within(*segment, &block)
-      raise ArgumentError, "block required" unless block
+      def current_scope!
+        current_scope || raise(WorkflowError, "an idempotency key is only available inside a running workflow step")
+      end
 
-      outer = current_scope
-      return yield unless outer
+      # Narrows the current position for the block, when there is one.
+      def within(*segment, &)
+        outer = current_scope
+        return yield unless outer
 
-      Thread.handle_interrupt(Object => :never) do
-        install(outer.within(*segment))
-        begin
-          Thread.handle_interrupt(Object => :immediate, &block)
-        ensure
-          install(outer)
+        swap(outer.within(*segment), &)
+      end
+
+      # Runs the block with no position, so code that is not a step's own
+      # work (event handlers, callbacks) cannot take a step's key.
+      def without(&) = swap(nil, &)
+
+      # Interrupts are deferred while the position is installed and
+      # restored, as for every other per-step thread value.
+      def swap(scope, &block)
+        raise ArgumentError, "block required" unless block
+
+        outer = current_scope
+        Thread.handle_interrupt(Object => :never) do
+          install(scope)
+          begin
+            Thread.handle_interrupt(Object => :immediate, &block)
+          ensure
+            install(outer)
+          end
         end
       end
-    end
 
-    def install(scope)
-      Tool.__send__(:current_idempotency_scope=, scope)
-    end
+      def install(scope)
+        raise ArgumentError, "an idempotency position must be a Scope or nil" unless scope.nil? || scope.is_a?(Scope)
 
-    # The JSON form a scope is hashed in: Symbols become Strings and Hash
-    # entries are sorted by key, so equal scopes give equal keys whatever
-    # their key order. Floats and other objects are refused, because their
-    # text form is not a stable identity.
-    def canonical(value, depth = 0)
-      raise ArgumentError, "idempotency key scope is nested deeper than #{MAX_SCOPE_DEPTH} levels" if too_deep?(depth)
-
-      case value
-      when nil, true, false, Integer then value
-      when String, Symbol then canonical_string(value.to_s)
-      when Array then value.map { |item| canonical(item, depth + 1) }
-      when Hash then canonical_hash(value, depth)
-      else
-        raise ArgumentError,
-              "idempotency key scope must be built from Strings, Symbols, Integers, booleans, nil, Arrays " \
-              "and Hashes, got #{DiagnosticText.error_class_name(value)}"
+        Tool.__send__(:current_idempotency_scope=, scope)
       end
-    end
 
-    def too_deep?(depth) = depth > MAX_SCOPE_DEPTH
+      # A namespace for a payload written before namespaces were assigned at
+      # construction: derived from the payload's own durable facts, so every
+      # restore of it gets the same one, and shaped as the version 4 UUID
+      # `new` assigns.
+      def legacy_namespace(*facts)
+        hex = Digest::SHA256.hexdigest(JSON.generate([VERSION, "namespace", *facts.map(&:to_s)]))
+        variant = ((hex[16].to_i(16) & 0x3) | 0x8).to_s(16)
+        "#{hex[0, 8]}-#{hex[8, 4]}-4#{hex[13, 3]}-#{variant}#{hex[17, 3]}-#{hex[20, 12]}"
+      end
 
-    def canonical_hash(hash, depth)
-      entries = hash.map { |key, value| [canonical_hash_key(key), canonical(value, depth + 1)] }
-      keys = entries.map(&:first)
-      raise ArgumentError, "idempotency key scope has two keys with the same name" unless keys.uniq.size == keys.size
+      # A position segment: a label and Strings, Symbols or Integers, held
+      # as frozen copies so a caller cannot change a key after the fact.
+      def own_segment(segment)
+        segment.map do |part|
+          case part
+          when Integer then part
+          when Symbol then part.to_s.freeze
+          when String then Canonical.string(part).dup.freeze
+          else raise ArgumentError, "an idempotency position segment must be Strings, Symbols or Integers"
+          end
+        end.freeze
+      end
 
-      entries.sort_by(&:first).to_h
-    end
+      # Narrows the position to the `count`th copy of `value` seen under
+      # `label`, named by its content: a list a model regenerates on replay
+      # keeps each item's key whatever its order.
+      def within_content(label, value, copies, &)
+        digest = content_digest(value)
+        copies[digest] += 1
+        within(label, digest, copies[digest], &)
+      end
 
-    def canonical_hash_key(key)
-      return canonical_string(key.to_s) if key.is_a?(String) || key.is_a?(Symbol)
-
-      raise ArgumentError, "idempotency key scope Hash keys must be Strings or Symbols"
-    end
-
-    def canonical_string(string)
-      utf8 = string.encoding == Encoding::UTF_8 ? string : string.encode(Encoding::UTF_8)
-      return utf8 if utf8.valid_encoding?
-
-      raise EncodingError
-    rescue EncodingError
-      raise ArgumentError, "idempotency key scope Strings must be valid UTF-8 or convert to it"
+      # A digest of a value's canonical form, for a position named by its
+      # content (an orchestrator task) rather than by its place in a list.
+      def content_digest(value) = Digest::SHA256.hexdigest(JSON.generate(Canonical.value(value)))
     end
   end
 end

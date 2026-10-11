@@ -85,11 +85,12 @@ module Smith
       end
 
       def fail!(message, retryable: nil, kind: nil, details: nil, new_idempotency_key: false)
-        unless [true, false].include?(new_idempotency_key)
+        unless [true, false, nil].include?(new_idempotency_key)
           raise ArgumentError, "fail! new_idempotency_key must be true or false"
         end
 
-        raise DeterministicStepFailure.new(message, retryable:, kind:, details:, new_idempotency_key:)
+        raise DeterministicStepFailure.new(message, retryable:, kind:, details:, new_idempotency_key:,
+                                                    idempotency_scope: @idempotency_scope)
       end
 
       # A key for a request this step sends outside the system: the same on

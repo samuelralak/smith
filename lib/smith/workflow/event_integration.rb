@@ -11,6 +11,11 @@ module Smith
           data: { transition: transition.name, from: transition.from, to: transition.to }
         )
 
+        # Handlers are not a step's own work, so they get no idempotency key.
+        IdempotencyKey.__send__(:without) { emit_step_completed_event(transition) }
+      end
+
+      def emit_step_completed_event(transition)
         Smith::Events.emit(
           Events::StepCompleted.new(
             transition: transition.name.to_sym,
@@ -54,6 +59,10 @@ module Smith
       end
 
       def emit_step_failed_event(failure)
+        IdempotencyKey.__send__(:without) { emit_step_failed_bus_event(failure) }
+      end
+
+      def emit_step_failed_bus_event(failure)
         Smith::Events.emit(
           Events::StepFailed.new(
             transition: DiagnosticText.capture(failure[:transition].to_s, max_bytes: 256).to_sym,

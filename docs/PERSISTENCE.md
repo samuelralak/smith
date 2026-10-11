@@ -604,8 +604,9 @@ cannot become transition execution authority.
 ## Replay Safety: Idempotency Keys
 
 A step that is replayed, by a retry or by a restore after a crash, sends its
-outside requests again. Smith gives each request a key so the receiver can drop
-the repeat:
+outside requests again. Smith gives each request a key the step can pass along,
+so a receiver that honours idempotency keys can drop the repeat. Passing the key
+is the step's job, and what a receiver does with it stays the host's concern:
 
 ```ruby
 transition :charge, from: :approved, to: :charged do
@@ -625,46 +626,80 @@ end
   fits receivers that cap keys at 64 characters.
 - A key is unique to the run, the step's position and the scope. The position
   is the step number and transition, then any nested workflow step, parallel or
-  fan-out branch (durable composite branches included), optimizer round, or
-  orchestrator round and task inside it. A tool's key also names the tool. Use
-  a scope to tell apart several requests of one step; a tool can run several
-  times in a step, so its scope is required and should name the request
-  (`idempotency_key(kwargs)`).
-- A scope is built from Strings, Symbols, Integers, `true`, `false`, `nil`,
-  Arrays and Hashes with String or Symbol keys. Symbols count as their Strings
-  and Hash order does not matter. Floats and other objects raise
-  `ArgumentError`, because their text form is not a stable identity.
+  fan-out branch (durable composite branches included), optimizer round and
+  role (generator, `before_eval`, evaluator), or orchestrator round and worker
+  task. A worker task is named by its content and which copy of equal tasks it
+  is, so a replayed orchestrator that lists the same tasks in another order
+  keeps each task's key. A transition that runs again later in the run (a loop,
+  or an `on_failure` route back to it) has a new step number and so new keys.
+- Use a scope to tell apart several requests of one step. A tool can run several
+  times in a step, and a replayed model may word or order its calls
+  differently, so a tool's scope is required and should be the request's stable
+  identity (`idempotency_key(customer_id:, invoice_number:)`), not free text. A
+  tool's key also includes its `name`, so renaming a tool class changes its
+  keys; a tool without a name is refused. A plain RubyLLM tool has only
+  `Smith::IdempotencyKey.current`, so it should put its own name in the scope.
+- A scope is built from Strings, Symbols, numbers, `true`, `false`, `nil`,
+  Arrays and Hashes with String or Symbol keys. Symbols count as their Strings,
+  Hash order does not matter, and a Float with a whole value counts as the
+  Integer (a model's JSON may send `12` or `12.0`). NaN, Infinity and other
+  objects raise `ArgumentError`, as do scopes nested deeper than 32 levels or
+  holding more than 100,000 values, which bounds the work per key.
+- Keys exist only while a step does its own work: its body, agents, tools and
+  guardrails. Event handlers and `on_step` callbacks get none. The position is
+  thread-local state that Smith carries into its own branch threads and
+  concurrent tool calls; code in a Fiber or Thread the host creates has none,
+  while `step.idempotency_key` works anywhere.
 - The run part is the workflow's execution namespace, a UUID assigned when the
-  workflow is built (or when a payload written without one is restored) and
-  persisted with it. Two runs never share keys, even when the second reuses the
-  first's persistence key after it was cleared.
-- A key survives a crash only if the checkpoint written before the step holds
-  the namespace and step count. `advance_persisted!`, `run_persisted!` and the
-  host-coordinated step boundaries all checkpoint before every step. A run that
-  is never persisted has no replay to protect.
+  workflow is built and persisted with it. A payload written without one (by an
+  earlier version) gets one derived from its class, persistence key and
+  creation time, the same on every restore, until a checkpoint stores it. A
+  stored namespace that is not a UUID raises `Smith::SerializationError`. Runs
+  built with `new` never share keys, even when one reuses another's persistence
+  key after it was cleared; runs restored from copies of one payload share
+  them, and their artifact scope, so a payload must not be cloned into several
+  runs.
+- A replay keeps a step's keys when the checkpoint written before the step
+  holds the namespace and step count, as `advance_persisted!` and
+  `run_persisted!` write it. In `idempotency_mode :lax` a run restored after a
+  crash mid-step replays that step under its keys. In `:strict` mode the restore
+  raises `Smith::StepInProgressOnRestore` instead, and reconciling the step's
+  requests is the host's; a host-coordinated prepared step is never executed
+  again after dispatch. A run that is never persisted has no replay to protect.
 
 Every attempt of a step uses the same keys. A retry after an uncertain failure
 (a timeout, a dropped connection) then cannot repeat a request that took
 effect. Some receivers store a failed reply under its key and return it for
-every repeat. When an attempt fails in a way that shows its requests took no
-effect, the attempts after it can use new keys:
+every repeat. When an attempt fails in a way that shows its own requests took
+no effect, the attempts after it can use new keys:
 
-- `step.fail!("declined", retryable: true, new_idempotency_key: true)`, or
+- `step.fail!("declined", retryable: true, new_idempotency_key: true)` in a
+  `compute` or `run` step with `retry_on`. It counts only for the step that
+  raised it: a nested workflow's step that raises it does not move the parent's
+  retry to new keys, because the child's earlier steps may have taken effect.
+  The flag is not kept in the persisted failure record.
 - `retry_on ..., new_idempotency_key_on: [Payments::Declined]`. The listed
   classes must be ones the policy retries (any class, when the policy lists none
-  and Smith's retry classification decides). Classes that may hide a tool's
-  outcome are refused. Graph inspection shows the list in the transition's
-  retry policy.
+  and Smith's retry classification decides), each listed once. Classes that may
+  hide a tool's outcome are refused, and so is the option on a nested workflow,
+  parallel, fan-out, optimize or orchestrate transition, where one error cannot
+  speak for every request of the attempt. A broad class (`StandardError`) moves
+  every retry, timeouts included, to new keys. Graph inspection shows the list
+  in the transition's retry policy.
 
-`step.attempt` is the attempt under way, from 1. A host that wants a different
-key on every attempt can pass it in the scope
+`step.attempt` is the attempt under way within one run of the step's
+`retry_on` attempts, from 1 (a nested workflow's step counts its own). A host
+that wants a different key on every attempt can pass it in the scope
 (`step.idempotency_key([:charge, step.attempt])`).
 
-After a crash, a step's retries run again from the first attempt. A replay
-reaches the new keys again only if the receivers refuse the replayed requests
-as they did before, which a receiver that stores replies under their keys does.
-A receiver that does not store failures could accept a replayed request under
-the first key while the original run had already succeeded under a newer one.
+The generation of keys lives only within one run of the step's retries. When
+the attempts run out and the host retries the run later (a job that runs again),
+the step starts again from its first keys, so a receiver that stored a failed
+reply returns it again. A host that wants its own later retries to use new keys
+puts a counter it owns in the scope. After a crash, the step's retries run again
+from the first attempt; a replay reaches the newer keys again only if the
+receivers refuse the replayed requests as they did before, which a receiver that
+stores replies under their keys does.
 
 ## Active Record Optimistic Locking
 

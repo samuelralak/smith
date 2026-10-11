@@ -127,20 +127,25 @@ module Smith
       # `new_idempotency_key_on:` names errors that show an attempt's
       # requests took no effect (a refusal, not a timeout): the attempts
       # after one of them use new idempotency keys. Every other retry keeps
-      # the step's keys.
+      # the step's keys. It is refused on a transition whose failures can
+      # come from several steps or branches (a nested workflow, parallel or
+      # fan-out branches, an optimizer or an orchestrator), where one error
+      # cannot speak for every request of the attempt.
       # rubocop:disable Metrics/ParameterLists
       def retry_on(*error_classes, attempts:, backoff: 0, max_delay: nil, jitter: 0, new_idempotency_key_on: [])
         policy = normalize_retry_policy!(error_classes, attempts:, backoff:, max_delay:, jitter:)
         new_key_classes = normalize_new_idempotency_key_on!(new_idempotency_key_on, error_classes)
 
-        @retry_config = {
+        config = {
           error_classes: error_classes.freeze,
           attempts: policy.attempts,
           backoff: policy.base_delay,
           max_delay: policy.max_delay,
-          jitter: policy.jitter,
-          new_idempotency_key_on: new_key_classes
-        }.freeze
+          jitter: policy.jitter
+        }
+        config[:new_idempotency_key_on] = new_key_classes if new_key_classes.any?
+        @retry_config = config.freeze
+        reject_new_idempotency_key_on_composite!
       end
       # rubocop:enable Metrics/ParameterLists
 
@@ -228,6 +233,17 @@ module Smith
       def commit_execution_primitive!(primitive, declaration: primitive)
         @execution_primitive = primitive
         @execution_declaration = declaration
+        reject_new_idempotency_key_on_composite!
+      end
+
+      def several_step_execution? = nested? || parallel? || fanout? || optimized? || orchestrated?
+
+      def reject_new_idempotency_key_on_composite!
+        return unless @retry_config&.key?(:new_idempotency_key_on) && several_step_execution?
+
+        raise WorkflowError,
+              "retry_on new_idempotency_key_on: cannot be declared on a nested workflow, parallel, fan_out, " \
+              "optimize or orchestrate transition, where one error cannot speak for every request of the attempt"
       end
 
       def normalize_fanout_branches!(branches)
@@ -364,7 +380,11 @@ module Smith
           raise WorkflowError, "retry_on new_idempotency_key_on: must be an Array of StandardError classes"
         end
 
-        reject_retry_forbidden!(classes)
+        if classes.uniq.size != classes.size
+          raise WorkflowError, "retry_on new_idempotency_key_on: lists a class more than once"
+        end
+
+        reject_retry_forbidden!(classes, context: "move to new idempotency keys after")
         reject_unretried_new_key_classes!(classes, retried_classes)
         classes.dup.freeze
       end
@@ -383,12 +403,12 @@ module Smith
                              "which this policy does not retry"
       end
 
-      def reject_retry_forbidden!(error_classes)
+      def reject_retry_forbidden!(error_classes, context: "retry")
         forbidden = error_classes.find { |error_class| Smith::Errors.retry_forbidden_class?(error_class) }
         return unless forbidden
 
         label = forbidden.name || "an anonymous terminal tool-evidence error class"
-        raise WorkflowError, "retry_on cannot retry #{label} because the tool outcome may be uncertain"
+        raise WorkflowError, "retry_on cannot #{context} #{label} because the tool outcome may be uncertain"
       end
 
       # `fallthrough: true` lets a step that declares `routes:` finish without

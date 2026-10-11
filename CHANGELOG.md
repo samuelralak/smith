@@ -63,19 +63,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   same on every attempt of the step and after a restore, and unique to the
   run, the step's position (step number and transition, then any nested
   workflow step, parallel or fan-out branch, durable composite branch,
-  optimizer round, or orchestrator round and task), the tool and the scope.
-  Scopes are built from Strings, Symbols, Integers, booleans, `nil`, Arrays and
-  Hashes; Floats and other objects raise `ArgumentError`. Outside a running
-  step they raise `Smith::WorkflowError`. Keys survive a crash when the run was
-  checkpointed before the step, as `advance_persisted!`, `run_persisted!` and
-  the host-coordinated step boundaries do.
+  optimizer round and role, or orchestrator round and worker task, a task
+  being named by its content), the tool's `name` and the scope. Scopes are
+  built from Strings, Symbols, numbers (a whole Float counts as the
+  Integer), booleans, `nil`, Arrays and Hashes, within 32 levels and 100,000
+  values; NaN, Infinity and other objects raise `ArgumentError`. Outside a
+  running step, and in event handlers and `on_step` callbacks, they raise
+  `Smith::WorkflowError`. Keys survive a crash replay when the run was
+  checkpointed before the step, as `advance_persisted!` and `run_persisted!`
+  do.
 - `retry_on ..., new_idempotency_key_on: [ErrorClass]` and
   `step.fail!(..., new_idempotency_key: true)` declare that a failed attempt's
-  requests took no effect, so the attempts after it use new keys; every other
-  retry keeps them. `new_idempotency_key_on:` must name classes the policy
-  retries, refuses retry-forbidden classes, and shows in graph inspection's
-  retry policy when declared. `DeterministicStepFailure#new_idempotency_key`
-  and `DeterministicStep#attempt` (the attempt under way, from 1).
+  own requests took no effect, so the attempts after it use new keys; every
+  other retry keeps them. `fail!`'s flag counts only for the step that raised
+  it, never for an enclosing workflow's retry. `new_idempotency_key_on:` must
+  name classes the policy retries, each once, refuses retry-forbidden classes,
+  is refused on nested workflow, parallel, fan-out, optimize and orchestrate
+  transitions, and shows in graph inspection's retry policy when declared.
+  `DeterministicStepFailure#new_idempotency_key` and `#idempotency_scope`, and
+  `DeterministicStep#attempt` (the attempt under way, from 1).
 - `UsageEntry#total_tokens`, `AgentResult#total_tokens`,
   `AgentResult#billable_tokens` (every known count, which budgets settle) and
   `ProviderUsage#total_input_tokens`. `Agent::Completion#usage` (the whole
@@ -140,11 +146,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   capped to it, so the reported input total is kept.
 - A workflow's execution namespace (the persisted UUID that scopes its
   artifacts and now its idempotency keys) is assigned when the workflow is
-  built, and when a payload written without one is restored, instead of on
-  first artifact use, so `to_state` always carries it. Smith's per-step tool
-  context (`Smith::Tool::ScopedContext`) holds one more private value, the
-  step's idempotency position; a host that builds that context Hash by hand
-  rather than from `ScopedContext.capture` must include it.
+  built instead of on first artifact use, so `to_state` always carries it,
+  even before the first step. Runs restored from copies of one payload
+  therefore share artifact scope and idempotency keys; build each run with
+  `new`. A payload written without a namespace gets one derived from its
+  class, persistence key and creation time, the same on every restore, and a
+  stored namespace that is not a UUID raises `Smith::SerializationError`.
+- **Breaking:** Smith's per-step tool context (`Smith::Tool::ScopedContext`)
+  holds one more private value, `current_idempotency_scope`.
+  `ScopedContext.around` requires the complete context, so a host that builds
+  that Hash by hand rather than from `ScopedContext.capture` must include it.
 - **Breaking:** an explicit `persist :a, :b` list is an allow-list for the
   context in every run, persisted or not and nested or not.
   - `write_context` of any other key raises `Smith::UndeclaredContextKey`

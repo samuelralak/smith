@@ -69,7 +69,7 @@ module Smith
           transition: transition,
           last_agent_execution: snapshot_value(@last_agent_execution),
           persisted_keys: declared_persist_keys,
-          idempotency_scope: IdempotencyKey.current_scope,
+          idempotency_scope: IdempotencyKey.__send__(:current_scope),
           attempt: @step_attempt || 1
         )
       end
