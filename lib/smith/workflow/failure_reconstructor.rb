@@ -19,7 +19,7 @@ module Smith
         "persisted_failure_invalid" => ->(record) { Smith::PersistedFailureInvalid.new(record[:error_message]) },
         "deadline_exceeded" => ->(record) { Smith::DeadlineExceeded.new(record[:error_message]) },
         "provider_permanent_failure" => ->(record) { provider_permanent_failure(record) },
-        "budget_exceeded" => ->(record) { Smith::BudgetExceeded.new(record[:error_message]) },
+        "budget_exceeded" => ->(record) { budget_exceeded(record) },
         "guardrail_failed" => ->(record) { Smith::GuardrailFailed.new(record[:error_message]) },
         "agent_error" => ->(record) { Smith::AgentError.new(record[:error_message]) },
         "workflow_error" => ->(record) { Smith::WorkflowError.new(record[:error_message]) },
@@ -89,6 +89,13 @@ module Smith
         Smith::ToolFailureNotificationFailed.from_details(record.fetch(:error_details))
       end
 
+      # A host ledger's refusal stays one, so a host can tell waiting for
+      # budget from a run whose own budget ran out.
+      def self.budget_exceeded(record)
+        error_class = record[:error_class] == "Smith::BudgetUnavailable" ? Smith::BudgetUnavailable : Smith::BudgetExceeded
+        error_class.new(record[:error_message])
+      end
+
       def self.provider_permanent_failure(record)
         Smith::ProviderPermanentFailure.from_details(record.fetch(:error_details), message: record[:error_message])
       end
@@ -100,8 +107,9 @@ module Smith
         Smith::BlankAgentOutputError.from_details(details)
       end
 
-      private_class_method :deterministic_step_failure, :tool_guardrail_failure, :tool_failure_notification_failure,
-                           :provider_permanent_failure, :blank_agent_output_failure
+      private_class_method :budget_exceeded, :deterministic_step_failure, :tool_guardrail_failure,
+                           :tool_failure_notification_failure, :provider_permanent_failure,
+                           :blank_agent_output_failure
     end
   end
 end

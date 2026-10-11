@@ -32,7 +32,8 @@ module Smith
         check_wait_ttl!(seconds)
         error_name = DiagnosticText.error_class_name(error)
         @pending_retry = { "transition" => transition.name.to_s, "attempt" => attempt,
-                           "key_generation" => key_generation, "error" => error_name }.freeze
+                           "key_generation" => key_generation, "error" => error_name,
+                           "continuation" => @budget_continuation }.compact.freeze
         @retry_wait_error = error
         @awaiting = WaitRecord.build_retry(transition, wait_token_for(transition, ["retry", attempt]), seconds,
                                            Time.now.utc)
@@ -111,7 +112,9 @@ module Smith
       end
 
       def well_formed_pending_retry?(transition, record)
-        !transition.nil? && record.keys.sort == PENDING_RETRY_FIELDS && pending_retry_fields?(record)
+        !transition.nil? && (record.keys - ["continuation"]).sort == PENDING_RETRY_FIELDS &&
+          pending_retry_fields?(record) &&
+          (!record.key?("continuation") || Budget::Continuation.valid?(record["continuation"]))
       end
 
       def pending_retry_fields?(record)

@@ -45,11 +45,19 @@ module Smith
                              child.instance_variable_get(:@total_tokens))
       end
 
+      # A nested workflow inherits the run's untrusted keys, and charges the
+      # run's budget ledger unless it names its own.
+      def new_nested_workflow(child_class)
+        StepIO.with_inherited_untrusted_keys(untrusted_context_keys) do
+          Budget::HostLedger.inheriting(method(:run_budget_ledger)) do
+            child_class.new(context: @context.dup, ledger: @ledger, created_at: @created_at)
+          end
+        end
+      end
+
       def build_child_workflow(child_class)
         @split_step_active_execution_authorization&.verify_workflow!(child_class)
-        child = StepIO.with_inherited_untrusted_keys(untrusted_context_keys) do
-          child_class.new(context: @context.dup, ledger: @ledger, created_at: @created_at)
-        end
+        child = new_nested_workflow(child_class)
         unless child.instance_of?(child_class)
           raise WorkflowError, "nested workflow constructor returned #{child.class} instead of #{child_class}"
         end

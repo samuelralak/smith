@@ -26,12 +26,36 @@ module Smith
         delivered = deliver_batch_result(chat, entry) if entry
         return delivered if delivered
 
-        ledger = @step_budget_ledger
+        ledger = run_budget_ledger
         return wire_completion(chat, model_reference, collected) unless ledger
 
-        Providers::RequestHolds.within(chat_provider(chat), ledger, facts[:attempt_id]) do
+        held_completion(chat, model_reference, collected, ledger, facts)
+      end
+
+      # A refusal of a tool loop's later round pauses the loop (its step
+      # retries for budget, BudgetPause): the error carries the messages to
+      # continue from. A loop whose messages cannot be kept goes on, unheld,
+      # from its tools' results (the chat keeps them), as when its step
+      # cannot pause.
+      def held_completion(chat, model_reference, collected, ledger, facts)
+        start = chat_message_count(chat)
+        Providers::RequestHolds.within(chat_provider(chat), ledger, facts[:attempt_id],
+                                       pausable: budget_pausable?) do |holder|
           wire_completion(chat, model_reference, collected)
+        rescue BudgetUnavailable => e
+          raise unless holder.pausable && holder.rounds > 1 && e.continuation.nil?
+
+          paused = paused_loop(e, chat, start)
+          raise paused if paused
+
+          holder.pausable = false
+          retry
         end
+      end
+
+      def paused_loop(error, chat, start)
+        continuation = Budget::Continuation.dump(@budget_continuation, chat.messages.drop(start || 0))
+        BudgetUnavailable.new(error.message, continuation:) if continuation
       end
 
       def wire_completion(chat, model_reference, collected)
@@ -80,7 +104,7 @@ module Smith
         end
         raise BatchModeUnavailable, "a batch request is one turn: its agent cannot have tools" if chat_tools?(chat)
 
-        @batch_capture = Providers::BatchExchange::Exchange.new(provider, nil)
+        @batch_capture = Providers::BatchExchange::Exchange.new(provider:, holding: !run_budget_ledger.nil?)
         Providers::BatchExchange.within(@batch_capture) { chat.complete }
         raise BatchModeUnavailable, "the call did not reach its provider's request"
       end

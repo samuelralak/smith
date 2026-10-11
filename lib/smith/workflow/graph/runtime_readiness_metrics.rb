@@ -31,8 +31,15 @@ module Smith
             invalid_agent_bindings_count: diagnostic_count(:invalid_agent_binding),
             uninspectable_agent_bindings_count: diagnostic_count(:uninspectable_agent_binding),
             modelless_agent_bindings_count: diagnostic_count(:agent_without_model),
-            required_model_missing_count: diagnostic_count(:agent_without_required_model)
+            required_model_missing_count: diagnostic_count(:agent_without_required_model),
+            budget_ledger: budget_ledger_metric
           }
+        end
+
+        # The scope keys of the workflow's budget_ledger, or nil for none.
+        def budget_ledger_metric
+          klass = graph.workflow_class
+          { scope_keys: klass.budget_ledger_scope_keys } if BudgetLedgerDiagnostic.declared?(klass)
         end
 
         def binding_metrics

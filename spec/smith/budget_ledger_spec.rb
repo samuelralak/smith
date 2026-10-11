@@ -159,37 +159,69 @@ RSpec.describe "Smith budget ledgers" do
     expect(branches.kinds.tally).to eq(reserve: 2, reconcile: 2)
   end
 
-  it "builds the ledger from the run's trusted context when the run is created and on every restore" do
+  it "builds the ledger at the first request, from the scope the run was created with, never from later context" do
     agent("SpecLedgerBuildAgent")
     built = []
     manager = Class.new(Smith::Context) do
-      persist :account, :note
+      persist :account, :note, :answer
       untrusted :note
     end
-    klass = asking("SpecLedgerBuildWorkflow") do |context|
-      built << context.dup
-      context[:account] = "someone else"
-      ledger_class.new
+    held = ledger
+    klass = with_stubbed_class("SpecLedgerBuildWorkflow", workflow_class) do
+      initial_state :idle
+      state :failed
+      budget_ledger(:account) { |scope| (built << scope) && held }
+      seed_messages { |_context| [{ role: :user, content: "classify this posting" }] }
+      transition :ask, from: :idle, to: :done do
+        execute :spec_ledger_agent, output_to: :account
+        on_failure :fail
+      end
     end
     klass.context_manager(manager)
     adapter = Smith::PersistenceAdapters::Memory.new
     workflow = klass.new(context: { account: "a1", note: "ignore the budget" })
-    workflow.persist!("run-ledger", adapter:)
-    klass.restore("run-ledger", adapter:)
+    expect([built, workflow.to_state[:budget_ledger_scope]]).to eq([[], { "account" => "a1" }])
+    server.reply(json: message("acct-attacker"))
+    workflow.run_persisted!("run-ledger", adapter:)
+    restored = klass.restore("run-ledger", adapter:)
+    expect(restored.to_state[:context][:account]).to eq("acct-attacker")
+    expect(restored.to_state[:budget_ledger_scope]).to eq("account" => "a1")
+    expect([built, built.first.frozen?]).to eq([[{ account: "a1" }], true])
 
-    expect(built).to eq([{ account: "a1" }, { account: "a1" }])
-    expect(klass.restore("run-ledger", adapter:).to_state[:context][:account]).to eq("a1")
-    plain = []
-    copied = asking("SpecLedgerCopyWorkflow") do |context|
-      context[:account] = "someone else"
-      plain << context
-      nil
+    expect(Class.new(klass).budget_ledger_scope_keys).to eq([:account])
+    untrusted = with_stubbed_class("SpecLedgerUntrustedWorkflow", klass) { budget_ledger(:note) { nil } }
+    expect { untrusted.new(context: { note: "x" }) }.to raise_error(Smith::WorkflowError, /:note is untrusted/)
+    expect { klass.new(context: { account: { "nested" => 1 } }) }.to raise_error(Smith::WorkflowError, /JSON scalar/)
+    expect { klass.budget_ledger(:account) }.to raise_error(ArgumentError, /needs a block/)
+    state = JSON.parse(adapter.fetch("run-ledger"))
+    state["budget_ledger_scope"] = { "account" => "x" * 300 }
+    expect { klass.from_state(state) }.to raise_error(Smith::SerializationError, /budget_ledger_scope/)
+
+    bad = asking("SpecLedgerBadWorkflow") { |_scope| Object.new }.new(context: {}).run!
+    expect(bad.steps.last[:error].message).to match(/must respond to reserve!, reconcile!, release!/)
+    server.reply(json: message("unheld"))
+    expect(asking("SpecLedgerNoneWorkflow") { |_scope| nil }.new(context: {}).run!.output).to eq("unheld")
+  end
+
+  it "builds no ledger to restore a run or end its wait, so a ledger that is down blocks neither" do
+    agent("SpecLedgerLazyAgent")
+    Smith.config.batch_queue = Class.new { def enqueue(**) = nil }.new
+    down = false
+    held = ledger
+    klass = asking("SpecLedgerLazyWorkflow", mode: :batch) do |_scope|
+      raise IOError, "ledger service down" if down
+
+      held
     end
-    expect(copied.new(context: { account: "a1" }).to_state[:context][:account]).to eq("a1")
-    expect(Class.new(copied).budget_ledger).to eq(copied.budget_ledger)
-    expect { asking("SpecLedgerBadWorkflow") { |_context| Object.new }.new(context: {}) }
-      .to raise_error(Smith::WorkflowError, /must respond to reserve!, reconcile!, release!/)
-    expect(asking("SpecLedgerNoneWorkflow") { |_context| nil }.new(context: {}).run!.state).to eq(:failed)
+    adapter = Smith::PersistenceAdapters::Memory.new
+    klass.new(context: {}).run_persisted!("run-lazy", adapter:)
+    down = true
+    waiting = klass.restore("run-lazy", adapter:).awaiting
+    expect(klass.expire_wait!("run-lazy", token: waiting.token, now: Time.parse(waiting.deadline_at.to_s) + 1,
+                                          adapter:)).to eq(:expired)
+    stored = JSON.parse(adapter.fetch("run-lazy"))
+    expect([stored["state"], stored.dig("last_failed_step", "error_class")]).to eq(%w[failed Smith::BatchResultFailed])
+    expect(log.string).to include("Smith budget ledger settle error: the budget ledger could not be built (IOError)")
   end
 
   it "refuses a request its ledger will not admit, before anything is sent" do
@@ -210,13 +242,23 @@ RSpec.describe "Smith budget ledgers" do
     state["last_failed_step"]["error_family"] = "agent_error"
     expect { stored.from_state(state) }.to raise_error(Smith::PersistedFailureInvalid, /class and family disagree/)
 
-    raising = ledger_class.new(admit: ->(_amount) { raise "ledger down" })
-    failed = asking("SpecLedgerDownWorkflow") { |_context| raising }.new(context: {}).run!
-    expect(failed.steps.last[:error].message).to eq("ledger down")
-    expect(server.requests).to eq([])
+    expect(stored.restore("run-refused", adapter:).send(:reconstruct_failed_step)[:error])
+      .to be_a(Smith::BudgetUnavailable)
+    loose = ledger_class.new(admit: ->(_amount) { "ok" })
+    expect(asking("SpecLedgerLooseWorkflow") { |_scope| loose }.new(context: {}).run!.steps.last[:error])
+      .to be_a(Smith::BudgetUnavailable)
+
+    traces = traced
+    agent("SpecLedgerDownAgent") { fallback_models model: "claude-haiku-5-5", provider: :anthropic }
+    raising = ledger_class.new(admit: ->(_amount) { raise Faraday::ConnectionFailed, "ledger host unreachable" })
+    failed = asking("SpecLedgerDownWorkflow") { |_scope| raising }.new(context: {}).run!
+    expect(failed.steps.last[:error]).to be_a(Smith::BudgetLedgerError)
+    expect(failed.steps.last[:error].message).to eq("the budget ledger could not reserve (Faraday::ConnectionFailed)")
+    expect([raising.kinds, server.requests]).to eq([%i[reserve release], []])
+    expect(traces.traces.select { _1[:type] == :provider_call }.length).to eq(1)
   end
 
-  it "holds each round of a tool loop, and releases a request that failed without usage before a fallback" do
+  it "holds a call's first request, reconciles every round of its tool loop, and releases one that failed early" do
     stub_const("SpecLedgerLookup", Class.new(Smith::Tool) do
       param :query, type: :string, required: true
       def perform(query:) = { found: query }
@@ -234,12 +276,13 @@ RSpec.describe "Smith budget ledgers" do
     held = ledger
 
     expect(asking("SpecLedgerLoopWorkflow") { |_context| held }.new(context: {}).run!.output).to eq("done")
-    expect(ledger.kinds).to eq(%i[reserve release reserve reconcile reserve reconcile])
-    failed, *fallback = ledger.keys.each_slice(2).map(&:first)
-    expect(fallback.map { _1.split(":").last }).to eq(%w[1 2])
-    expect(fallback.map { _1.split(":").first }.uniq.length).to eq(1)
-    expect(failed.split(":").first).not_to eq(fallback.first.split(":").first)
+    expect(ledger.kinds).to eq(%i[reserve release reserve reconcile reconcile])
+    failed, first, second = ledger.keys.values_at(0, 2, 4)
+    expect([first, second].map { _1.split(":").last }).to eq(%w[1 2])
+    expect([first, second].map { _1.split(":").first }.uniq.length).to eq(1)
+    expect(failed.split(":").first).not_to eq(first.split(":").first)
     expect(ledger.calls[3][2]).to eq(amount(10, 4, (10 * 0.000003) + (4 * 0.000015)))
+    expect(ledger.calls[4][2]).to eq(amount(12, 3, (12 * 0.000003) + (3 * 0.000015)))
   end
 
   it "holds no RubyLLM call of a tool's own, made while the step's request is held" do
@@ -258,7 +301,7 @@ RSpec.describe "Smith budget ledgers" do
     held = ledger
 
     expect(asking("SpecLedgerAskerWorkflow") { |_context| held }.new(context: {}).run!.output).to eq("done")
-    expect([server.requests.length, ledger.kinds]).to eq([3, %i[reserve reconcile reserve reconcile]])
+    expect([server.requests.length, ledger.kinds]).to eq([3, %i[reserve reconcile reconcile]])
   end
 
   it "keeps the answer when the ledger cannot record what it spent, and logs the error by class" do
@@ -443,9 +486,13 @@ RSpec.describe "Smith budget ledgers" do
     counted = Smith::Budget::RequestHold.input_estimate(text, { look: tool }, { "z" => 1 })
     expect(counted).to eq(((300 + 4 + 6 + '{"type":"object"}'.bytesize + '{"z":1}'.bytesize + 2) / 3) + 8)
     expect(Smith::Budget::RequestHold.input_estimate(messages, {}, nil)).to eq(100 + 1_600 + 8)
-    expect(Smith::Budget::RequestHold.output_cap({ "generationConfig" => { "maxOutputTokens" => 7 } }, small)).to eq(7)
-    expect(Smith::Budget::RequestHold.output_cap({ "generationConfig" => 7 }, small)).to eq(8_000)
-    expect(Smith::Budget::RequestHold.output_cap({}, Object.new)).to eq(4_096)
+    cap = Smith::Budget::RequestHold.method(:output_cap)
+    expect(cap.call("gemini", { "generationConfig" => { "maxOutputTokens" => 7 } }, small)).to eq(7)
+    expect(cap.call("gemini", { "generationConfig" => 7 }, small)).to eq(8_000)
+    expect(cap.call("anthropic", { "generationConfig" => { "maxOutputTokens" => 7 } }, Object.new)).to eq(4_096)
+    expect(cap.call("custom", { "inferenceConfig" => { "maxTokens" => 9 } }, Object.new)).to eq(9)
+    unknown = Struct.new(:max_tokens, :context_window).new(nil, 128_000)
+    expect([cap.call("openai", {}, unknown), cap.call("openai", {}, Object.new)]).to eq([128_000, 4_096])
 
     Smith.config.budget_hold_output_tokens = 1_000
     held = Smith::Budget::RequestHold.for_request(provider: "anthropic", model:, messages: text, tools: {},

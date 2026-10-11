@@ -17,6 +17,8 @@ module Smith
           # The attempt a durable retry makes next, and its key generation.
           pending_retry: @pending_retry&.dup,
           pending_batch: @pending_batch&.dup,
+          # The scope the run's budget_ledger is built from.
+          budget_ledger_scope: @budget_ledger_scope&.transform_keys(&:to_s),
           active_seconds: @active_seconds || 0.0,
           active_step_started_at: @active_step_started_at,
           execution_namespace: @execution_namespace,
@@ -148,7 +150,17 @@ module Smith
         @split_step_mutex = Mutex.new
         validate_step_in_progress!(normalized) if
           self.class.idempotency_mode == :strict && !allow_step_in_progress
-        @budget_ledger = build_budget_ledger
+        initialize_budget_ledger
+        @budget_ledger_scope = restored_budget_ledger_scope(normalized[:budget_ledger_scope])
+      end
+
+      # The stored scope, or, for a run stored before its class declared
+      # these scope keys, the one its context gives now.
+      def restored_budget_ledger_scope(stored)
+        return unless self.class.budget_ledger
+
+        Budget::HostLedger.stored_scope(self.class.budget_ledger_scope_keys, stored) ||
+          capture_budget_ledger_scope
       end
 
       def validated_persistence_version(normalized)

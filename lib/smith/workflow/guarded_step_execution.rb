@@ -14,8 +14,7 @@ module Smith
           begin
             Thread.handle_interrupt(Object => :immediate) { run_tracked_guarded_step(transition) }
           rescue StandardError => e
-            raise unless tracker.started?
-            raise if terminal_retry_error?(e)
+            raise unless uncertain_after_tools?(tracker, e)
 
             raise ToolOutcomeUncertain.new(
               "transition failed after tool execution began; retry could replay an uncertain outcome"
@@ -28,6 +27,15 @@ module Smith
             Tool.current_tool_execution_tracker = previous_tracker
           end
         end
+      end
+
+      # A failure after a tool ran leaves its outcome uncertain, unless its
+      # retry could not run the tool again: a terminal failure, or a tool
+      # loop paused for budget, whose retry continues from its tools'
+      # results.
+      def uncertain_after_tools?(tracker, error)
+        tracker.started? && !terminal_retry_error?(error) &&
+          !(error.is_a?(BudgetUnavailable) && error.continuation)
       end
 
       def run_tracked_guarded_step(transition)

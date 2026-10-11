@@ -72,9 +72,16 @@ module Smith
 
   # A host's budget ledger (`budget_ledger`) refused a provider request's
   # hold; nothing was sent. A BudgetExceeded, so it is not retried unless a
-  # step's `retry_on` names it (a durable retry waits for budget).
+  # step's `retry_on` names it (a durable retry waits for budget). One that
+  # paused a tool loop carries its `continuation` (Budget::Continuation),
+  # which the step's retry continues from.
   class BudgetUnavailable < BudgetExceeded
-    def initialize(message = "the budget ledger refused the request") = super
+    attr_reader :continuation
+
+    def initialize(message = "the budget ledger refused the request", continuation: nil)
+      @continuation = continuation
+      super(message)
+    end
   end
 
   class DeadlineExceeded < Error; end
@@ -158,6 +165,14 @@ module Smith
   end
 
   class WorkflowError < Error; end
+
+  # A host's budget ledger (`budget_ledger`) could not be built or failed to
+  # answer `reserve!` (its service down, say); nothing was sent. Not a
+  # provider failure, so no fallback model is tried; not retried unless a
+  # step's `retry_on` names it.
+  class BudgetLedgerError < WorkflowError
+    def initialize(message = "the budget ledger failed") = super
+  end
 
   class DeterministicStepFailure < WorkflowError
     attr_reader :retryable, :kind, :details, :new_idempotency_key, :idempotency_scope

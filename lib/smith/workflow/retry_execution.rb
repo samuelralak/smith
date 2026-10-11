@@ -22,6 +22,7 @@ module Smith
         position = pending_batch_position
         @step_attempt = position ? position.first + 1 : 1
         @step_key_generation = position ? position.last : 0
+        start_budget_pause(transition)
         return run_guarded_step(transition) unless config
 
         run_attempts(transition, config, *(position || pending_retry_position(transition)))
@@ -40,6 +41,7 @@ module Smith
           raise unless retry_transition_error?(config, e, attempt)
 
           key_generation += 1 if new_idempotency_key_after?(config, e, attempt_scope)
+          keep_budget_continuation(e)
           delay = retry_delay(schedule, attempt)
           return wait_to_retry(transition, delay, attempt + 1, key_generation, e) if config[:durable]
 

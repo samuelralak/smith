@@ -14,7 +14,7 @@ module Smith
       # or the step ending before the requests are queued, releases the
       # holds taken; queued, they are settled when the results come.
       def hold_batch!(token, holds)
-        ledger = @step_budget_ledger
+        ledger = run_budget_ledger
         return unless ledger
 
         release_batch_holds
@@ -33,14 +33,15 @@ module Smith
       def release_batch_holds
         keys = @batch_holds
         @batch_holds = nil
-        keys&.each { Budget::HostLedger.settle(@step_budget_ledger, _1, nil) }
+        ledger = settling_ledger if keys
+        keys&.each { Budget::HostLedger.settle(ledger, _1, nil) } if ledger
       end
 
       # Each result settles the hold its request took on a host's budget
       # ledger (BatchExecution), taken by a call or not: a succeeded one
       # reconciles what it cost, any other (or a wait that expired) releases.
       def settle_batch_holds(transition, token, entries)
-        ledger = @step_budget_ledger
+        ledger = settling_ledger
         return unless ledger
 
         entries.each do |branch_key, entry|
@@ -49,11 +50,22 @@ module Smith
         end
       end
 
+      # The ledger to settle holds on. One that cannot be built then is
+      # logged, as a settlement that fails is: the money is spent, and the
+      # holds expire.
+      def settling_ledger
+        run_budget_ledger
+      rescue BudgetLedgerError => e
+        Smith.config.logger&.error("Smith budget ledger settle error: #{e.message}")
+        nil
+      end
+
       def batch_spent(transition, branch_key, result)
         return unless result["type"] == "succeeded"
 
-        usage = batch_reply_usage(result.fetch("message"))
-        model = batch_agent_class(transition, branch_key).chat_kwargs[:model] || result.dig("message", "model")
+        message = result.fetch("message")
+        usage = batch_reply_usage(message)
+        model = batch_model_id(batch_agent_class(transition, branch_key), message)
         Budget::HostLedger.amount(usage, model:, provider: "anthropic", mode: :batch) if usage
       end
     end

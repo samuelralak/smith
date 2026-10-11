@@ -998,16 +998,29 @@ post it, hands it to `Smith.config.batch_queue` and waits.
 
 ## Budget Ledgers
 
-A workflow's `budget_ledger` (README, "Budget ledgers") is never persisted:
-Smith calls its block with the run's trusted context on every restore. A
-batch request's hold is keyed by its `custom_id`, which the run's
+A workflow's `budget_ledger` (README, "Budget ledgers") is never persisted,
+and restoring a run never builds it: Smith builds it at the run's first
+request from the run's `budget_ledger_scope`, the values its scope keys had in
+its trusted context when it was created, kept with the run (a run stored
+before its class named those keys takes them from its context when
+restored). A stored scope that is not of JSON scalars raises
+`SerializationError`.
+
+A batch request's hold is keyed by its `custom_id`, which the run's
 `pending_batch` already keeps, so the delivery that resumes the run (in any
-process) settles it: a succeeded result reconciles what it cost, any other
-result, a result the step set aside, or an expired wait releases it. Holds
-are taken while the step's attempt runs and released if it ends before its
-requests are queued. A process that dies during a request leaves its hold
-unsettled until its `expires_at`; a delivery that ran again after a crash
-settles the same keys again, so a ledger settles each key once.
+process) settles it on the same ledger: a succeeded result, used by the step
+or not, reconciles what it cost; a failed result, or an expired wait,
+releases it. A ledger that cannot be built then is logged, and its holds
+expire. Holds are taken while the step's attempt runs and released if it ends
+before its requests are queued, except one the queue already took. A process
+that dies during a request leaves its hold unsettled until its `expires_at`;
+a delivery that ran again after a crash settles the same keys again.
+
+A tool loop paused for budget keeps its messages (its tool calls, their
+results, its thinking and signatures; at most 1 MiB) in the step's
+`pending_retry` as `continuation`, and the retry continues from them. A
+continuation that is not of the shape Smith keeps raises `SerializationError`
+on restore.
 
 ## Child Runs
 

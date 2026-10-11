@@ -167,7 +167,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   `Smith::BatchRequestChanged` (an `AgentError`, which `retry_on` may retry).
   A result set aside is charged as a `:failed_attempt`. The step runs again at its attempt, each call
   of that attempt (only) taking its result through RubyLLM's own parser, and a
-  succeeded result no call took (a cancelled fan-out branch) is charged as a
+  succeeded result no call took (a cancelled fan-out branch), priced under the id RubyLLM
+  resolves its agent's model to, is charged as a
   `:failed_attempt`; in strict mode the completion runs as a marked step. A
   batch step in an in-process child fails before capture. Usage with
   `mode: :batch` priced
@@ -362,28 +363,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   completion's `ProviderUsage`), `AgentResult.usage_details`,
   `AgentResult::USAGE_DETAIL_MEMBERS` and `UsageEntry::OPTIONAL_MEMBERS` are
   public.
-- Budget ledgers: `budget_ledger { |context| ... }` names the host's ledger for
-  a run (an account's spend across runs, say), built from the run's trusted
-  context when it is created and on every restore, never persisted. Each
-  provider request a step makes over the wire (each round of a tool loop,
-  each fallback model, each follow-up, streamed or not) is held on it before
-  it is sent: `reserve!(amount, key:, expires_at:)`, then
-  `reconcile!(key, amount)` with what it spent, or `release!(key)` when it
-  failed without reporting usage. A hold (`Smith::Budget::Amount`:
-  `input_tokens`, `output_tokens`, `cost`, `tokens`) is the request's output
-  cap and an estimate of its input, priced from the catalog. A refusal raises
-  `Smith::BudgetUnavailable`, a `BudgetExceeded`, before anything is sent; an
-  error from `reconcile!` or `release!` is logged by class and the step goes
-  on. Keys are `"<attempt_id>:<round>"`, and a batch request's `custom_id`: a
-  batch request is held when captured, at the batch discount, and settled
-  when its result comes. Every hold carries `expires_at`,
+- Budget ledgers: `budget_ledger(*scope_keys) { |scope| ... }` names the
+  host's ledger for a run (an account's spend across runs, say). Its scope is
+  the values the keys have in the run's trusted context when it is created,
+  kept with the run (`budget_ledger_scope`); Smith builds the ledger at the
+  run's first request, never persists it, and never needs it to restore a
+  run. A call's first request over the wire (each fallback model, each
+  follow-up, streamed or not, OpenAI's Responses route included) is held on
+  it before it is sent: `reserve!(amount, key:, expires_at:)`, admitted only
+  by `true`, then `reconcile!(key, amount)` with what it spent (its hold, when
+  it answered without usage or its stream failed part way), or
+  `release!(key)` when it failed before anything came back. A hold
+  (`Smith::Budget::Amount`: `input_tokens`, `output_tokens`, `cost`,
+  `tokens`) is the request's output cap and an estimate of its input (images
+  and PDFs counted as such, in attachments and raw content blocks), priced
+  under the model's resolved id. A refusal raises `Smith::BudgetUnavailable`,
+  a `BudgetExceeded`, before anything is sent; a ledger that cannot be built
+  or answer `reserve!` raises `Smith::BudgetLedgerError`; an error from
+  `reconcile!` or `release!` is logged by class and the step goes on. Keys
+  are `"<attempt_id>:<round>"`, and a batch request's `custom_id`: a batch
+  request is held when captured, at the batch discount, and settled when its
+  result comes. Every hold carries `expires_at`,
   `Smith.config.budget_hold_ttl` (3600 seconds by default) from now, and a
   batch request's wait longer, so a ledger drops a hold whose process died.
   `Smith.config.budget_hold_output_tokens` caps a hold's output part (an
   agent with no `max_tokens` is otherwise held for the model's maximum).
-  A nested workflow without its own ledger charges the enclosing run's.
-  Runtime readiness warns of an agent whose model has no price
-  (`:budget_ledger_unpriced`).
+  A tool loop's later rounds are held only by a step whose `retry_on` names
+  `BudgetUnavailable`: a refused round pauses the loop, its tool calls and
+  results kept with the step's retry (`pending_retry` `continuation`), and
+  the retry continues from them, running none of its tools again; any other
+  step's later rounds go on unheld and are reconciled. A nested workflow
+  without its own ledger charges the enclosing run's; a child run, inline or
+  not, its own class's. Runtime readiness warns of an agent whose model has
+  no price wherever the ledger is charged (`:budget_ledger_unpriced`), and
+  its metrics name the scope keys.
 
 ### Changed
 

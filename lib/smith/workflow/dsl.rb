@@ -25,6 +25,7 @@ module Smith
           subclass.instance_variable_set(:@initial_state_name, @initial_state_name)
           subclass.instance_variable_set(:@budget_config, @budget_config&.dup)
           subclass.instance_variable_set(:@budget_ledger_builder, @budget_ledger_builder)
+          subclass.instance_variable_set(:@budget_ledger_scope_keys, @budget_ledger_scope_keys)
           subclass.instance_variable_set(:@max_transitions_count, @max_transitions_count)
           subclass.instance_variable_set(:@guardrails_class, @guardrails_class)
           subclass.instance_variable_set(:@context_manager_class, @context_manager_class)
@@ -78,15 +79,22 @@ module Smith
           @budget_config = opts
         end
 
-        # The host's budget ledger for a run (Budget::HostLedger), built from
-        # the run's context when it is created and on every restore, never
-        # persisted; nil for none. Each provider request a step makes is held
+        # The host's budget ledger for a run (Budget::HostLedger): the block
+        # gets the run's scope, the values `scope_keys` have in its trusted
+        # context when it is created, kept with the run, and returns the
+        # ledger, or nil for none. It is built at the first request a step
+        # makes, never persisted. Each provider request a step makes is held
         # on it first.
-        def budget_ledger(&block)
-          return @budget_ledger_builder unless block
+        def budget_ledger(*scope_keys, &block)
+          return @budget_ledger_builder if scope_keys.empty? && !block
+          raise ArgumentError, "budget_ledger needs a block that returns the ledger" unless block
+          raise ArgumentError, "budget_ledger scope keys must be Symbols" unless scope_keys.all?(Symbol)
 
+          @budget_ledger_scope_keys = scope_keys.uniq.freeze
           @budget_ledger_builder = block
         end
+
+        def budget_ledger_scope_keys = @budget_ledger_scope_keys || []
 
         def max_transitions(count = nil)
           return @max_transitions_count if count.nil?

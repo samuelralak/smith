@@ -6,29 +6,52 @@ module Smith
   class Workflow
     class Graph
       # A workflow with a `budget_ledger` holds each provider request on it,
-      # priced from the pricing catalog: an agent whose model (or fallback
-      # model) has no price there gives the ledger holds and amounts without
-      # a cost (nil), a warning. A model given by a block is known only per
-      # run, and is not checked.
+      # priced from the pricing catalog under the id RubyLLM resolves the
+      # model to (as holds and Smith's own usage are): an agent whose model
+      # (or fallback model) has no price there gives the ledger holds and
+      # amounts without a cost (nil), a warning. The agents are those of each
+      # step (a fan-out's branches, an optimizer's generator and evaluator,
+      # an orchestrator and its worker) and of a nested workflow without a
+      # ledger of its own, which charges this one. A model given by a block
+      # is known only per run, and is not checked.
       class BudgetLedgerDiagnostic
         extend Dry::Initializer
 
         param :graph
 
+        def self.declared?(workflow_class)
+          workflow_class.respond_to?(:budget_ledger) && !workflow_class.budget_ledger.nil?
+        end
+
         def to_a
-          return [] unless graph.workflow_class.respond_to?(:budget_ledger) && graph.workflow_class.budget_ledger
+          return [] unless self.class.declared?(graph.workflow_class)
 
           graph.reachable_transitions.flat_map do |transition|
-            agents(transition).filter_map { unpriced(transition, _1) }
+            agents(transition, Set[graph.workflow_class]).uniq.filter_map { unpriced(transition, _1) }
           end
         end
 
         private
 
-        def agents(transition)
-          return transition.fanout_config.fetch(:branches).values if transition.fanout?
+        def agents(transition, seen)
+          [*step_agents(transition), *(nested_agents(transition.workflow_class, seen) if transition.nested?)].compact
+        end
 
-          [transition.agent_name].compact
+        def step_agents(transition)
+          return transition.fanout_config.fetch(:branches).values if transition.fanout?
+          return transition.optimization_config.values_at(:generator, :evaluator) if transition.optimized?
+          return transition.orchestrator_config.values_at(:orchestrator, :worker) if transition.orchestrated?
+
+          [transition.agent_name]
+        end
+
+        # A nested workflow without its own ledger charges this one.
+        def nested_agents(workflow_class, seen)
+          return [] if seen.include?(workflow_class) || self.class.declared?(workflow_class) ||
+                       !workflow_class.respond_to?(:graph)
+
+          seen << workflow_class
+          workflow_class.graph.reachable_transitions.flat_map { agents(_1, seen) }
         end
 
         def unpriced(transition, agent)
@@ -47,12 +70,23 @@ module Smith
           )
         end
 
+        # The models the agent's calls are priced under: its own and its
+        # fallbacks', as RubyLLM resolves them.
         def models(agent_class)
-          primary = agent_class.chat_kwargs[:model]
-          references = primary ? [Agent::ModelReference.new(model_id: primary, provider: provider_of(agent_class))] : []
-          references + Array(agent_class.fallback_models).map { Agent::ModelReference.coerce(_1) }
+          kwargs = agent_class.chat_kwargs
+          primary = kwargs[:model] && resolved(kwargs[:model], provider_of(agent_class), kwargs[:assume_model_exists])
+          [primary, *Array(agent_class.fallback_models).map { reference(Agent::ModelReference.coerce(_1)) }].compact
         rescue StandardError
           []
+        end
+
+        def reference(coerced) = resolved(coerced.model_id, coerced.provider&.to_s, false)
+
+        def resolved(model_id, provider, assume)
+          info = RubyLLM::Models.resolve(model_id, provider:, assume_exists: assume || false).first
+          Agent::ModelReference.new(model_id: info.id, provider: provider || info.provider.to_s)
+        rescue StandardError
+          Agent::ModelReference.new(model_id:, provider:)
         end
 
         def provider_of(agent_class)

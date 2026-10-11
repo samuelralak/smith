@@ -36,10 +36,22 @@ module Smith
         usage = batch_reply_usage(message)
         return unless usage
 
-        model = Agent::ModelReference.new(model_id: agent_class.chat_kwargs[:model] || message["model"],
-                                          provider: "anthropic")
+        model = Agent::ModelReference.new(model_id: batch_model_id(agent_class, message), provider: "anthropic")
         record_billed_usages(agent_class, [usage], :failed_attempt, model, attempt_id: nil)
         settle_spent_batch_charges
+      end
+
+      # The id a call of the agent prices its usage under, as RubyLLM
+      # resolves the agent's model (an alias to its dated id), else the
+      # result's own (a model given by a block).
+      def batch_model_id(agent_class, message)
+        kwargs = agent_class.chat_kwargs
+        return message["model"] unless kwargs[:model]
+
+        RubyLLM::Models.resolve(kwargs[:model], provider: kwargs[:provider],
+                                                assume_exists: kwargs[:assume_model_exists] || false).first.id
+      rescue StandardError
+        kwargs[:model]
       end
 
       # A result's usage, as the provider's own parser reads its message.

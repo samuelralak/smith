@@ -21,9 +21,9 @@ module Smith
       CAPTURED = :smith_batch_request
       private_constant :HELD
 
-      # A capture notes its request's hold (RequestHolds), for a host's
-      # budget ledger.
-      Exchange = Struct.new(:provider, :result, :digest, :changed, :on_change, :hold)
+      # A capture notes its request's hold (RequestHolds) when its step has
+      # a host's budget ledger (`holding`).
+      Exchange = Struct.new(:provider, :result, :digest, :changed, :on_change, :holding, :hold)
       # What a provider's response parser reads.
       Response = Struct.new(:body)
 

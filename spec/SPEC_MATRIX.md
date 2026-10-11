@@ -1916,16 +1916,58 @@ Architecture basis:
 
 Documented contracts covered:
 
-- the block is called with the run's trusted context (no untrusted key, a copy the block cannot change the run through) on `new` and on every restore; nil means none; an object without `reserve!`, `reconcile!` and `release!` is refused
+- the block is called at the run's first request with its scope: the named keys' values in its trusted context when it was created (an untrusted key or a non-scalar value refused), kept with the run as `budget_ledger_scope` and unchanged by what a step writes later; a malformed stored scope raises `SerializationError`; restoring a run or ending its wait never builds the ledger; nil means none; an object without `reserve!`, `reconcile!` and `release!` fails the step
 - a request is held under `"<attempt_id>:<round>"` (the `:provider_call` trace's attempt id) with its output cap and an estimate of its input, priced from the catalog, until `budget_hold_ttl` from now, and reconciled with its priced usage; a streamed request reconciles the usage its stream reported
-- a refusal raises `BudgetUnavailable` (a `BudgetExceeded`) before anything is sent; an error from `reserve!` passes on and nothing is sent; an error from `reconcile!` is logged by class only and the answer is kept
-- each round of a tool loop is held under its own round; a request that failed without usage is released before a fallback model's, which has its own attempt id
+- a refusal (anything but `true`) raises `BudgetUnavailable` (a `BudgetExceeded`, restored as one) before anything is sent; an error from `reserve!` raises `BudgetLedgerError`, releases the key, sends nothing and tries no fallback; an error from `reconcile!` is logged by class only and the answer is kept
+- a call's first request is held and every round of its tool loop reconciled under its own round; a request that failed without usage is released before a fallback model's, which has its own attempt id
 - a nested workflow without its own ledger charges the enclosing run's; each sync fan-out branch is held from its own thread; a tool's own RubyLLM call is not held
 - a request's cache reads and writes reconcile as input
 - a batch refusal releases the sibling holds already taken before a retry's backoff
 - a batch request is held at capture under its `custom_id`, at the batch discount, until its 25-hour wait plus `budget_hold_ttl`; delivery reconciles a succeeded result and releases an errored one; a refusal queues nothing; an expired wait releases its holds; a step that fails before queuing releases the holds it took
 - readiness warns of an agent whose model has no price only when the workflow declares a ledger; `budget_hold_ttl` must be a positive Integer
 - the hold estimate counts text at 3 bytes a token, an image at 1,600 and each message's framing at 8, is capped at the context window, and reads the output cap from `max_tokens`, a provider's own name for it, the model, or 4,096, at most `budget_hold_output_tokens` when set
+- these contracts are mutation-verified against the full suite
+
+### `spec/smith/budget_ledger_review_spec.rb`
+
+Purpose:
+
+- pins what two reviews of budget ledgers found
+
+Architecture basis:
+
+- Section 6, Budgets; Section 5, Persistence and Resume
+
+Documented contracts covered:
+
+- a request OpenAI's Responses route sends is held once, and refused before it is sent; a plain OpenAI request, through both hooked classes, is held once
+- a run's ledger is built once for all its fan-out branches; a step whose `retry_on` names other errors holds no later round of its tool loop
+- a batch result is priced under the id RubyLLM resolves the agent's model to, as its hold and its usage are, and readiness checks that id
+- an inline child run never charges its parent's ledger
+- a batch hold is settled on the ledger it was taken on, whatever a step writes to the context
+- a request the queue took before it failed keeps its hold; only the rest are released
+- a reply without usage, and a stream that failed after it began, reconcile at the hold; a negative count reconciles as 0
+- readiness warns of unpriced optimizer, orchestrator and nested agents, and its metrics name the scope keys
+- an image or a PDF in raw content (base64 data or a data URL) counts as an attachment, a PDF by its pages
+- a batch capture without a ledger computes no hold
+- these contracts are mutation-verified against the full suite
+
+### `spec/smith/budget_pause_spec.rb`
+
+Purpose:
+
+- asserts that a tool loop paused for budget continues from its tools' results, running none of them again
+
+Architecture basis:
+
+- Section 6, Budgets; Section 4.2, Workflows; Section 5, Persistence and Resume
+
+Documented contracts covered:
+
+- a step whose durable `retry_on` names `BudgetUnavailable` holds its loop's later rounds; a refused one waits with the loop's messages in `pending_retry`, and once the host ends the wait the retry continues the loop from them: the tool ran once, the resumed request carries its result, and the paid rounds are counted once
+- an in-process retry continues the loop after its backoff; the last attempt's later rounds are not held
+- a stored continuation not of the shape Smith keeps raises `SerializationError` on restore
+- a loop too large to keep goes on unheld from its tools' results
 - these contracts are mutation-verified against the full suite
 
 ### `spec/smith/batch_request_change_spec.rb`

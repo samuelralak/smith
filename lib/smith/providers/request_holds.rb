@@ -6,34 +6,43 @@ module Smith
   module Providers
     # Where a host's budget ledger (a workflow's `budget_ledger`) meets
     # RubyLLM: each request a step's call makes over the wire (each round of
-    # a tool loop, each fallback model, each follow-up) goes through
-    # `Provider#complete`, which asks the ledger to admit its hold
-    # (Budget::RequestHold) before anything is sent, then reconciles what the
-    # request spent, or releases the hold when it failed without reporting
-    # usage. Only the call's own provider object is held, so a tool's own
-    # RubyLLM call is not. While a batch step captures its request, the hold
-    # is noted on the capture instead, for the batch to reserve.
+    # a tool loop, each fallback model, each follow-up, streamed or not, and
+    # OpenAI's Responses route, which never reaches the base class) goes
+    # through `Provider#complete`. A call's first request is held before
+    # anything is sent. A later round of a tool loop continues a call whose
+    # tools already ran: it is held only when its step can pause for budget
+    # (`pausable`), and otherwise goes on, reconciled all the same. Each
+    # request is then reconciled with what it spent (its usage; its hold
+    # when it answered without usage or its stream failed part way) or, if
+    # it failed before anything came back, its hold is released. Only the
+    # call's own provider object is held, so a tool's own RubyLLM call is
+    # not. While a batch step captures its request, the hold is noted on the
+    # capture instead, for the batch to reserve.
     module RequestHolds
       HELD = :smith_request_holds
       private_constant :HELD
 
-      Holder = Struct.new(:provider, :ledger, :attempt_id, :rounds)
+      Holder = Struct.new(:provider, :ledger, :attempt_id, :pausable, :rounds, :busy)
+      # Whether a streamed request's response began.
+      Stream = Struct.new(:started)
 
       module_function
 
       # Runs the block with the provider's requests held on `ledger`, keyed
       # "<attempt_id>:<round>".
-      def within(provider, ledger, attempt_id)
+      def within(provider, ledger, attempt_id, pausable: false)
         outer = Fiber[HELD]
-        Fiber[HELD] = Holder.new(provider, ledger, attempt_id, 0)
-        yield
+        Fiber[HELD] = Holder.new(provider, ledger, attempt_id, pausable, 0, false)
+        yield Fiber[HELD]
       ensure
         Fiber[HELD] = outer
       end
 
+      # The holder of a request the provider is about to make, unless one is
+      # under way (the base class's hook inside OpenAI's).
       def holder_for(provider)
         holder = Fiber[HELD]
-        holder if holder&.provider.equal?(provider)
+        holder if holder&.provider.equal?(provider) && !holder.busy
       end
 
       def hold(provider, args, kwargs, mode: :sync)
@@ -43,18 +52,63 @@ module Smith
         )
       end
 
+      # The request (`request`: the provider's own `complete`), held.
+      def complete(provider, args, kwargs, block, &request)
+        exchange = BatchExchange.exchange_for(provider)
+        return capture(provider, exchange, args, kwargs, block, &request) if exchange
+
+        holder = holder_for(provider)
+        return request.call(*args, **kwargs, &block) unless holder
+
+        held(holder, hold(provider, args, kwargs), kwargs.fetch(:model).id) do |stream|
+          next request.call(*args, **kwargs) unless block
+
+          request.call(*args, **kwargs) do |chunk|
+            stream.started = true
+            block.call(chunk)
+          end
+        end
+      end
+
+      def capture(provider, exchange, args, kwargs, block, &request)
+        exchange.hold ||= hold(provider, args, kwargs, mode: :batch) if exchange.holding && exchange.result.nil?
+        request.call(*args, **kwargs, &block)
+      end
+
       def held(holder, amount, model_id)
-        holder.rounds += 1
-        key = "#{holder.attempt_id}:#{holder.rounds}"
-        Budget::HostLedger.admit!(holder.ledger, amount, key)
+        key, reserved = open_round(holder, amount)
+        stream = Stream.new(false)
         begin
-          message = yield
+          message = busy(holder) { yield(stream) }
         rescue Exception => e # rubocop:disable Lint/RescueException -- an interrupted request settles too
-          Budget::HostLedger.settle(holder.ledger, key, spent(holder.provider, model_id, e))
+          settle_failed(holder, key, spent(holder.provider, model_id, e) || (amount if stream.started), reserved)
           raise
         end
-        Budget::HostLedger.settle(holder.ledger, key, spent(holder.provider, model_id, message))
+        Budget::HostLedger.settle(holder.ledger, key, spent(holder.provider, model_id, message) || amount)
         message
+      end
+
+      # The request's key and whether it is held: a call's first request, or
+      # any round of a step that can pause for budget.
+      def open_round(holder, amount)
+        holder.rounds += 1
+        key = "#{holder.attempt_id}:#{holder.rounds}"
+        reserved = holder.rounds == 1 || holder.pausable
+        Budget::HostLedger.admit!(holder.ledger, amount, key) if reserved
+        [key, reserved]
+      end
+
+      def busy(holder)
+        holder.busy = true
+        yield
+      ensure
+        holder.busy = false
+      end
+
+      # A failed request reconciles what it spent; a held one that spent
+      # nothing is released, an unheld one settles nothing.
+      def settle_failed(holder, key, spent, reserved)
+        Budget::HostLedger.settle(holder.ledger, key, spent) if spent || reserved
       end
 
       # What a request spent, from its reply (or the error that reported
@@ -64,19 +118,13 @@ module Smith
         Budget::HostLedger.amount(usage, model: model_id, provider: provider.slug) if usage
       end
 
-      # Prepended on RubyLLM::Provider.
+      # Prepended on RubyLLM::Provider, and on RubyLLM::Providers::OpenAI
+      # outside Smith's Responses routing.
       module Hook
-        def complete(*args, **kwargs, &)
-          exchange = BatchExchange.exchange_for(self)
-          if exchange
-            exchange.hold = RequestHolds.hold(self, args, kwargs, mode: :batch) unless exchange.result
-            return super
+        def complete(*args, **kwargs, &block)
+          RequestHolds.complete(self, args, kwargs, block) do |*sent, **options, &chunks|
+            super(*sent, **options, &chunks)
           end
-
-          holder = RequestHolds.holder_for(self)
-          return super unless holder
-
-          RequestHolds.held(holder, RequestHolds.hold(self, args, kwargs), kwargs.fetch(:model).id) { super }
         end
       end
     end
@@ -84,3 +132,4 @@ module Smith
 end
 
 RubyLLM::Provider.prepend(Smith::Providers::RequestHolds::Hook)
+RubyLLM::Providers::OpenAI.prepend(Smith::Providers::RequestHolds::Hook)

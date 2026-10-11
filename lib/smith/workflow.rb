@@ -37,6 +37,7 @@ module Smith
     include BatchWait
     include BatchCharges
     include BatchHolds
+    include BudgetPause
     include ChildRunResults
     include ChildRunExecution
     include Execution
@@ -132,7 +133,8 @@ module Smith
       @inherited_artifact_namespaces = ArtifactIntegration.take_inherited_artifact_namespaces
       initialize_tool_result_state
       seed_initial_session_messages
-      @budget_ledger = build_budget_ledger
+      initialize_budget_ledger(Budget::HostLedger.take_inherited)
+      @budget_ledger_scope = capture_budget_ledger_scope
     end
 
     def persisted_keys
@@ -269,13 +271,36 @@ module Smith
       end
     end
 
-    # The host's budget ledger for the run (`budget_ledger`), from its
-    # trusted context, so no untrusted key chooses whose budget is charged.
-    def build_budget_ledger
-      builder = self.class.budget_ledger
-      return unless builder
+    # A run's budget ledger is built at its first use; a nested workflow
+    # without one of its own charges `inherited`, the enclosing run's.
+    def initialize_budget_ledger(inherited = nil)
+      @inherited_budget_ledger = inherited
+      @budget_ledger = nil
+      @budget_ledger_built = false
+      @budget_ledger_mutex = Mutex.new
+    end
 
-      Budget::HostLedger.check!(builder.call(snapshot_value(trusted_context_view)))
+    # The scope the run's ledger is built from, from its trusted context, so
+    # no untrusted key chooses whose budget is charged.
+    def capture_budget_ledger_scope
+      return unless self.class.budget_ledger
+
+      Budget::HostLedger.scope!(self.class.budget_ledger_scope_keys, trusted_context_view, untrusted_context_keys)
+    end
+
+    # The host's budget ledger this run's requests are held on: its own,
+    # built at first use from the scope it was created with, else the
+    # enclosing run's (a nested workflow's); nil for none.
+    def run_budget_ledger
+      return @inherited_budget_ledger&.call unless self.class.budget_ledger
+
+      @budget_ledger_mutex.synchronize do
+        unless @budget_ledger_built
+          @budget_ledger = Budget::HostLedger.build(self.class.budget_ledger, @budget_ledger_scope)
+          @budget_ledger_built = true
+        end
+        @budget_ledger
+      end
     end
 
     def build_ledger

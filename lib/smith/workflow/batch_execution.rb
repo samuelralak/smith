@@ -133,6 +133,9 @@ module Smith
         ids.each do |custom_id, request|
           Smith.config.batch_queue.enqueue(custom_id:, await_token: captured.token, request:,
                                            execution_key: @persistence_key)
+          # Handed off, it may be sent: its hold stays until its result, or
+          # expires.
+          @batch_holds&.delete(custom_id)
         end
         ids
       end
