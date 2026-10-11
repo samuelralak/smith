@@ -1,6 +1,6 @@
 # Patterns
 
-Working examples for each Smith workflow pattern. The table in the [README](../README.md#patterns) is the quick selection rule; this file is the depth.
+Working examples for each Smith workflow pattern. The steps table in the [README](../README.md#steps) is the quick selection rule; this file is the depth.
 
 ## Example 1: Single-Step Workflow
 

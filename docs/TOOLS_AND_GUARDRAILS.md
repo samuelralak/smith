@@ -450,3 +450,60 @@ class GuardedWorkflow < Smith::Workflow
   end
 end
 ```
+
+## Shipped Tools and Tool Budgets
+
+Smith ships `Tools::WebSearch`, `Tools::UrlFetcher`, and `Tools::Think`. Tools declare provider compatibility via `compatible_with`; Smith's normalizer routes or drops them per-attempt.
+
+`Tools::WebSearch` and `Tools::UrlFetcher` are stubs: they declare each
+tool's parameters and description, and their `perform` raises
+`NotImplementedError`. A host subclasses them with its own search or fetch
+behind `perform`. `Tools::Think` works as shipped.
+
+```ruby
+class WebSearch < Smith::Tools::WebSearch
+  def perform(query:, max_results: 5) = SearchClient.search(query, limit: max_results)
+end
+
+class UrlFetcher < Smith::Tools::UrlFetcher
+  def perform(url:) = PageClient.fetch(url)
+end
+
+class SearchAgent < Smith::Agent
+  register_as :search_agent
+  model "claude-opus-4-7"
+  tools WebSearch, UrlFetcher # the host's subclasses
+  budget tool_calls: 3
+  tool_budget_exhaustion :complete
+end
+```
+
+Agent tool-call budgets default to raising `Smith::BudgetExceeded` when a tool
+tries to execute beyond the configured limit. Agents that declare
+`tool_budget_exhaustion :complete` must also declare a finite `tool_calls`
+budget. Smith then consumes each model-requested call before dispatch, executes
+only a complete batch admitted against both agent and workflow limits, and
+performs one tool-disabled completion when the allowance is exhausted or the
+provider returns an oversized batch. The bounded provider loop is iterative,
+not recursive. Calls to unavailable tools consume allowance as well, so a
+provider cannot create an unbounded correction loop. Workflow reservations are
+reconciled to actual Smith tool execution.
+
+Hosts may install `Smith::Tool::CallBudget` with exact per-tool limits through
+`Smith::Tool.with_call_budget`. Smith propagates that same root allowance into
+parallel and heterogeneous fan-out worker threads; agent budgets narrow the
+root and all branches share its atomic counters.
+
+Graceful exhaustion is an in-process protocol guarantee, not durable recovery
+for the model/tool loop. If the process exits after a tool begins and before the
+agent completes, the host must treat the outcome as uncertain unless it owns a
+durable per-invocation receipt and reconciliation contract. Smith also refuses
+to start a fresh fallback-model chat after tool execution has begun because that
+would discard the captured evidence and conversation protocol.
+
+Within a host invocation scope, `Smith::Tool.current_invocation` exposes the
+normalized tool-call ID and deterministic execution/batch ordinals. The ID is
+RubyLLM correlation metadata and must not be treated as a provider idempotency
+key. Durable hosts can pass an explicitly seeded
+`Smith::Tool::InvocationSequence` to `with_invocation_context`; Smith itself does
+not persist or reconcile operation receipts.

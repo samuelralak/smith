@@ -940,7 +940,7 @@ end
 
 ### Batch Waits
 
-A step whose mode is `:batch` (`execute` or `fan_out`, README "Batch mode")
+A step whose mode is `:batch` (`execute` or `fan_out`, [AGENTS.md](AGENTS.md), Batch mode)
 sends no request: it captures each call's request as a synchronous call would
 post it, hands it to `Smith.config.batch_queue` and waits.
 
@@ -998,7 +998,7 @@ post it, hands it to `Smith.config.batch_queue` and waits.
 
 ## Budget Ledgers
 
-A workflow's `budget_ledger` (README, "Budget ledgers") is never persisted,
+A workflow's `budget_ledger` ([BUDGETS.md](BUDGETS.md), Budget ledgers) is never persisted,
 and restoring a run never builds it: Smith builds it at the run's first
 request from the run's `budget_ledger_scope`, the values its scope keys had in
 its trusted context when it was created, kept with the run (a run stored
@@ -1110,7 +1110,7 @@ Smith.config.run_launcher = QueueLauncher.new
 ## Replay Safety: Idempotency Keys
 
 A replayed step's provider calls are paid for again unless
-`Smith.config.response_memo` keeps them (README, "Response memo"): each call
+`Smith.config.response_memo` keeps them ([ERRORS_AND_RETRIES.md](ERRORS_AND_RETRIES.md), Response memo): each call
 is keyed by its position's idempotency scope (so a settled failure's new key
 generation reaches new records), its attempt, its model in the fallback chain
 and its place among the attempt's calls. Nothing about a memo is persisted
@@ -1237,7 +1237,7 @@ negative, or non-integer versions fail closed instead of being overwritten.
 The default host model needs a unique key, a JSON/text payload, and Rails'
 standard optimistic-locking column. `bin/rails generate smith:install`
 writes its migration, model and initializer (`--state-model`,
-`--max-state-bytes`; see the README's Installation), with a CHECK on the
+`--max-state-bytes`), with a CHECK on the
 payload's size a third above `persistence_max_bytes`. Smith keeps a run
 within the bound: a stored run's step whose result would not fit fails with
 `Smith::PersistedStateTooLarge` before the result is kept (its usage
@@ -1426,3 +1426,170 @@ Why this matters:
   which ends with the step, so outside a run's steps `Smith.artifacts` is the
   configured store itself; a child run reads its ancestors' refs too
 - nested workflows inherit artifact scope correctly
+
+## Adapters and Host-Coordinated Execution
+
+```ruby
+# Persist after every advance
+result = ReplyWorkflow.run_persisted!(
+  context: { user_message: "..." },
+  adapter: Smith.persistence_adapter
+)
+
+# Resume later
+result = ReplyWorkflow.run_persisted!(
+  key: "ticket:T-1042",
+  adapter: Smith.persistence_adapter
+)
+
+# Admit host-supplied conversation input at a stable workflow boundary.
+workflow = ReplyWorkflow.restore("ticket:T-1042", adapter: Smith.persistence_adapter)
+admission = workflow.append_session_messages!(role: :user, content: "Continue")
+```
+
+`append_session_messages!` validates and owns a bounded canonical copy of the
+message batch, appends it under Smith's workflow lifecycle lock, and returns an
+immutable digest witness. The host still owns session identity, transaction
+coordination, persistence, idempotency, and resume policy.
+
+Built-in adapters (all except `ActiveRecord` support TTL; `ActiveRecord` has no
+expiry column, so its writes refuse a non-nil `persistence_ttl`, while reads and
+deletes keep working and `smith doctor --durability` flags the combination;
+`Redis`, `ActiveRecord`, and `Memory` support optimistic locking via
+`store_versioned` and exact dispatch claims via `replace_exact`; `ActiveRecord`
+participates in the caller's transaction for host-record coordination;
+`Redis` and `Memory` also support heartbeat probes via `record_heartbeat` /
+`last_heartbeat`):
+
+- `:memory` — in-process Hash, intended for tests and `test_mode = true`
+- `:redis` — Redis client; uses WATCH/MULTI/EXEC for CAS
+- `:rails_cache`, `:solid_cache` — Rails cache backends
+- `:cache_store` — any object responding to `write/read/delete`
+- `:active_record` — keyed ActiveRecord model with an enabled optimistic-locking
+  column for row-level CAS; Smith's logical version remains in the JSON payload
+
+The sections above cover schema versioning,
+seed-drift validation, the `idempotency_mode :strict` step-in-progress contract,
+host-coordinated message admission, and opt-in restart-safe prepared recovery.
+Hosts that need to commit a durable attempt before provider or tool work can
+separate verification from execution with
+`authorize_prepared_step_execution!`, commit their own attempt ledger, and then
+consume the exact process-local capability through
+`execute_authorized_prepared_step!`. Smith does not own the host lease, attempt
+record, scheduler, or unknown-outcome policy. Authorization discovers the exact
+agent bindings reachable by that transition with a bounded `O(V + E)` graph
+walk, then resolves the bounded binding set in one registry epoch. A concurrent
+registry writer therefore cannot produce a mixed authorization containing
+bindings from two registry states or replace a captured binding between
+authorization and work. Every public Dry::Container mutation path participates
+in that epoch. Execution authorization accepts only concrete registered
+`Smith::Agent` classes; lazy container callbacks are not executed while
+authority is captured.
+While the capability is active, a host may call `each_agent_binding` with a
+block to inspect the exact captured `(registry_name, agent_class)` pairs before
+external work. Enumeration is process-local, performs no dispatch, and is
+rejected after release or consumption; it deliberately does not return a lazy
+enumerator that could escape the authorization scope.
+Reachable nested workflow transition contracts are captured and revalidated
+before child execution. The typed result owns a bounded snapshot of JSON-like
+Ruby values; unsupported mutable output values fail closed.
+During authorized execution, Smith also seals its private execution path against
+workflow subclass method-name collisions, including nested child workflows.
+Ordinary non-authorized runs retain normal Ruby override behavior.
+
+For `parallel: true` and `fan_out` transitions, a host can split one confirmed
+dispatch into independently scheduled branch operations without invoking agent
+classes outside Smith:
+
+```ruby
+preparation = workflow.prepare_composite_step!
+
+# Persist preparation.plan and preparation.input in host-owned records.
+# Each worker recovers the same confirmed dispatch and receives one descriptor.
+branch = preparation.plan.branches.fetch(0)
+execution = preparation.plan.execution_for(branch)
+outcome = branch_workflow.execute_prepared_composite_branch!(
+  execution:,
+  input: preparation.input
+)
+
+# After every branch has a terminal outcome, use another fresh recovery to
+# complete the Smith transition exactly once.
+result = reducer_workflow.reduce_prepared_composite_step!(
+  plan: preparation.plan,
+  input: preparation.input,
+  outcomes: ordered_or_unordered_complete_outcome_set,
+  primary_failure: host_committed_failed_branch_key
+)
+```
+
+Plans bind the exact prepared dispatch, host-supplied complete workflow
+`definition_digest`, execution-semantics version, prepared input digest, budget
+baseline, one shared artifact execution namespace, ordered branch identities,
+and explicit policies. Each plan, input, outcome, or effect payload is
+canonical, immutable, bounded to 1 MiB after JSON encoding, rejects missing or
+unknown fields, and redacts exception messages and backtraces.
+Reduction additionally bounds cumulative effects to 1 MiB and final aggregate
+output to 4 MiB before consuming execution authority. Reduction accepts either
+an `Array` or an `Enumerator`, validates each outcome incrementally, and stops
+as soon as a cumulative bound is crossed. The transport hard limit is 10,000
+branches; every recovered worker also enforces the current
+`Smith.config.parallel_branch_limit` before work.
+
+Planning is `O(B * D)`, where `D` is the bounded number of budget dimensions.
+The coordinator derives a compact selected-branch execution envelope in
+`O(D)` without copying the full branch collection. The scoped branch execution
+entry point captures and validates one selected binding in `O(D)` and constant
+time with respect to total branch count; the reducer validates the complete plan
+once. Reduction is `O(B + P log P)` in
+the worst case because canonical nested Hash ownership sorts keys, and uses
+`O(B + P)` bounded space.
+Smith does not persist plans or outcomes, select scheduling slots, claim work,
+choose an uncertain-outcome policy, or infer the primary failure. The host
+durably owns those decisions, gives each branch and reduction a separately
+recovered workflow instance, and must pass a complete outcome set. Transport or
+encoding faults become typed branch failures when Smith can preserve accounting
+evidence; otherwise the host must treat the worker result as uncertain and must
+not infer safe retry. Resume policy is incomplete branches only; per-branch
+retry is intentionally unsupported in this contract version.
+Composite payload digests prove canonical content integrity, not worker
+authenticity. Before reduction, the host must authenticate every outcome against
+its own claimed operation identity and current fencing token; those durable
+receipts remain outside Smith.
+
+The supported composite API is the three scoped workflow methods above plus the
+immutable transport values they return or accept: `Preparation`, `Plan`,
+`Input`, `Branch`, `BranchExecution`, `BranchOutcome`, `BranchFailure`, `Error`,
+`Effects`, and `Reduction`. Other constants under `Workflow::Composite` are
+implementation collaborators, not extension points or compatibility promises.
+
+Every agent used by this durable composite boundary must declare a stable
+host-computed SHA-256 execution identity. The identity represents the exact
+sealed executable asset the host intends to dispatch; Smith records it in the
+branch descriptor and rejects registry replacement after planning. Identities
+are deliberately not inherited because a subclass is a distinct executable
+implementation.
+
+```ruby
+class Researcher < Smith::Agent
+  execution_identity Digest::SHA256.hexdigest(generated_asset_manifest)
+  register_as :researcher, publish: false
+end
+
+Researcher.freeze
+Researcher.publish_registration!
+```
+
+Hosts that generate agent classes dynamically may call
+`register_as :name, publish: false` while constructing the class. This records
+the class identity without exposing it through `Smith::Agent::Registry`. After
+the host has validated and sealed the class, it may publish the exact class with
+`agent_class.publish_registration!`. Publication always uses the staged,
+immutable identity; callers cannot provide a second key. Registry collision and
+mutation epoch guarantees remain unchanged.
+
+Hosts that persist or cache generated executable definitions should include
+`Smith::EXECUTION_SEMANTICS_VERSION` in their definition identity. The gem
+version describes the package release; the execution-semantics version changes
+when Smith's executable workflow contract changes and must participate in host
+cache invalidation.

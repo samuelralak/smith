@@ -4,6 +4,21 @@ All notable changes to Smith are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Smith is pre-1.0 and under active development; expect occasional contract tightening between minor versions until 1.0.
 
+## [Unreleased]
+
+### Documentation
+
+- The README is a short guide now: what Smith is, installing it, a first
+  workflow, the steps, and each feature in a few lines with an example and a
+  link. Its detailed contracts moved, unchanged, into `docs/`: new
+  `AGENTS.md` (outputs, request shaping, streaming, batch mode),
+  `BUDGETS.md`, `ERRORS_AND_RETRIES.md` (with the response memo),
+  `TESTING.md` (with the doctor), `INSPECTION.md` and `DEVELOPMENT.md`; and
+  sections appended to `PERSISTENCE.md`, `TOOLS_AND_GUARDRAILS.md` and
+  `CONFIGURATION.md`. The README's examples are run by
+  `tmp/probes/readme_probe.rb`; the retries example used an undefined
+  `order`, and several examples left states undeclared.
+
 ## [0.12.1] - 2026-10-11
 
 ### Changed

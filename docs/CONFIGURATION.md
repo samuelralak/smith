@@ -30,7 +30,7 @@ Use agent classes for invocation behavior:
 - `fallback_models`
 - `register_as`
 
-The output macros are described in the README, Agent outputs.
+The output macros are described in [AGENTS.md](AGENTS.md), Agent outputs.
 
 ### 3. Workflow configuration: `Smith::Workflow`
 
@@ -115,8 +115,30 @@ Smith.configure do |config|
   # Batch steps (`execute Agent, mode: :batch`): the host's queue of requests.
   config.batch_queue = HostBatchQueue.new
 
-  # How long a request's hold on a workflow's budget_ledger lasts unsettled.
+  # How long a request's hold on a workflow's budget_ledger lasts unsettled,
+  # and the most output tokens a hold counts (nil: the request's own cap).
   config.budget_hold_ttl = 3600
+  config.budget_hold_output_tokens = nil
+
+  # Persistence: where runs are stored, and a stored state's bound.
+  config.persistence_adapter = :active_record
+  config.persistence_options = { model: "WorkflowState" }
+  config.persistence_ttl = nil              # :active_record cannot expire state
+  config.persistence_max_bytes = 16_777_216 # nil: no bound
+  config.persistence_retry_policy = { attempts: 3, base_delay: 0.1, max_delay: 1.0 }
+
+  # Child runs (`call`, `map`, `spawn`) and replays.
+  config.run_launcher = HostLauncher.new
+  config.response_memo = HostResponseMemo.new
+
+  # Generic runtime resource bounds.
+  config.parallel_branch_limit = 1_000
+  config.parallel_concurrency = 8
+  config.parallel_nesting_limit = 64
+  config.retry_attempt_limit = 100
+
+  # OpenAI /v1/responses routing for gpt-5 + tools + thinking: :auto (default) or :off.
+  config.openai_api_mode = :auto
 
   config.logger = Logger.new($stdout)
 end
@@ -169,7 +191,7 @@ from JSON or YAML has.
 | `pricing` | Best-known model-call cost catalog | Add once you care about `total_cost` |
 | `logger` | Smith's runtime logger | Usually the first setting to add |
 | `batch_queue` | Takes the requests `mode: :batch` steps send: `enqueue(custom_id:, await_token:, request:, execution_key:)`, idempotent on `custom_id`; the host submits them (`Smith::Providers::Anthropic::Batches`) and resumes each run with its results | Set before any workflow batches; readiness reports a missing one |
-| `response_memo` | Keeps what a step's provider calls got (`fetch(key)`, `store(key, record)`), so a step replayed after its process died reuses it instead of paying again (README, "Response memo") | Set it where replays happen: lax idempotency mode, or a host that runs a crashed step again |
+| `response_memo` | Keeps what a step's provider calls got (`fetch(key)`, `store(key, record)`), so a step replayed after its process died reuses it instead of paying again ([ERRORS_AND_RETRIES.md](ERRORS_AND_RETRIES.md), Response memo) | Set it where replays happen: lax idempotency mode, or a host that runs a crashed step again |
 | `budget_hold_ttl` | Seconds a provider request's hold on a workflow's `budget_ledger` lasts unsettled (default 3600): each hold's `expires_at` is this from now, and a batch request's is its 25-hour wait longer. Past it the request's process is taken to have died | Raise it above the longest request (its retries and stream included) |
 | `budget_hold_output_tokens` | The most output tokens a request's hold on a workflow's `budget_ledger` counts (default nil: the request's own `max_tokens`, else the model's maximum). Only the hold changes, not the request; a longer reply is reconciled at what it cost | Set it when agents leave `max_tokens` unset and a small budget would refuse calls on their huge holds |
 | `stream_sinks` | The sinks `execute Agent, stream: :name` steps send text to, by name: callables that take a step's info (`stream`, `execution_key`, `transition`) and return that step's sink, or nil to stream nothing | Register each name a workflow streams to; readiness reports a missing one |
