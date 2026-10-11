@@ -103,7 +103,7 @@ module Smith
       def pieces(text)
         return [] if text.to_s.empty?
 
-        @stream ? text.scan(/.{1,#{@stream}}/m) : [text]
+        @stream ? text.each_char.each_slice(@stream).map(&:join) : [text]
       end
     end
   end

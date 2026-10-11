@@ -3,17 +3,19 @@
 module Smith
   class Workflow
     module StepCompletion
+      # Room for what completing a step adds besides its output (its state,
+      # step count, last agent).
+      RESULT_MARGIN = 1024
+
       private
 
       def complete_step(transition, output)
+        StepCompletion.instance_method(:check_result_storable!).bind_call(self, output)
         step = { transition: transition.name, from: transition.from, to: transition.to, output: output }
         # Fold in the serial agent attribution captured for this step (if any),
         # then clear the transient carrier. record_step_snapshot reads these off
         # the returned step to update the durable @last_agent_execution.
-        if @pending_agent_execution
-          step[:model] = @pending_agent_execution[:model]
-          step[:provider] = @pending_agent_execution[:provider]
-        end
+        step.merge!(@pending_agent_execution.slice(:model, :provider)) if @pending_agent_execution
 
         @pending_agent_execution = nil
         fold_pending_evaluations(step)
@@ -32,6 +34,23 @@ module Smith
         @router_next_transition = nil
         emit_step_completed(transition, output)
         step
+      end
+
+      # A stored run's step whose result would take its state past
+      # persistence_max_bytes fails with PersistedStateTooLarge before the
+      # result is kept, as with any error: its usage is recorded, its
+      # on_failure taken, and its run stays storable (strict mode
+      # included), where a refused store after the step would leave it
+      # unsaved. The estimate is the state's JSON and the output's, kept
+      # twice (in the context or transcript, and as the last output).
+      def check_result_storable!(output)
+        limit = Smith.config.persistence_max_bytes
+        return unless limit && @persistence_version.to_i.positive?
+
+        bytes = JSON.generate(to_state).bytesize + (JSON.generate(output).bytesize * 2) + RESULT_MARGIN
+        raise PersistedStateTooLarge.new(key: @persistence_key, bytes:, limit:) if bytes > limit
+      rescue JSON::GeneratorError, JSON::NestingError, Encoding::UndefinedConversionError
+        nil
       end
 
       # Once the result is captured, so a step whose result is refused leaves

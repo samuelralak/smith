@@ -53,9 +53,11 @@ RSpec.describe "Smith::Testing" do
       expect(stub.calls.map { |messages| messages.map(&:content) }).to eq([["classify this posting"]])
 
       testing.stub_agent(SpecTestingAgent, outputs: "A short", stop_reason: "max_tokens")
-      cut = klass.new(context: {}).run!
+      cut_run = klass.new(context: {})
+      cut = cut_run.run!
       expect([cut.state, cut.last_error.class, cut.usage_entries.map(&:stop_reason)])
         .to eq([:failed, Smith::OutputTruncated, ["max_tokens"]])
+      expect(testing.transitions(cut_run)).not_to include(:ask)
     end
 
     it "takes its outputs in turn, the last again, and parses a reply under a schema" do
@@ -172,6 +174,43 @@ RSpec.describe "Smith::Testing" do
       expect([runs, stub.calls.length]).to eq([["clinic"], 2])
     end
 
+    it "refuses an agent's request with no stub when unstubbed is :refuse, sending nothing" do
+      agent("SpecTestingUnstubbedAgent")
+      testing.unstubbed = :refuse
+      run = asking("SpecTestingUnstubbedWorkflow").new(context: {}).run!
+
+      expect([run.state, run.last_error.class, server.requests]).to eq([:failed, Smith::Testing::UnstubbedCall, []])
+      expect(run.last_error.message).to include("spec_ledger_agent has no stub")
+      expect { testing.unstubbed = :drop }.to raise_error(ArgumentError, /:send or :refuse/)
+    ensure
+      testing.unstubbed = :send
+    end
+
+    it "answers OpenAI's Responses route after rendering its request" do
+      agent("SpecTestingResponsesAgent", model: "gpt-5", provider: :openai) { params openai_api_mode: :responses }
+      testing.stub_agent(SpecTestingResponsesAgent, outputs: "From the stub.")
+      expect(Smith::Providers::OpenAI::Responses).to receive(:render_response_payload).and_call_original
+      run = asking("SpecTestingResponsesWorkflow").new(context: {})
+      run.run!
+
+      expect([run.state, context_of(run)[:answer], server.requests]).to eq([:done, "From the stub.", []])
+    end
+
+    it "streams in pieces of any size" do
+      deltas = []
+      sink = Class.new do
+        define_method(:initialize) { |log| @log = log }
+        %i[start reset finish fail withdraw].each { |name| define_method(name) { |*| nil } }
+        define_method(:delta) { |text| @log << text }
+      end
+      allow(Smith.config).to receive(:stream_sinks).and_return(reply: ->(_info) { sink.new(deltas) })
+      agent("SpecTestingWideStreamAgent")
+      testing.stub_agent(SpecTestingWideStreamAgent, outputs: "A reply.", stream: 200_000)
+      asking("SpecTestingWideStreamWorkflow", stream: :reply).new(context: {}).run!
+
+      expect(deltas).to eq(["A reply."])
+    end
+
     it "is dropped by reset!, and a call then goes over the wire" do
       agent("SpecTestingResetAgent")
       testing.stub_agent(:spec_ledger_agent, outputs: "stubbed")
@@ -218,6 +257,8 @@ RSpec.describe "Smith::Testing" do
       expect(testing.expire(run)).to eq(:expired)
       expect(run.state).to eq(:lapsed)
       expect(run).to have_transitioned_through(:draft, :lapse)
+      expect(run).not_to have_transitioned_through(:approve)
+      expect(testing.transitions(run)).to eq(%i[draft lapse])
       expect { testing.expire(run) }.to raise_error(ArgumentError, /not waiting/)
     end
 
@@ -252,6 +293,7 @@ RSpec.describe "Smith::Testing" do
       expect(testing.run_until_waiting(run)).to have_attributes(kind: :batch)
       expect(run).to be_waiting_for(kind: :batch)
       result = testing.batch_result("From the batch.", usage: { input_tokens: 30, output_tokens: 6 })
+      result = JSON.parse(JSON.generate(result), symbolize_names: true) # as a host might build it
       expect(testing.resume_with(run, payload: testing.batch_payload(run, result))).to eq(:resumed)
       expect([run.state, context_of(run)[:answer], stub.calls, server.requests])
         .to eq([:done, "From the batch.", [], []])
@@ -278,6 +320,22 @@ RSpec.describe "Smith::Testing" do
       expect(testing.resume_with(run, payload:)).to eq(:resumed)
       expect(context_of(run)[:read].map { [_1[:branch], _1[:output]] }).to eq([%w[detect clean], %w[extract fields]])
       expect(testing.batch_result(type: "expired")).to eq("type" => "expired")
+    end
+  end
+
+  describe "a prepared split step" do
+    it "records the transition it completes" do
+      klass = with_stubbed_class("SpecTestingSplitWorkflow", workflow_class) do
+        idempotency_mode :strict
+        initial_state :idle
+        state :failed
+        transition(:finish, from: :idle, to: :done) { compute { |step| step.write_context(:done, true) } }
+      end
+      run = klass.new(context: {})
+      run.prepare_persisted_step!("run-split", adapter: Smith::PersistenceAdapters::Memory.new)
+      run.execute_prepared_step!
+
+      expect([run.state, testing.transitions(run)]).to eq([:done, [:finish]])
     end
   end
 

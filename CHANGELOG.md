@@ -421,7 +421,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   `tool_call(ToolClass, **arguments)`, which runs the agent's own tool (a
   tool the agent lacks fails the call). Only the stubbed call's own
   requests are answered, and a batch step's capture and delivery are left
-  to batch mode. `run_until_waiting`, `resume_with` and `expire` drive a
+  to batch mode; `Smith::Testing.unstubbed = :refuse` fails an agent's call
+  that has no stub (`UnstubbedCall`) instead of sending it.
+  `run_until_waiting`, `resume_with` and `expire` drive a
   run through its waits (a durable retry's backoff ends at once);
   `batch_result` and `batch_payload` build a batch delivery. Minitest
   assertions (`assert_waiting_for`, `assert_transitioned_through`,
@@ -429,17 +431,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   `have_transitioned_through`, `have_recorded_usage`) drop the stubs after
   each test.
 - `Smith.config.persistence_max_bytes`: a stored workflow state's bound (nil
-  by default). A state past it raises `Smith::PersistedStateTooLarge` before
-  anything is written.
+  by default). A stored run's step whose result would take it past the
+  bound fails with `Smith::PersistedStateTooLarge` (a `WorkflowError`,
+  restored as itself) before the result is kept: its usage is recorded, its
+  `on_failure` taken, and the run stays storable, strict mode included. A
+  tool loop refused for budget does not pause into a state past the bound
+  (it goes on unheld). Any other state past it is refused before anything
+  is written, before a split-step boundary counts a write as begun (a
+  refused checkpoint may be made again).
 - `rails g smith:install` also writes a workflow-state migration and model
-  for the `:active_record` adapter (a unique key, a text payload, a
-  `lock_version`, a payload-size CHECK a third above
-  `persistence_max_bytes`, room for `encrypts`) and configures them; options
-  `--state-model`, `--key-type=uuid`, `--references=TABLE` (a cascading
-  foreign key on the key), `--max-state-bytes` and `--skip-state-model`.
+  for the `:active_record` adapter (a unique string key, a text payload
+  limited so MySQL picks a type that holds it, a `lock_version`, a
+  payload-size CHECK a third above `persistence_max_bytes`) and configures
+  them; options `--state-model` (a namespaced model gets its table name
+  set), `--max-state-bytes` (a whole number, `0` for no bound) and
+  `--skip-state-model`.
 - `smith doctor` checks an `:active_record` adapter's model on every run
   (`persistence.state_model`: its `lock_version`, a text payload, a unique
-  key), through `ActiveRecordStore#check_schema!`.
+  string key at least 64 characters wide, through
+  `ActiveRecordStore#check_schema!`), skipping when the database cannot be
+  reached and warning of an encrypted payload, which `replace_exact` now
+  refuses with a clear error (it compares payloads in the database).
 
 ### Changed
 

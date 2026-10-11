@@ -1236,14 +1236,21 @@ negative, or non-integer versions fail closed instead of being overwritten.
 
 The default host model needs a unique key, a JSON/text payload, and Rails'
 standard optimistic-locking column. `bin/rails generate smith:install`
-writes its migration, model and initializer (`--state-model`, `--key-type`,
-`--references`, `--max-state-bytes`; see the README's Installation), with a
-CHECK on the payload's size a third above `persistence_max_bytes`: Smith
-refuses a state past the bound before writing it
-(`Smith::PersistedStateTooLarge`), and the CHECK bounds the stored bytes,
-encrypted ones included. `smith doctor` checks the model on every run (its
-locking column, a text payload, and a key the database keeps unique), and its
-durability probe writes with `store_versioned`, as runs do. By hand:
+writes its migration, model and initializer (`--state-model`,
+`--max-state-bytes`; see the README's Installation), with a CHECK on the
+payload's size a third above `persistence_max_bytes`. Smith keeps a run
+within the bound: a stored run's step whose result would not fit fails with
+`Smith::PersistedStateTooLarge` before the result is kept (its usage
+recorded, its `on_failure` taken, strict mode included), a tool loop never
+pauses into a state the bound would refuse (it goes on unheld), and any
+other state past the bound is refused before anything is written. The CHECK
+bounds the stored bytes, a column the host encrypts included; an encrypted
+payload holds runs, but `replace_exact` (split-step exact writes) compares
+payloads in the database and refuses one. The key is a string at least 64
+characters wide: child runs are stored under 64-character keys of their
+own, so it is never a host row's id. `smith doctor` checks the model on
+every run (skipping when the database cannot be reached), and its durability
+probe writes with `store_versioned`, as runs do. By hand:
 
 ```ruby
 create_table :workflow_states do |t|

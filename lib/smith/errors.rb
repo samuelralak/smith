@@ -359,19 +359,40 @@ module Smith
     end
   end
 
-  # Raised before a workflow state past Smith.config.persistence_max_bytes
-  # is written: nothing is stored, and the run's stored state stays as it
-  # was. The bound holds on every replay too, so the host raises it (and the
-  # payload column's CHECK) or keeps less in the run.
-  class PersistedStateTooLarge < Error
+  # A workflow state past Smith.config.persistence_max_bytes. A stored
+  # run's step whose result would not fit fails with it before the result
+  # is kept (its usage recorded, `on_failure` taken; a response memo keeps
+  # what its calls got). Any other state past the bound is refused when it
+  # is stored, before anything is written, and the stored state stays as it
+  # was.
+  class PersistedStateTooLarge < WorkflowError
+    DETAIL_NAMES = %w[key bytes limit].freeze
+
     attr_reader :key, :bytes, :limit
 
-    def initialize(key:, bytes:, limit:)
+    def initialize(key:, bytes:, limit:, message: nil)
       @key = key
       @bytes = bytes
       @limit = limit
-      super("the workflow state for #{key.inspect} is #{bytes} bytes, past persistence_max_bytes (#{limit})")
+      super(message || "the workflow state for #{key.inspect} is #{bytes} bytes, past persistence_max_bytes (#{limit})")
     end
+
+    def details = { key:, bytes:, limit: }.freeze
+
+    def self.from_details(details, message: nil)
+      raise ArgumentError, "state size details must be a Hash" unless details.is_a?(Hash)
+
+      values = details.to_h { |name, value| [name.to_s, value] }
+      raise ArgumentError, "state size details are invalid" unless details?(values)
+
+      new(key: values["key"], bytes: values["bytes"], limit: values["limit"], message:)
+    end
+
+    def self.details?(values)
+      values.keys.sort == DETAIL_NAMES.sort && values["key"].is_a?(String) &&
+        values.values_at("bytes", "limit").all? { _1.is_a?(Integer) && _1.positive? }
+    end
+    private_class_method :details?
   end
 
   # Raised when an adapter's optimistic-lock check detects a concurrent

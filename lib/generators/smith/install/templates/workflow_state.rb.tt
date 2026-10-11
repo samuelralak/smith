@@ -7,8 +7,12 @@
 <%= indent %># A workflow run's stored state (Smith's :active_record persistence
 <%= indent %># adapter). Keep it to persistence: Smith writes it under optimistic
 <%= indent %># locking, and a callback that raises after the commit leaves a write it
-<%= indent %># cannot confirm. `encrypts :payload` keeps states encrypted at rest.
+<%= indent %># cannot confirm. An encrypted payload (`encrypts`) holds runs, but not
+<%= indent %># split-step exact writes (smith doctor warns).
 <%= indent %>class <%= state_model.demodulize %> < ApplicationRecord
+<%- unless namespaces.empty? -%>
+<%= indent %>  self.table_name = "<%= table_name %>"
+<%- end -%>
 <%= indent %>end
 <%- namespaces.length.times.reverse_each do |depth| -%>
 <%= "  " * depth %>end

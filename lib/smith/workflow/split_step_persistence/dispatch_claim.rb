@@ -48,6 +48,7 @@ module Smith
         end
 
         def replace_exact_dispatch!(payload)
+          check_state_size!(@split_step_persistence_key, payload)
           @split_step_adapter.replace_exact(
             @split_step_persistence_key,
             payload,

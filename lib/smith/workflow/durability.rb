@@ -402,6 +402,7 @@ module Smith
       # store that fails tells the sink the step failed.
       def store_payload!(store, key, payload, previous_version:)
         begin
+          check_state_size!(key, payload)
           dispatch_store!(store, key, payload, previous_version:)
         rescue StandardError => e
           StepStream.instance_method(:discard_streamed_output).bind_call(self, e.class)
@@ -439,9 +440,6 @@ module Smith
       # external duck-typed adapters that don't accept a `ttl:` kwarg
       # keep working; they only break if the host opts into TTL.
       def dispatch_store!(store, key, payload, previous_version:)
-        limit = Smith.config.persistence_max_bytes
-        raise PersistedStateTooLarge.new(key:, bytes: payload.bytesize, limit:) if limit && payload.bytesize > limit
-
         kwargs = ttl_kwarg(effective_persistence_ttl)
 
         if Smith::PersistenceAdapters.supports?(store, :store_versioned)
@@ -452,6 +450,13 @@ module Smith
         end
 
         store.record_heartbeat(key, **kwargs) if Smith::PersistenceAdapters.supports?(store, :record_heartbeat)
+      end
+
+      # A state past persistence_max_bytes is refused before anything is
+      # written, and before a split-step boundary counts a write as begun.
+      def check_state_size!(key, payload)
+        limit = Smith.config.persistence_max_bytes
+        raise PersistedStateTooLarge.new(key:, bytes: payload.bytesize, limit:) if limit && payload.bytesize > limit
       end
 
       # Resolves the effective TTL once per persist, with the class-level

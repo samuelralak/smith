@@ -28,17 +28,21 @@ bin/rails db:migrate
 
 `smith:install` writes `config/initializers/smith.rb` and a table and model
 for workflow state (`WorkflowState`, Smith's `:active_record` persistence
-adapter): a unique key, the state as JSON text (Rails `encrypts` works on
-it), the `lock_version` Smith's versioned writes compare, and a CHECK on the
-payload's size. The initializer sets `persistence_max_bytes` (1 MiB), so a
-state past it is refused before anything is written
-(`Smith::PersistedStateTooLarge`); the CHECK sits a third above it, room for
-an encrypted payload. Options: `--state-model=NAME`, `--key-type=uuid`
-(PostgreSQL), `--references=TABLE` (a state's key is that table's row id,
-and deleting the row deletes the state; child runs are stored under keys of
-their own, so the launcher creates a row for each), `--max-state-bytes=N`
-(`0` for no bound and no CHECK), and `--skip-state-model` (the initializer
-only).
+adapter): a unique string key (child runs are stored under 64-character
+keys of their own, so the key is not a host row's id), the state as JSON
+text, the `lock_version` Smith's versioned writes compare, and a CHECK on
+the payload's size. The initializer sets `persistence_max_bytes` (1 MiB): a
+step whose result would take a stored run past it fails with
+`Smith::PersistedStateTooLarge` before the result is kept, as with any
+error (its usage recorded, its `on_failure` taken), so the run stays
+storable; any other state past it is refused before anything is written.
+The answer that did not fit is not kept, so set the bound above the largest
+output a step keeps, or keep large outputs in the artifact store. The CHECK
+sits a third above the bound, room for a column the host encrypts (Rails
+`encrypts` holds runs, but not split-step exact writes; the doctor warns).
+Options: `--state-model=NAME` (a namespaced model gets its table name set),
+`--max-state-bytes=N` (`0` for no bound and no CHECK), and
+`--skip-state-model` (the initializer only).
 
 The Ruby module namespace stays `Smith::`; only the gem name is namespaced because `smith` on RubyGems is taken. The `require: "smith"` in the Gemfile tells bundler to load the actual file name.
 
@@ -456,7 +460,7 @@ Smith.configure do |config|
   config.persistence_adapter = :rails_cache
   config.persistence_options = { namespace: "smith" }
   config.persistence_ttl = 1.day.to_i
-  config.persistence_max_bytes = 1_048_576 # a stored state's bound, refused before writing (nil: none)
+  config.persistence_max_bytes = 1_048_576 # a stored state's bound (nil: none); see Installation
   config.persistence_retry_policy = { attempts: 3, base_delay: 0.1, max_delay: 1.0 }
 
   # Generic runtime resource bounds
@@ -862,10 +866,12 @@ bin/rails generate smith:install
 
 Doctor verifies: Smith loads, RubyLLM loads, minimal workflow boots, configuration is non-empty, serialization round-trips, persistence adapter works, and (with `--live`) a real provider call succeeds.
 An `:active_record` persistence adapter's model is checked on every run: its
-`lock_version` (Rails' locking column), a text payload, and a key the
-database keeps unique, read from schema metadata. The durability probe writes
-as runs write (`store_versioned` where the adapter has it, and
-`persistence_max_bytes`), so it meets what a run would.
+`lock_version` (Rails' locking column), a text payload, and a string key the
+database keeps unique, at least 64 characters wide, read from schema
+metadata (skipped when the database cannot be reached; an encrypted payload
+is a warning). The durability probe writes as runs write (`store_versioned`
+where the adapter has it, and `persistence_max_bytes`), so it meets what a
+run would.
 
 ## Testing
 
@@ -907,7 +913,10 @@ end
   `stream: n` sends a streamed step's reply in pieces of n characters. The
   stub keeps the messages each request sent (`calls`). Only the agent's own
   requests are answered, never a tool's own provider call. The chat is still
-  built, so configure the provider (any key).
+  built, so configure the provider (any key). An agent with no stub goes over
+  the wire; `Smith::Testing.unstubbed = :refuse` fails its call with
+  `Smith::Testing::UnstubbedCall` instead, so a mistyped stub never reaches a
+  paid provider.
 - `run_until_waiting(run)` runs until the run waits or ends and returns its
   wait (a durable retry's backoff is ended at once unless `retries: false`);
   `resume_with(run, payload:)` delivers the wait's event and runs on;
@@ -916,7 +925,8 @@ end
   `resume_with(run, payload: Smith::Testing.batch_payload(run, Smith::Testing.batch_result("text")))`
   answers it, and a fan-out's `batch_payload` takes results by branch key.
 - Minitest: `assert_waiting_for(run, :event)` (or `kind: :batch`),
-  `assert_transitioned_through(run, *transitions)` (in order),
+  `assert_transitioned_through(run, *transitions)` (in order; the steps the
+  instance completed, not a failed or timed-out one),
   `assert_usage_recorded(run, count:, **usage_entry_attributes)`. RSpec:
   `be_waiting_for`, `have_transitioned_through`, `have_recorded_usage`.
 - Stubs belong to the process; both helpers drop them after each test. An
@@ -1172,5 +1182,5 @@ bundle exec rspec
 bundle exec rubocop
 ```
 
-2,406 examples, MIT licensed. See [`CHANGELOG.md`](CHANGELOG.md) for the current
+2,420 examples, MIT licensed. See [`CHANGELOG.md`](CHANGELOG.md) for the current
 release surface.

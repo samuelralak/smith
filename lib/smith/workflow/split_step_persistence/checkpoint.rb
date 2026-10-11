@@ -35,6 +35,9 @@ module Smith
           end
           @split_step_mutex.synchronize { @split_step_phase = :checkpointed } if checkpoint_claimed
           result
+        rescue PersistedStateTooLarge
+          release_split_step_checkpoint! if checkpoint_claimed
+          raise
         rescue StandardError
           mark_split_step_checkpoint_unknown! if checkpoint_claimed
           raise

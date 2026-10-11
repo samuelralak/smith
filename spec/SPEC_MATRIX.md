@@ -1988,57 +1988,6 @@ Documented contracts covered:
 - a request the queue took before it failed keeps its hold; only the rest are released
 - a reply without usage, and a stream that failed after it began, reconcile at the hold; a negative count reconciles as 0
 - readiness warns of unpriced optimizer, orchestrator and nested agents, and of a child run whose class declares no ledger (only when the parent declares one), and its metrics name the scope keys
-
-### `spec/smith/testing_spec.rb`
-
-Purpose:
-
-- asserts the testing kit (`smith/testing`): stubbed agents answered at the wire, runs driven through their waits, and the Minitest and RSpec checks
-
-Architecture basis:
-
-- Section 4, Workflow execution; Section 5, Persistence and Resume; Section 6, Budgets
-
-Documented contracts covered:
-
-- a stubbed agent's requests send nothing and record the stub's usage, stop reason and message id; a `max_tokens` stop fails the step as truncated; each request's messages are kept
-- outputs are taken in turn, the last again; a reply under an output schema is parsed from text or a Hash; an output check's repair takes the next output
-- a tool request runs the agent's own tool before its next request; one naming a tool the agent lacks fails the call with the agent's tool names
-- stubbed requests are held on the step's budget ledger and kept in the response memo; a tool loop refused at its later round pauses and continues from its tool results
-- a streamed step's sink gets the reply in pieces of the stub's size, with usage mode `:stream`
-- `run_until_waiting`, `resume_with` and `expire` run a wait through; a durable retry's backoff ends at once unless `retries: false`
-- a batch step's request is still captured; `batch_payload` and `batch_result` deliver an agent step's or a fan-out's results
-- the checks' failure messages; the Minitest assertions call `assert` and drop the stubs after each test; `reset!` sends a call over the wire again; an unusable stub is refused
-
-### `spec/smith/persistence_max_bytes_spec.rb`
-
-Purpose:
-
-- asserts `Smith.config.persistence_max_bytes`, a stored state's bound
-
-Architecture basis:
-
-- Section 5, Persistence and Resume
-
-Documented contracts covered:
-
-- the setting is nil or a positive Integer
-- a state past it raises `PersistedStateTooLarge` (key, bytes, limit) before writing; the stored state stays as it was, and the run goes on once the bound allows it
-
-### `spec/smith/doctor/checks/state_model_spec.rb`
-
-Purpose:
-
-- asserts the doctor's default check of an Active Record state model
-
-Architecture basis:
-
-- Section 5, Persistence and Resume
-
-Documented contracts covered:
-
-- a model with a `lock_version`, a text payload and a unique key passes, in the default run; one with another locking column, or a key without a unique index, fails with the reason; other adapters, and an adapter configuration that does not resolve, are not checked
-- the durability probe writes with `store_versioned`, as runs do, and leaves no probe row
 - an image or a PDF in raw content (base64 data or a data URL) counts as an attachment, a PDF by its pages
 - a batch capture without a ledger computes no hold
 - these contracts are mutation-verified against the full suite
@@ -2060,6 +2009,63 @@ Documented contracts covered:
 - a stored continuation not of the shape Smith keeps raises `SerializationError` on restore
 - a loop too large to keep goes on unheld from its tools' results
 - these contracts are mutation-verified against the full suite
+
+### `spec/smith/testing_spec.rb`
+
+Purpose:
+
+- asserts the testing kit (`smith/testing`): stubbed agents answered at the wire, runs driven through their waits, and the Minitest and RSpec checks
+
+Architecture basis:
+
+- Section 4, Workflow execution; Section 5, Persistence and Resume; Section 6, Budgets
+
+Documented contracts covered:
+
+- a stubbed agent's requests send nothing and record the stub's usage, stop reason and message id; a `max_tokens` stop fails the step as truncated; each request's messages are kept
+- outputs are taken in turn, the last again; a reply under an output schema is parsed from text or a Hash; an output check's repair takes the next output
+- a tool request runs the agent's own tool before its next request; one naming a tool the agent lacks fails the call with the agent's tool names
+- stubbed requests are held on the step's budget ledger and kept in the response memo; a tool loop refused at its later round pauses and continues from its tool results
+- a streamed step's sink gets the reply in pieces of the stub's size (any size), with usage mode `:stream`; OpenAI's Responses route is answered after its request is rendered
+- `unstubbed = :refuse` fails an agent's call that has no stub with `UnstubbedCall`, sending nothing
+- `run_until_waiting`, `resume_with` and `expire` run a wait through; a durable retry's backoff ends at once unless `retries: false`
+- transitions are those the run completed: a timed-out await is not one; a prepared split step's is recorded
+- a batch step's request is still captured; `batch_payload` and `batch_result` deliver an agent step's or a fan-out's results, symbol-keyed ones too
+- the checks' failure messages; the Minitest assertions call `assert` and drop the stubs after each test; `reset!` sends a call over the wire again; an unusable stub is refused
+
+### `spec/smith/persistence_max_bytes_spec.rb`
+
+Purpose:
+
+- asserts `Smith.config.persistence_max_bytes`, a stored state's bound
+
+Architecture basis:
+
+- Section 5, Persistence and Resume; Section 6, Budgets
+
+Documented contracts covered:
+
+- the setting is nil or a positive Integer
+- a stored run's step whose result would not fit fails with `PersistedStateTooLarge` before the result is kept, in lax and strict mode: its usage is recorded, `on_failure` is taken, the run is stored and restores, and the error restores as itself; a run never stored is not checked
+- any other state past the bound raises `PersistedStateTooLarge` (key, bytes, limit) before writing; the stored state stays as it was
+- a tool loop refused for budget does not pause into a state the bound would refuse; it goes on unheld
+
+### `spec/smith/doctor/checks/state_model_spec.rb`
+
+Purpose:
+
+- asserts the doctor's default check of an Active Record state model
+
+Architecture basis:
+
+- Section 5, Persistence and Resume
+
+Documented contracts covered:
+
+- a model with a `lock_version`, a text payload and a unique string key passes, in the default run; another locking column, a key without a unique index, a key that is not a string, or one narrower than 64 characters fails with the reason
+- the check skips when the database cannot be reached; an encrypted payload passes with a warning, and `replace_exact` refuses it
+- other adapters, and an adapter configuration that does not resolve, are not checked
+- the durability probe writes with `store_versioned`, as runs do, and leaves no probe row
 
 ### `spec/smith/batch_request_change_spec.rb`
 

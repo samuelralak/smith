@@ -8,6 +8,10 @@ module Smith
     # reason is read from the stream (Providers::StreamFacts), as a
     # streamed reply keeps no raw body.
     module ProviderStreaming
+      # Room for what a pause adds besides its messages (its retry, the
+      # attempt's usage).
+      PAUSE_MARGIN = 4096
+
       private
 
       # Withdraws the text a streamed step sent, for `reason`, when a call
@@ -63,7 +67,19 @@ module Smith
 
       def paused_loop(error, chat, start)
         continuation = Budget::Continuation.dump(@budget_continuation, chat.messages.drop(start || 0))
-        BudgetUnavailable.new(error.message, continuation:) if continuation
+        BudgetUnavailable.new(error.message, continuation:) if continuation && storable_pause?(continuation)
+      end
+
+      # Whether the run's state, with the paused loop kept, stays within
+      # persistence_max_bytes: a pause it could not store would lose the
+      # loop's paid rounds, so the loop goes on instead.
+      def storable_pause?(continuation)
+        limit = Smith.config.persistence_max_bytes
+        return true unless limit
+
+        JSON.generate(to_state).bytesize + JSON.generate(continuation).bytesize + PAUSE_MARGIN <= limit
+      rescue StandardError
+        false
       end
 
       def wire_completion(chat, model_reference, collected)

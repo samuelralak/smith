@@ -28,7 +28,7 @@ module Smith
         "Smith::GuardrailFailed" => "guardrail_failed",
         "Smith::WaitTimedOut" => "wait_timed_out",
         "Smith::ChildRunsFailed" => "child_runs_failed",
-        "Smith::WorkflowError" => "workflow_error",
+        "Smith::WorkflowError" => "workflow_error", "Smith::PersistedStateTooLarge" => "workflow_error",
         "Smith::UnresolvedTransitionError" => "workflow_error",
         "Smith::Workflow::Composite::BranchFailure" => "workflow_error"
       }.freeze
@@ -58,7 +58,7 @@ module Smith
           Smith::Workflow::Composite::BranchFailure.from_details(details)
         },
         "Smith::ProviderPermanentFailure" => ->(details) { Smith::ProviderPermanentFailure.from_details(details) },
-        **[Smith::WaitTimedOut, Smith::ChildRunsFailed].to_h { |error| [error.name, error.method(:from_details)] },
+        **[WaitTimedOut, ChildRunsFailed, PersistedStateTooLarge].to_h { [_1.name, _1.method(:from_details)] },
         "Smith::BlankAgentOutputError" => lambda { |details|
           Smith::BlankAgentOutputError.from_details(details) unless details.nil?
         },

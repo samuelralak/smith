@@ -40,6 +40,13 @@ module Smith
           end
         end
 
+        # A checkpoint refused before anything was written may be made again.
+        def release_split_step_checkpoint!
+          @split_step_mutex.synchronize do
+            @split_step_phase = :checkpoint_retryable if @split_step_phase == :checkpointing
+          end
+        end
+
         def mark_split_step_checkpoint_unknown!
           @split_step_mutex.synchronize do
             @split_step_phase = :checkpoint_unknown if @split_step_phase == :checkpointing

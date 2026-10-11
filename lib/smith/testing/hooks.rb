@@ -2,9 +2,18 @@
 
 module Smith
   module Testing
-    # A stubbed call bound to its provider object and chat.
-    Answering = Data.define(:stub, :provider, :chat) do
-      def reply(&) = stub.reply(chat, &)
+    # An agent request Smith::Testing would not send: the agent has no stub
+    # and `Smith::Testing.unstubbed` is :refuse.
+    class UnstubbedCall < Smith::Error; end
+
+    # An agent's call bound to its provider object and chat, and its stub
+    # (nil for an agent with none, when unstubbed requests are refused).
+    Answering = Data.define(:stub, :provider, :chat, :agent) do
+      def reply(&)
+        return stub.reply(chat, &) if stub
+
+        raise UnstubbedCall, "#{agent || "an agent"} has no stub, and Smith::Testing.unstubbed is :refuse"
+      end
     end
 
     # A stubbed agent's call, bound to its provider object and chat, and
@@ -16,11 +25,12 @@ module Smith
         with_testing_fiber(STUB, Testing.stub_for(agent_class)) { super }
       end
 
-      def complete_chat(chat, ...)
+      def complete_chat(chat, model_reference, collected, facts = {})
         stub = Fiber[STUB]
-        return super unless stub
+        return super unless stub || Testing.unstubbed == :refuse
 
-        with_testing_fiber(ANSWERING, Answering.new(stub:, provider: chat_provider(chat), chat:)) { super }
+        answering = Answering.new(stub:, provider: chat_provider(chat), chat:, agent: facts[:agent_name])
+        with_testing_fiber(ANSWERING, answering) { super }
       end
 
       def with_testing_fiber(key, value)
@@ -31,8 +41,13 @@ module Smith
         Fiber[key] = outer
       end
 
-      def emit_step_completed(transition, output)
-        (@testing_transitions ||= []) << transition.name.to_sym
+      # Every step a run counts passes here, on every path (a wait's
+      # completion and a prepared split-step's included); a failed or
+      # timed-out step is not a transition the run went through.
+      def record_step_snapshot(step_result)
+        if step_result.is_a?(Hash) && step_result[:transition] && !step_result[:error] && !step_result[:timed_out]
+          (@testing_transitions ||= []) << step_result[:transition].to_sym
+        end
         super
       end
     end
@@ -53,11 +68,17 @@ module Smith
       end
     end
 
-    # The same for Smith's OpenAI Responses route.
+    # The same for Smith's OpenAI Responses route, whose request is still
+    # rendered (as the chat route's is) before it is answered.
     module ResponsesRequests
-      def complete(provider, *, **, &)
+      RENDERED = %i[tools temperature model schema thinking tool_prefs].freeze
+
+      def complete(provider, messages, **options, &)
         answering = Testing.answering(provider)
-        answering ? answering.reply(&) : super
+        return super unless answering
+
+        render_response_payload(messages, **options.slice(*RENDERED))
+        answering.reply(&)
       end
     end
   end

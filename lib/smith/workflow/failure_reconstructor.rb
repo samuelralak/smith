@@ -39,6 +39,9 @@ module Smith
           Smith::Workflow::Composite::BranchFailure.from_details(record[:error_details])
         },
         "Smith::BlankAgentOutputError" => ->(record) { blank_agent_output_failure(record) },
+        "Smith::PersistedStateTooLarge" => lambda { |record|
+          Smith::PersistedStateTooLarge.from_details(record.fetch(:error_details), message: record[:error_message])
+        },
         **Smith::OutputFailure.restorers.transform_values do |restore|
           ->(record) { restore.call(record.fetch(:error_details), record[:error_message]) }
         end

@@ -29,7 +29,8 @@ module Smith
   # queue gets it), and its delivery (`batch_payload`) answers it.
   #
   # Only the agent's own requests are answered: a tool's own provider call
-  # is not. Stubs are the process's: `reset!` drops them (smith/testing/
+  # is not. An agent with no stub goes over the wire, unless `unstubbed =
+  # :refuse` fails its call first. Stubs are the process's: `reset!` drops them (smith/testing/
   # minitest and smith/testing/rspec do after each test). The chat is still
   # built, so the agent's provider must be configured (any key).
   # Smith::Testing::Checks are what the Minitest assertions and RSpec
@@ -39,10 +40,24 @@ module Smith
     ANSWERING = :smith_testing_answering
     private_constant :STUB, :ANSWERING
 
+    UNSTUBBED = %i[send refuse].freeze
+
     @stubs = {}
     @stubs_lock = Mutex.new
+    @unstubbed = :send
 
     module_function
+
+    # What an agent request without a stub does: :send (the default) sends
+    # it over the wire; :refuse fails its call with UnstubbedCall before
+    # anything is sent (a mistyped stub then cannot reach a paid provider).
+    def unstubbed = @unstubbed
+
+    def unstubbed=(mode)
+      raise ArgumentError, "Smith::Testing.unstubbed is :send or :refuse" unless UNSTUBBED.include?(mode)
+
+      @unstubbed = mode
+    end
 
     # Answers `agent`'s requests (its class, or its registered name) with
     # `outputs`; returns the Stub.
@@ -129,6 +144,7 @@ module Smith
     # agent step, or a fan-out's results by branch key.
     def batch_payload(workflow, results)
       token = waiting!(workflow).token
+      results = JSON.parse(JSON.generate(results))
       return { token => results } if results.key?("type")
 
       results.to_h { |branch_key, result| [Batch.custom_id(token, branch_key), result] }
