@@ -135,6 +135,7 @@ module Smith
     end
 
     def advance!
+      StepStream.instance_method(:deliver_streamed_output).bind_call(self)
       return if waiting?
 
       @step_work_started = false
@@ -170,6 +171,7 @@ module Smith
         step = advance!
         steps << step if step
       end
+      StepStream.instance_method(:deliver_streamed_output).bind_call(self)
       build_run_result(steps)
     end
 

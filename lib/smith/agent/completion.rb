@@ -14,29 +14,25 @@ module Smith
       # whether or not that response reported usage.
       attribute :response_facts, Types::Hash.default({}.freeze)
 
-      # `stream` is set for a streamed call: the facts read from its stream
-      # and the request's output limit (Providers::StreamFacts.settle).
+      # `stream` is set for a streamed call: the facts of each of its
+      # requests, read from the stream, and the request's output limit
+      # (Providers::StreamFacts). Each response's usage carries its facts and
+      # `mode: :stream`.
       def self.from_messages(response:, messages:, stream: nil)
         assistant_messages = Array(messages).select do |message|
           message.respond_to?(:role) && message.role.to_s == "assistant"
         end
         usage_source = assistant_messages.empty? ? [response] : assistant_messages
+        facts = response_facts(usage_source, stream)
 
-        provider_usages = build_provider_usages(usage_source)
+        provider_usages = build_provider_usages(usage_source, stream && facts)
         new(
           response: response,
           provider_usages:,
           usage_complete: provider_usages.length == usage_source.length,
-          response_facts: response_facts(usage_source.last, stream)
+          response_facts: facts.last
         )
       end
-
-      def self.response_facts(message, stream)
-        return Providers::ResponseFacts.from_message(message) unless stream
-
-        Providers::StreamFacts.settle(message, stream.fetch(:facts), stream.fetch(:output_limit))
-      end
-      private_class_method :response_facts
 
       def content
         response.content if response.respond_to?(:content)
@@ -57,10 +53,19 @@ module Smith
         ProviderUsage.sum(provider_usages) if usage_complete
       end
 
-      def self.build_provider_usages(messages)
-        messages.filter_map { |message| ProviderUsage.from_message(message) }.freeze
+      def self.response_facts(messages, stream)
+        return messages.map { Providers::ResponseFacts.from_message(_1) } unless stream
+
+        Providers::StreamFacts.per_message(messages, stream.fetch(:rounds), stream.fetch(:output_limit))
       end
-      private_class_method :build_provider_usages
+
+      def self.build_provider_usages(messages, streamed_facts)
+        messages.each_with_index.filter_map do |message, index|
+          usage = ProviderUsage.from_message(message)
+          streamed_facts && usage ? usage.streamed(streamed_facts[index]) : usage
+        end.freeze
+      end
+      private_class_method :response_facts, :build_provider_usages
     end
   end
 end

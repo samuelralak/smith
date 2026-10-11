@@ -112,7 +112,7 @@ module Smith
         message_count = chat_message_count(chat)
         observed_reference = observed_model_reference(chat, fallback: model_reference)
         timer = ProviderCallTiming::Timer.start
-        response, stream = complete_chat(chat, observed_reference)
+        response, stream = complete_chat(chat, observed_reference, collected = [])
         timer.stop
         completion = Completion.from_messages(response:, messages: new_chat_messages(chat, message_count), stream:)
 
@@ -121,7 +121,8 @@ module Smith
         timer&.stop
         observed_reference ||= observed_model_reference(chat, fallback: model_reference)
         prefix_usages = account_completed_prefix(
-          agent_class, observed_reference, new_chat_messages(chat, message_count), attempt_id: facts[:attempt_id]
+          agent_class, observed_reference, new_chat_messages(chat, message_count),
+          attempt_id: facts[:attempt_id], stream_rounds: streamed_rounds(collected || [])
         )
         attempt = failed_provider_attempt(e, observed_reference, timer, facts, prefix_usages)
         raise unless provider_failure?(e) || unsupported_content?(e)

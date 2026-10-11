@@ -242,9 +242,8 @@ specific forced tool takes precedence when only one enabled endpoint can carry
 it. If normalization removes a specifically forced tool, Smith clears that
 stale choice and attributes the reset only to that selected tool. An
 endpoint-constrained tool routed to OpenAI Responses inherits the current
-non-streaming Responses contract; callers requesting streaming receive the
-documented explicit unsupported error rather than silent Chat Completions
-fallback.
+non-streaming Responses contract: a caller requesting streaming gets the whole
+reply as one chunk, never a silent Chat Completions fallback.
 
 Bounded completion ownership and tool-call reservations mask asynchronous
 interrupts while installing and restoring process-local state. User work runs

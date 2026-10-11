@@ -192,8 +192,10 @@ when the provider reported none. `input_tokens` counts uncached input only;
 it, and `thinking_tokens` are already inside `output_tokens`. `stop_reason` and
 `provider_message_id` are those of the attempt's last provider response, read
 from its raw body when the body is one Smith recognizes (Anthropic, OpenAI Chat
-Completions and Responses, Gemini, Bedrock Converse). Each of these is omitted
-when the provider did not report it. `:token_usage` and `:cost` traces carry
+Completions and Responses, Gemini, Bedrock Converse), or from its stream when
+the step streamed. Each of these is omitted when the provider did not report
+it. `mode` is `:stream` for a streamed attempt and omitted for a synchronous
+one. `:token_usage` and `:cost` traces carry
 `cache_read_tokens` and `cache_write_tokens` too, and `:cost` adds
 `cache_unpriced: true` when cache tokens were priced at 0 for lack of a rate. A
 failed or aborted attempt adds `error_class`,

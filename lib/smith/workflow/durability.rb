@@ -356,12 +356,7 @@ module Smith
         payload = JSON.generate(to_state.merge(persistence_version: next_version))
         payload = yield(payload, next_version) if block_given?
 
-        dispatch_store!(store, resolved_key, payload, previous_version: previous_version)
-
-        # Increment ONLY after successful store. On PersistenceVersionConflict
-        # (raised by store_versioned), @persistence_version stays at the
-        # previous value so callers can rescue + restore + retry cleanly.
-        @persistence_version = next_version
+        store_payload!(store, resolved_key, payload, previous_version:)
         self
       end
 
@@ -386,6 +381,22 @@ module Smith
       end
 
       private
+
+      # Increment ONLY after successful store. On PersistenceVersionConflict
+      # (raised by store_versioned), @persistence_version stays at the
+      # previous value so callers can rescue + restore + retry cleanly. A
+      # streamed step's output reaches its sink once stored (StepStream); a
+      # store that fails tells the sink the step failed.
+      def store_payload!(store, key, payload, previous_version:)
+        begin
+          dispatch_store!(store, key, payload, previous_version:)
+        rescue StandardError => e
+          StepStream.instance_method(:discard_streamed_output).bind_call(self, e.class)
+          raise
+        end
+        @persistence_version = previous_version + 1
+        StepStream.instance_method(:deliver_streamed_output).bind_call(self)
+      end
 
       # The step, or the wait it entered, is stored, and the mark of a step
       # under way is cleared.

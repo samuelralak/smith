@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "streaming/session"
+require_relative "streaming/think_tags"
 require_relative "streaming/json_field"
 
 module Smith
@@ -15,7 +16,8 @@ module Smith
   #
   # The sink is told of each provider call (`start(info)`), each text chunk
   # (`delta(text)`), text Smith discards (`reset(reason)`), the step's
-  # accepted output (`finish(output)`) and its failure (`fail(error_class)`);
+  # accepted output once the step is stored (`finish(output)`) and its
+  # failure (`fail(error_class)`);
   # Smith calls only the methods the sink defines. See Session. The text is
   # the model's, before the step's guardrails and output checks run: a
   # draft until `finish`.
@@ -49,10 +51,10 @@ module Smith
     # registered.
     def self.open(name, execution_key:, transition:)
       factory = Smith.config.stream_sinks.fetch(name) { raise StreamSinkMissing, name }
-      info = { stream: name, execution_key:, transition: }.freeze
+      info = { stream: name, execution_key: execution_key&.dup&.freeze, transition: }.freeze
       sink = begin
         factory.call(info)
-      rescue StandardError => e
+      rescue StandardError, ScriptError => e
         Smith.config.logger&.error("Smith stream sink #{name.inspect} call error: #{e.class}")
         nil
       end

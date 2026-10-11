@@ -108,28 +108,38 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Streaming steps. `execute Agent, stream: :name` sends the reply's text, as
   the model writes it, to a sink the host registers in
   `Smith.config.stream_sinks`: a callable that takes the step's info
-  (`stream`, `execution_key`, `transition`) when the step starts and returns
-  that step's sink, or nil to stream nothing, so concurrent runs never share a
-  sink. A sink defines any of `start(info)` per provider call (with the
-  attempt, model and provider), `delta(text)` per text chunk (not tool calls
-  or thinking), `reset(reason)` when Smith discards the text sent
-  (`:retry`, `:fallback`, `:truncation`, `:repair`, `:retry_wait`),
+  (`stream`, a frozen copy of the `execution_key`, `transition`) when the step
+  starts and returns that step's sink, or nil to stream nothing, so concurrent
+  runs never share a sink. A sink defines any of `start(info)` per provider
+  call (with the attempt, model and provider), `delta(text)` per text chunk
+  (not tool calls, thinking or `<think>` text, which `Smith::Streaming::ThinkTags`
+  keeps out as RubyLLM keeps it out of the message), `reset(reason)` when
+  Smith discards the text sent (`:retry`, `:fallback`, `:truncation`,
+  `:repair`; and `:retry_wait`, always, when a durable retry waits),
   `finish(output)` with the accepted output (after guardrails, the output
-  contract and `output_to:`) and `fail(error_class)`. A sink or sink callable
-  that raises is logged by error class and the step goes on; an unregistered
+  contract and `output_to:`, and in a stored run once `persist!` has stored
+  the step; a store that fails gives `fail` with its error) and
+  `fail(error_class)`. A sink or sink callable that raises (a `ScriptError`
+  included) is logged by error class and the step goes on; an unregistered
   name fails the step before its call (`Smith::StreamSinkMissing`). The text is
-  a draft until `finish`. `Smith::Streaming::JsonField` reads the growing
-  value of one top-level string field from streamed JSON. Stop reasons are
-  read from the stream itself (`Smith::Providers::StreamFacts`, prepended on
-  RubyLLM's Anthropic, OpenAI, Gemini, OpenRouter and Bedrock chunk builders
-  and inherited by their subclasses), so cut-off and refused replies are
-  handled as without streaming; a streamed reply whose stop reason was not read
-  counts as cut off when its output tokens reached the request's limit (stop
-  reason `output_limit_reached`). Streaming changes nothing durable, and a
-  replayed step streams again. `stream:` is refused on a parallel step; graph
+  a draft until `finish`. `Smith::Streaming::JsonField#push` returns the text
+  each delta adds to one top-level string field of streamed JSON (keys read as
+  JSON reads them), in linear time. Stop reasons and message ids are read from
+  the stream itself (`Smith::Providers::StreamFacts`, prepended on RubyLLM's
+  Anthropic, OpenAI, Gemini, OpenRouter and Bedrock chunk builders with each
+  one's visibility kept, inherited by their subclasses, and on
+  `RubyLLM::Provider#complete` to tell a tool loop's requests apart), from the
+  step's own provider only (a tool's own RubyLLM call is not read), per
+  request, in fiber storage; each usage entry keeps its response's facts and
+  `mode: :stream`, so cut-off and refused replies are handled and recorded as
+  without streaming. A streamed reply with no stop reason counts as cut off:
+  `output_limit_reached` when its output tokens reached the request's limit,
+  else `stream_incomplete`. Streaming changes nothing durable, and a replayed
+  step streams again. `stream:` is refused on a parallel step; graph
   inspection shows it, and runtime readiness reports a missing sink
-  (`:stream_sink_missing`) and an agent with tools and an OpenAI model that
-  may take the Responses path, which does not stream (`:stream_whole_replies`).
+  (`:stream_sink_missing`) and an agent whose calls go to the Responses API,
+  which does not stream (`:stream_whole_replies`, decided as Smith's tool
+  routing decides at runtime: `Smith::Models::ToolRouting.responses?`).
 - A step that runs inside another run's step (an inline child run) scopes its
   artifacts over the configured store itself, not over the outer run's
   scoped view, through which it could read nothing of its own.

@@ -28,6 +28,8 @@ module Smith
       attribute :thinking_tokens, Types::Integer.optional.default(nil)
       attribute :stop_reason, Types::String.optional.default(nil)
       attribute :provider_message_id, Types::String.optional.default(nil)
+      # How the response was made: :stream, :batch, or nil (synchronous).
+      attribute :mode, Types::Symbol.optional.default(nil)
 
       def self.from_message(message)
         return unless message.respond_to?(:input_tokens) && message.respond_to?(:output_tokens)
@@ -62,7 +64,8 @@ module Smith
           [name, values.empty? ? nil : values.sum]
         end
         new(input_tokens: usages.sum(&:input_tokens), output_tokens: usages.sum(&:output_tokens), **counts,
-            stop_reason: usages.last.stop_reason, provider_message_id: usages.last.provider_message_id)
+            stop_reason: usages.last.stop_reason, provider_message_id: usages.last.provider_message_id,
+            mode: usages.last.mode)
       end
       private_class_method :optional_counts, :count_from
 
@@ -73,6 +76,10 @@ module Smith
       def with_response_facts(facts)
         self.class.new(**to_h.except(:stop_reason, :provider_message_id), **facts)
       end
+
+      # This usage as a streamed response's, with the facts its stream
+      # carried (Providers::StreamFacts).
+      def streamed(facts) = with_response_facts(facts).new(mode: :stream)
 
       # Optional members are omitted when nil, so usage without cache or
       # response details keeps its earlier shape.

@@ -925,7 +925,10 @@ end
   Graph inspection shows `durable: true` in the retry policy.
 - A streamed step's sink (`stream:`) gets `reset(:retry_wait)` when the run
   enters a retry wait, and holds nothing durable: the attempt the host's later
-  job makes streams to a new sink from the start.
+  job makes streams to a new sink from the start. In a stored run, a streamed
+  step's `finish` comes once `persist!` has stored the step (a store that fails
+  gives the sink `fail` with the store's error instead), so a sink never shows
+  as final an output the store did not keep.
 - A stored `pending_retry` is checked on restore: it must name the transition
   of the stored retry wait, or the run's next transition when the run does not
   wait, with an attempt after the first, a key generation an earlier attempt

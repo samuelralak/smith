@@ -9,14 +9,16 @@ module Smith
     # its JSON):
     #
     #   field = Smith::Streaming::JsonField.new(:reply)
-    #   def delta(text) = (reply = field.push(text)) && broadcast(reply)
-    #   def reset(_reason) = field.reset
+    #   def delta(text) = (piece = field.push(text)) && screen.append(piece)
+    #   def reset(_reason) = field.reset || screen.clear
     #
-    # `push` returns the field's text, unescaped, so far when the piece
-    # added to it, else nil. Text before the object (a code fence) is
-    # skipped. The field is read from the first top-level object only, and
-    # only when its value is a string. Work and memory are linear in the
-    # text pushed.
+    # `push` returns the text the piece added to the field, unescaped, or
+    # nil when it added none; `value` is the field's text so far. Text before
+    # the object (a code fence) is skipped. The field is read from the first
+    # top-level object only (keys unescaped as JSON reads them), from the
+    # first member of that name whose value is a string: a later duplicate,
+    # which `JSON.parse` would take, comes after the text already streamed.
+    # Work and memory are linear in the text pushed.
     class JsonField
       WHITESPACE = " \t\n\r"
       private_constant :WHITESPACE
@@ -31,9 +33,9 @@ module Smith
       end
 
       def push(text)
-        before = @string.text.length
+        before = @string.text.bytesize
         text.to_s.each_char { |char| step(char) }
-        value if @string.text.length > before
+        @string.text.byteslice(before..).freeze if @string.text.bytesize > before
       end
 
       def value = @string.text.dup.freeze
@@ -86,7 +88,7 @@ module Smith
 
       def open_string
         @in_string = true
-        @key = +"" if @expect_key
+        @key = JsonString.new(limit: @name.length) if @expect_key
       end
 
       def close_container
@@ -104,19 +106,24 @@ module Smith
         end
       end
 
-      # Inside a string that is not the field's value; a key is kept until
-      # it is longer than the field's name.
+      # Inside a string that is not the field's value: a key is read as JSON
+      # reads it, up to the length of the field's name; any other string is
+      # skipped to its closing quote.
       def scan_string(char)
+        return key_string(char) if @key
+
         if @escape then @escape = false
         elsif char == "\\" then @escape = true
-        elsif char == '"' then return close_string
+        elsif char == '"' then @in_string = false
         end
-        @key << char if @key && @key.length <= @name.length
       end
 
-      def close_string
+      def key_string(char)
+        @key.add(char)
+        return unless @key.closed?
+
         @in_string = false
-        @last_key = @key if @key
+        @last_key = @key.overflowed? ? nil : @key.text
         @key = nil
       end
 

@@ -17,10 +17,11 @@ module Smith
     #   :retry_wait   the step waits out a durable retry's backoff
     #
     # The step then ends with `finish(output)`, the output it accepted
-    # (after guardrails, the output contract and `output_to:`),
-    # `fail(error_class)`, or `reset(:retry_wait)`, after which the attempt
-    # that resumes it streams to a new sink. A sink that raises is logged
-    # and the step goes on.
+    # (after guardrails, the output contract and `output_to:`, once the step
+    # is stored), `fail(error_class)`, or `reset(:retry_wait)`, after which
+    # the attempt that resumes it streams to a new sink. A sink that raises
+    # (a ScriptError such as NotImplementedError included) is logged and the
+    # step goes on.
     class Session
       def initialize(sink, info)
         @sink = sink
@@ -52,6 +53,10 @@ module Smith
 
       def fail(error_class) = settle(:fail, error_class)
 
+      # The step waits out a durable retry's backoff: the sink's last word,
+      # whether or not text was sent.
+      def suspend = settle(:reset, :retry_wait)
+
       private
 
       def settle(method, value)
@@ -64,7 +69,7 @@ module Smith
 
       def notify(method, value)
         @sink.public_send(method, value) if @sink.respond_to?(method)
-      rescue StandardError => e
+      rescue StandardError, ScriptError => e
         Smith.config.logger&.error("Smith stream sink #{@info[:stream].inspect} #{method} error: #{e.class}")
       end
     end

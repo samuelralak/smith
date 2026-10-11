@@ -27,8 +27,9 @@ module Smith
       # billed: they are recorded and settled into the budget like a failed
       # attempt's usage. Returns the provider usages recorded, so the
       # attempt's trace carries the same totals its usage entries hold.
-      def account_completed_prefix(agent_class, model_reference, messages, attempt_id: nil)
-        completion = Completion.from_messages(response: nil, messages: messages)
+      def account_completed_prefix(agent_class, model_reference, messages, attempt_id: nil, stream_rounds: nil)
+        stream = stream_rounds && { rounds: stream_rounds, output_limit: nil }
+        completion = Completion.from_messages(response: nil, messages:, stream:)
         record_billed_usages(agent_class, completion.provider_usages, :partial_attempt, model_reference, attempt_id:)
         completion.provider_usages
       end

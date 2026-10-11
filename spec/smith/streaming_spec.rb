@@ -141,8 +141,12 @@ RSpec.describe "Smith streaming: a step's reply streamed to a host sink" do
       expect(Smith.config.stream_sinks).to be_frozen
     end
 
-    it "reports a missing sink, and a model path that may send each reply whole" do
+    it "reports a missing sink, and an agent whose calls go to the Responses API as runtime routes them" do
       tool = Class.new(Smith::Tool) { def perform(**) = nil }
+      responses_only = Class.new(Smith::Tool) do
+        compatible_with openai: :responses
+        def perform(**) = nil
+      end
       diagnostics = lambda do |name, **model, &body|
         Smith::Agent::Registry.delete(:spec_stream_agent)
         agent("#{name}Agent", [said("x")], **model) { instance_exec(tool, &body) if body }
@@ -157,15 +161,31 @@ RSpec.describe "Smith streaming: a step's reply streamed to a host sink" do
       expect(diagnostics.call("SpecStreamMissing")).to eq([%i[error stream_sink_missing]])
       Smith.config.stream_sinks = { reply: listening(sink) }
       openai = { model: "gpt-5", provider: :openai }
-      expect(diagnostics.call("SpecStreamOpenAI", **openai) { tools _1 }).to eq([%i[warning stream_whole_replies]])
-      expect(diagnostics.call("SpecStreamFallback") { tools(_1) && fallback_models("openai/gpt-5") })
-        .to eq([%i[warning stream_whole_replies]])
-      expect(diagnostics.call("SpecStreamInferred", model: "gpt-5", provider: nil) { tools _1 })
-        .to eq([%i[warning stream_whole_replies]])
-      expect(diagnostics.call("SpecStreamNoTools", **openai)).to eq([])
-      expect(diagnostics.call("SpecStreamAnthropicTools") { tools _1 }).to eq([])
+      whole = [%i[warning stream_whole_replies]]
+      thinks = proc do |tool|
+        tools tool
+        thinking effort: :low
+      end
+      expect(diagnostics.call("SpecStreamOpenAI", **openai) { instance_exec(_1, &thinks) }).to eq(whole)
+      fallback = ->(tool) { instance_exec(tool, &thinks) && fallback_models("openai/gpt-5") }
+      expect(diagnostics.call("SpecStreamFallback") { instance_exec(_1, &fallback) }).to eq(whole)
+      inferred = { model: "gpt-5", provider: nil }
+      expect(diagnostics.call("SpecStreamInferred", **inferred) { instance_exec(_1, &thinks) }).to eq(whole)
+      routed = proc { params openai_api_mode: "responses" }
+      expect(diagnostics.call("SpecStreamParams", model: "gpt-4.1", provider: :openai, &routed)).to eq(whole)
+      expect(diagnostics.call("SpecStreamCompat", model: "gpt-4.1", provider: :openai) { tools responses_only })
+        .to eq(whole)
+      expect(diagnostics.call("SpecStreamDynamic", **openai) { tools { [_1] } }).to eq(whole)
+      expect(diagnostics.call("SpecStreamPlainTool", **openai) { tools _1 }).to eq([])
+      reasoning = proc { |tool| tools(tool) && params(reasoning_effort: "low") }
+      expect(diagnostics.call("SpecStreamReasoning", **openai) { instance_exec(_1, &reasoning) }).to eq(whole)
+      expect(diagnostics.call("SpecStreamNoTools", **openai) { thinking effort: :low }).to eq([])
+      expect(diagnostics.call("SpecStreamAnthropicTools") { instance_exec(_1, &thinks) }).to eq([])
       Smith.config.openai_api_mode = :off
-      expect(diagnostics.call("SpecStreamOff", **openai) { tools _1 }).to eq([])
+      expect(diagnostics.call("SpecStreamOff", **openai) { instance_exec(_1, &thinks) }).to eq([])
+      expect(diagnostics.call("SpecStreamOffParams", model: "gpt-4.1", provider: :openai) do
+        params openai_api_mode: :responses
+      end).to eq(whole)
     ensure
       Smith.config.openai_api_mode = mode
     end
@@ -228,7 +248,7 @@ RSpec.describe "Smith streaming: a step's reply streamed to a host sink" do
                            [:start, "claude-opus-5-5"], [:delta, "Whole"], [:finish, "Whole"]])
     end
 
-    it "counts a streamed reply without a stop reason as cut off when it used the whole output limit" do
+    it "counts a streamed reply that ended without a stop reason as cut off" do
       limit = Smith::Providers::OutputLimit::ANTHROPIC_DEFAULT
       allow(Smith::Providers::OutputLimit).to receive(:anthropic_default).and_return(limit)
       silent = { content: "x", tokens: limit, events: [{ "type" => "content_block_delta", "index" => 0,
@@ -242,13 +262,19 @@ RSpec.describe "Smith streaming: a step's reply streamed to a host sink" do
 
       Smith::Agent::Registry.delete(:spec_stream_agent)
       agent("SpecSilentShortAgent", [silent.merge(tokens: limit - 1)])
-      expect(streaming("SpecSilentShortWorkflow").new(context: {}).run!.output).to eq("x")
+      short = streaming("SpecSilentShortWorkflow").new(context: {}).run!
+      expect(failure(short).stop_reason).to eq("stream_incomplete")
+
+      Smith::Agent::Registry.delete(:spec_stream_agent)
+      agent("SpecSilentAcceptedAgent", [silent.merge(tokens: limit - 1)]) { on_truncation :accept }
+      expect(streaming("SpecSilentAcceptedWorkflow").new(context: {}).run!.output).to eq("x")
 
       Smith::Agent::Registry.delete(:spec_stream_agent)
       agent("SpecSilentRetriedAgent", [said("Ha", stop: "max_tokens"), silent.merge(tokens: limit + 1)]) do
         on_truncation retry_with: { max_tokens: 64_000 }
       end
-      expect(streaming("SpecSilentRetriedWorkflow").new(context: {}).run!.output).to eq("x")
+      retried = streaming("SpecSilentRetriedWorkflow").new(context: {}).run!
+      expect(failure(retried).stop_reason).to eq("stream_incomplete")
     end
 
     it "withdraws a reply sent for repair, and one a refusal hands to another model" do
@@ -406,7 +432,7 @@ RSpec.describe "Smith streaming: a step's reply streamed to a host sink" do
     end
 
     def read(provider, *events)
-      described_class.collect { events.each { provider.send(:build_chunk, _1) } }
+      described_class.collect(provider) { events.each { provider.send(:build_chunk, _1) } }.first || {}
     end
 
     def provider(name) = RubyLLM::Providers.const_get(name).new(config)
@@ -453,29 +479,32 @@ RSpec.describe "Smith streaming: a step's reply streamed to a host sink" do
       expect(read(bedrock, { "stopReason" => 3 })).to eq({})
     end
 
-    it "collects only inside collect, keeps an outer collection, bounds what it keeps, and never raises" do
-      anthropic_provider = provider(:Anthropic)
-      long = "x" * 1000
-      anthropic_provider.send(:build_chunk, { "type" => "message_start", "message" => { "id" => "outside" } })
+    it "collects only its provider's streams inside collect, apart from other collections, bounded, never raising" do
+      own = provider(:Anthropic)
+      other = provider(:Anthropic)
+      start = ->(id) { { "type" => "message_start", "message" => { "id" => id } } }
+      own.send(:build_chunk, start.call("outside"))
 
-      outer = described_class.collect do
-        anthropic_provider.send(:build_chunk, { "type" => "message_start", "message" => { "id" => long } })
-        inner = described_class.collect do
-          described_class.observe({ "type" => "message_start", "message" => { "id" => "in" } })
-        end
-        expect(inner).to eq(provider_message_id: "in")
+      outer = described_class.collect(own) do
+        own.send(:build_chunk, start.call("x" * 1000))
+        other.send(:build_chunk, { "type" => "message_delta", "delta" => { "stop_reason" => "refusal" } })
+        inner = described_class.collect(other) { other.send(:build_chunk, start.call("in")) }
+        expect(inner).to eq([{ provider_message_id: "in" }])
         [{ "choices" => "x" }, { "choices" => [1] }, { "candidates" => 5 }, { "messageStop" => "x" },
          { "type" => "message_delta", "delta" => "x" }, { "type" => 1 }, nil, "text", { "stopReason" => 3 }]
-          .each { described_class.observe(_1) }
-        anthropic_provider.send(:build_chunk, { "type" => "message_delta", "delta" => { "stop_reason" => "end_turn" } })
-      end
+          .each { described_class.observe(own, _1) }
+        Fiber.new { own.send(:build_chunk, { "type" => "message_delta", "delta" => { "stop_reason" => "end_turn" } }) }
+             .resume
+      end.sole
 
       expect(outer[:provider_message_id].bytesize).to be <= Smith::Providers::ResponseFacts::MAX_BYTES
       expect(outer[:provider_message_id]).to start_with("xxx")
       expect(outer[:stop_reason]).to eq("end_turn")
+      expect(described_class.collect(nil) { other.send(:build_chunk, start.call("any")) })
+        .to eq([{ provider_message_id: "any" }])
     end
 
-    it "settles a streamed reply's facts over its raw body's, and by its usage when no stop reason came" do
+    it "settles a streamed reply's facts over its raw body's, and as cut off when no stop reason came" do
       message = Struct.new(:raw, :output_tokens)
       body = { "type" => "message", "id" => "raw", "stop_reason" => "end_turn" }
 
@@ -483,24 +512,36 @@ RSpec.describe "Smith streaming: a step's reply streamed to a host sink" do
         .to eq(stop_reason: "end_turn", provider_message_id: "s")
       expect(described_class.settle(message.new("spent", 9), {}, 9)).to eq(stop_reason: "output_limit_reached")
       expect(described_class.settle(message.new("spent", 10), {}, 9)).to eq(stop_reason: "output_limit_reached")
-      expect(described_class.settle(message.new("spent", 8), {}, 9)).to eq({})
-      expect(described_class.settle(message.new("spent", 9), {}, nil)).to eq({})
-      expect(described_class.settle(message.new("spent", nil), {}, 9)).to eq({})
+      incomplete = { stop_reason: "stream_incomplete" }
+      expect(described_class.settle(message.new("spent", 8), {}, 9)).to eq(incomplete)
+      expect(described_class.settle(message.new("spent", 9), {}, nil)).to eq(incomplete)
+      expect(described_class.settle(message.new("spent", nil), {}, 9)).to eq(incomplete)
       expect(described_class.settle(message.new("spent", 9), { stop_reason: "stop" }, 9)).to eq(stop_reason: "stop")
-      expect(Smith::Providers::StopReason.classify("output_limit_reached")).to eq(:truncated)
+      expect(%w[output_limit_reached stream_incomplete].map { Smith::Providers::StopReason.classify(_1) })
+        .to eq(%i[truncated truncated])
     end
 
-    it "is installed once on each of RubyLLM's streaming modules" do
-      observer = described_class::Observer
+    it "is installed once on each of RubyLLM's streaming modules, keeping each one's visibility" do
       modules = %i[Anthropic OpenAI Gemini OpenRouter Bedrock].map { RubyLLM::Providers.const_get(_1)::Streaming }
       verbose = $VERBOSE
       $VERBOSE = nil
-      load File.expand_path("../../lib/smith/providers/stream_facts.rb", __dir__)
+      loaded = $LOADED_FEATURES.find { _1.end_with?("/smith/providers/stream_facts.rb") }
+      load(loaded)
       $VERBOSE = verbose
 
-      modules.each { |streaming| expect(streaming.ancestors.count(described_class::Observer)).to eq(1), streaming.name }
-      expect(RubyLLM::Providers::Mistral.ancestors).to include(observer)
-      expect(RubyLLM::Providers::VertexAI.ancestors).to include(observer)
+      modules.each do |streaming|
+        expect(streaming.ancestors.count { described_class.observer?(_1) }).to eq(1), streaming.name
+      end
+      expect(RubyLLM::Provider.ancestors.count(described_class::RoundObserver)).to eq(1)
+      %i[Mistral VertexAI].each do |name|
+        expect(RubyLLM::Providers.const_get(name).ancestors.count { described_class.observer?(_1) }).to eq(1), name
+      end
+      expect(%i[Gemini VertexAI].map { RubyLLM::Providers.const_get(_1).public_method_defined?(:build_chunk) })
+        .to eq([true, true])
+      private_ones = %i[Anthropic OpenAI Bedrock OpenRouter].map do |name|
+        RubyLLM::Providers.const_get(name).private_method_defined?(:build_chunk)
+      end
+      expect(private_ones).to eq([true, true, true, true])
     end
   end
 

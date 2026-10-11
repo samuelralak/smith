@@ -16,7 +16,7 @@ module Smith
       def self.usage_details(usage)
         return {} unless usage
 
-        self::USAGE_DETAIL_MEMBERS.to_h do |member|
+        [*self::USAGE_DETAIL_MEMBERS, :mode].to_h do |member|
           [member, usage.respond_to?(member) ? usage.public_send(member) : nil]
         end
       end
