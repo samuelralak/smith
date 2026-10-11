@@ -41,13 +41,13 @@ module Smith
       private
 
       # The step's artifacts are scoped to its run (or, in a nested
-      # workflow, its parent's), over the store itself even when the step
-      # runs inside another run's step (an inline child run). The step
-      # context's snapshot restores the outer scope when the step ends.
+      # workflow, its parent's), over the configured store itself even when
+      # the step runs inside another run's step (an inline child run),
+      # resolved when the step first stores or reads. The step context's
+      # snapshot restores the outer scope when the step ends.
       def with_scoped_artifacts
         Smith.scoped_artifacts = @inherited_scoped_artifacts ||
-                                 Artifacts::ScopedStore.new(backend: Smith.artifact_backend,
-                                                            namespace: execution_namespace,
+                                 Artifacts::ScopedStore.new(namespace: execution_namespace,
                                                             readable: @inherited_artifact_namespaces || [])
         yield
       end

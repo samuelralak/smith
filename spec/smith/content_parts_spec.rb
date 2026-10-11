@@ -213,6 +213,7 @@ RSpec.describe "Smith content parts: Smith::Content and Smith::Message" do
     end
 
     it "reads each artifact once per call, and refuses a store that cannot tell who stored a ref" do
+      configured = Smith.config.artifact_store
       reader(:anthropic)
       reads = 0
       backend = Smith::Artifacts::Memory.new
@@ -240,6 +241,7 @@ RSpec.describe "Smith content parts: Smith::Content and Smith::Message" do
         def initialize = @data = {}
         def store(data, **) = SecureRandom.hex(8).tap { @data[_1] = data }
         def fetch(ref) = @data[ref]
+        def expired(**) = []
       end
       Smith.artifacts = plain_store.new
       unvouched = reading("SpecPartsUnvouched", pdf) do |ref|
@@ -247,7 +249,7 @@ RSpec.describe "Smith content parts: Smith::Content and Smith::Message" do
       end
       expect(unvouched.new.run!.last_error.message).to match(/records which run stored each artifact/)
     ensure
-      Smith.artifacts = nil
+      Smith.artifacts = configured
     end
 
     it "counts the chat's own cached blocks, such as cached instructions, with its parts" do

@@ -34,6 +34,14 @@ ActiveRecord::Schema.define do
   end
   add_index :smith_workflow_state_records, :unique_token, unique: true
 
+  create_table :smith_artifact_records do |t|
+    t.string :ref, null: false, index: { unique: true }
+    t.binary :data, null: false
+    t.string :content_type, null: false
+    t.string :execution_namespace, index: true
+    t.timestamps
+  end
+
   create_table :transactional_peer_records do |t|
     t.string :workflow_key, null: false
     t.string :event_name, null: false

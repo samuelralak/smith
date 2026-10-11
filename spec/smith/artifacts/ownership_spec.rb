@@ -34,6 +34,9 @@ RSpec.describe "Smith artifacts: refs stay with the runs that stored them" do
     expect(scoped(store, "run-a").fetch("run-a:../secret.txt")).to be_nil
     ["../secret.txt", ".", "a/b", "x\u0000y"].each { |bad| expect(store.fetch(bad)).to be_nil, bad.inspect }
     expect(store.fetch(ref.delete_prefix("run-a:"))).to eq("mine")
+    inner = ref.delete_prefix("run-a:")
+    store.delete(inner)
+    expect([store.fetch(inner), File.exist?(File.join(@dir, "#{inner}.meta"))]).to eq([nil, false])
 
     tenant_a = Smith::Artifacts::File.new(dir: @dir, namespace: "tenant-a")
     tenant_b = Smith::Artifacts::File.new(dir: @dir, namespace: "tenant-b")

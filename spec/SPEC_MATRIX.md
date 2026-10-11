@@ -1796,6 +1796,26 @@ Documented contracts covered:
 - review fixes: each child's `key` (token and ref) differs across two child-run steps of one run; a spawn taken as a failure route launches; results are checked against the count the step launched (`Wait#children`), not items derived again, and an unpersisted items key is refused; only an `inline?` launcher's return value is taken, and it must be an Array; a strict run that crashed mid-launch launches again; a map or call that fails on a failed child needs `on_failure`, and no map, call or spawn takes `retry_on`; outputs a map does not collect are dropped before the 4 MiB bound, live and inline; a map over no items completes at once; an `await :children` keeps the wait bound; child untrusted key names are checked and symbolized at build; inline children run under the parent's deadline but apart from its tool evidence and attribution, and a waiting, raising or self-handled failing child is reported failed with its error; a spawn launches under a token of its own, from items given a copy of the context, and not past the deadline; a stored wait's children count is checked; readiness flags an in-process nested workflow that maps, lets a durable map recurse, and warns (not errors) of a child agent reading a parent's untrusted key; child inputs are bounded at 16 MiB together as they are built; split-step persistence refuses child-run steps; `ChildRunsFailed` details must add up
 - these contracts are mutation-verified against the full suite
 
+### `spec/smith/artifacts/durable_stores_spec.rb`
+
+Purpose:
+
+- asserts that the artifact store is configured like workflow state, and that the S3-compatible and Active Record stores keep artifacts with the runs that stored them
+
+Documented contracts covered:
+
+- `artifact_store` resolves a named store (`:s3`, `:file`, `:active_record`, `:memory`) with `artifact_options`, a store class built with them, or a store, and caches it until the configuration changes; an unknown or incomplete store is refused; with nothing configured, `Smith.artifacts` raises `Smith::ArtifactStoreMissing` outside `test_mode` and is an in-process Memory store in it; a run that keeps no artifacts needs none, and a step that stores one fails with it; `:s3` explains that it needs the SDK or a client
+- the S3 store keeps one object per artifact under its prefix, with its content type and the run that stored it, reads none for a missing, malformed or other tenant's ref, lists expired refs across pages and by run, deletes, and passes on errors other than a missing object
+- the Active Record store keeps one binary row per artifact with its run, by model class or name, refuses malformed and other tenants' refs, lists expired refs by run, and deletes
+- a run's documents read back through both stores; a scoped delete removes only the run's own refs, with a store that can vouch for refs or not
+- these contracts are mutation-verified against the full suite (29/29)
+
+### `spec/smith/doctor/checks/artifacts_spec.rb`
+
+Documented contracts covered:
+
+- `smith doctor` warns when no artifact store is configured, fails when it cannot be built, passes a durable one, and warns of a process-local store beside persisted state and of a store that cannot say which run stored a ref
+
 ### `spec/smith/artifacts/ownership_spec.rb`
 
 Purpose:

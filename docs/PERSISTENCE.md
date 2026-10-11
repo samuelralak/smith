@@ -1233,14 +1233,55 @@ class LargeReportAgent < Smith::Agent
 end
 ```
 
-Configure a backend:
+Configure a store. Like workflow state, artifacts must outlive the process
+that stored them whenever a run waits, retries or resumes elsewhere, so Smith
+assumes none: outside `test_mode`, `Smith.artifacts` with nothing configured
+raises `Smith::ArtifactStoreMissing`, and `smith doctor` warns.
 
 ```ruby
 Smith.configure do |config|
-  config.artifact_store = Smith::Artifacts::Memory.new
-  config.artifact_retention = 3600
+  # Cloudflare R2, or any S3-compatible bucket (needs the aws-sdk-s3 gem, or client:)
+  config.artifact_store = :s3
+  config.artifact_options = {
+    bucket: "smith-artifacts", prefix: "artifacts",
+    endpoint: "https://<account>.r2.cloudflarestorage.com", region: "auto",
+    access_key_id: ENV.fetch("R2_ACCESS_KEY_ID"), secret_access_key: ENV.fetch("R2_SECRET_ACCESS_KEY")
+  }
+  config.artifact_retention = 30 * 86_400
 end
 ```
+
+- `:s3` keeps each artifact as one object under `prefix`, with the run that
+  stored it in the object's metadata. It builds an `Aws::S3::Client` from the
+  remaining options, or takes the host's as `client:`; Smith does not depend
+  on the SDK.
+- `:active_record` keeps each artifact as a row through the host's model
+  (`model:`, a class or its name):
+
+  ```ruby
+  create_table :smith_artifacts do |t|
+    t.string :ref, null: false, index: { unique: true }
+    t.binary :data, null: false
+    t.string :content_type, null: false
+    t.string :execution_namespace, index: true
+    t.timestamps
+  end
+  ```
+
+- `:file` keeps files in a directory (`dir:`), shared only when the directory
+  is; `:memory` keeps them in the process, for one process or tests. A store
+  object, or a store class built with the options, works too: it implements
+  `store`, `fetch` and `expired`, and `stored_by?(ref, execution_namespace)`
+  so runs read only their own refs (content parts require it) and `delete`
+  for cleanup.
+- Any store takes `namespace:`, a tenant prefix its refs carry; a store reads
+  no other tenant's refs.
+- Cleanup is the host's: `store.expired(retention:)` lists refs older than
+  the retention, which `store.delete(ref)` removes. A run that waits keeps its
+  artifacts for as long as it waits, so keep the retention longer than the
+  longest wait, or clean up per run once it is cleared
+  (`expired(retention:, execution_namespace:)`). A child run reads its
+  ancestors' artifacts, so a parent's must outlive its spawned children.
 
 Why this matters:
 

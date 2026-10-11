@@ -297,7 +297,8 @@ require "smith"
 Smith.configure do |config|
   config.logger = Logger.new($stdout)
   config.trace_adapter = Smith::Trace::Memory.new
-  config.artifact_store = Smith::Artifacts::Memory.new
+  config.artifact_store = :active_record                  # or :s3 (S3, R2), :file, :memory
+  config.artifact_options = { model: "SmithArtifact" }
 
   # Persistence
   config.persistence_adapter = :rails_cache

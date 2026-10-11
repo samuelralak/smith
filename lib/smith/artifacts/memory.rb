@@ -29,6 +29,14 @@ module Smith
         @store[ref]
       end
 
+      def delete(ref)
+        return unless owns_ref?(ref)
+
+        @store.delete(ref)
+        @metadata.delete(ref)
+        nil
+      end
+
       # Whether a run (its execution namespace) stored this ref.
       def stored_by?(ref, execution_namespace)
         (owns_ref?(ref) && @metadata.dig(ref, :execution_namespaces)&.include?(execution_namespace)) || false

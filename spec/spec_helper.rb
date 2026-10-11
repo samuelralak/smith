@@ -5,6 +5,9 @@ require "ruby_llm"
 
 Dir[File.expand_path("support/**/*.rb", __dir__)].each { |file| require file }
 
+# Specs keep artifacts in process; a host configures a durable store.
+Smith.config.artifact_store = :memory
+
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure
   config.example_status_persistence_file_path = ".rspec_status"

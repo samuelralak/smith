@@ -29,8 +29,11 @@ module Smith
     end
   end
 
-  # Artifact store (§4.7)
+  # Artifact store (§4.7): a store, a store class, or :s3, :active_record,
+  # :file or :memory, built with artifact_options. Required outside
+  # test_mode (Smith::Artifacts).
   setting :artifact_store
+  setting :artifact_options, default: {}.freeze
   setting :artifact_retention
   setting :artifact_encryption, default: :none
   setting :artifact_tenant_isolation, default: false
@@ -233,6 +236,8 @@ require_relative "smith/artifacts"
 require_relative "smith/artifacts/memory"
 require_relative "smith/artifacts/file"
 require_relative "smith/artifacts/scoped_store"
+require_relative "smith/artifacts/s3"
+require_relative "smith/artifacts/active_record_store"
 
 # Host persistence adapters (no internal deps)
 require_relative "smith/persistence_adapters"

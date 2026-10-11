@@ -257,6 +257,17 @@ module Smith
   # never retried as a provider failure.
   class ContentUnavailable < WorkflowError; end
 
+  # No artifact store is configured. Artifacts must outlive the process that
+  # stored them whenever a run waits, retries or resumes elsewhere, so Smith
+  # assumes none outside test_mode.
+  class ArtifactStoreMissing < WorkflowError
+    def initialize(message = "Smith.config.artifact_store is not configured; set it to :s3, :active_record or " \
+                             ":file (or a store) for runs that wait, retry or move between processes, or :memory " \
+                             "for a single process")
+      super
+    end
+  end
+
   class SerializationError < Error; end
   class AgentRegistryError < Error; end
 

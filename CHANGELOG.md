@@ -8,6 +8,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Upgrade notes
 
+- The artifact store must be configured: outside `test_mode`, `Smith.artifacts`
+  with no `artifact_store` raises `Smith::ArtifactStoreMissing` instead of
+  using a store in process memory. Set `config.artifact_store` to `:s3`,
+  `:active_record`, `:file` or `:memory` (with `config.artifact_options`), or
+  a store; `smith doctor` reports a missing or process-local store.
+
 - `Smith::EXECUTION_SEMANTICS_VERSION` is now `"7"`: routing, context writes,
   restore admission, nested failure and retry semantics changed, and durable
   composite plans may carry content parts, which an earlier build would send
@@ -44,6 +50,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Added
 
+- Durable artifact stores, configured like workflow state:
+  `config.artifact_store = :s3` (AWS S3, Cloudflare R2 and other
+  S3-compatible buckets, through the host's `aws-sdk-s3` or `client:`) or
+  `:active_record` (a host table), with `config.artifact_options`; the store
+  may also be a store class built with the options. Every built-in store
+  records which run stored each ref (`stored_by?`) and can `delete`, and
+  `smith doctor` checks the store.
 - Content parts. `Smith::Message.user`, `.assistant` and `.system` take a String
   or `Smith::Content` parts (`text`, and `document` and `image`, which name an
   artifact of the run and a media type) in a step's `input:`; seed messages

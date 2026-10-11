@@ -76,8 +76,13 @@ closed during agent configuration.
 
 ```ruby
 Smith.configure do |config|
-  config.artifact_store = Smith::Artifacts::Memory.new
-  config.artifact_retention = 3600
+  config.artifact_store = :s3   # S3 or R2; or :active_record, :file, :memory, a store
+  config.artifact_options = {
+    bucket: "smith-artifacts",
+    endpoint: "https://<account>.r2.cloudflarestorage.com", region: "auto",
+    access_key_id: ENV.fetch("R2_ACCESS_KEY_ID"), secret_access_key: ENV.fetch("R2_SECRET_ACCESS_KEY")
+  }
+  config.artifact_retention = 30 * 86_400
   config.artifact_encryption = :none
   config.artifact_tenant_isolation = false
 
@@ -136,8 +141,9 @@ from JSON or YAML has.
 
 | Setting | What it controls | Typical first use |
 | --- | --- | --- |
-| `artifact_store` | Where large handoff payloads are stored | Start with `Smith::Artifacts::Memory.new` |
-| `artifact_retention` | Default retention window for artifact expiry checks | Set once you have a cleanup policy |
+| `artifact_store` | Where large handoff payloads and documents are stored: `:s3` (S3, R2), `:active_record`, `:file`, `:memory`, a store or a store class | Required outside `test_mode`; a shared, durable store whenever runs wait, retry or move between processes |
+| `artifact_options` | Options the named store is built with (`:s3`: `bucket:`, `prefix:`, `client:` or `region:`/`endpoint:`/credentials; `:active_record`: `model:`; `:file`: `dir:`; any: `namespace:`) | Set with `artifact_store` |
+| `artifact_retention` | Default retention window for artifact expiry checks | Longer than the longest wait of any run |
 | `artifact_encryption` | Metadata-level encryption policy flag | Leave at default until you wire a real backend |
 | `artifact_tenant_isolation` | Require namespaced artifact writes | Enable in multi-tenant systems |
 | `trace_adapter` | Where structural traces go | Use `Smith::Trace::Memory` or `Smith::Trace::Logger` first |

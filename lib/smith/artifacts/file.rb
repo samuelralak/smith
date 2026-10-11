@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
-require "securerandom"
+require "fileutils"
 require "json"
+require "securerandom"
 
 module Smith
   module Artifacts
@@ -28,6 +29,13 @@ module Smith
 
         path = ::File.join(@dir, ref)
         ::File.file?(path) ? ::File.read(path) : nil
+      end
+
+      def delete(ref)
+        return unless owns_ref?(ref)
+
+        [ref, "#{ref}.meta"].each { |name| ::FileUtils.rm_f(::File.join(@dir, name)) }
+        nil
       end
 
       # Whether a run (its execution namespace) stored this ref.
