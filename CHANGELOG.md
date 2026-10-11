@@ -50,18 +50,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   into:` is a map of one whose `into:` gets the child's output; `spawn items,
   workflow:, max_items:, input:` launches and continues. Runs start through
   `Smith.config.run_launcher.launch(children:, parent_key:, await_token:)`,
-  which must be idempotent on `(parent_key, child.ref)`; a child's ref is the
-  index of its item, so a replayed step launches the same children.
-  `Smith::Launchers::Inline` runs them in process. More than `max_items` fails
-  the step before anything launches; results that do not match the children
-  raise to the host and leave the run waiting; `collect:` writes outputs,
-  states or counts; `on_item_failure: :fail` fails the step with
-  `Smith::ChildRunsFailed` (failure family `child_runs_failed`). A child gets
-  only what `input:` returns and keeps any of its parent's untrusted keys passed
-  under the same name, persisted with it as `inherited_untrusted_keys`. Graph
-  inspection shows `kind: :map`, `:call` or `:spawn` with the child and its
-  bounds; runtime readiness walks child workflows and reports
-  `:run_launcher_missing`.
+  which must be idempotent on `child.key` (the step's token and the child's
+  ref, the index of its item), so a replayed step launches the same children
+  and two steps never share a key.
+  `Smith::Launchers::Inline` (`inline?` true, the only kind of launcher whose
+  return value is taken as results) runs them in process. More than
+  `max_items` fails the step before anything launches; results that do not
+  match the number of children launched raise to the host and leave the run
+  waiting; `collect:` writes outputs, states or counts; `on_item_failure:
+  :fail` fails the step with `Smith::ChildRunsFailed` (failure family
+  `child_runs_failed`) and needs `on_failure`. No map, call or spawn takes
+  `retry_on`, and split-step persistence does not prepare them. A child gets
+  only what `input:` returns and keeps any of its parent's untrusted keys
+  passed under the same name, persisted with it as `inherited_untrusted_keys`.
+  Graph inspection shows `kind: :map`, `:call` or `:spawn` with the child and
+  its bounds; runtime readiness walks child workflows, reports
+  `:run_launcher_missing`, flags an in-process nested workflow that reaches a
+  map, call or spawn, and warns of a child agent that reads a key the parent
+  marks untrusted.
 - Output integrity. Smith reads each response's stop reason (OpenAI's
   message-level refusals and Gemini's prompt blocks included) as cut off or
   refused. A cut-off response raises `Smith::OutputTruncated` unless the agent
@@ -286,7 +292,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Rollback: an earlier 0.12 build, and 0.11.0, refuse a persisted failure whose
   family is `wait_timed_out`, `output_failure` or `child_runs_failed`, and a
   waiting run whose wait is a map's or call's (`kind: "children"`); clear or
-  settle such runs before rolling back.
+  settle such runs before rolling back. An earlier build ignores
+  `inherited_untrusted_keys`, so a child run restored there loses its parent's
+  untrusted marks.
 - A workflow's execution namespace (the persisted UUID that scopes its
   artifacts and now its idempotency keys) is assigned when the workflow is
   built instead of on first artifact use, so `to_state` always carries it,

@@ -38,11 +38,19 @@ module Smith
           total: values[:total], message:)
     end
 
+    # Counts within bounds, and refs that are distinct indexes of the total,
+    # as many as the failures up to MAX_REFS (so neither count is negative).
     def self.valid_counts?(values)
-      refs = values[:failed_refs]
-      values[:transition].is_a?(String) && refs.is_a?(Array) && refs.length <= MAX_REFS && refs.all?(Integer) &&
-        [values[:failed], values[:total]].all? { _1.is_a?(Integer) && _1 >= 0 } && values[:failed] <= values[:total]
+      refs, failed, total = values.values_at(:failed_refs, :failed, :total)
+      return false unless values[:transition].is_a?(String) && [failed, total].all?(Integer)
+
+      failed <= total && valid_refs?(refs, failed, total)
     end
-    private_class_method :valid_counts?
+
+    def self.valid_refs?(refs, failed, total)
+      refs.is_a?(Array) && refs.all? { _1.is_a?(Integer) && _1.between?(0, total - 1) } &&
+        refs.length == [failed, MAX_REFS].min && refs.uniq.length == refs.length
+    end
+    private_class_method :valid_counts?, :valid_refs?
   end
 end

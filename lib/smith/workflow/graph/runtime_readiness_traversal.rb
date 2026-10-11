@@ -64,7 +64,7 @@ module Smith
         def visit_child(parent_graph, transition, frames)
           workflow_class = transition.target_workflow_class
           case @states[workflow_class]
-          when :visiting then mark_cycle(parent_graph, transition)
+          when :visiting then mark_cycle(parent_graph, transition) unless transition.child_runs?
           when :done then nil
           else
             child_graph = graph_for(workflow_class)

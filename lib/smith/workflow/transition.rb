@@ -16,6 +16,7 @@ module Smith
         @from = own_identifier(from, allow_nil: true)
         @to = own_identifier(to)
         instance_eval(&) if block_given?
+        validate_child_run_controls!
         validate_timeout_route!
       end
 

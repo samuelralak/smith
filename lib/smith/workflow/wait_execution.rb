@@ -11,7 +11,7 @@ module Smith
     # by `resume!`) or a `delay`, entered at `entered_at` and due to expire at
     # `deadline_at`. Hosts index it to deliver events and to schedule the
     # `expire_wait!` call; Smith never sleeps, polls or wakes a run itself.
-    Wait = Data.define(:kind, :event, :token, :transition, :into, :entered_at, :deadline_at)
+    Wait = Data.define(:kind, :event, :token, :transition, :into, :entered_at, :deadline_at, :children)
 
     # Entering, resuming and expiring `await` and `delay` steps. Entering a
     # wait is not a step: `step_count` stays, so the step's position and its
@@ -40,11 +40,10 @@ module Smith
       # Returns `:resumed`, `:failed` when the completion took the failure
       # path, or `:stale` (changing nothing) for any other event or token.
       def resume!(event:, token:, payload:)
-        value = event.to_s == "children" ? child_results_payload(payload) : wait_payload(payload)
         transition = claim_wait { resumable_transition(event.to_s, token.to_s) }
         return :stale unless transition
 
-        check_claimed_child_results!(transition, value) if transition.child_runs?
+        value = claimed_payload(transition, payload)
         complete_claimed_wait(transition, :resumed) do
           transition.child_runs? ? deliver_child_results(transition, value) : write_wait_payload(transition, value)
           StepCompletion.instance_method(:complete_step).bind_call(self, transition, nil)
@@ -96,7 +95,10 @@ module Smith
       def settle_on_entry(transition, token)
         if transition.child_runs?
           results = launch_child_runs(transition, token)
-          return results ? deliver_child_results(transition, child_results_payload(results)) : WAIT_PENDING
+          return WAIT_PENDING unless results
+
+          payload = child_results_payload(collectable_results(transition.children_config, results))
+          return deliver_child_results(transition, payload, @launched_children)
         end
 
         step = run_await_block(transition, token) if transition.await_config[:block]
@@ -104,6 +106,20 @@ module Smith
       end
 
       def wait_pending?(value) = value.equal?(WAIT_PENDING)
+
+      # The delivered payload, normalized for the claimed step: a map's
+      # results checked against its children, anything else bounded like a
+      # session message. A payload that does not fit raises to the host and
+      # frees the wait.
+      def claimed_payload(transition, payload)
+        return wait_payload(payload) unless transition.child_runs?
+
+        entries = child_results_payload(collectable_results(transition.children_config, payload))
+        checked_child_results(entries, expected_children(transition), transition.children_config[:kind])
+      rescue StandardError
+        @wait_claimed = false
+        raise
+      end
 
       # The wait's token: a key of the step's position under a segment only
       # waits use, so no `idempotency_key` scope can produce it, and
@@ -134,7 +150,8 @@ module Smith
       end
 
       def enter_wait(transition, token, seconds)
-        @awaiting = WaitRecord.build(transition, token, seconds, Time.now.utc)
+        children = @launched_children if transition.child_runs?
+        @awaiting = WaitRecord.build(transition, token, seconds, Time.now.utc, children:)
         record_wait_trace(transition, :waiting)
       end
 

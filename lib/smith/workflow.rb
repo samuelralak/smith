@@ -32,6 +32,7 @@ module Smith
     include StepIO
     include WaitCompletion
     include WaitExecution
+    include ChildRunResults
     include ChildRunExecution
     include Execution
 
@@ -459,6 +460,7 @@ Smith::Workflow::SplitStepPersistence::SubclassBoundary.protect_execution_path!(
   Smith::Workflow::ActiveClock,
   Smith::Workflow::StepIO,
   Smith::Workflow::WaitCompletion,
+  Smith::Workflow::ChildRunResults,
   Smith::Workflow::ChildRunExecution,
   Smith::Workflow::WaitExecution,
   Smith::Workflow::SplitStepPersistence::DefinitionBoundary,

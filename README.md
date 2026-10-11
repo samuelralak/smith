@@ -211,14 +211,16 @@ end
 ```
 
 `map` launches a run per item (more than `max_items` fails the step before
-anything launches) and waits, bounded by `timeout:`, for the host to resume the
-parent with `resume!(key, event: :children, token:, payload:)`, one
-`Smith::ChildRun.result` entry per child. `call` is a map of one whose `into:`
+anything launches; the launcher is idempotent on each child's `key`) and waits,
+bounded by `timeout:`, for the host to resume the parent with
+`resume!(key, event: :children, token:, payload:)`, one `Smith::ChildRun.result`
+entry per child. `call` is a map of one whose `into:`
 gets the child's output; `spawn` launches and continues. A child starts with
 only what `input:` returns, and keeps any of its parent's untrusted keys passed
 under the same name. With `on_item_failure: :fail` (the default) a failed child
-fails the step with `Smith::ChildRunsFailed`. `Smith::Launchers::Inline` runs the
-children in process, for tests and scripts. See
+fails the step with `Smith::ChildRunsFailed`, so the step declares `on_failure`;
+these steps take no `retry_on`. `Smith::Launchers::Inline` runs the children in
+process, for tests and scripts. See
 [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md), Child Runs.
 
 ## Workflow Graph Inspection

@@ -9,18 +9,19 @@ module Smith
     # Built on entry, checked on restore against the workflow class and the
     # run's position, and read as a Wait.
     module WaitRecord
-      FIELDS = %w[kind event token transition into entered_at deadline_at].freeze
+      FIELDS = %w[kind event token transition into entered_at deadline_at children].freeze
       TOKEN = /\A[0-9a-f]{64}\z/
       ZONED = /(?:Z|[+-]\d\d:\d\d)\z/
 
       module_function
 
-      def build(transition, token, seconds, now)
+      # `children` is how many runs a map or call launched; nil otherwise.
+      def build(transition, token, seconds, now, children: nil)
         config = transition.await_config
         frozen(
           "kind" => config.fetch(:kind).to_s, "event" => config[:event]&.to_s, "token" => token,
           "transition" => transition.name.to_s, "into" => config[:into]&.to_s,
-          "entered_at" => now.utc.iso8601(6), "deadline_at" => (now + seconds).utc.iso8601(6)
+          "entered_at" => now.utc.iso8601(6), "deadline_at" => (now + seconds).utc.iso8601(6), "children" => children
         )
       end
 
@@ -39,7 +40,7 @@ module Smith
         Wait.new(
           kind: config.fetch(:kind), event: config[:event], token: record.fetch("token"), transition: transition.name,
           into: config[:into], entered_at: Time.iso8601(record.fetch("entered_at")),
-          deadline_at: Time.iso8601(record.fetch("deadline_at"))
+          deadline_at: Time.iso8601(record.fetch("deadline_at")), children: record["children"]
         )
       end
 
@@ -70,7 +71,15 @@ module Smith
 
       def well_formed?(record)
         %w[await delay children].include?(record["kind"]) && TOKEN.match?(record["token"].to_s) &&
-          nonempty_string?(record["transition"]) && await_fields?(record) && times?(record)
+          nonempty_string?(record["transition"]) && await_fields?(record) && times?(record) && children_count?(record)
+      end
+
+      # A map's or call's wait holds how many children it launched.
+      def children_count?(record)
+        count = record["children"]
+        return count.nil? unless record["kind"] == "children"
+
+        count.is_a?(Integer) && count.between?(0, 10_000)
       end
 
       # An await or a map's wait for its children names its event and

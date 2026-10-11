@@ -20,10 +20,20 @@ module Smith
       # from construction, before its seed builder runs.
       def self.with_inherited_untrusted_keys(keys)
         outer = Thread.current[INHERITED_UNTRUSTED_KEYS]
-        Thread.current[INHERITED_UNTRUSTED_KEYS] = keys.dup.freeze
+        Thread.current[INHERITED_UNTRUSTED_KEYS] = untrusted_key_names!(keys)
         yield
       ensure
         Thread.current[INHERITED_UNTRUSTED_KEYS] = outer
+      end
+
+      # Context key names: at most 1,000, each a Symbol or String of 1 to 256
+      # characters, as Symbols.
+      def self.untrusted_key_names!(keys)
+        valid = keys.is_a?(Array) && keys.length <= 1_000 &&
+                keys.all? { (_1.is_a?(Symbol) || _1.is_a?(String)) && _1.length.between?(1, 256) }
+        raise WorkflowError, "untrusted keys must be up to 1,000 context key names" unless valid
+
+        keys.map(&:to_sym).uniq.freeze
       end
 
       # The keys handed to the workflow under construction; taken once, so a

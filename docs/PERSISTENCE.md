@@ -775,8 +775,8 @@ end
 - A wait that would outlast the store's persistence TTL is refused when it is
   entered, before the block runs. `stuck_for?` reports a waiting run as stuck
   only once its deadline has passed by the threshold.
-- Not in 0.12: split-step persistence refuses to prepare an `await` or `delay`
-  step, or any step while the run waits, and an in-process nested workflow
+- Not in 0.12: split-step persistence refuses to prepare an `await`, `delay`,
+  `map`, `call` or `spawn` step, or any step while the run waits, and an in-process nested workflow
   that reaches a wait fails its parent's step (runtime readiness reports
   `:nested_workflow_waits`).
 
@@ -789,51 +789,76 @@ results. Smith never queues, polls or waits on a child.
 
 ```ruby
 class QueueLauncher
-  # children: Smith::ChildRun (ref, workflow, input, untrusted_keys, #build)
+  # children: Smith::ChildRun (ref, key, workflow, input, untrusted_keys, #build)
   def launch(children:, parent_key:, await_token:)
     children.each do |child|
-      ChildRunJob.perform_later(parent_key:, await_token:, ref: child.ref,
+      ChildRunJob.perform_later(key: child.key, parent_key:, await_token:, ref: child.ref,
                                 workflow: child.workflow.name, input: child.input,
                                 untrusted_keys: child.untrusted_keys)
     end
-    nil
   end
 end
 
 Smith.config.run_launcher = QueueLauncher.new
 ```
 
-- A child's `ref` is the index of its item. Items come from the context (a key
-  holding an Array, or a callable of the context, which must give the same list
-  on a replay), so a replayed step launches the same children under the same
-  `await_token`: the launcher must be idempotent on `(parent_key, ref)`.
-- A child gets only the context `input:` returns (JSON-shaped, bounded) and no
-  session. A key the parent treats as untrusted that `input:` passes under the
-  same name stays untrusted in the child: `ChildRun#build` constructs the child
-  with those keys in force, and they persist with it
-  (`inherited_untrusted_keys`).
-- A map or call needs a persisted run (`run_persisted!` or
+- A child's `ref` is the index of its item, and its `key` is the step's token
+  and the ref together, unique across every child-run step of every run. Items
+  come from the context (a persisted key holding an Array, or a callable of the
+  context, which must give the same list on a replay), so a replayed step
+  launches the same children under the same keys: the launcher must be
+  idempotent on `child.key`. Only a launcher whose `inline?` is true has its
+  return value taken as results (it must return them, as an Array); anything
+  another launcher returns is ignored. The job side rebuilds a
+  `Smith::ChildRun` from its arguments and calls `#build`, which checks the
+  untrusted key names it gets back as Strings.
+- A child gets only the context `input:` returns (JSON-shaped, bounded at 1 MiB
+  each and 16 MiB for a step's children together) and no session. A key the
+  parent treats as untrusted that `input:` passes under the same name stays
+  untrusted in the child: `ChildRun#build` constructs the child with those keys
+  in force, and they persist with it (`inherited_untrusted_keys`). The mark
+  goes by name: a value passed under another name, or inside another value, is
+  not marked, so pass untrusted content under its own key.
+- A map, call or spawn needs a persisted run (`run_persisted!` or
   `advance_persisted!`), except with a launcher that runs the children itself
   (`inline?` true, as `Smith::Launchers::Inline`): it returns their results and
-  the step completes at once.
+  the step completes at once. A map over no items completes at once and
+  launches nothing. In `idempotency_mode :strict` a map, call or spawn step
+  that crashed mid-launch runs again on restore, since launching is idempotent.
 - Otherwise the step waits like an `await` for the event `:children`, bounded by
   its `timeout:` and routed by `on_timeout` or `on_failure`. Once every child is
   terminal the host resumes the parent with one entry per ref,
   `Smith::ChildRun.result(ref:, run_result:)`:
-  `{ ref:, status: "succeeded" | "failed", state:, output: }`. Results that do
-  not match the children raise to the host and leave the run waiting. They are
-  bounded at 4 MiB together; prefer `collect: :states` or `:none` for large
-  maps.
+  `{ ref:, status: "succeeded" | "failed", state:, output:, error: }`, where a
+  child failed when it ended in its failed state or any of its steps raised.
+  `state`, `output` and `error` may be left out (as nil); `state` and `error`
+  are text of at most 256 bytes. Results that do not match the number of
+  children the step launched (`Wait#children`) raise to the host and leave the
+  run waiting. They are bounded at 4 MiB together, after the outputs a map does
+  not collect are dropped, so `collect: :states` or `:none` suits a large map.
 - `collect: :outputs` writes the entries to `into:` in ref order, `:states`
   drops the outputs, and `:none` writes `{ succeeded:, failed: }`. A `call`
-  writes its child's output itself. With `on_item_failure: :fail` any failed
-  child fails the step with `Smith::ChildRunsFailed` (failure family
-  `child_runs_failed`, up to 20 failed refs with the counts).
+  writes its child's output itself. With `on_item_failure: :fail` (always for
+  a call) any failed child fails the step with `Smith::ChildRunsFailed`
+  (failure family `child_runs_failed`, up to 20 failed refs with the counts),
+  so such a step must declare `on_failure`.
+- No map, call or spawn takes `retry_on`: the launcher retries launching, and
+  a map's results arrive with the host's resume, outside any attempt. Each
+  child is a run with its own budget; the parent's budget does not cover it.
+- `Smith::Launchers::Inline` runs each child to its end under the parent's
+  deadline, apart from the parent's tool evidence and attribution, and reports
+  a child left waiting, or one that raised, as failed with its error.
 - A `spawn` launches and completes its step; nothing comes back.
 - Graph inspection shows the kind (`:map`, `:call`, `:spawn`) and the child
   workflow, bound, items, collect and failure modes. Runtime readiness walks
   the child workflow like a nested one (a child may wait: it is a run of its
-  own) and reports `:run_launcher_missing` when no launcher is configured.
+  own, and may map over its own workflow) and reports `:run_launcher_missing`
+  when no launcher is configured. An in-process nested workflow that reaches a
+  map, call or spawn is reported (`:nested_workflow_waits`) unless the launcher
+  runs children in process. An agent in a child run that reads a key the
+  parent marks untrusted is a warning (`:nested_untrusted_agent_input`), not
+  an error as in a nested workflow, since readiness cannot see whether
+  `input:` passes that key.
 
 ## Replay Safety: Idempotency Keys
 

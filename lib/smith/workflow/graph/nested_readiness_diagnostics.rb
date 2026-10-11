@@ -62,19 +62,31 @@ module Smith
 
         # An in-process child that reaches an await or delay fails its
         # parent's step at runtime; a child run of its own may wait.
+        # An in-process child has no persisted key, so it cannot wait, nor
+        # launch runs of its own unless the launcher runs them in process.
         def waiting_child_diagnostics
+          kinds = waiting_kinds
           in_process_entries.filter_map do |entry|
             transitions = entry.fetch(:report).topology_report.transitions
-            next unless transitions.any? { |snapshot| %i[await delay].include?(snapshot.kind) }
+            next unless transitions.any? { |snapshot| kinds.include?(snapshot.kind) }
 
-            transition = entry.fetch(:transition)
-            label = workflow_label(entry.fetch(:workflow_class))
-            Diagnostic.new(
-              severity: :error, code: :nested_workflow_waits, transition: transition.name, target: label,
-              message: "Transition #{ref(transition.name)} nests #{label}, which reaches an await or delay step.",
-              suggestion: "An in-process nested workflow cannot wait; move the wait into the parent workflow."
-            )
+            waiting_child_diagnostic(entry.fetch(:transition), workflow_label(entry.fetch(:workflow_class)))
           end
+        end
+
+        def waiting_kinds
+          launcher = Smith.config.run_launcher
+          inline = launcher.respond_to?(:inline?) && launcher.inline? == true
+          inline ? %i[await delay] : %i[await delay map call spawn]
+        end
+
+        def waiting_child_diagnostic(transition, label)
+          Diagnostic.new(
+            severity: :error, code: :nested_workflow_waits, transition: transition.name, target: label,
+            message: "Transition #{ref(transition.name)} nests #{label}, which reaches a step that waits " \
+                     "or launches runs of its own.",
+            suggestion: "An in-process nested workflow cannot wait or launch; move the step into the parent workflow."
+          )
         end
 
         def inherited_untrusted_diagnostics

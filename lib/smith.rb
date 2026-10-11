@@ -65,8 +65,8 @@ module Smith
   setting :persistence_ttl, default: nil
 
   # Starts the runs `map`, `call` and `spawn` steps launch:
-  # `launch(children:, parent_key:, await_token:)`, idempotent on
-  # `(parent_key, child.ref)`. Smith::Launchers::Inline runs them in process.
+  # `launch(children:, parent_key:, await_token:)`, idempotent on each
+  # `child.key`. Smith::Launchers::Inline runs them in process.
   setting :run_launcher, default: nil
 
   # Retry policy for transient persistence I/O failures.
@@ -325,6 +325,7 @@ require_relative "smith/workflow/step_io"
 require_relative "smith/workflow/active_clock"
 require_relative "smith/workflow/wait_record"
 require_relative "smith/workflow/wait_completion"
+require_relative "smith/workflow/child_run_results"
 require_relative "smith/workflow/child_run_execution"
 require_relative "smith/workflow/wait_execution"
 require_relative "smith/workflow/execution"

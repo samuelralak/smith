@@ -311,7 +311,7 @@ module Smith
           ensure_transition_budget!
 
           if strict_idempotency?
-            mark_step_in_progress!
+            mark_step_in_progress! unless replay_safe_pending_step?
             mark_active_step_start!(true)
             persist!(resolved_key, adapter:)
           end
@@ -338,7 +338,7 @@ module Smith
 
         resolved_key = resolve_persistence_key!(key)
         ensure_transition_budget!
-        mark_step_in_progress! if strict_idempotency?
+        mark_step_in_progress! if strict_idempotency? && !replay_safe_pending_step?
         mark_active_step_start!(true)
         persist!(resolved_key, adapter:)
         step = advance!
@@ -369,6 +369,12 @@ module Smith
         resolved_key = resolve_persistence_key!(key)
         persistence_adapter!(adapter).delete(resolved_key)
         self
+      end
+
+      # A map, call or spawn launches through a launcher that is idempotent
+      # by contract, so strict mode lets its step run again after a crash.
+      def replay_safe_pending_step?
+        self.class.find_transition(pending_transition_name)&.child_runs? || false
       end
 
       def mark_step_in_progress!

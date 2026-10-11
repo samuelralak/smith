@@ -51,6 +51,17 @@ module Smith
 
         private
 
+        # A map or call that fails when a child fails needs on_failure. No
+        # map, call or spawn retries: its launcher retries launching, and a
+        # map's results arrive with the host's resume, outside any attempt.
+        def validate_child_run_controls!
+          return unless child_runs?
+          raise WorkflowError, "a map, call or spawn does not take retry_on" if @retry_config
+          return unless @children_config.fetch(:on_item_failure) == :fail && @failure_transition.nil?
+
+          raise WorkflowError, "a map or call that fails when a child fails must declare on_failure"
+        end
+
         def declare_child_runs!(kind, items, options, given = {})
           validate_execution_primitive_conflict!(kind.to_s)
           settings = child_run_options!(kind, options).merge(given)
