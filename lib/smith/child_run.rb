@@ -8,15 +8,25 @@ module Smith
   # the step), its `key` (the step's token and the ref together: what the
   # launcher must be idempotent on, unique across every child-run step of
   # every run), its workflow class, the context `input:` returned for it,
-  # and the untrusted keys it inherits from its parent (the parent's
-  # untrusted keys that `input:` passed under the same names).
-  ChildRun = Data.define(:ref, :key, :workflow, :input, :untrusted_keys) do
+  # the untrusted keys it inherits from its parent (the parent's untrusted
+  # keys that `input:` passed under the same names), and the artifact
+  # namespaces it may read (its parent's and the parent's ancestors', the
+  # nearest first), so a document a parent stored reaches its children.
+  ChildRun = Data.define(:ref, :key, :workflow, :input, :untrusted_keys, :artifact_namespaces) do
     def self.key_for(await_token, ref) = Digest::SHA256.hexdigest("smith.child_run.v1:#{await_token}:#{ref}")
 
-    # The child, built with its inherited untrusted keys in force; they
-    # persist with it, so a restored child keeps them.
+    def initialize(artifact_namespaces: [], **)
+      super
+    end
+
+    # The child, built with what it inherits in force; both persist with
+    # it, so a restored child keeps them.
     def build
-      Workflow::StepIO.with_inherited_untrusted_keys(untrusted_keys) { workflow.new(context: input) }
+      Workflow::StepIO.with_inherited_untrusted_keys(untrusted_keys) do
+        Workflow::ArtifactIntegration.with_inherited_artifact_namespaces(artifact_namespaces) do
+          workflow.new(context: input)
+        end
+      end
     end
 
     # The entry a host reports for a finished child when it resumes the

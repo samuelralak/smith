@@ -51,7 +51,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   the chat is built and fail the step before the call when missing or larger
   than 32 MiB. A message with parts carries a marker no agent output or
   host-admitted message can carry, and a restored session holds parts only in
-  its seed messages.
+  its seed messages. A child run may read its parent's artifacts and those of
+  the parent's nearest ancestors (`Smith::ChildRun#artifact_namespaces`, which
+  a queueing launcher passes to the job like `untrusted_keys`; persisted with
+  the child as `inherited_artifact_namespaces`).
 - Durable retry. `retry_on ..., durable: true` waits out each backoff as a
   wait of the run (`awaiting.kind == :retry`, due when the backoff ends)
   instead of sleeping in the worker. `expire_wait!` past the deadline ends the
@@ -70,6 +73,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   the launcher runs inline) as `:nested_workflow_waits`. Split-step
   persistence refuses a step with a durable retry. Traces gain the outcomes
   `:retrying` and `:retry_due`.
+- A step that runs inside another run's step (an inline child run) scopes its
+  artifacts over the configured store itself, not over the outer run's
+  scoped view, through which it could read nothing of its own.
 - `Smith::Workflow::Wait` gains `attempt` and `error` (nil except for a retry
   wait). A wait as long as the persistence TTL is now refused too (it was
   refused only when longer), since the stored run would expire as it ends.
@@ -330,7 +336,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   would start the step over at its first attempt and key generation; settle
   such runs first. It cannot load a class that declares `retry_on ...,
   durable: true` (an unknown keyword), so remove the option first; without it
-  the retry sleeps its backoff, up to `max_delay`, in the worker.
+  the retry sleeps its backoff, up to `max_delay`, in the worker. It ignores
+  `inherited_artifact_namespaces`, so a child run restored there cannot read
+  its parent's documents, and it sends a seed message with content parts to
+  providers as JSON text.
 - A workflow's execution namespace (the persisted UUID that scopes its
   artifacts and now its idempotency keys) is assigned when the workflow is
   built instead of on first artifact use, so `to_state` always carries it,

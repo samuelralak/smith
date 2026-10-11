@@ -2,10 +2,14 @@
 
 module Smith
   module Artifacts
+    # A run's view of the artifact store: it stores under its own
+    # namespace, and reads its own refs and those of the namespaces it may
+    # read (a child run's parent and that parent's ancestors).
     class ScopedStore
-      def initialize(backend:, namespace:)
+      def initialize(backend:, namespace:, readable: [])
         @backend = backend
         @namespace = namespace
+        @readable = [namespace, *readable].freeze
       end
 
       def store(data, content_type: "application/octet-stream")
@@ -14,10 +18,10 @@ module Smith
       end
 
       def fetch(ref)
-        return nil unless ref.start_with?("#{@namespace}:")
+        namespace = @readable.find { |candidate| ref.start_with?("#{candidate}:") }
+        return nil unless namespace
 
-        inner_ref = ref.delete_prefix("#{@namespace}:")
-        @backend.fetch(inner_ref)
+        @backend.fetch(ref.delete_prefix("#{namespace}:"))
       end
 
       def expired(retention: nil)

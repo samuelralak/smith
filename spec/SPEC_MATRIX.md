@@ -1812,6 +1812,7 @@ Documented contracts covered:
 - messages keep String content plain and mark parts with `"parts" => true`; a system message takes text parts only; 1 to 100 parts; roles system, user and assistant
 - an agent step's `input:` gives Anthropic native blocks (base64 PDF or image, `text/plain` as text, `cache_control` on cached parts) and other providers the joined text with attachments; a missing artifact, a ref of another run, an artifact that is too large, more than 4 cache points on Anthropic, or a system message in `input:` fails the step before the call
 - seed messages keep their parts, reach Anthropic's system blocks cached, restore, and keep their digest; a restored session refuses parts outside the seed messages or malformed ones; `append_session_messages!` refuses parts; an output shaped like parts reaches the provider as JSON text; hand-built parts messages are checked in `input:` and `seed_messages`
+- a child run, restored from job arguments or run inline, and a grandchild read the documents their ancestors stored; an unrelated run's ref reads nothing, and a parent cannot read its child's; inherited namespaces are bounded (nearest 16), checked at build and on restore, deduplicated and persisted; a step's artifact scope ends with the step
 - these contracts are mutation-verified against the full suite (29/29)
 
 ### `spec/smith/workflow/durable_retry_spec.rb`

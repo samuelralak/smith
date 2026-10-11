@@ -21,6 +21,8 @@ module Smith
           execution_namespace: @execution_namespace,
           # Untrusted keys inherited from a parent run (a durable child's).
           inherited_untrusted_keys: (@inherited_untrusted_keys || []).map(&:to_s),
+          # Artifact namespaces a child run may read (its ancestors').
+          inherited_artifact_namespaces: (@inherited_artifact_namespaces || []).dup,
           created_at: @created_at,
           updated_at: @updated_at,
           next_transition_name: @next_transition_name,
@@ -328,6 +330,7 @@ module Smith
         @step_count = normalized[:step_count] || 0
         @execution_namespace = restored_execution_namespace(normalized)
         @inherited_untrusted_keys = restored_inherited_untrusted_keys(normalized)
+        @inherited_artifact_namespaces = restored_artifact_namespaces(normalized)
         @created_at = normalized[:created_at]
         @updated_at = normalized[:updated_at]
       end
@@ -342,6 +345,12 @@ module Smith
       end
 
       def untrusted_key_name?(key) = (key.is_a?(String) || key.is_a?(Symbol)) && key.length.between?(1, 256)
+
+      def restored_artifact_namespaces(normalized)
+        ArtifactIntegration.artifact_namespaces!(normalized.fetch(:inherited_artifact_namespaces, []))
+      rescue WorkflowError
+        raise Smith::SerializationError, "persisted workflow inherited_artifact_namespaces are invalid"
+      end
 
       # A payload written before namespaces were assigned at construction
       # gets one derived from its own durable facts, the same on every

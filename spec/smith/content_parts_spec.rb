@@ -162,6 +162,144 @@ RSpec.describe "Smith content parts: Smith::Content and Smith::Message" do
     end
   end
 
+  describe "documents across child runs" do
+    around do |example|
+      previous = Smith.config.run_launcher
+      example.run
+    ensure
+      Smith.config.run_launcher = previous
+    end
+
+    # A child that sends the document under ctx[:ref] to the reader.
+    def document_child(name)
+      with_stubbed_class(name, workflow_class) do
+        initial_state :idle
+        state :failed
+        session :isolated
+        transition :read, from: :idle, to: :done do
+          execute :spec_parts_reader,
+                  input: lambda { |ctx|
+                    [Smith::Message.user([Smith::Content.document(ctx[:ref], media_type: "text/plain")])]
+                  }
+          on_failure :fail
+        end
+      end
+    end
+
+    def mapping(name, kid)
+      with_stubbed_class(name, workflow_class) do
+        initial_state :idle
+        state :failed
+        transition :store, from: :idle, to: :stored do
+          compute { |step| step.write_context(:ref, Smith.artifacts.store("the resume")) }
+        end
+        transition :fan, from: :stored, to: :done do
+          map :ids, workflow: kid, max_items: 3, timeout: 60,
+                    input: ->(id, ctx) { { ids: [id], ref: ctx[:ref] } }, into: :results, collect: :states,
+                    on_item_failure: :collect
+          on_failure :fail
+        end
+      end
+    end
+
+    def texts = messages.map { _1[:content].value.first.dig(:source, :data) }
+
+    it "lets a child run, restored or inline, read what its parent stored" do
+      reader(:anthropic)
+      launched = []
+      recorder = Class.new { define_method(:launch) { |children:, **| launched.concat(children) && nil } }
+      Smith.config.run_launcher = recorder.new
+      parent = mapping("SpecPartsMapParent", document_child("SpecPartsMapChild"))
+      parent.new(context: { ids: [1, 2] }).run_persisted!("map-docs", adapter:)
+
+      args = JSON.parse(JSON.generate(launched.first.to_h.except(:workflow)))
+      fields = args.transform_keys(&:to_sym).merge(input: args["input"].transform_keys(&:to_sym))
+      rebuilt = Smith::ChildRun.new(**fields, workflow: launched.first.workflow)
+      child = rebuilt.build
+      restored = child.class.from_state(JSON.parse(JSON.generate(child.to_state)))
+      expect(restored.run!.state).to eq(:done)
+      expect(texts).to eq(["the resume"])
+      expect(launched.map(&:artifact_namespaces).uniq.length).to eq(1)
+
+      sent.clear
+      Smith.config.run_launcher = Smith::Launchers::Inline.new
+      result = parent.new(context: { ids: [1, 2] }).run!
+      expect(result.context[:results].map { _1[:status] }).to eq(%w[succeeded succeeded])
+      expect(texts).to eq(["the resume", "the resume"])
+    end
+
+    it "lets a grandchild read its grandparent's, but no run read another's or its children's" do
+      reader(:anthropic)
+      Smith.config.run_launcher = Smith::Launchers::Inline.new
+      grandchild = document_child("SpecPartsGrandchild")
+      middle = with_stubbed_class("SpecPartsMiddle", workflow_class) do
+        initial_state :idle
+        state :failed
+        transition :fan, from: :idle, to: :done do
+          map :ids, workflow: grandchild, max_items: 1, timeout: 60,
+                    input: ->(id, ctx) { { id:, ref: ctx[:ref] } }, into: :results, collect: :states,
+                    on_item_failure: :collect
+          on_failure :fail
+        end
+      end
+      top = mapping("SpecPartsTop", middle)
+
+      expect(top.new(context: { ids: [1] }).run!.state).to eq(:done)
+      expect(texts).to eq(["the resume"])
+
+      sent.clear
+      stranger = reading("SpecPartsStranger", "x") do |ref|
+        Smith::Message.user([Smith::Content.document(ref.sub(/\A[^:]+/, "another-run"), media_type: "text/plain")])
+      end
+      expect(stranger.new.run!.last_error.message).to match(/missing/)
+
+      store = Smith::Artifacts::ScopedStore.new(backend: Smith::Artifacts::Memory.new, namespace: "kid",
+                                                readable: ["mom"])
+      own = store.store("mine")
+      expect(own).to start_with("kid:")
+      parent_view = Smith::Artifacts::ScopedStore.new(backend: Smith::Artifacts::Memory.new, namespace: "mom")
+      expect(parent_view.fetch(own)).to be_nil
+    end
+
+    it "ends a step's artifact scope with the step" do
+      seen_scopes = []
+      klass = with_stubbed_class("SpecPartsScopeEnds", workflow_class) do
+        initial_state :idle
+        transition(:t, from: :idle, to: :done) { compute { |_s| seen_scopes << Smith.scoped_artifacts } }
+      end
+      outer = Smith::Artifacts::ScopedStore.new(backend: Smith::Artifacts::Memory.new, namespace: "outer")
+      Smith.scoped_artifacts = outer
+
+      klass.new.run!
+
+      expect(seen_scopes.sole).not_to equal(outer)
+      expect(Smith.scoped_artifacts).to equal(outer)
+    ensure
+      Smith.scoped_artifacts = nil
+    end
+
+    it "bounds and checks the namespaces a child inherits" do
+      kid = document_child("SpecPartsBoundsChild")
+      deep = Array.new(16) { "ns#{_1}" }
+      parent = workflow_class.allocate
+      parent.instance_variable_set(:@execution_namespace, "self")
+      parent.instance_variable_set(:@inherited_artifact_namespaces, deep)
+      expect(parent.send(:child_artifact_namespaces)).to eq(["self", *deep.first(15)])
+
+      ok = Smith::ChildRun.new(ref: 0, key: "k", workflow: kid, input: {}, untrusted_keys: [])
+      expect(ok.artifact_namespaces).to eq([])
+      [["x"] * 17, [1], [""], "ns"].each do |namespaces|
+        bad = Smith::ChildRun.new(ref: 0, key: "k", workflow: kid, input: {}, untrusted_keys: [],
+                                  artifact_namespaces: namespaces)
+        expect { bad.build }.to raise_error(Smith::WorkflowError), namespaces.inspect[0, 30]
+      end
+      state = Smith::ChildRun.new(ref: 0, key: "k", workflow: kid, input: {}, untrusted_keys: [],
+                                  artifact_namespaces: %w[a a b]).build.to_state
+      expect(state[:inherited_artifact_namespaces]).to eq(%w[a b])
+      expect { kid.from_state(state.merge(inherited_artifact_namespaces: [1])) }.to raise_error(Smith::SerializationError)
+    end
+  end
+
   describe "hand-built parts messages" do
     it "are checked in input: and in seed_messages" do
       reader(:anthropic)

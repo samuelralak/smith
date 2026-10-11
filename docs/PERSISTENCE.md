@@ -704,9 +704,12 @@ Smith::Message.system([Smith::Content.text(house_style, cache: true)])     # in 
   JSON-shaped parts. A document (`application/pdf`, `text/plain`) or image
   (`image/png`, `image/jpeg`, `image/gif`, `image/webp`) is a ref from
   `Smith.artifacts.store`, never bytes, so a message with parts stays small in
-  sessions, payloads and digests. A ref belongs to the run whose step stored it
-  (and the workflows it nests): another run, a child run included, reads
-  nothing from it.
+  sessions, payloads and digests. A ref is read by the run whose step stored
+  it, the workflows it nests, and its child runs: a child run (map, call or
+  spawn) may read its parent's artifacts and those of the parent's nearest
+  ancestors, up to 16 generations, so a document stored once reaches every
+  item of a map. A run never reads an unrelated run's artifacts, nor its own
+  children's; a child returns content, or the parent stores what it needs.
 - `Smith::Message.user`, `.assistant` and `.system` take a String or 1 to 100
   parts; a system message takes text parts only, and `input:` takes user and
   assistant messages. A message with parts carries `"parts" => true` beside its
@@ -903,12 +906,14 @@ results. Smith never queues, polls or waits on a child.
 
 ```ruby
 class QueueLauncher
-  # children: Smith::ChildRun (ref, key, workflow, input, untrusted_keys, #build)
+  # children: Smith::ChildRun (ref, key, workflow, input, untrusted_keys,
+  # artifact_namespaces, #build)
   def launch(children:, parent_key:, await_token:)
     children.each do |child|
       ChildRunJob.perform_later(key: child.key, parent_key:, await_token:, ref: child.ref,
                                 workflow: child.workflow.name, input: child.input,
-                                untrusted_keys: child.untrusted_keys)
+                                untrusted_keys: child.untrusted_keys,
+                                artifact_namespaces: child.artifact_namespaces)
     end
   end
 end
@@ -924,8 +929,11 @@ Smith.config.run_launcher = QueueLauncher.new
   idempotent on `child.key`. Only a launcher whose `inline?` is true has its
   return value taken as results (it must return them, as an Array); anything
   another launcher returns is ignored. The job side rebuilds a
-  `Smith::ChildRun` from its arguments and calls `#build`, which checks the
-  untrusted key names it gets back as Strings.
+  `Smith::ChildRun` from its arguments (input keys as Symbols) and calls
+  `#build`, which checks the untrusted key names it gets back as Strings and
+  the artifact namespaces the child may read (its parent's and the parent's
+  nearest ancestors', at most 16; a job that omits them gives the child none,
+  and its reads of the parent's documents fail).
 - A child gets only the context `input:` returns (JSON-shaped, bounded at 1 MiB
   each and 16 MiB for a step's children together) and no session. A key the
   parent treats as untrusted that `input:` passes under the same name stays
@@ -1204,5 +1212,7 @@ end
 Why this matters:
 
 - large payloads can move out of the inline workflow result
-- refs are execution-scoped
+- refs are execution-scoped: a step stores and reads under its run's scope,
+  which ends with the step, so outside a run's steps `Smith.artifacts` is the
+  configured store itself; a child run reads its ancestors' refs too
 - nested workflows inherit artifact scope correctly

@@ -56,7 +56,8 @@ module Smith
 
       def child_run(config, token, ref, input)
         ChildRun.new(ref:, key: ChildRun.key_for(token, ref), workflow: config.fetch(:workflow), input:,
-                     untrusted_keys: (untrusted_context_keys & input.keys).freeze)
+                     untrusted_keys: (untrusted_context_keys & input.keys).freeze,
+                     artifact_namespaces: child_artifact_namespaces)
       end
 
       # The inputs of one step's children together are bounded, as one

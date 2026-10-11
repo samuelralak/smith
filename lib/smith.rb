@@ -120,22 +120,6 @@ module Smith
   # Logger (§7 — Ruby Logger, not Rails.logger)
   setting :logger, default: nil
 
-  def self.artifacts
-    scoped_artifacts || config.artifact_store || (@_default_artifacts ||= Artifacts::Memory.new)
-  end
-
-  def self.artifacts=(store)
-    config.artifact_store = store
-  end
-
-  def self.scoped_artifacts
-    Thread.current[:smith_scoped_artifacts]
-  end
-
-  def self.scoped_artifacts=(store)
-    Thread.current[:smith_scoped_artifacts] = store
-  end
-
   def self.persistence_adapter
     raw_adapter = config.persistence_adapter
     raw_options = config.persistence_options || {}

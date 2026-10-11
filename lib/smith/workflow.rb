@@ -124,6 +124,8 @@ module Smith
       # A nested workflow's parent's untrusted keys, in force before its
       # seed builder runs (NestedExecution).
       @inherited_untrusted_keys = StepIO.take_inherited_untrusted_keys
+      # A child run's parent's artifact namespaces, which it may read.
+      @inherited_artifact_namespaces = ArtifactIntegration.take_inherited_artifact_namespaces
       initialize_tool_result_state
       seed_initial_session_messages
     end

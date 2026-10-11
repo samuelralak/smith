@@ -22,7 +22,7 @@ RSpec.describe "Smith::Workflow state serialization shape" do
         class state persistence_key context budget_consumed step_count awaiting pending_retry active_seconds
         active_step_started_at
         execution_namespace
-        inherited_untrusted_keys
+        inherited_untrusted_keys inherited_artifact_namespaces
         created_at updated_at
         next_transition_name session_messages total_cost total_tokens tool_results outcome usage_entries last_output
         last_agent_execution last_failed_step persistence_version schema_version definition_digest seed_digest seed_message_count
