@@ -362,6 +362,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   completion's `ProviderUsage`), `AgentResult.usage_details`,
   `AgentResult::USAGE_DETAIL_MEMBERS` and `UsageEntry::OPTIONAL_MEMBERS` are
   public.
+- Budget ledgers: `budget_ledger { |context| ... }` names the host's ledger for
+  a run (an account's spend across runs, say), built from the run's trusted
+  context when it is created and on every restore, never persisted. Each
+  provider request a step makes over the wire (each round of a tool loop,
+  each fallback model, each follow-up, streamed or not) is held on it before
+  it is sent: `reserve!(amount, key:, expires_at:)`, then
+  `reconcile!(key, amount)` with what it spent, or `release!(key)` when it
+  failed without reporting usage. A hold (`Smith::Budget::Amount`:
+  `input_tokens`, `output_tokens`, `cost`, `tokens`) is the request's output
+  cap and an estimate of its input, priced from the catalog. A refusal raises
+  `Smith::BudgetUnavailable`, a `BudgetExceeded`, before anything is sent; an
+  error from `reconcile!` or `release!` is logged by class and the step goes
+  on. Keys are `"<attempt_id>:<round>"`, and a batch request's `custom_id`: a
+  batch request is held when captured, at the batch discount, and settled
+  when its result comes. Every hold carries `expires_at`,
+  `Smith.config.budget_hold_ttl` (3600 seconds by default) from now, and a
+  batch request's wait longer, so a ledger drops a hold whose process died.
+  A nested workflow without its own ledger charges the enclosing run's.
+  Runtime readiness warns of an agent whose model has no price
+  (`:budget_ledger_unpriced`).
 
 ### Changed
 

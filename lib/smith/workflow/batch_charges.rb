@@ -33,16 +33,21 @@ module Smith
       end
 
       def charge_batch_result(agent_class, message)
-        reply = RubyLLM::Providers::Anthropic.new(RubyLLM.config)
-                                             .send(:parse_completion_response,
-                                                   Providers::BatchExchange::Response.new(message.to_h))
-        usage = Agent::ProviderUsage.from_message(reply)&.new(mode: :batch)
+        usage = batch_reply_usage(message)
         return unless usage
 
         model = Agent::ModelReference.new(model_id: agent_class.chat_kwargs[:model] || message["model"],
                                           provider: "anthropic")
         record_billed_usages(agent_class, [usage], :failed_attempt, model, attempt_id: nil)
         settle_spent_batch_charges
+      end
+
+      # A result's usage, as the provider's own parser reads its message.
+      def batch_reply_usage(message)
+        reply = RubyLLM::Providers::Anthropic.new(RubyLLM.config)
+                                             .send(:parse_completion_response,
+                                                   Providers::BatchExchange::Response.new(message.to_h))
+        Agent::ProviderUsage.from_message(reply)&.new(mode: :batch)
       end
 
       def settle_spent_batch_charges

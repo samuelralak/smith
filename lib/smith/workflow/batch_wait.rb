@@ -64,6 +64,7 @@ module Smith
         step = with_step_context(transition) do
           Execution.instance_method(:execute_step_body).bind_call(self, transition)
         ensure
+          settle_batch_holds(transition, record.fetch("token"), entries)
           charge_untaken_batch_results(transition)
         end
         settle_batch_wait(step)

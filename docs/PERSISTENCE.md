@@ -996,6 +996,19 @@ post it, hands it to `Smith.config.batch_queue` and waits.
   an in-process child (a nested workflow, or a child run run inline) fails
   before anything is captured or queued (readiness: `:nested_workflow_waits`).
 
+## Budget Ledgers
+
+A workflow's `budget_ledger` (README, "Budget ledgers") is never persisted:
+Smith calls its block with the run's trusted context on every restore. A
+batch request's hold is keyed by its `custom_id`, which the run's
+`pending_batch` already keeps, so the delivery that resumes the run (in any
+process) settles it: a succeeded result reconciles what it cost, any other
+result, a result the step set aside, or an expired wait releases it. Holds
+are taken while the step's attempt runs and released if it ends before its
+requests are queued. A process that dies during a request leaves its hold
+unsettled until its `expires_at`; a delivery that ran again after a crash
+settles the same keys again, so a ledger settles each key once.
+
 ## Child Runs
 
 `map`, `call` and `spawn` steps start other workflows as runs of their own.

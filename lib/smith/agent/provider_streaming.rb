@@ -16,14 +16,25 @@ module Smith
 
       # The chat's reply and, for a streamed step, what Completion needs to
       # read its facts. The stream's collection goes into `collected` too,
-      # for the facts of a call that fails part way.
-      def complete_chat(chat, model_reference, collected)
+      # for the facts of a call that fails part way. Requests over the wire
+      # are held on the step's budget ledger, if it has one, keyed by the
+      # attempt's `attempt_id` (`facts`).
+      def complete_chat(chat, model_reference, collected, facts = {})
         return capture_batch_call(chat, model_reference) if @batch_capturing
 
         entry = take_batch_result
         delivered = deliver_batch_result(chat, entry) if entry
         return delivered if delivered
 
+        ledger = @step_budget_ledger
+        return wire_completion(chat, model_reference, collected) unless ledger
+
+        Providers::RequestHolds.within(chat_provider(chat), ledger, facts[:attempt_id]) do
+          wire_completion(chat, model_reference, collected)
+        end
+      end
+
+      def wire_completion(chat, model_reference, collected)
         stream = @step_stream
         return [chat.complete, nil] unless stream
 
@@ -69,7 +80,8 @@ module Smith
         end
         raise BatchModeUnavailable, "a batch request is one turn: its agent cannot have tools" if chat_tools?(chat)
 
-        Providers::BatchExchange.within(Providers::BatchExchange::Exchange.new(provider, nil)) { chat.complete }
+        @batch_capture = Providers::BatchExchange::Exchange.new(provider, nil)
+        Providers::BatchExchange.within(@batch_capture) { chat.complete }
         raise BatchModeUnavailable, "the call did not reach its provider's request"
       end
 

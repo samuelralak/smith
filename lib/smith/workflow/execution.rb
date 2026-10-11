@@ -47,12 +47,19 @@ module Smith
 
           StepCompletion.instance_method(:complete_step).bind_call(self, transition, output)
         end
+      ensure
+        release_batch_holds
       end
 
       # Restored with the step's thread context (ThreadContextSnapshot): a
-      # step's depth counts the runs whose steps it runs inside.
+      # step's depth counts the runs whose steps it runs inside, and its
+      # budget ledger is its run's, else the enclosing run's (the thread's,
+      # for a nested workflow's steps; the run's own, which a fan-out's
+      # branch threads read, for the step's).
       def setup_step_context
         Thread.current[:smith_step_depth] = (Thread.current[:smith_step_depth] || 0) + 1
+        @step_budget_ledger = @budget_ledger || Thread.current[:smith_budget_ledger]
+        Thread.current[:smith_budget_ledger] = @step_budget_ledger
         Tool.current_deadline = wall_clock_deadline
         Tool.current_ledger = @ledger
         Tool.current_tool_result_collector = tool_result_collector

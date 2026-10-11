@@ -69,6 +69,14 @@ module Smith
   end
 
   class BudgetExceeded < Error; end
+
+  # A host's budget ledger (`budget_ledger`) refused a provider request's
+  # hold; nothing was sent. A BudgetExceeded, so it is not retried unless a
+  # step's `retry_on` names it (a durable retry waits for budget).
+  class BudgetUnavailable < BudgetExceeded
+    def initialize(message = "the budget ledger refused the request") = super
+  end
+
   class DeadlineExceeded < Error; end
   class MaxTransitionsExceeded < Error; end
   class GuardrailFailed < Error; end

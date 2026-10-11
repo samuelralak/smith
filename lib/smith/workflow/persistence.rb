@@ -148,6 +148,7 @@ module Smith
         @split_step_mutex = Mutex.new
         validate_step_in_progress!(normalized) if
           self.class.idempotency_mode == :strict && !allow_step_in_progress
+        @budget_ledger = build_budget_ledger
       end
 
       def validated_persistence_version(normalized)

@@ -89,6 +89,13 @@ module Smith
                          "execution_key:)"
   }
 
+  # How long a provider request's hold on a host's budget ledger
+  # (`budget_ledger`) lasts unsettled, in seconds: past it the request's
+  # process is taken to have died, and the ledger drops the hold. It must
+  # outlast the longest request (its retries and stream included). A batch
+  # request's hold lasts its wait (25 hours) longer.
+  setting :budget_hold_ttl, default: 3600, constructor: positive_integer_setting.call(:budget_hold_ttl)
+
   # Retry policy for transient persistence I/O failures.
   #   attempts:    total attempts (including the first)
   #   base_delay:  initial sleep between attempts, doubled each retry
@@ -210,6 +217,8 @@ require_relative "smith/events/step_failed"
 # Budget (depends on Errors)
 require_relative "smith/budget"
 require_relative "smith/budget/ledger"
+require_relative "smith/budget/host_ledger"
+require_relative "smith/budget/request_hold"
 
 # Pricing (depends on Smith config)
 require_relative "smith/pricing"
@@ -253,6 +262,7 @@ require_relative "smith/streaming"
 require_relative "smith/providers/stream_facts"
 require_relative "smith/batch"
 require_relative "smith/providers/batch_exchange"
+require_relative "smith/providers/request_holds"
 require_relative "smith/providers/anthropic/batches"
 
 # Artifact store (no internal deps)
@@ -344,6 +354,7 @@ require_relative "smith/workflow/retry_wait"
 require_relative "smith/workflow/batch_execution"
 require_relative "smith/workflow/batch_wait"
 require_relative "smith/workflow/batch_charges"
+require_relative "smith/workflow/batch_holds"
 require_relative "smith/workflow/child_run_results"
 require_relative "smith/workflow/child_run_execution"
 require_relative "smith/workflow/wait_execution"

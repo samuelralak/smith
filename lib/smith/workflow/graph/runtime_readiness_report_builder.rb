@@ -30,7 +30,8 @@ module Smith
 
         def runtime_diagnostics(bindings, nested)
           [*bindings.to_a, *RunLauncherDiagnostic.new(graph).to_a, *DurableRetryDiagnostic.new(graph).to_a,
-           *StreamDiagnostic.new(graph).to_a, *BatchDiagnostic.new(graph).to_a, *nested.to_a]
+           *StreamDiagnostic.new(graph).to_a, *BatchDiagnostic.new(graph).to_a,
+           *BudgetLedgerDiagnostic.new(graph).to_a, *nested.to_a]
         end
 
         def metrics(topology_report, diagnostics, bindings, nested)

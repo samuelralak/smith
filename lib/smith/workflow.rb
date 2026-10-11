@@ -36,6 +36,7 @@ module Smith
     include BatchExecution
     include BatchWait
     include BatchCharges
+    include BatchHolds
     include ChildRunResults
     include ChildRunExecution
     include Execution
@@ -131,6 +132,7 @@ module Smith
       @inherited_artifact_namespaces = ArtifactIntegration.take_inherited_artifact_namespaces
       initialize_tool_result_state
       seed_initial_session_messages
+      @budget_ledger = build_budget_ledger
     end
 
     def persisted_keys
@@ -265,6 +267,15 @@ module Smith
         # the last agent execution persists across intervening compute steps.
         @last_agent_execution = { model: step_result[:model], provider: step_result[:provider] } if step_result.key?(:model)
       end
+    end
+
+    # The host's budget ledger for the run (`budget_ledger`), from its
+    # trusted context, so no untrusted key chooses whose budget is charged.
+    def build_budget_ledger
+      builder = self.class.budget_ledger
+      return unless builder
+
+      Budget::HostLedger.check!(builder.call(snapshot_value(trusted_context_view)))
     end
 
     def build_ledger

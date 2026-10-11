@@ -726,6 +726,62 @@ threads with `Thread#raise` or `Thread#kill`. Arbitrary asynchronous thread
 termination can make any in-process return value outcome-ambiguous; hosts must
 use cancellation signals, bounded I/O, and process isolation for hard stops.
 
+### Budget ledgers
+
+A run's `budget` bounds that run. A budget shared by many runs (an account's
+monthly spend, say) lives in the host, and a workflow names it with
+`budget_ledger`:
+
+```ruby
+class MonthlyLedger
+  def initialize(account) = @account = account
+
+  # Admit the hold (true) or refuse it (false); record it under key until
+  # expires_at, after which it counts for nothing.
+  def reserve!(amount, key:, expires_at:) = ...
+  def reconcile!(key, amount) = ...   # what the request spent, in place of its hold
+  def release!(key) = ...             # it spent nothing
+end
+
+class DocumentReview < Smith::Workflow
+  budget_ledger { |context| MonthlyLedger.new(context[:account_id]) }
+end
+```
+
+Smith calls the block, with the run's trusted context, when the run is created
+and on every restore, and never persists the ledger; nil means none. Before
+each provider request a step makes over the wire (each round of a tool loop,
+each fallback model, each follow-up, streamed or not) Smith asks the ledger to
+admit its hold. If the ledger refuses, the step fails with
+`Smith::BudgetUnavailable` (a `BudgetExceeded`, not retried by default) before
+anything is sent; `retry_on Smith::BudgetUnavailable, durable: true, ...` waits
+for budget instead. After the request, Smith reconciles what it spent, or
+releases the hold when it failed without reporting usage. An error from
+`reserve!` passes on, as nothing was sent; one from `reconcile!` or `release!`
+is logged by class and the step goes on, as the money is spent.
+
+A hold (`Smith::Budget::Amount`: `input_tokens`, `output_tokens`, `cost`, and
+`tokens`, their sum) is the request's output cap (its `max_tokens`, else the
+model's) and an estimate of its input: text at one token per 3 bytes, an image
+at 1,600 tokens, 8 tokens a message for its framing, capped at the model's
+context window. It is priced from the
+pricing catalog; `cost` is nil for an unpriced model, which runtime readiness
+warns of (`:budget_ledger_unpriced`). What a request spent replaces its hold.
+
+A key is the provider attempt's `attempt_id` (as on its `:provider_call` trace)
+and the request's round, `"<attempt_id>:<n>"`, and for a batch request its
+`custom_id`. A batch request is held when its step captures it, at the batch
+discount, and settled when its result comes (released if it failed, was not
+used, or never came). A process that dies during a request never settles its
+hold, so every hold carries `expires_at`: `Smith.config.budget_hold_ttl` from
+now (an hour by default; it must outlast the longest request), and for a batch
+request its 25-hour wait longer. Smith runs no timer; the ledger leaves holds
+past `expires_at` out of what it admits. A key may be settled again after a
+crash (a batch delivery that ran twice): settle each key once.
+
+A nested workflow without a `budget_ledger` of its own charges the enclosing
+run's; a child run (`call`, `map`, `spawn`) uses its own class's.
+
 ## Doctor
 
 After adding Smith, verify the integration:

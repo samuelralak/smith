@@ -1904,6 +1904,30 @@ Documented contracts covered:
 - the Anthropic client submits one batch with the shared headers and the provider's key, refuses mixed headers, other providers, empty or oversized batches before sending, reads status and the JSONL results file, cancels, refuses a malformed batch id, and makes no connection retries
 - these contracts are mutation-verified against the full suite
 
+### `spec/smith/budget_ledger_spec.rb`
+
+Purpose:
+
+- asserts that a workflow's `budget_ledger` holds each provider request a step makes before it is sent and settles it with what the request spent
+
+Architecture basis:
+
+- Section 6, Budgets; Section 5, Persistence and Resume; Section 7, Observability
+
+Documented contracts covered:
+
+- the block is called with the run's trusted context (no untrusted key, a copy the block cannot change the run through) on `new` and on every restore; nil means none; an object without `reserve!`, `reconcile!` and `release!` is refused
+- a request is held under `"<attempt_id>:<round>"` (the `:provider_call` trace's attempt id) with its output cap and an estimate of its input, priced from the catalog, until `budget_hold_ttl` from now, and reconciled with its priced usage; a streamed request reconciles the usage its stream reported
+- a refusal raises `BudgetUnavailable` (a `BudgetExceeded`) before anything is sent; an error from `reserve!` passes on and nothing is sent; an error from `reconcile!` is logged by class only and the answer is kept
+- each round of a tool loop is held under its own round; a request that failed without usage is released before a fallback model's, which has its own attempt id
+- a nested workflow without its own ledger charges the enclosing run's; each sync fan-out branch is held from its own thread; a tool's own RubyLLM call is not held
+- a request's cache reads and writes reconcile as input
+- a batch refusal releases the sibling holds already taken before a retry's backoff
+- a batch request is held at capture under its `custom_id`, at the batch discount, until its 25-hour wait plus `budget_hold_ttl`; delivery reconciles a succeeded result and releases an errored one; a refusal queues nothing; an expired wait releases its holds; a step that fails before queuing releases the holds it took
+- readiness warns of an agent whose model has no price only when the workflow declares a ledger; `budget_hold_ttl` must be a positive Integer
+- the hold estimate counts text at 3 bytes a token, an image at 1,600 and each message's framing at 8, is capped at the context window, and reads the output cap from `max_tokens`, a provider's own name for it, the model, or 4,096
+- these contracts are mutation-verified against the full suite
+
 ### `spec/smith/batch_request_change_spec.rb`
 
 Purpose:

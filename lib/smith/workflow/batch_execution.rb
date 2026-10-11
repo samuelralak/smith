@@ -81,8 +81,9 @@ module Smith
       end
 
       # The request the agent's call would send (BatchExchange throws it out
-      # of the call before anything is sent).
+      # of the call before anything is sent), and its hold.
       def capture_batch_request(agent_class, prepared_input)
+        @batch_capture = nil
         request = catch(Providers::BatchExchange::CAPTURED) do
           @batch_capturing = true
           invoke_agent(agent_class, prepared_input)
@@ -90,13 +91,15 @@ module Smith
         ensure
           @batch_capturing = false
         end
-        request || raise(BatchModeUnavailable, "a batch step's agent made no provider request")
+        [request || raise(BatchModeUnavailable, "a batch step's agent made no provider request"), @batch_capture.hold]
       end
 
       def send_batch(transition, captures)
         refuse_batch_wait!
-        Captured.new(token: wait_token_for(transition, ["batch", @step_attempt || 1]),
-                     requests: captures.transform_values(&:call), attempt: @step_attempt || 1,
+        token = wait_token_for(transition, ["batch", @step_attempt || 1])
+        captured = captures.transform_values(&:call)
+        hold_batch!(token, captured.transform_values(&:last))
+        Captured.new(token:, requests: captured.transform_values(&:first), attempt: @step_attempt || 1,
                      key_generation: @step_key_generation || 0)
       end
 
@@ -116,6 +119,7 @@ module Smith
       # its place.
       def queue_batch(transition, captured)
         ids = enqueue_requests(captured)
+        @batch_holds = nil
         @pending_retry = nil
         @pending_batch = pending_batch_record(transition, captured, ids)
         @awaiting = WaitRecord.build_batch(transition, captured.token, WAIT_SECONDS, Time.now.utc, ids.length)

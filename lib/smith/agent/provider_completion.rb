@@ -112,7 +112,7 @@ module Smith
         message_count = chat_message_count(chat)
         observed_reference = observed_model_reference(chat, fallback: model_reference)
         timer = ProviderCallTiming::Timer.start
-        response, stream, mode, call_facts = complete_chat(chat, observed_reference, collected = [])
+        response, stream, mode, call_facts = complete_chat(chat, observed_reference, collected = [], facts)
         timer.stop
         completion = Completion.from_messages(response:, messages: new_chat_messages(chat, message_count), stream:,
                                               mode:)

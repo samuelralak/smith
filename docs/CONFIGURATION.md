@@ -115,6 +115,9 @@ Smith.configure do |config|
   # Batch steps (`execute Agent, mode: :batch`): the host's queue of requests.
   config.batch_queue = HostBatchQueue.new
 
+  # How long a request's hold on a workflow's budget_ledger lasts unsettled.
+  config.budget_hold_ttl = 3600
+
   config.logger = Logger.new($stdout)
 end
 ```
@@ -166,6 +169,7 @@ from JSON or YAML has.
 | `pricing` | Best-known model-call cost catalog | Add once you care about `total_cost` |
 | `logger` | Smith's runtime logger | Usually the first setting to add |
 | `batch_queue` | Takes the requests `mode: :batch` steps send: `enqueue(custom_id:, await_token:, request:, execution_key:)`, idempotent on `custom_id`; the host submits them (`Smith::Providers::Anthropic::Batches`) and resumes each run with its results | Set before any workflow batches; readiness reports a missing one |
+| `budget_hold_ttl` | Seconds a provider request's hold on a workflow's `budget_ledger` lasts unsettled (default 3600): each hold's `expires_at` is this from now, and a batch request's is its 25-hour wait longer. Past it the request's process is taken to have died | Raise it above the longest request (its retries and stream included) |
 | `stream_sinks` | The sinks `execute Agent, stream: :name` steps send text to, by name: callables that take a step's info (`stream`, `execution_key`, `transition`) and return that step's sink, or nil to stream nothing | Register each name a workflow streams to; readiness reports a missing one |
 | `persistence_adapter` | Adapter for durable workflow state | `:redis`, `:rails_cache`, `:active_record`, `:memory`, or a custom object |
 | `persistence_options` | Per-adapter options (client, namespace, model, columns) | See "Built-In Persistence Adapters" |

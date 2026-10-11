@@ -24,7 +24,7 @@ module Smith
         **Smith::OutputFailure.restorers.transform_values { "output_failure" },
         "Smith::DeadlineExceeded" => "deadline_exceeded",
         "Smith::ProviderPermanentFailure" => "provider_permanent_failure",
-        "Smith::BudgetExceeded" => "budget_exceeded",
+        "Smith::BudgetExceeded" => "budget_exceeded", "Smith::BudgetUnavailable" => "budget_exceeded",
         "Smith::GuardrailFailed" => "guardrail_failed",
         "Smith::WaitTimedOut" => "wait_timed_out",
         "Smith::ChildRunsFailed" => "child_runs_failed",
