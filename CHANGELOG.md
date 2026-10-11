@@ -26,35 +26,48 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   restored payload must hold only `system`, `user`, `assistant` and `tool`
   messages; one written earlier may hold a system message the host admitted,
   which still reaches agents, so rebuild such sessions to rely on the new rule.
-- An agent with no model and no fallback models now fails its step instead
-  of returning nil, and runtime readiness reports `:agent_without_model` as an
-  error. Give placeholder agents a model (and a stubbed chat in tests).
+- An agent with no model and no fallback models now fails its step with a
+  `Smith::WorkflowError` instead of returning nil, and runtime readiness reports
+  `:agent_without_model` as an error. Give placeholder agents a model (and a
+  stubbed chat in tests). An agent with fallback models but no primary model
+  used to be skipped the same way and now runs on its fallbacks.
 - A response cut off at its output limit, a refused response, and a structured
   output that does not parse to a JSON object now fail the step
   (`Smith::OutputTruncated`, `Smith::OutputRefused`, `Smith::OutputInvalid`)
   instead of passing on as the output; `on_truncation :accept` keeps the old
   behavior for cut-off responses. These errors are not `AgentError`s, so a
-  `rescue Smith::AgentError` no longer catches such a failure.
+  `rescue Smith::AgentError` no longer catches such a failure. An agent's
+  `after_completion` now runs before the structured-output checks, and does not
+  run for a refused or cut-off response.
 
 ### Added
 
 - Output integrity. Smith reads each response's stop reason (OpenAI's
-  message-level refusals included) as cut off or refused. A cut-off response
-  raises `Smith::OutputTruncated` unless the agent declares
-  `on_truncation :accept` or `on_truncation retry_with: { max_tokens: n }` (one
-  more call on the same model, with the limit mapped to the provider's own
-  parameter); a refused one raises `Smith::OutputRefused` unless the agent
-  declares `on_refusal fallback: "provider/model"` (one call on that model). A
-  structured output that is not a JSON object, breaks a schema constraint, or
-  fails `output_contract` (any object whose `call(hash)` answers `success?` and
+  message-level refusals and Gemini's prompt blocks included) as cut off or
+  refused. A cut-off response raises `Smith::OutputTruncated` unless the agent
+  declares `on_truncation :accept` or `on_truncation retry_with:
+  { max_tokens: n }` (one more call on the same model, with the limit mapped to
+  the provider's own parameter, made only when it is larger than the request
+  had and the response did not run out of context); a refused one raises
+  `Smith::OutputRefused` unless the agent declares
+  `on_refusal fallback: "provider/model"` (one call on that model). A
+  structured output (`output_schema`, or a static RubyLLM `schema`) that is not
+  a JSON object, breaks a schema constraint, or fails `output_contract` (whose
+  `call(hash)` returns true, false, or a result answering `success?` and
   `errors`) goes back to the model with its problems up to `output_repairs`
-  times (default 1), then raises `Smith::OutputInvalid` with the problems as
-  "path: problem" lines. For Anthropic, Smith sends the schema without the
-  numeric, string-length and array-size constraints it rejects, with
-  `additionalProperties: false` on every object, and checks those constraints
-  on the parsed output for every provider. The three errors share the failure
-  family `output_failure`, persist and restore with their details, and are not
-  retryable. Every response is billed and settles into budgets.
+  times (default 1), then raises `Smith::OutputInvalid` with at most 20 problems
+  as "path: problem" lines. No follow-up call is made once a tool has run in
+  the step or the step's reserved budget is spent, and a follow-up that fails
+  raises the output error with the provider's error as its cause. For
+  Anthropic, Smith sends the schema without the numeric, string-length and
+  array-size constraints it rejects, with `additionalProperties: false` on
+  every object, refuses an object that allows other properties or declares
+  none (runtime readiness reports `:output_schema_unsupported`), and checks
+  those constraints on the parsed output for every provider. The three errors
+  share the failure family `output_failure` (in durable composite branches
+  too), persist and restore with their details, and are not retryable. Every
+  response is billed and settles into budgets, and a rejected one leaves an
+  `:output_rejected` trace.
 - Usage carries prompt-cache, thinking and response facts. Each provider
   response's usage (`Smith::Agent::ProviderUsage`), each `UsageEntry`, each
   `AgentResult`, and the `:provider_call` trace gain `cache_read_tokens`,

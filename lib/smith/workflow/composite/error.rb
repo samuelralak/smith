@@ -10,7 +10,7 @@ module Smith
       class Error < Payload
         FAMILIES = %w[
           tool_capture_failed tool_guardrail_failed deterministic_step_failure
-          deadline_exceeded agent_error workflow_error other
+          deadline_exceeded agent_error workflow_error output_failure other
         ].freeze
         ALWAYS_RETRYABLE_FAMILIES = %w[deadline_exceeded agent_error].freeze
         CONDITIONALLY_RETRYABLE_FAMILIES = %w[tool_guardrail_failed deterministic_step_failure].freeze

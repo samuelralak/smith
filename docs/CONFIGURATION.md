@@ -23,9 +23,13 @@ Use agent classes for invocation behavior:
 - `budget`
 - `guardrails`
 - `output_schema`
+- `output_contract`, `output_repairs`
+- `on_truncation`, `on_refusal`
 - `data_volume`
 - `fallback_models`
 - `register_as`
+
+The output macros are described in the README, Agent outputs.
 
 ### 3. Workflow configuration: `Smith::Workflow`
 

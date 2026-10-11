@@ -35,7 +35,7 @@ module Smith
         # Fail closed: an empty candidate chain (agent without a model)
         # or any exhausted sequence must surface a typed diagnostic, not
         # the sequence itself destructured into nils.
-        raise Smith::AgentError,
+        raise Smith::WorkflowError,
               "no executable model candidate for #{agent_class}; declare a model or fallback_models"
       end
 

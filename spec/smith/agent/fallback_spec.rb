@@ -1014,7 +1014,7 @@ RSpec.describe "Smith::Agent fallback model chains" do
 
     expect do
       workflow.send(:invoke_agent, agent, nil, output_schema: nil)
-    end.to raise_error(agent_error, /no executable model candidate/)
+    end.to raise_error(Smith::WorkflowError, /no executable model candidate/)
   end
 
   it "collapses an unqualified primary and a qualified fallback of the same model into one candidate" do

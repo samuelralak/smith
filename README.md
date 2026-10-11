@@ -579,33 +579,50 @@ that is not what the agent declares are not accepted as the step's output:
 ```ruby
 class Reviewer < Smith::Agent
   model "claude-opus-5-5", provider: :anthropic
-  output_schema ReviewSchema
-  output_contract ReviewContract                     # any object whose call(hash) answers success? and errors
+  output_schema ReviewSchema                         # its root is an object
+  output_contract ReviewContract                     # call(hash) => true, false, or a result with success? and errors
   output_repairs 1                                   # the default; 0 turns repair off
-  on_truncation retry_with: { max_tokens: 32_000 }   # or :fail (the default), or :accept
+  on_truncation retry_with: { max_tokens: 64_000 }   # or :fail (the default), or :accept
   on_refusal fallback: "openai/gpt-5"                # or :fail (the default)
 end
 ```
 
 - A cut-off response raises `Smith::OutputTruncated`, unless the agent
-  accepts it or retries it once on the same model with a larger output limit
-  (mapped to the provider's own parameter for Anthropic, OpenAI, Gemini,
-  Vertex AI and Bedrock; another provider is not retried).
-- A refused response raises `Smith::OutputRefused`, unless the agent falls
-  back once to another model.
-- A structured output that is not a JSON object, breaks a schema constraint,
-  or fails the output contract is sent back to the same model with the
-  problems listed, up to `output_repairs` times, then raises
-  `Smith::OutputInvalid`, whose `problems` lists them as "path: problem".
+  accepts it or retries it once on the same model with a larger output limit,
+  mapped to the provider's own parameter (Anthropic, OpenAI, Gemini, Vertex AI
+  and Bedrock; another provider is not retried). There is no retry when the
+  response ran out of context rather than output, or when the new limit is no
+  larger than the request had (the agent's own parameter, or for Anthropic the
+  model's maximum, which RubyLLM already sends); a later repair keeps the
+  larger limit.
+- A refused response (a Gemini prompt block included) raises
+  `Smith::OutputRefused`, unless the agent falls back once to another model.
+- Every other response then goes through the agent's `after_completion`. A
+  structured output (an `output_schema`, or a static RubyLLM `schema`) that is
+  not a JSON object, breaks a schema constraint, or fails the output contract
+  goes back to the same model up to `output_repairs` times: the step's messages
+  as the provider got them, the rejected reply as the assistant's, and the
+  problems as "path: problem" lines. It then raises `Smith::OutputInvalid`,
+  whose `problems` lists at most 20 of them. A blank output still raises
+  `Smith::BlankAgentOutputError`.
+- No follow-up call is made once a tool has run in the step (the tools would
+  run again; the step fails with `Smith::ToolOutcomeUncertain` around the output
+  error) or once the call has spent what its step reserved from a budget. A
+  follow-up that fails raises the output error it was making up for, with the
+  provider's error as its cause.
 - Anthropic's structured outputs reject numeric, string-length and most
   array-size constraints: Smith sends Anthropic the schema without them, with
   `additionalProperties: false` on every object, and checks them on the parsed
-  output for every provider.
-- An agent with no model and no fallback models fails its step; runtime
-  readiness reports it (`:agent_without_model`).
+  output for every provider. An object that allows other properties or
+  declares none cannot be sent to Anthropic; the step fails before the call
+  with a `Smith::WorkflowError`, and runtime readiness reports
+  `:output_schema_unsupported` for an agent declared for Anthropic.
+- An agent with no model and no fallback models fails its step with a
+  `Smith::WorkflowError`; runtime readiness reports it (`:agent_without_model`).
 
 Every response is billed and settles into budgets, whatever happens to its
-output. The output errors share the failure family `output_failure`, persist
+output, and each rejected one leaves an `:output_rejected` trace naming its
+attempt. The output errors share the failure family `output_failure`, persist
 with a failed step, and are never retried by `Smith::Errors.retryable?`, a job
 retry on `Smith::Errors.retryable_classes`, or a transition's
 `retry_on Smith::AgentError`: Smith's own retry, fallback and repairs have run.

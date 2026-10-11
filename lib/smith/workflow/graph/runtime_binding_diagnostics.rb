@@ -14,7 +14,8 @@ module Smith
           agent_bindings.flat_map do |binding|
             [
               RuntimeBindingDiagnosticBuilder.new(graph, binding: binding).to_diagnostic,
-              UntrustedInputDiagnostic.new(graph, binding:).call
+              UntrustedInputDiagnostic.new(graph, binding:).call,
+              OutputSchemaDiagnostic.new(binding:).call
             ]
           end.compact
         end

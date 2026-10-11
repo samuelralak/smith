@@ -17,7 +17,9 @@ module Smith
     #
     # OpenAI reports a refusal on the message rather than as a finish
     # reason (Chat Completions `message.refusal`, a Responses `refusal`
-    # content item); it is read as the stop reason "refusal".
+    # content item); it is read as the stop reason "refusal". Gemini blocks a
+    # prompt with `promptFeedback.blockReason` and no candidates; that is read
+    # as the stop reason "prompt_blocked".
     #
     # Both facts are metadata: bounded Strings, absent when the body is of
     # none of these shapes, does not carry them, or cannot be read (streamed
@@ -25,6 +27,7 @@ module Smith
     module ResponseFacts
       MAX_BYTES = 256
       REFUSAL = "refusal"
+      PROMPT_BLOCKED = "prompt_blocked"
 
       READERS = [
         [->(body) { body["type"] == "message" }, ->(body) { [body["stop_reason"], body["id"]] }],
@@ -39,6 +42,8 @@ module Smith
            reason = (REFUSAL if responses_refusal?(body["output"])) || (details["reason"] if details.is_a?(Hash))
            [reason || body["status"], body["id"]]
          end],
+        [->(body) { !body.key?("candidates") && body.dig("promptFeedback", "blockReason").is_a?(String) },
+         ->(body) { [PROMPT_BLOCKED, body["responseId"]] }],
         [->(body) { body["candidates"].is_a?(Array) },
          ->(body) { [first_entry(body["candidates"])&.fetch("finishReason", nil), body["responseId"]] }],
         [->(body) { body["stopReason"].is_a?(String) }, ->(body) { [body["stopReason"], nil] }]

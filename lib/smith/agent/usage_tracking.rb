@@ -51,8 +51,8 @@ module Smith
         agent_result
       end
 
+      # The output has been through `after_completion` (OutputIntegrity).
       def finalize_output(agent_class, agent_result)
-        agent_result.content = run_after_completion(agent_class, agent_result.content, @context)
         raise_blank_output!(agent_class, agent_result)
         agent_result
       end

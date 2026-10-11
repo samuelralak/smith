@@ -21,12 +21,13 @@ module Smith
 
     attr_reader :agent_name, :model_used, :stop_reason, :problems
 
-    def initialize(agent_name:, model_used:, stop_reason: nil, problems: [])
+    # `message` is the persisted one when the error is restored.
+    def initialize(agent_name:, model_used:, stop_reason: nil, problems: [], message: nil)
       @agent_name = agent_name
       @model_used = model_used
       @stop_reason = stop_reason
       @problems = Array(problems).first(MAX_PROBLEMS).map { |problem| self.class.bounded(problem.to_s) }.freeze
-      super(describe)
+      super(message || describe)
     end
 
     def details
@@ -39,14 +40,14 @@ module Smith
       # details, for the failure record validator and reconstructor.
       def restorers
         [OutputFailure, OutputTruncated, OutputRefused, OutputInvalid].to_h do |error_class|
-          [error_class.name, ->(details) { error_class.from_details(details) }]
+          [error_class.name, ->(details, message = nil) { error_class.from_details(details, message:) }]
         end.freeze
       end
 
-      def from_details(details)
+      def from_details(details, message: nil)
         values = normalize_details(details)
         new(agent_name: values.fetch(:agent_name)&.to_sym, model_used: values.fetch(:model_used),
-            stop_reason: values.fetch(:stop_reason), problems: values.fetch(:problems))
+            stop_reason: values.fetch(:stop_reason), problems: values.fetch(:problems), message:)
       end
 
       def bounded(text) = DiagnosticText.capture(text, max_bytes: MAX_TEXT_BYTES)

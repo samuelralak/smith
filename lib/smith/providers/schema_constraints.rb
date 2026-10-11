@@ -61,19 +61,26 @@ module Smith
       end
 
       def strip_nested(key, setting, depth)
-        if NESTED_LISTS.include?(key) && setting.is_a?(Array) then setting.map { strip(_1, depth + 1) }
+        if (NESTED_LISTS.include?(key) || key == "items") && setting.is_a?(Array)
+          setting.map { strip(_1, depth + 1) }
         elsif NESTED_MAPS.include?(key) && setting.is_a?(Hash) then setting.transform_values { strip(_1, depth + 1) }
         elsif NESTED_SCHEMAS.include?(key) then strip(setting, depth + 1)
         else setting
         end
       end
 
+      # An object gets `additionalProperties: false`. One that allows other
+      # properties, or declares none (a free-form map, which closed could
+      # only be `{}`), cannot be sent and is refused before the call.
       def close_object!(schema)
-        return unless schema["type"] == "object" || schema.key?("properties")
-        return schema["additionalProperties"] = false unless schema.key?("additionalProperties")
-        return if schema["additionalProperties"] == false
+        return unless Array(schema["type"]).include?("object") || schema.key?("properties")
 
-        raise Smith::AgentError, "Anthropic structured outputs need additionalProperties: false on every object"
+        open = schema.key?("additionalProperties") && schema["additionalProperties"] != false
+        if open || Hash(schema["properties"]).empty?
+          raise Smith::WorkflowError, "Anthropic structured outputs need every object to declare its properties " \
+                                      "and allow no others"
+        end
+        schema["additionalProperties"] = false
       end
     end
   end

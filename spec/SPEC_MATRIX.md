@@ -1704,6 +1704,28 @@ Documented contracts covered:
 - an agent with no model fails its serial or fan-out step
 - these contracts are mutation-verified against the full suite
 
+### `spec/smith/agent/output_integrity_review_spec.rb`
+
+Purpose:
+
+- asserts the output-integrity contracts two adversarial reviews of slice 6 found missing: tool replay, budgets, deadlines, retry limits, repair shapes, contract verdicts, schema shaping and checking, and persisted failures
+
+Architecture basis:
+
+- Section 4.1, Agents
+- Section 4.6, Budgets and Deadlines
+
+Documented contracts covered:
+
+- no follow-up call once a tool ran in the step (the step fails with `ToolOutcomeUncertain` around the output error), once the step's reservation is spent, or after the deadline; a failed follow-up raises the pending output error with the provider error as cause and `retry_on Smith::AgentError` makes no more calls; follow-ups count up the attempt index and each rejection leaves an `:output_rejected` trace
+- a truncation retry is not made when the response ran out of context or the new limit is not larger than the request had, keeps the larger limit for later repairs, and keeps an OpenAI chat's own `max_tokens` key
+- a Gemini prompt block reads as refused, and a Responses refusal wins over its incomplete reason
+- a blank structured output stays `BlankAgentOutputError`; a repair after a handoff keeps the continuation turn; checks run after `after_completion`, which a refused response never reaches; RubyLLM's `schema` macro gets the checks and the shaping; a schema Anthropic cannot take is refused before the call (non-retryable) and reported by readiness
+- output contracts: empty failures, `false`, Array errors, `true`, JSON text without a schema, unreadable verdicts; schema and contract problems together are capped at 20 and restore
+- readiness accepts fallback-only agents in roles that need a model; persisted output failures keep their problems and refuse the wrong family or bad details; composite branch evidence uses the `output_failure` family
+- schema shaping strips tuple items and `not`, closes nullable objects and refuses free-form ones; the checker handles decimal multiples, integral floats, numeric duplicates, deep refs, `oneOf`, `prefixItems`, `definitions`, properties beside `anyOf`, and deep alternatives in bounded time
+- these contracts are mutation-verified against the full suite
+
 ### `spec/smith/workflow/isolation_spec.rb`
 
 Purpose:

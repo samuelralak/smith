@@ -22,10 +22,10 @@ module Smith
           end
 
           agent_class = registry_binding.fetch(:agent_class)
-          return if agent_class.model_configured?
+          return if agent_class.model_configured? || fallback_models?(agent_class)
           return required_model_diagnostic if model_required?
 
-          model_warning unless fallback_models?(agent_class)
+          model_warning
         end
 
         private

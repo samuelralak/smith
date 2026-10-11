@@ -31,6 +31,7 @@ module Smith
       def reconcile_branch_budget(ledger, reservation, agent_result: nil)
         return unless ledger && reservation
 
+        forget_call_reservation(reservation)
         actuals = extract_actuals(agent_results_for_settlement(agent_result))
         settlement = reservation.amounts.to_h do |dimension, _amount|
           [dimension, actual_for_dimension(dimension, actuals[:tokens], actuals[:cost])]
@@ -71,9 +72,14 @@ module Smith
       def release_branch_budget(ledger, reservation)
         return unless ledger && reservation
 
+        forget_call_reservation(reservation)
         return ledger.release_many!(reservation) if reservation.amounts.length > 1
 
         ledger.release!(reservation)
+      end
+
+      def forget_call_reservation(reservation)
+        Thread.current[:smith_call_reservation] = nil if Thread.current[:smith_call_reservation].equal?(reservation)
       end
 
       def settle_budget_on_failure(ledger, estimates, agent_result)
@@ -98,11 +104,11 @@ module Smith
         reserve_estimates!(ledger, estimates)
       end
 
+      # The reservation is also the current call's, for OutputIntegrity to
+      # stop making follow-up calls once it is spent.
       def reserve_estimates!(ledger, estimates)
-        return ledger.reserve_many!(estimates) if estimates.length > 1
-
-        dimension, amount = estimates.first
-        ledger.reserve!(dimension, amount)
+        reservation = estimates.length > 1 ? ledger.reserve_many!(estimates) : ledger.reserve!(*estimates.first)
+        Thread.current[:smith_call_reservation] = reservation
       end
 
       def finalize_branch(transition, index, result, ledger, reserved)

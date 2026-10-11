@@ -125,7 +125,7 @@ RSpec.describe "Smith output integrity: stop reasons, typed output errors, contr
     end
 
     it "settles the set-aside response into the budget with the accepted one, keeping the chat's own params" do
-      settled = agent("SpecSettledAgent", []) { on_truncation retry_with: { max_tokens: 64 } }
+      settled = agent("SpecSettledAgent", []) { on_truncation retry_with: { max_tokens: 32_000 } }
       answers = fake_chat([["half", anthropic_body("max_tokens")], ["whole", anthropic_body("end_turn")]])
       allow(settled).to receive(:chat) { |**options| answers.call(**options).with_params(temperature: 0) }
       klass = with_stubbed_class("SpecSettledWorkflow", workflow_class) do
@@ -138,11 +138,11 @@ RSpec.describe "Smith output integrity: stop reasons, typed output errors, contr
       workflow.run!
 
       expect(workflow.ledger.consumed[:total_tokens]).to eq(4)
-      expect(chats.last[:params]).to eq(temperature: 0, max_tokens: 64)
+      expect(chats.last[:params]).to eq(temperature: 0, max_tokens: 32_000)
     end
 
     it "settles a set-aside response once when the next call fails" do
-      failing = agent("SpecFailedRetryAgent", []) { on_truncation retry_with: { max_tokens: 64 } }
+      failing = agent("SpecFailedRetryAgent", []) { on_truncation retry_with: { max_tokens: 32_000 } }
       answers = fake_chat([["half", anthropic_body("max_tokens")]])
       calls = 0
       allow(failing).to receive(:chat) do |**options|
@@ -164,7 +164,8 @@ RSpec.describe "Smith output integrity: stop reasons, typed output errors, contr
 
       result = workflow.run!
 
-      expect(failure(result)).to be_a(Smith::AgentError)
+      expect(failure(result)).to be_a(Smith::OutputTruncated)
+      expect(failure(result).cause).to be_a(RubyLLM::ServerError)
       expect(workflow.ledger.consumed[:total_tokens]).to eq(2)
     end
 
@@ -318,8 +319,8 @@ RSpec.describe "Smith output integrity: stop reasons, typed output errors, contr
 
       run("SpecNoInputWorkflow")
 
-      expect(chats.last[:messages].map { _1[:role] }).to eq([:user])
-      expect(chats.last[:messages].sole[:content]).to start_with("Your previous reply was:\nprose")
+      expect(chats.last[:messages].map { [_1[:role], _1[:content][0, 12]] })
+        .to eq([[:user, "Reply with t"], [:assistant, "prose"], [:user, "Your previou"]])
     end
   end
 
@@ -351,7 +352,7 @@ RSpec.describe "Smith output integrity: stop reasons, typed output errors, contr
       expect(described_class.for_provider(payload, :openai)).to equal(payload)
       open_object = { "schema" => { "type" => "object", "additionalProperties" => true } }
       expect { described_class.for_provider(open_object, "anthropic") }
-        .to raise_error(Smith::AgentError, /additionalProperties/)
+        .to raise_error(Smith::WorkflowError, /declare its properties and allow no others/)
     end
 
     it "reports each broken constraint with its path, through refs and alternatives" do
@@ -362,7 +363,7 @@ RSpec.describe "Smith output integrity: stop reasons, typed output errors, contr
           "/n: must be below 10", "/n: is not a multiple of 0.5", "/tags: has more than 3 items",
           "/tags: has duplicate items", "/tags/0: has fewer than 2 characters", "/tags/1: has fewer than 2 characters",
           "/tags/2: has fewer than 2 characters", "/tags/3: has fewer than 2 characters",
-          "/one/0/w: has more than 3 characters", "/either: matches none of the allowed forms"
+          "/one/0/w: has more than 3 characters", "/either: is below the minimum 5"
         ]
       )
       expect(described_class.problems(payload["schema"], { "n" => 2.5, "tags" => %w[ab cd], "either" => "x" }))
@@ -434,7 +435,7 @@ RSpec.describe "Smith output integrity: stop reasons, typed output errors, contr
       ).call[:error]
 
       expect(error).to be_an_instance_of(Smith::OutputFailure)
-      expect(error.message).to eq("agent :a response from model m could not be used")
+      expect(error.message).to eq("gone")
     end
 
     it "refuses details that are not bounded" do
@@ -484,7 +485,7 @@ RSpec.describe "Smith output integrity: stop reasons, typed output errors, contr
       end
 
       expect(failure(run("SpecModellessWorkflow")).message).to match(/no executable model candidate/)
-      expect(failure(fan.new.run!)).to be_a(Smith::AgentError)
+      expect(failure(fan.new.run!)).to be_a(Smith::WorkflowError)
     end
   end
 end

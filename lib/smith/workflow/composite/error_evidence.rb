@@ -3,6 +3,7 @@
 require "dry-initializer"
 
 require_relative "../../errors"
+require_relative "../../output_failure"
 require_relative "../../tool_capture_failed"
 require_relative "error"
 
@@ -10,6 +11,13 @@ module Smith
   class Workflow
     module Composite
       class ErrorEvidence
+        FAMILIES = [
+          [ToolCaptureFailed, "tool_capture_failed"], [ToolGuardrailFailed, "tool_guardrail_failed"],
+          [DeterministicStepFailure, "deterministic_step_failure"], [DeadlineExceeded, "deadline_exceeded"],
+          [OutputFailure, "output_failure"], [AgentError, "agent_error"], [WorkflowError, "workflow_error"]
+        ].freeze
+        private_constant :FAMILIES
+
         extend Dry::Initializer
 
         param :error
@@ -49,15 +57,7 @@ module Smith
         end
 
         def error_family
-          case error
-          when ToolCaptureFailed then "tool_capture_failed"
-          when ToolGuardrailFailed then "tool_guardrail_failed"
-          when DeterministicStepFailure then "deterministic_step_failure"
-          when DeadlineExceeded then "deadline_exceeded"
-          when AgentError then "agent_error"
-          when WorkflowError then "workflow_error"
-          else "other"
-          end
+          FAMILIES.find { |error_class, _family| error.is_a?(error_class) }&.last || "other"
         end
 
         def tool_capture_metadata

@@ -224,8 +224,9 @@ module Smith
         prior.push(role: :user, content:)
       end
 
-      # A structured candidate (an output_schema agent's Hash or Array) gets
-      # the JSON serialisation the provider boundary applies; text stays as is.
+      # A structured candidate (an output_schema agent's Hash, or an Array a
+      # schema-less generator returned) gets the JSON serialisation the
+      # provider boundary applies; text stays as is.
       def candidate_content(candidate)
         candidate.is_a?(Hash) || candidate.is_a?(Array) ? json_message_content(candidate) : candidate.to_s
       end
