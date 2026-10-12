@@ -45,16 +45,18 @@ module Smith
       deep_freeze(JSON.parse(encoded))
     end
 
-    # What identifies a request's content: a SHA-256 of its payload and
-    # headers as JSON gives them, so the request a delivery answers can be
-    # told from one the step would render now.
-    def digest(request) = digest_of(request.fetch("params"), request.fetch("headers"))
+    # What identifies a request's content: a SHA-256 of its payload, prompt
+    # cache markers aside (CacheMarkers), and headers as JSON gives them, so
+    # the request a delivery answers can be told from one the step would
+    # render now.
+    def digest(request) = digest_of(CacheMarkers.strip_request(request.fetch("params")), request.fetch("headers"))
 
-    # Whether a call renders a request other than the one sent (`digest`).
-    # Nothing is sent, so nothing in it is refused; one JSON cannot give
-    # counts as changed.
+    # Whether a call renders a request other than the one sent (`digest`),
+    # cache markers aside; a digest Smith 0.12.2 took with its markers still
+    # matches the request as it was. Nothing is sent, so nothing in it is
+    # refused; one JSON cannot give counts as changed.
     def changed?(digest, params, headers)
-      digest_of(params, headers.to_h) != digest
+      [CacheMarkers.strip_request(params), params].none? { digest_of(_1, headers.to_h) == digest }
     rescue JSON::GeneratorError, JSON::NestingError, Encoding::UndefinedConversionError
       true
     end

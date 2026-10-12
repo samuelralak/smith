@@ -149,7 +149,7 @@ module Smith
 
     def request_digest(chat)
       shape = [chat.model.id, chat.model.provider.to_s, chat.messages.map { message_shape(_1) },
-               tools_shape(chat.tools), chat.schema, chat.params]
+               tools_shape(chat.tools), chat.schema, CacheMarkers.strip_request(chat.params)]
       Digest::SHA256.hexdigest(JSON.generate(shape))
     rescue StandardError
       nil
@@ -158,7 +158,7 @@ module Smith
     def message_shape(message)
       content = message.content
       body = case content
-             when RubyLLM::Content::Raw then content.value
+             when RubyLLM::Content::Raw then CacheMarkers.strip_blocks(content.value)
              when RubyLLM::Content
                [content.text, content.attachments.map { [_1.filename, _1.mime_type, _1.content.to_s.bytesize] }]
              else content

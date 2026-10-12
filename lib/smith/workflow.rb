@@ -412,10 +412,12 @@ module Smith
       normalize_seed_messages(seeded)
     end
 
-    def compute_seed_digest(messages)
+    # A seed's drift digest, its parts' cache flags aside (CacheMarkers);
+    # with them, as Smith before 0.12.3 took it.
+    def compute_seed_digest(messages, cache_flags: false)
       return nil if messages.nil? || messages.empty?
 
-      Digest::SHA256.hexdigest(JSON.generate(messages))
+      Digest::SHA256.hexdigest(JSON.generate(cache_flags ? messages : CacheMarkers.strip_parts(messages)))
     rescue JSON::GeneratorError, Encoding::UndefinedConversionError, Encoding::InvalidByteSequenceError => e
       raise WorkflowError,
             "seed_messages content must be valid UTF-8 (Smith hashes via JSON.generate " \

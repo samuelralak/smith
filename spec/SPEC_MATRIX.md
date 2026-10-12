@@ -1989,6 +1989,23 @@ Documented contracts covered:
 - a streamed call that fails after kept replies gives each kept reply its own facts and each live reply its round's, none the failed round's
 - these contracts are mutation-verified against the review fixes
 
+
+### `spec/smith/cache_markers_spec.rb`
+
+Purpose:
+
+- pins that a prompt-cache marker never changes what identifies a request (0.12.3)
+
+Architecture basis:
+
+- Section 5, Persistence and Resume
+
+Documented contracts covered:
+
+- Anthropic's `cache_control` markers are left out where they sit (the request, its system and message blocks, a tool result's blocks, its tools); a tool's input or schema, however marker-shaped or deeply nested, is never touched
+- a replay whose call caches its instructions, or its whole request, where the first call did not finds the response memo's answer and sends nothing; two calls whose tool inputs differ keep different keys; a call whose instructions changed is sent again
+- a batch request is the same request with or without cache markers, and another once what it asks changes (a tool schema included); a digest Smith 0.12.2 took with its markers still matches the request as it was
+- a seed whose content parts are now cached, or no longer, passes `seed_validation :strict`; a seed digest Smith 0.12.2 took with its cache flags still matches the seed as it was
 ### `spec/smith/budget_ledger_spec.rb`
 
 Purpose:

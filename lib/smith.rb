@@ -227,6 +227,7 @@ require_relative "smith/budget/ledger"
 require_relative "smith/budget/host_ledger"
 require_relative "smith/budget/request_hold"
 require_relative "smith/budget/continuation"
+require_relative "smith/cache_markers"
 require_relative "smith/response_memo"
 
 # Pricing (depends on Smith config)

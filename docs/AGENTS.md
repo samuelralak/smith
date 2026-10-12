@@ -216,7 +216,10 @@ without sleeping: `Smith::Providers::Anthropic::Batches` gives the host
 `submit`, `status`, `results` and `cancel`. `resume!` with
 `{custom_id => result}` runs the step again, each call taking its result as
 the reply it would have got. A call that renders another request by then (a
-date in its prompt, data read afresh, a prompt changed in a deploy) does what
+date in its prompt, data read afresh, a prompt changed in a deploy; a prompt
+cache marker added or dropped is no change, as it never changes what the
+request asks, though a request captured by Smith 0.12.2 is matched as it was
+sent, markers included) does what
 its step's `on_request_change:` says: `:keep` (the default) takes the result,
 which answers the request as sent, and its `:provider_call` trace says
 `request_changed: true`; `:resend` sends the request as rendered now over the

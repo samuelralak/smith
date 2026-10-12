@@ -228,13 +228,16 @@ module Smith
         validate_step_in_progress!(fields.to_h { |field| [field, state[field] || state[field.to_s]] })
       end
 
+      # A digest Smith before 0.12.3 took, its parts' cache flags included.
+      def flagged_seed_digest?(messages, stored) = compute_seed_digest(messages, cache_flags: true) == stored
+
       def validate_seed_digest!(normalized)
         stored_digest = normalized[:seed_digest]
         return if stored_digest.nil?
 
         current_messages = compute_seed_messages
         current_digest = compute_seed_digest(current_messages)
-        return if current_digest == stored_digest
+        return if current_digest == stored_digest || flagged_seed_digest?(current_messages, stored_digest)
 
         case self.class.seed_validation
         when :strict
