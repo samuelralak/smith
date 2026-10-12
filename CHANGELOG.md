@@ -4,6 +4,29 @@ All notable changes to Smith are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Smith is pre-1.0 and under active development; expect occasional contract tightening between minor versions until 1.0.
 
+## [0.12.4] - 2026-10-13
+
+### Changed
+
+- A provider's refusal for want of credit or past a spending limit is
+  `RubyLLM::PaymentRequiredError` whatever status it came with
+  (`Smith::BillingRefusals`), with the error RubyLLM raised as its cause. A
+  refusal is told by what the provider says it is: Anthropic's `billing_error`,
+  its tier's monthly spend cap (a 429 whose `error_code` is
+  `enforced_spend_limit_reached`), its 400s for spent credit ("Your credit
+  balance is too low") and for a spend limit the account set ("You have
+  reached your specified API usage limits"), and OpenAI's
+  `insufficient_quota`. A streamed request's refusal, which RubyLLM raises as
+  a `RubyLLM::ServerError`, is one too, and so is one met by
+  `Smith::Providers::Anthropic::Batches#submit`. It is the provider account's
+  failure, so another provider in the fallback chain is tried, and a host can
+  name `RubyLLM::PaymentRequiredError` in `interrupting_errors` to have a step
+  wait for credit instead of failing. Any other error is unchanged: a rate
+  limit that mentions a quota (Gemini's) stays a rate limit.
+- A model candidate that met an interrupting error outlasts how a later
+  fallback fails: the step is cut short, as it would have been with no
+  fallback, instead of failing on the fallback's error.
+
 ## [0.12.3] - 2026-10-12
 
 ### Changed
