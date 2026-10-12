@@ -34,6 +34,20 @@ module Smith
       end
     end
 
+    # A list of StandardError subclasses, frozen; nil is none. StandardError
+    # itself would match every error, and an error outside it never reaches
+    # a step's rescue.
+    def error_classes(name)
+      lambda do |value|
+        classes = Array(value)
+        unless classes.all? { _1.is_a?(Class) && _1 < StandardError }
+          raise ArgumentError, "Smith.config.#{name} must list subclasses of StandardError, got #{value.inspect}"
+        end
+
+        classes.uniq.freeze
+      end
+    end
+
     # A host adapter: nil, or an object that answers `calls` (each named
     # with its arguments, as the message says).
     def adapter(name, calls)

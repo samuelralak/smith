@@ -75,6 +75,11 @@ module Smith
 
       def settle! = call_reservation&.settle!
 
+      # One of its calls met an interruption (Smith::Interruptions).
+      def interrupted! = @interrupted = true
+
+      def interrupted? = @interrupted == true
+
       private
 
       def initialize_failure_queues

@@ -10,7 +10,7 @@ end
 spend running, counted across restores in the persisted `active_seconds`, not
 the time since the run was created: time spent waiting, or between steps a host
 advances from a queue, does not count. A step that raised or whose process died
-is charged, on the next restore, the time from its start, at most what is left
+(or met an interrupting error) is charged, on the next restore, the time from its start, at most what is left
 of the budget, so a run that keeps failing stays bounded across retries.
 Durable composite branches each start from what is left; their running time is
 not added back. An agent's `wall_clock` bounds each of

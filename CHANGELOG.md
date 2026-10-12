@@ -6,6 +6,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+### Added
+
+- `Smith.config.interrupting_errors`: subclasses of StandardError that
+  interrupt a step instead of failing it, such as the host's database or
+  queue out of reach. A step that meets one (raised in it, a tool failure
+  handler included, or one of the first 15 causes of an error that was, never
+  through a provider's own failure) stops where it is, as if its worker had
+  stopped: no failure route, no retry, no failure recorded or emitted (a
+  deterministic step's trace says `outcome: :interrupted`), no tool failure
+  handler notified and no failed branch outcome kept. The error itself
+  reaches the caller, and wins over other branch and tool errors but a
+  process-fatal one; the stored run is as the step left it, so a lax run
+  takes the step again when next advanced. Smith does not count
+  interruptions. `Smith::Interruptions.find` answers whether an error is or
+  was raised from one. None by default.
+
 ### Documentation
 
 - The README is a short guide now: what Smith is, installing it, a first

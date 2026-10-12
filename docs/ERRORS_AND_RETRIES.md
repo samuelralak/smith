@@ -67,6 +67,57 @@ took effect before a timeout. An error named in `new_idempotency_key_on:` (or
 took no effect, and the attempts after it use new keys. See
 [PERSISTENCE.md](PERSISTENCE.md), Replay Safety.
 
+## Interrupting errors
+
+Some errors say the host could not do its part, not that a step went wrong:
+its database or its queue out of reach for a moment. Named as interrupting,
+they stop a step where it is, as if its worker had stopped, instead of
+failing it:
+
+```ruby
+Smith.config.interrupting_errors = [
+  ActiveRecord::ConnectionNotEstablished,
+  ActiveRecord::ConnectionFailed,
+  Smith::PersistenceIOError
+]
+```
+
+A step meets one when it is raised anywhere in the step (a compute block, a
+tool, a tool failure handler, a guardrail, a budget ledger, a nested or
+inline child run, a parallel branch) or is one of the first 15 causes of an
+error that was. Smith then takes no failure route, makes no retry
+(`retry_on`, durable ones included), records no failure (`last_failed_step`,
+`StepFailed`; a deterministic step's trace says `outcome: :interrupted`),
+notifies no tool failure handler and keeps no failed branch outcome. The
+error itself, not one that wrapped it, reaches the caller of `advance!`,
+`advance_persisted!`, `run!`, `run_persisted!`, or of `resume!` when the
+delivery completes a batch step; among parallel branches and tools run
+together it wins over every other error but a process-fatal one. The run's
+stored state is as the step left it: a lax run takes the step again, under
+the same idempotency keys and with the response memo's answers, when it is
+next advanced; a strict run is found under way on restore
+(`Smith::StepInProgressOnRestore`), as after a crash. The instance that
+raised is not advanced again: restore the run.
+
+Name only errors that mean your own systems failed. A provider's own failure
+(`RubyLLM::Error`, or its HTTP client's `Faraday::Error`) is the provider's
+whatever it was raised from, so naming a low-level class such as
+`Errno::ECONNREFUSED` never turns a provider outage into an interruption;
+name the provider's class itself for that. Smith does not count
+interruptions: a step that meets one every time (a query of its own that
+always times out, if `ActiveRecord::StatementTimeout` were named) is taken
+again for as long as the host keeps advancing it, so the host bounds it, by
+its job's retries or a count of its own. A `wall_clock` budget is charged as
+after a crash: on restore, the time from the step's start, an outage
+included, at most what is left.
+
+A response memo, a trace adapter, a stream sink, an event handler, an
+`on_step` callback, a `capture_result` block that is not strict, and a budget
+ledger's `reconcile!` and `release!` log one they meet and go on, as they do
+any error of their own. Only subclasses of StandardError can be named, never
+StandardError itself. None are named by default, so every error takes its
+step's route.
+
 ## Response memo
 
 A step replayed after its process died makes its provider calls again, and

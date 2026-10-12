@@ -26,6 +26,7 @@ module Smith
 
         ChildRun.result(ref: child.ref, run_result: run)
       rescue StandardError => e
+        Interruptions.pass!(e)
         failed(child, nil, DiagnosticText.error_class_name(e))
       end
 

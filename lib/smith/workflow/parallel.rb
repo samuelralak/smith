@@ -39,6 +39,7 @@ module Smith
       def self.preferred_error(reasons)
         errors = Array(reasons).compact
         process_fatal_error(errors) ||
+          interruption(errors) ||
           notification_failure(errors) ||
           terminal_execution_error(errors) ||
           ordinary_error(errors) ||
@@ -47,13 +48,16 @@ module Smith
 
       def self.process_fatal_error(errors) = errors.find { !_1.is_a?(StandardError) }
 
+      def self.interruption(errors) = errors.find { Interruptions.find(_1) }
+
       def self.notification_failure(errors) = errors.find { _1.is_a?(ToolFailureNotificationFailed) }
 
       def self.terminal_execution_error(errors) = errors.find { Smith::Errors.retry_forbidden?(_1) }
 
       def self.ordinary_error(errors) = errors.find { !_1.is_a?(Cancellation) }
 
-      private_class_method :process_fatal_error, :notification_failure, :terminal_execution_error, :ordinary_error
+      private_class_method :process_fatal_error, :interruption, :notification_failure, :terminal_execution_error,
+                           :ordinary_error
     end
   end
 end

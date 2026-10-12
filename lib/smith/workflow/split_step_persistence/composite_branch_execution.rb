@@ -54,6 +54,7 @@ module Smith
           end
           [output, nil]
         rescue StandardError => e
+          Interruptions.pass!(e)
           [nil, e]
         end
 

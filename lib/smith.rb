@@ -79,6 +79,14 @@ module Smith
     :response_memo, { fetch: "fetch(key)", store: "store(key, record)" }
   )
 
+  # Errors that interrupt a step instead of failing it, such as the host's
+  # database or queue out of reach (Smith::Interruptions). A step that meets
+  # one, raised in it or as the cause of an error that was, stops where it
+  # is, as if its worker had stopped: no failure route, no retry, no failure
+  # recorded, and the error reaches the caller as it was raised.
+  setting :interrupting_errors, default: [].freeze,
+                                constructor: SettingConstructors.error_classes(:interrupting_errors)
+
   # How long a provider request's hold on a host's budget ledger
   # (`budget_ledger`) lasts unsettled, in seconds: past it the request's
   # process is taken to have died, and the ledger drops the hold. It must
@@ -203,6 +211,7 @@ require_relative "smith/providers/schema_constraints"
 require_relative "smith/tool_failure_notification_failed"
 require_relative "smith/persistence_payload_conflict"
 require_relative "smith/exponential_backoff"
+require_relative "smith/interruptions"
 
 # Event system (depends on Types)
 require_relative "smith/event"

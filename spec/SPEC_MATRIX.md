@@ -1659,6 +1659,29 @@ Documented contracts covered:
 - legacy payload (no `:step_in_progress` key) treated as false (backward compatibility)
 - `Workflow.inherited` propagates the idempotency_mode
 
+### `spec/smith/workflow/interrupting_errors_spec.rb`
+
+Purpose:
+
+- pins `Smith.config.interrupting_errors`: errors the host names stop a step as if its worker had stopped, instead of failing it
+
+Architecture basis:
+
+- Errors and Retries (Interrupting errors); Section 5.3, State Serialization (resume after a worker stops)
+
+Documented contracts covered:
+
+- the setting lists subclasses of StandardError, empty by default, deduplicated and frozen; refuses anything else, StandardError itself included
+- a step that meets one raises it unchanged: no failure route, no retry, no `last_failed_step`, no `StepFailed`; with none named the same error is retried and routed
+- an error raised from one (its `cause`) passes the interrupting error on; durable retries enter no wait
+- a lax persisted run takes the step again under the same idempotency key; a strict one is refused on restore (`StepInProgressOnRestore`)
+- an agent step whose tool or budget ledger meets one raises it, not `ToolOutcomeUncertain` or `BudgetLedgerError`
+- `Parallel.preferred_error` picks an interruption over every error but a process-fatal one; an inline child run's interruption stops the parent's step
+- tool batches: no failure handler notification, precedence over a sibling's capture failure, no conversion to `ToolDispatchRejected` from a callback
+- a durable composite branch raises it instead of keeping a failed outcome; a batch step's completion through `resume!` raises it and keeps the wait; a parallel step surfaces it; a deterministic step's trace says `:interrupted`
+- a tool failure handler that meets one stops the batch with it (per call and for unsettled requests); an interrupted batch notifies none of its unsettled requests with a sibling's error
+- `Interruptions.find` checks the error and 15 causes, and never looks through a provider's own failure (RubyLLM, Faraday)
+
 ### `spec/smith/workflow/cache_usage_spec.rb`
 
 Purpose:

@@ -13,7 +13,11 @@ module Smith
         finish_deterministic_step!(transition, step)
         nil
       rescue StandardError => e
-        emit_deterministic_trace(transition, outcome: :failed, failure: deterministic_failure_fields(transition, e))
+        if Interruptions.find(e)
+          emit_deterministic_trace(transition, outcome: :interrupted)
+        else
+          emit_deterministic_trace(transition, outcome: :failed, failure: deterministic_failure_fields(transition, e))
+        end
         raise
       end
 

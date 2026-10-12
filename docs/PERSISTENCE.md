@@ -1117,6 +1117,10 @@ and its place among the attempt's calls. Nothing about a memo is persisted
 with the run.
 
 
+A step that met one of the host's interrupting errors (`Smith.config.interrupting_errors`) stopped where
+it was, and is replayed as one whose process died ([ERRORS_AND_RETRIES.md](ERRORS_AND_RETRIES.md),
+Interrupting errors).
+
 A step that is replayed, by a retry or by a restore after a crash, sends its
 outside requests again. Smith gives each request a key the step can pass along,
 so a receiver that honours idempotency keys can drop the repeat. Passing the key

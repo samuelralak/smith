@@ -39,7 +39,7 @@ module Smith
       def handle_managed_callback_failure(batch, dispatch_call, claim, error)
         record_batch_failure(batch, error)
         raise error unless claim
-        raise error if error.is_a?(ToolFailureNotificationFailed)
+        raise error if error.is_a?(ToolFailureNotificationFailed) || Interruptions.find(error)
 
         failure = invocation_dispatch_failure(batch, dispatch_call, error)
         notify_invocation_failure(batch, dispatch_call, failure)

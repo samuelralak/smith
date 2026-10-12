@@ -39,6 +39,7 @@ module Smith
           attempt_scope = attempt_idempotency_scope(key_generation)
           run_attempt_under_keys(transition, attempt_scope)
         rescue StandardError => e
+          Interruptions.pass!(e)
           raise unless retry_transition_error?(config, e, attempt)
 
           key_generation += 1 if new_idempotency_key_after?(config, e, attempt_scope)

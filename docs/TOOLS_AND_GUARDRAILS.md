@@ -387,7 +387,8 @@ receive an inspection-only argument Hash. The full admitted argument graph is
 Smith-owned and frozen, so policy inspection cannot rewrite the values that
 reach `perform`. Errors raised from inside `perform`, including
 `Smith::DeadlineExceeded`, do not prove that external work was absent and retain
-their original type. Process-fatal exceptions are never converted into receipt
+their original type. Process-fatal exceptions, and errors the host names in
+`Smith.config.interrupting_errors`, are never converted into receipt
 outcomes or terminal callbacks: an admitted receipt remains unresolved and the
 durable host must reconcile it before any resume decision. Smith never
 automatically replays that uncertain work. Failure-handler errors propagate

@@ -177,7 +177,9 @@ run waits between attempts instead of sleeping in a worker. Each step gets
 idempotency keys that stay the same across retries and restores, so a
 receiver can drop a request it already handled. A response memo keeps what a
 step's provider calls returned, so a step replayed after a crash doesn't pay
-again. [`docs/ERRORS_AND_RETRIES.md`](docs/ERRORS_AND_RETRIES.md)
+again. Errors you name as interrupting (your database out of reach) stop a
+step as a crash would, instead of failing it.
+[`docs/ERRORS_AND_RETRIES.md`](docs/ERRORS_AND_RETRIES.md)
 
 ## Budgets
 

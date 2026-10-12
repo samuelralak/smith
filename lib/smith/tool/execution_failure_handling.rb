@@ -16,14 +16,19 @@ module Smith
         batch.complete_failure_notification!(tool_call)
       rescue StandardError => e
         batch.release_failure_notification!(tool_call, state)
+        pass_interruption!(batch, e)
         raise ToolFailureNotificationFailed.new(
           dispatch_error: error,
           notification_error: e
         ), cause: e
       end
 
+      # An interruption settles nothing, as a process that died settles
+      # nothing: the host reconciles the batch's unsettled requests, whichever
+      # of its calls' errors reached here first.
       def notify_unsettled_batch_failures(batch, error)
         return unless batch&.host_admitted?
+        return if Interruptions.find(error) || batch.interrupted?
 
         handler = batch.context.fetch(:current_invocation_failure_handler)
         handler_error = notify_unsettled_requests(batch, error, handler)
@@ -40,6 +45,7 @@ module Smith
             batch.complete_failure_notification!(tool_call)
           rescue StandardError => e
             batch.release_failure_notification!(tool_call, state)
+            pass_interruption!(batch, e)
             first_error ||= ToolFailureNotificationFailed.new(
               dispatch_error: failure,
               notification_error: e
@@ -47,6 +53,15 @@ module Smith
           end
         end
         first_error
+      end
+
+      # A failure handler that met an interruption stops the batch with it, as
+      # it was raised; what it had not settled stays unsettled for the host.
+      def pass_interruption!(batch, error)
+        return unless Interruptions.find(error)
+
+        record_batch_failure(batch, error)
+        Interruptions.pass!(error)
       end
 
       def batch_dispatch_failure(error, state)
@@ -68,15 +83,18 @@ module Smith
       end
 
       def record_batch_failure(batch, error)
-        if !error.is_a?(StandardError)
-          batch.fatal_failures.push(error)
-        elsif error.is_a?(ToolFailureNotificationFailed)
-          batch.notification_failures.push(error)
-        elsif error.is_a?(ToolCaptureFailed)
-          batch.capture_failures.push(error)
-        elsif Smith::Errors.retry_forbidden?(error)
-          batch.terminal_failures.push(error)
-        end
+        interrupted = Interruptions.find(error)
+        batch.interrupted! if interrupted
+        batch_failure_queue(batch, error, interrupted)&.push(error)
+      end
+
+      # An interruption counts as process-fatal: nothing else is raised over it.
+      def batch_failure_queue(batch, error, interrupted)
+        return batch.fatal_failures if interrupted || !error.is_a?(StandardError)
+        return batch.notification_failures if error.is_a?(ToolFailureNotificationFailed)
+        return batch.capture_failures if error.is_a?(ToolCaptureFailed)
+
+        batch.terminal_failures if Smith::Errors.retry_forbidden?(error)
       end
 
       def prioritized_batch_failure(batch)

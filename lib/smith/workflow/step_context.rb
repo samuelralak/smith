@@ -16,6 +16,7 @@ module Smith
           install_step_idempotency_scope(transition)
           Thread.handle_interrupt(Object => :immediate, &block)
         rescue StandardError => e
+          Interruptions.pass!(e)
           @outcome = nil
           GuardrailIntegration.instance_method(:handle_step_failure).bind_call(self, transition, e)
         ensure
