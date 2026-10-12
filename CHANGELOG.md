@@ -4,6 +4,33 @@ All notable changes to Smith are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Smith is pre-1.0 and under active development; expect occasional contract tightening between minor versions until 1.0.
 
+## [0.12.3] - 2026-10-12
+
+### Changed
+
+- What identifies a request leaves prompt-cache markers out
+  (`Smith::CacheMarkers`): the response memo's key, a batch request's digest
+  and a seed's drift digest (`seed_validation`). A marker says how a request
+  is billed, never what it asks, so a host may decide call by call whether to
+  cache a part (an agent's instructions, a content part, the whole request)
+  and a replay still finds what the first call got, as long as the part keeps
+  its form (the same text block, with or without its marker). Only the places
+  Anthropic puts `cache_control` are looked at (the request, its system and
+  message blocks, a tool result's blocks, its tools) and Smith's own
+  `"cache" => true` on a seed's content parts; a tool's input or schema, or
+  anything else a request carries as data, is never touched. A batch result
+  for a request that differs from the one sent only in its markers is no
+  longer taken as a changed request.
+
+### Upgrading
+
+- Response memo records kept by 0.12.2 for calls that carried a cache marker
+  are not found after the upgrade (their key took the marker in), so such a
+  call cut by the upgrade's deploy is paid for once more. A batch request
+  captured by 0.12.2, and a run's seed digest taken by 0.12.2, still match as
+  they were taken, cache markers included: one whose markers change after the
+  upgrade counts as changed, as before.
+
 ## [0.12.2] - 2026-10-12
 
 ### Added
