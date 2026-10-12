@@ -1941,6 +1941,7 @@ Documented contracts covered:
 
 - a call kept as complete is replayed without a request: its reply is the step's output, its usage (counts, stop reason) is recorded once, and its `:provider_call` trace says `memo: true`; the replay fetches the keys it stored
 - a tool loop kept part way continues from its tool results: the tool runs once, the resumed request carries its result, and every round's usage is counted once
+- a step cut while its tools run keeps the reply that called them (version 2, before they run, with its stop reason and message id): replayed, that reply is not asked for again, its tools run again under the same idempotency key, the next request carries their results and is a later round on the budget ledger (reconciled, not held, as the step cannot pause), and each round's usage is counted once; a streamed step keeps that reply's stream facts and streams only the live rounds
 - a streamed step replaying a kept reply gives its sink the text in one delta and sends nothing
 - a memo whose `fetch` or `store` raises is logged by class and the request goes on; a record not of the shape Smith keeps is ignored; a memo without `fetch` and `store` is refused when set
 - a call's key names its attempt, model candidate and place among the attempt's calls; a batch request is not memoized
@@ -1966,6 +1967,27 @@ Documented contracts covered:
 - a replay whose request changed (the model, or only the agent's instructions) misses and is sent; a call that cannot be kept is logged
 - a complete record that does not end in a model reply, or of another version, is ignored
 - these contracts are mutation-verified against the full suite
+
+### `spec/smith/response_memo_pending_review_spec.rb`
+
+Purpose:
+
+- pins what a review of keeping a reply before its tools run (0.12.2) found
+
+Architecture basis:
+
+- Section 5, Persistence and Resume; Section 6, Budgets
+
+Documented contracts covered:
+
+- kept tool results are charged to the agent's `tool_calls` allowance (by tool name for an exact budget) and to the workflow's `tool_calls` budget, with or without an agent allowance, so the replay offers and runs no more tools than the run did; a kept record past a lowered allowance charges what it can and goes on without tools
+- a reply calling a tool its request did not offer (a budget finalization) is not kept, so a replay fails as the run did without running that tool
+- only a record ending in a reply whose tools have not run is version 2; the rest stay version 1
+- a call a tool halted keeps only its progress, which a replay answers from without a request or a fetch error
+- a record whose tool results do not answer its replies' calls (unanswered, unknown or repeated results, a reply before the last one's results, in a complete record too, an unfinished one ending in a plain reply, a user message carrying calls) is ignored and the call is sent afresh
+- a tool's description and parameters are in the request digest, so a call kept before a tool changed misses
+- a streamed call that fails after kept replies gives each kept reply its own facts and each live reply its round's, none the failed round's
+- these contracts are mutation-verified against the review fixes
 
 ### `spec/smith/budget_ledger_spec.rb`
 

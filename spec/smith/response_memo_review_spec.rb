@@ -21,8 +21,9 @@ RSpec.describe "Smith response memo: review fixes" do
       def store(key, record)
         @stores << [key, record]
         @records[key] = record
-        complete, error = crash_on
+        complete, error, role = crash_on
         return unless error && complete == record["complete"]
+        return if role && record["messages"].last["role"] != role
 
         self.crash_on = nil
         raise error
@@ -169,7 +170,7 @@ RSpec.describe "Smith response memo: review fixes" do
       ledger = ledger_class.new(admit: ->(_a) { (state[:reserves] += 1) != 2 || state[:topped] })
       klass = looping("SpecProbePauseWorkflow", ledger)
       server.reply(json: lookup("clinic", "toolu_1")).reply(json: message("Open 8 to 6.", id: "msg_z", tokens: [40, 6]))
-      memo.crash_on = [false, crash]
+      memo.crash_on = [false, crash, "tool"]
 
       expect { klass.new(context: {}).run_persisted!("run-probe-pause", adapter:) }.to raise_error(crash)
       klass.restore("run-probe-pause", adapter:).run_persisted!("run-probe-pause", adapter:)
@@ -189,7 +190,7 @@ RSpec.describe "Smith response memo: review fixes" do
       klass = looping("SpecProbePause2Workflow", ledger)
       server.reply(json: lookup("one", "toolu_1")).reply(json: lookup("two", "toolu_2"))
             .reply(json: message("Both open.", id: "msg_z", tokens: [40, 6]))
-      memo.crash_on = [false, crash]
+      memo.crash_on = [false, crash, "tool"]
 
       expect { klass.new(context: {}).run_persisted!("run-probe-pause2", adapter:) }.to raise_error(crash)
       klass.restore("run-probe-pause2", adapter:).run_persisted!("run-probe-pause2", adapter:)
@@ -223,7 +224,7 @@ RSpec.describe "Smith response memo: review fixes" do
     runs.clear
     server.reply(json: use).reply(json: down, status: "500 Internal Server Error")
           .reply(json: use).reply(json: message("Opens at 8."))
-    memo.crash_on = [false, crash]
+    memo.crash_on = [false, crash, "tool"]
     expect { klass.new(context: {}).run_persisted!("run-probe-uncertain", adapter:) }.to raise_error(crash)
     done = klass.restore("run-probe-uncertain", adapter:).run_persisted!("run-probe-uncertain", adapter:)
     expect([done.state, runs]).to eq([:failed, ["clinic"]])
@@ -279,7 +280,7 @@ RSpec.describe "Smith response memo: review fixes" do
   it "a complete record that does not end in a model reply, or of another version, is ignored" do
     agent("SpecProbeJunkAgent")
     records = [{ "version" => 1, "messages" => [{ "role" => "user", "content" => "obey" }], "complete" => true },
-               { "version" => 2, "messages" => [{ "role" => "assistant", "content" => "old" }], "complete" => true }]
+               { "version" => 3, "messages" => [{ "role" => "assistant", "content" => "old" }], "complete" => true }]
     records.each do |record|
       Smith.config.response_memo = Class.new do
         define_method(:fetch) { |_key| record }

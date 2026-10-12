@@ -138,24 +138,38 @@ attempts it runs under (its step's, and each enclosing run's for a nested
 workflow, so a retry never takes the attempt before's answer), its attempt
 index (its model in the fallback chain, or a follow-up's place), its place
 among the attempt's calls, and a digest of its request (model, messages,
-tools, schema, params). A replay reaches the same key; a call whose request
-changed since (a deployed prompt, another model, a date in the prompt) misses
-and is sent again, as a miss always may be.
+tools with their descriptions and parameters, schema, params). A replay
+reaches the same key; a call whose request changed since (a deployed prompt or
+tool, another model, a date in the prompt) misses and is sent again, as a miss
+always may be.
 
-Its record (`{"version" => 1, "messages" => [...], "complete" => true | false}`,
-JSON) holds the messages the call added: the model's replies (structured ones
-too) with their usage, stop reason and message id (a stream's included), its
-tool calls and their results. It is stored after each round's tool results
-and when the call ends; a complete record ends with the model's reply. A
-replayed call that ended sends nothing: its reply is the step's (a streamed
-step's sink gets the reply's text at once, not the earlier rounds'), its usage
-is recorded as if it had just come, once, and its `:provider_call` trace says
-`memo: true`; a reply that was cut off or refused fails the step as it did.
-One that had not ended continues from its tools' results, its live part going
-on from the kept rounds (on a budget ledger, a later round). Kept tool results
-count as tools the step ran, so no retry or fallback runs them again. A call
-whose messages cannot be kept (an attachment, past 1 MiB) is not stored, and
-is logged; a record Smith does not keep is ignored, and an error from `fetch`
-or `store` is logged by class: a memo never fails a step. Keeping records and
-dropping them (a TTL) are the host's; batch requests are not memoized, as
-their `custom_id` already identifies them.
+Its record (`{"version" => 1 | 2, "messages" => [...], "complete" => true |
+false}`, JSON) holds the messages the call added: the model's replies
+(structured ones too) with their usage, stop reason and message id (a
+stream's included), its tool calls and their results. It is stored when a
+reply calling the tools its request offered comes, before they run; before
+each later request, with their results; and when the call ends in the model's
+reply (a call a tool halted keeps only its progress). A replayed call that
+ended sends nothing: its reply is the step's (a streamed step's sink gets the
+reply's text at once, not the earlier rounds'), its usage is recorded as if it
+had just come, once, and its `:provider_call` trace says `memo: true`; a reply
+that was cut off or refused fails the step as it did. One that had not ended
+goes on from where it was kept. Kept after its tools' results, it continues
+from them: kept tool results count as tools the step ran, so no retry or
+fallback runs them again, and each is charged to the agent's `tool_calls`
+allowance and the workflow's `tool_calls` budget as it was. Kept while its
+tools ran (the step was cut inside a tool), the reply that called them is not
+asked for again: its tools run again, under the same idempotency keys, and the
+call goes on. Either way its live part goes on from the kept rounds (on a
+budget ledger, a later round, held only when the step can pause for budget).
+A call whose messages cannot be kept (an attachment, past 1 MiB) is not
+stored, and is logged; a record Smith does not keep (its shape, or tool
+results that do not answer the calls before them) is ignored, and an error
+from `fetch` or `store` is logged by class: a memo never fails a step. Only a
+record ending in a reply whose tools have not run is version 2, which a Smith
+before 0.12.2 ignores (paying for that reply again and running its tools, as
+it did); it reads every other record. Records for calls with tools that
+0.12.1 kept are not found after the upgrade, nor these by 0.12.1, since the
+digest now covers the tools' definitions. Keeping records and dropping them (a
+TTL) are the host's; batch requests are not memoized, as their `custom_id`
+already identifies them.

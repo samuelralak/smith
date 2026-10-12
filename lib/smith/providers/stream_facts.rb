@@ -32,13 +32,15 @@ module Smith
       MARK = :@smith_stream_facts_observer
       private_constant :HELD, :MARK
 
-      # The streams of one call: its provider (nil reads any) and the facts
-      # of each of its requests.
+      # The streams of one call: its provider (nil reads any), the facts of
+      # each of its requests, and how many of its replies came kept, before
+      # them, from a response memo (no request of its own answered those).
       class Collection
-        attr_reader :rounds
+        attr_reader :rounds, :kept
 
-        def initialize(provider)
+        def initialize(provider, kept = 0)
           @provider = provider
+          @kept = kept
           @rounds = []
         end
 
@@ -64,20 +66,36 @@ module Smith
 
       # Runs the block, given the collection, collecting the facts of the
       # streams `provider` reads; returns them, one bounded Hash per round.
-      def collect(provider)
+      def collect(provider, kept: 0)
         outer = Fiber[HELD]
-        collection = Fiber[HELD] = Collection.new(provider)
+        collection = Fiber[HELD] = Collection.new(provider, kept)
         yield collection
         collection.facts
       ensure
         Fiber[HELD] = outer
       end
 
-      # The facts of each response of a streamed call, in order: each
-      # round's over its raw body's, the last settled. Rounds and responses
-      # pair up in order; a round past the last response (a request that
-      # failed) has none.
-      def per_message(messages, rounds, output_limit)
+      # The facts of the request `provider` last streamed in the collecting
+      # call, bounded; empty when it streamed none.
+      def last_round(provider)
+        collection = Fiber[HELD]
+        return {} unless collection&.owns?(provider) && !collection.rounds.empty?
+
+        collection.facts.last
+      end
+
+      # The facts of each response of a streamed call, in order: the first
+      # `kept` (a response memo's) their own; each live one its round's over
+      # its raw body's, the last settled. Rounds and live responses pair up
+      # in order; a round past the last response (a request that failed) has
+      # none.
+      def per_message(messages, rounds, output_limit, kept: 0)
+        live = messages.drop(kept)
+        own = messages.first(kept).map { ResponseFacts.from_message(_1) }
+        live.empty? ? own : [*own, *live_facts(live, rounds, output_limit)]
+      end
+
+      def live_facts(messages, rounds, output_limit)
         missing = messages.length - rounds.length
         aligned = missing.positive? ? [*Array.new(missing, {}), *rounds] : rounds.first(messages.length)
         facts = messages.zip(aligned).map { |message, round| ResponseFacts.from_message(message).merge(round) }

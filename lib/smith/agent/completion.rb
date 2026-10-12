@@ -15,8 +15,9 @@ module Smith
       attribute :response_facts, Types::Hash.default({}.freeze)
 
       # `stream` is set for a streamed call: the facts of each of its
-      # requests, read from the stream, and the request's output limit
-      # (Providers::StreamFacts). Each response's usage carries its facts and
+      # requests, read from the stream, the request's output limit, and, for
+      # a call that failed, how many of its replies a response memo kept
+      # ahead of them (Providers::StreamFacts). Each response's usage carries its facts and
       # `mode: :stream`. `mode` marks another call's usage (:batch).
       def self.from_messages(response:, messages:, stream: nil, mode: nil)
         assistant_messages = Array(messages).select do |message|
@@ -56,7 +57,8 @@ module Smith
       def self.response_facts(messages, stream)
         return messages.map { Providers::ResponseFacts.from_message(_1) } unless stream
 
-        Providers::StreamFacts.per_message(messages, stream.fetch(:rounds), stream.fetch(:output_limit))
+        Providers::StreamFacts.per_message(messages, stream.fetch(:rounds), stream.fetch(:output_limit),
+                                           kept: stream.fetch(:kept, 0))
       end
 
       def self.build_provider_usages(messages, streamed_facts, mode)

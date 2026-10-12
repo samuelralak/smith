@@ -22,6 +22,38 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   interruptions. `Smith::Interruptions.find` answers whether an error is or
   was raised from one. None by default.
 
+### Changed
+
+- The response memo keeps a reply that calls the tools its request offered
+  as soon as it comes, before its tools run, so a step cut inside a tool (its
+  worker stopped, or an interrupting error) no longer pays again for the reply
+  that called it: on replay that reply answers the call's first request
+  without sending it, its tools run again under the same idempotency keys,
+  and the call goes on. A streamed reply kept so keeps its stream's stop
+  reason and message id. Only such a record is version 2; every other record
+  is still version 1, and version 1 records are read. A Smith before this one
+  ignores version 2 records (paying for that reply again and running its
+  tools, as it did).
+- A request's memo digest covers its tools' descriptions and parameters, not
+  only their names, so a call kept before a tool changed is never replayed
+  against the new tool. Records for calls with tools kept by 0.12.1 are not
+  found after the upgrade (those calls are paid for again once).
+
+### Fixed
+
+- Kept tool results are charged to the agent's `tool_calls` allowance (by
+  tool, for an exact budget) and the workflow's `tool_calls` budget as they
+  were before the cut, so a replay never runs more tools than the step may.
+- A call a tool halted (`halt`) stored a complete record no replay could read
+  (it ended in the tool's result); it now keeps only its progress, which a
+  replay goes on from.
+- A memo record whose tool results do not answer the calls before them (a
+  result for no call, a call left unanswered before the next reply) is ignored instead of continued into a
+  request the provider refuses.
+- A streamed call that failed after replies a memo kept gave the kept replies
+  the stream facts (message id, stop reason) of its live rounds; each keeps
+  its own now.
+
 ### Documentation
 
 - The README is a short guide now: what Smith is, installing it, a first

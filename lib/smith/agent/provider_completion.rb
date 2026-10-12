@@ -123,7 +123,7 @@ module Smith
         observed_reference ||= observed_model_reference(chat, fallback: model_reference)
         prefix_usages = account_completed_prefix(
           agent_class, observed_reference, new_chat_messages(chat, message_count),
-          attempt_id: facts[:attempt_id], stream_rounds: streamed_rounds(collected || [])
+          attempt_id: facts[:attempt_id], stream: streamed(collected || [])
         )
         attempt = failed_provider_attempt(e, observed_reference, timer, facts, prefix_usages)
         raise unless provider_failure?(e) || unsupported_content?(e)

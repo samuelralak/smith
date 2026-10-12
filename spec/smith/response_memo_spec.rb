@@ -6,7 +6,7 @@ RSpec.describe "Smith response memo" do
   include_context "with a recording budget ledger"
 
   # The process dies right after the memo stores (a complete call, or a
-  # tool loop's progress).
+  # tool loop's progress, ending in a message of the given role).
   let(:crash) { Class.new(Exception) } # rubocop:disable Lint/InheritException
   let(:memo_class) do
     Class.new do
@@ -22,8 +22,9 @@ RSpec.describe "Smith response memo" do
 
       def store(key, record)
         @records[key] = record
-        complete, error = crash_on
+        complete, error, role = crash_on
         return unless error && complete == record["complete"]
+        return if role && record["messages"].last["role"] != role
 
         self.crash_on = nil
         raise error
@@ -71,7 +72,7 @@ RSpec.describe "Smith response memo" do
                                     stop: "tool_use", tokens: [10, 4]))
           .reply(json: message("It opens at 8.", id: "msg_b", tokens: [30, 5]))
     klass = asking("SpecMemoLoopWorkflow")
-    memo.crash_on = [false, crash]
+    memo.crash_on = [false, crash, "tool"]
 
     expect { klass.new(context: {}).run_persisted!("run-loop", adapter:) }.to raise_error(crash)
     expect([runs, server.requests.length]).to eq([["clinic"], 1])
@@ -81,6 +82,72 @@ RSpec.describe "Smith response memo" do
     expect(server.requests.last.body.to_json).to include("opens at 8")
     expect(done.usage_entries.sum(&:total_tokens)).to eq(14 + 35)
     expect(memo.records.values.last["complete"]).to be(true)
+  end
+
+  context "with a step cut while its tools run" do
+    let(:runs) { [] }
+    let(:keys) { [] }
+
+    before do
+      ran = runs
+      used = keys
+      dies = crash
+      stub_const("SpecMemoCutLookup", Class.new(Smith::Tool) do
+        param :query, type: :string, required: true
+        define_method(:perform) do |query:|
+          ran << query
+          used << idempotency_key(:lookup)
+          raise dies if ran.one?
+
+          { found: "#{query} opens at 8" }
+        end
+      end)
+      agent("SpecMemoCutAgent") { tools SpecMemoCutLookup }
+    end
+
+    it "keeps the reply that called them, and goes on from it: the reply is not asked for again, its tools run again" do
+      use = tool_use("spec_memo_cut_lookup", input: { "query" => "clinic" })
+      server.reply(json: message(nil, id: "msg_a", content: use, stop: "tool_use", tokens: [10, 4]))
+            .reply(json: message("It opens at 8.", id: "msg_b", tokens: [30, 5]))
+      klass = asking("SpecMemoCutWorkflow") { |_scope| ledger }
+
+      expect { klass.new(context: {}).run_persisted!("run-cut", adapter:) }.to raise_error(crash)
+      kept = memo.records.values.sole
+      expect([kept["version"], kept["complete"], kept["messages"].map { _1["role"] }]).to eq([2, false, ["assistant"]])
+      expect(kept["messages"].sole["usage"]).to include("stop_reason" => "tool_use", "id" => "msg_a")
+      before_replay = ledger.calls.length
+      done = klass.restore("run-cut", adapter:).run_persisted!("run-cut", adapter:)
+
+      expect([done.context[:answer], runs, server.requests.length]).to eq(["It opens at 8.", %w[clinic clinic], 2])
+      expect(keys.uniq.length).to eq(1)
+      expect(server.requests.last.body.to_json).to include("toolu_1", "opens at 8")
+      expect(done.usage_entries.map { [_1.total_tokens, _1.stop_reason] }).to eq([[14, "tool_use"], [35, "end_turn"]])
+      expect(ledger.calls.drop(before_replay).map { [_1.first, _1[1].split(":").last] }).to eq([[:reconcile, "2"]])
+      expect(memo.records.values.sole["complete"]).to be(true)
+    end
+
+    it "keeps a streamed reply's stream facts, and streams only the live rounds when it goes on" do
+      calls = []
+      sink = Class.new do
+        define_method(:initialize) { |log| @log = log }
+        %i[start delta reset finish fail withdraw].each { |name| define_method(name) { |*args| @log << [name, *args] } }
+      end
+      allow(Smith.config).to receive(:stream_sinks).and_return(reply: ->(_info) { sink.new(calls) })
+      server.reply(events: streamed_tool_use("spec_memo_cut_lookup", id: "msg_a"))
+            .reply(events: streamed_text(["It opens", " at 8."], id: "msg_b"))
+      klass = asking("SpecMemoCutStreamWorkflow", stream: :reply)
+
+      expect { klass.new(context: {}).run_persisted!("run-cut-stream", adapter:) }.to raise_error(crash)
+      kept = memo.records.values.sole["messages"].sole
+      expect(kept["usage"]).to include("stop_reason" => "tool_use", "id" => "msg_a")
+      calls.clear
+      done = klass.restore("run-cut-stream", adapter:).run_persisted!("run-cut-stream", adapter:)
+
+      expect([done.context[:answer], runs, server.requests.length]).to eq(["It opens at 8.", %w[clinic clinic], 2])
+      expect(calls.select { _1.first == :delta }.map(&:last)).to eq(["It opens", " at 8."])
+      expect(done.usage_entries.map { [_1.stop_reason, _1.provider_message_id, _1.mode] })
+        .to eq([["tool_use", "msg_a", :stream], ["end_turn", "msg_b", :stream]])
+    end
   end
 
   it "gives a streamed step's sink a kept answer's text at once" do
@@ -149,5 +216,24 @@ RSpec.describe "Smith response memo" do
     agent("SpecMemoBatchAgent")
     asking("SpecMemoBatchWorkflow", mode: :batch).new(context: {}).run!
     expect(memo.records.length).to eq(1)
+  end
+
+  def streamed_tool_use(tool, id:)
+    [{ type: "message_start", message: { id:, model: "m", usage: { input_tokens: 10, output_tokens: 0 } } },
+     { type: "content_block_start", index: 0,
+       content_block: { type: "tool_use", id: "toolu_1", name: tool, input: {} } },
+     { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: '{"query":"clinic"}' } },
+     { type: "content_block_stop", index: 0 },
+     { type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 4 } },
+     { type: "message_stop" }]
+  end
+
+  def streamed_text(texts, id:)
+    [{ type: "message_start", message: { id:, model: "m", usage: { input_tokens: 30, output_tokens: 0 } } },
+     { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+     *texts.map { { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: _1 } } },
+     { type: "content_block_stop", index: 0 },
+     { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 5 } },
+     { type: "message_stop" }]
   end
 end

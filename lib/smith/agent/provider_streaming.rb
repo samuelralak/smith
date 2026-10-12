@@ -39,12 +39,13 @@ module Smith
       # call a response memo kept part of goes on from.
       def live_completion(chat, model_reference, collected, facts, resumed)
         ledger = run_budget_ledger
-        return wire_completion(chat, model_reference, collected) unless ledger
+        kept = resumed&.rounds || 0
+        return wire_completion(chat, model_reference, collected, kept) unless ledger
 
         start = resumed ? resumed.start : chat_message_count(chat)
-        holding = { pausable: budget_pausable?, rounds: resumed&.rounds || 0 }
+        holding = { pausable: budget_pausable?, rounds: kept }
         Providers::RequestHolds.within(chat_provider(chat), ledger, facts[:attempt_id], **holding) do |holder|
-          held_completion(holder, chat, start) { wire_completion(chat, model_reference, collected) }
+          held_completion(holder, chat, start) { wire_completion(chat, model_reference, collected, kept) }
         end
       end
 
@@ -82,21 +83,23 @@ module Smith
         false
       end
 
-      def wire_completion(chat, model_reference, collected)
+      # `kept`: the replies a response memo kept for the call, ahead of
+      # those its stream answers (a failed call's facts pair after them).
+      def wire_completion(chat, model_reference, collected, kept = 0)
         stream = @step_stream
         return [chat.complete, nil] unless stream
 
         stream.start(attempt: @step_attempt, model: model_reference.model_id, provider: model_reference.provider&.to_s)
-        response, rounds = streamed_completion(chat, stream, collected)
+        response, rounds = streamed_completion(chat, stream, collected, kept)
         [response, { rounds:, output_limit: request_output_limit(chat, model_reference) }]
       end
 
       # The chat's reply, its text sent as it comes (without <think> text),
       # and the facts of each of its requests.
-      def streamed_completion(chat, stream, collected)
+      def streamed_completion(chat, stream, collected, kept)
         response = nil
         thinking = Streaming::ThinkTags.new
-        rounds = Providers::StreamFacts.collect(chat_provider(chat)) do |collection|
+        rounds = Providers::StreamFacts.collect(chat_provider(chat), kept:) do |collection|
           collected << collection
           response = chat.complete { |chunk| stream.delta(thinking.strip(chunk.content, collection.rounds.length)) }
         end
@@ -138,8 +141,11 @@ module Smith
         tools.respond_to?(:empty?) && !tools.empty?
       end
 
-      # The facts of a streamed call that failed, if it streamed.
-      def streamed_rounds(collected) = collected.first&.facts
+      # What a streamed call that failed streamed, if it did.
+      def streamed(collected)
+        collection = collected.first
+        { rounds: collection.facts, output_limit: nil, kept: collection.kept } if collection
+      end
 
       def chat_provider(chat)
         llm_chat = chat.respond_to?(:to_llm) ? chat.to_llm : chat
