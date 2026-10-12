@@ -34,18 +34,16 @@ module Smith
 
       def attempt_candidates(agent_class, prepared_input, chain, shape)
         candidates = ProviderCandidateSequence.new(chain)
+        interrupted = nil
         candidates.each do |model_reference, index|
           check_deadline! if index.positive?
           withdraw_streamed(index.positive? ? :fallback : :retry)
           attempt = attempt_model(agent_class, prepared_input, model_reference, shape:, attempt_index: index)
           return attempt if attempt.success?
 
+          interrupted ||= attempt if Interruptions.find(attempt.error)
           candidates.suppress(account_failed_provider(attempt, model_reference))
-          handle_provider_failure!(
-            attempt.error, attempt.model_reference, agent_class,
-            fallback_available: candidates.fallback_available?,
-            attempt_id: attempt.attempt_id
-          )
+          fail_over!(attempt, agent_class, candidates, interrupted)
         end
 
         # Fail closed: an empty candidate chain (agent without a model)
@@ -53,6 +51,22 @@ module Smith
         # the sequence itself destructured into nils.
         raise Smith::WorkflowError,
               "no executable model candidate for #{agent_class}; declare a model or fallback_models"
+      end
+
+      # Returns when another candidate is left to try. A candidate that met
+      # an interrupting error (an account out of credit) outlasts how a later
+      # one fails: the step was cut short, not failed, and is taken again
+      # from its first candidate once the host can do its part.
+      def fail_over!(attempt, agent_class, candidates, interrupted)
+        handle_provider_failure!(
+          attempt.error, attempt.model_reference, agent_class,
+          fallback_available: candidates.fallback_available?,
+          attempt_id: attempt.attempt_id
+        )
+      rescue StandardError => e
+        raise if interrupted.nil? || Interruptions.find(e)
+
+        raise terminal_provider_error(interrupted.error, interrupted.model_reference), cause: interrupted.error
       end
 
       # Suppression keys on the provider that actually rejected the

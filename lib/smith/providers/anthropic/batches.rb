@@ -34,13 +34,13 @@ module Smith
           @connection = RubyLLM::Providers::Anthropic.new(config).connection
         end
 
-        # Submits the requests; returns the batch id.
+        # Submits the requests; returns the batch id. A refusal for want of
+        # credit raises RubyLLM::PaymentRequiredError (BillingRefusals).
         def submit(requests)
           entries = Array(requests).map { |entry| entry.transform_keys(&:to_sym) }
           body = { requests: entries.map { |entry| { custom_id: entry.fetch(:custom_id), params: params(entry) } } }
           check_batch!(entries, body)
-          headers = shared_headers(entries)
-          @connection.post(PATH, body) { |request| add_headers(request.headers, headers) }.body.fetch("id")
+          create(body, shared_headers(entries))
         end
 
         # The batch's processing status ("in_progress", "canceling" or
@@ -66,6 +66,12 @@ module Smith
         end
 
         private
+
+        def create(body, headers)
+          @connection.post(PATH, body) { |request| add_headers(request.headers, headers) }.body.fetch("id")
+        rescue RubyLLM::Error => e
+          raise BillingRefusals.classified(e)
+        end
 
         def params(entry)
           request = entry.fetch(:request).transform_keys(&:to_s)

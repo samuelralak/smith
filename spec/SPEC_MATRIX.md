@@ -1990,6 +1990,28 @@ Documented contracts covered:
 - these contracts are mutation-verified against the review fixes
 
 
+### `spec/smith/billing_refusals_spec.rb`
+
+Purpose:
+
+- pins that a provider's refusal for want of credit is a payment-required error, whatever its status (0.12.4)
+
+Architecture basis:
+
+- Section 6, Budgets; interrupting errors
+
+Documented contracts covered:
+
+- Anthropic's 400 "credit balance is too low" stops a step as an interruption when the host names `RubyLLM::PaymentRequiredError`, the error RubyLLM raised as its cause, and records no failure
+- a usage-limit refusal fails a step whose host names none, its source error a `RubyLLM::PaymentRequiredError`
+- Anthropic's monthly spend cap (429, `enforced_spend_limit_reached`) is one
+- a streamed request's refusal, raised by RubyLLM as a `RubyLLM::ServerError`, is one
+- OpenAI's 429 `insufficient_quota` is one; a 429 whose message speaks of a quota without that type stays a rate limit
+- any other 400 stays a `RubyLLM::BadRequestError`, one that quotes a refusal's words mid-message too
+- a candidate's refusal outlasts a fallback on another account that then fails another way: the step waits
+- `Batches#submit` raises a refusal as one and any other error as it is
+- these contracts are mutation-verified against the review fixes
+
 ### `spec/smith/cache_markers_spec.rb`
 
 Purpose:

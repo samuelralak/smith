@@ -99,6 +99,23 @@ next advanced; a strict run is found under way on restore
 (`Smith::StepInProgressOnRestore`), as after a crash. The instance that
 raised is not advanced again: restore the run.
 
+A provider's refusal for want of credit or past a spending limit is
+`RubyLLM::PaymentRequiredError` whatever status it came with, its cause the
+error RubyLLM raised. Smith tells one by what the provider says it is:
+Anthropic's `billing_error` (402), its tier's monthly spend cap (a 429 whose
+`error.details.error_code` is `enforced_spend_limit_reached`), its 400s for
+spent credit ("Your credit balance is too low") and for a spend limit the
+account set ("You have reached your specified API usage limits"), and
+OpenAI's `insufficient_quota` (429). RubyLLM raises a streamed request's
+refusal as a `RubyLLM::ServerError`; it is one all the same. It is the
+provider account's, so another provider in the fallback chain is tried;
+naming `RubyLLM::PaymentRequiredError` makes a step that meets it wait for
+credit instead of failing, even when a fallback then fails some other way.
+`Smith::Providers::Anthropic::Batches#submit` raises it too. Any other error
+stays as it is: a rate limit whose message mentions a quota (Gemini's) is a
+rate limit. RubyLLM's own HTTP retries (`max_retries`) may repeat a 429 or a
+streamed refusal before Smith sees it; a refused request is not charged.
+
 Name only errors that mean your own systems failed. A provider's own failure
 (`RubyLLM::Error`, or its HTTP client's `Faraday::Error`) is the provider's
 whatever it was raised from, so naming a low-level class such as

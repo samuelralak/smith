@@ -123,7 +123,9 @@ module Smith
       # have their join target; the error then propagates unchanged. A
       # provider failure's own reported usage is accounted beside the
       # completed prefix, so its trace totals both.
+      # A billing refusal is recorded as the provider account's (BillingRefusals).
       def failed_provider_attempt(error, observed_reference, timer, facts, prefix_usages)
+        error = BillingRefusals.classified(error)
         aborted = !provider_failure?(error)
         usages = aborted ? prefix_usages : [*prefix_usages, ProviderUsage.from_message(error)].compact
         attempt = ProviderAttempt.failure(
