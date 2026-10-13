@@ -4,6 +4,27 @@ All notable changes to Smith are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Smith is pre-1.0 and under active development; expect occasional contract tightening between minor versions until 1.0.
 
+## [0.12.5] - 2026-10-13
+
+### Fixed
+
+- A streamed step's requests are each sent once: its chat takes a copy of
+  the agent's config (its context, or RubyLLM's) with RubyLLM's HTTP retries
+  (`max_retries`) off, its model resolved again as RubyLLM resolves a chat
+  built with a context (the same id and provider, and the agent's own
+  `assume_model_exists`, so a model RubyLLM lists keeps its output limit and
+  thinking options). Retrying a stream read the next response's error into
+  the buffer the first had filled, so the provider's words were lost: a
+  refusal for want of credit reached Smith as a bare "Invalid request"
+  (`RubyLLM::BadRequestError`) and was never classified as
+  `RubyLLM::PaymentRequiredError`, and a spend-cap 429 as a plain rate limit.
+  A stream that failed part way was sent again, its text streamed twice.
+  Every provider failure of a streamed request, a transient one at connect
+  time included, now goes straight to the step's fallbacks and retries, so
+  a streamed step that should ride out an outage declares them. Calls that
+  do not stream, and requests OpenAI's Responses route sends whole, keep
+  RubyLLM's retries. The global config and the agent's are never changed.
+
 ## [0.12.4] - 2026-10-13
 
 ### Changed

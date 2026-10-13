@@ -30,7 +30,7 @@ What you get:
 
 ```ruby
 # Gemfile
-gem "smith-agents", "0.12.4", require: "smith"
+gem "smith-agents", "0.12.5", require: "smith"
 ```
 
 In a Rails app:
