@@ -113,8 +113,9 @@ naming `RubyLLM::PaymentRequiredError` makes a step that meets it wait for
 credit instead of failing, even when a fallback then fails some other way.
 `Smith::Providers::Anthropic::Batches#submit` raises it too. Any other error
 stays as it is: a rate limit whose message mentions a quota (Gemini's) is a
-rate limit. RubyLLM's own HTTP retries (`max_retries`) may repeat a 429 or a
-streamed refusal before Smith sees it; a refused request is not charged.
+rate limit. RubyLLM's own HTTP retries (`max_retries`) may repeat a 429 of a
+call that does not stream before Smith sees it (a refused request is not
+charged); a streamed call is sent once, so its refusal reaches Smith whole.
 
 Name only errors that mean your own systems failed. A provider's own failure
 (`RubyLLM::Error`, or its HTTP client's `Faraday::Error`) is the provider's

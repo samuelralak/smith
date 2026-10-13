@@ -2012,6 +2012,25 @@ Documented contracts covered:
 - `Batches#submit` raises a refusal as one and any other error as it is
 - these contracts are mutation-verified against the review fixes
 
+### `spec/smith/streamed_requests_spec.rb`
+
+Purpose:
+
+- pins that a streamed step's requests are each sent once, without RubyLLM's HTTP retries (0.12.5)
+
+Architecture basis:
+
+- Streaming; provider failures and fallbacks
+
+Documented contracts covered:
+
+- a streamed refusal for want of credit is a `RubyLLM::PaymentRequiredError` with RubyLLM's retries on, sent once
+- a stream that fails part way is not sent again, though a good reply waits, and its text is not streamed twice
+- a call that does not stream keeps RubyLLM's retries, and so does a request OpenAI's Responses route sends whole
+- a streamed call keeps the agent's own config (its context), and neither it nor RubyLLM's global config is changed
+- a model RubyLLM lists keeps its output limit and thinking budget when it streams
+- these contracts are mutation-verified
+
 ### `spec/smith/cache_markers_spec.rb`
 
 Purpose:

@@ -147,7 +147,7 @@ module Smith
       # rubocop:enable Metrics/AbcSize
 
       def prepared_attempt_chat(agent_class, prepared_input, model_reference, shape)
-        chat = agent_class.chat(**model_reference.chat_options, **bridge_workflow_inputs(agent_class))
+        chat = attempt_chat(agent_class, model_reference)
         add_prepared_input(chat, prepared_input, observed_model_reference(chat, fallback: model_reference).provider)
         continue_paused_loop(chat)
         shaped_chat(chat, model_reference, shape)

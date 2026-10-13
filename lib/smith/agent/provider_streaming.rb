@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "attempt_chat"
+
 module Smith
   class Agent
     # The provider calls of a streamed step (Smith::Streaming): before a
@@ -8,6 +10,8 @@ module Smith
     # reason is read from the stream (Providers::StreamFacts), as a
     # streamed reply keeps no raw body.
     module ProviderStreaming
+      include AttemptChat
+
       # Room for what a pause adds besides its messages (its retry, the
       # attempt's usage).
       PAUSE_MARGIN = 4096

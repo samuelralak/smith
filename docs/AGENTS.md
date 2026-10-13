@@ -155,7 +155,17 @@ reason and message id, with `mode: :stream`), and a replayed step streams again
 (unless a response memo kept its reply: then its sink gets the text at once).
 Graph inspection shows the stream, and runtime readiness reports a missing sink
 (`:stream_sink_missing`) and an agent whose calls go to the Responses API
-(`:stream_whole_replies`).
+(`:stream_whole_replies`). A streamed step's requests are each sent once:
+its chat takes a copy of the agent's config with RubyLLM's HTTP retries
+(`max_retries`) off and its model resolved again as RubyLLM resolves a chat
+built with a context (a model RubyLLM lists keeps its limits), since a
+retried stream loses the first response's error body (a refusal for want of
+credit would reach Smith as a bare "Invalid request") or streams its text
+again. Every provider failure of a streamed request, a transient one at
+connect time included, takes the step's fallbacks and retries directly, so
+declare them (`fallback_models`, `retry_on Smith::AgentError`) on a streamed
+step that should ride out an outage. A request OpenAI's Responses route sends
+whole keeps the retries.
 
 ## Batch mode
 
