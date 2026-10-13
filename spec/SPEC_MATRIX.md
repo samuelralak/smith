@@ -2012,6 +2012,25 @@ Documented contracts covered:
 - `Batches#submit` raises a refusal as one and any other error as it is
 - these contracts are mutation-verified against the review fixes
 
+### `spec/smith/provider_errors_spec.rb`
+
+Purpose:
+
+- pins that an error of a streamed request is what the provider said it was, whatever status RubyLLM guessed (0.12.6)
+
+Architecture basis:
+
+- Provider failures and fallbacks; streaming
+
+Documented contracts covered:
+
+- a streamed bad request fails its step, sent nowhere else
+- OpenAI's streamed wrong key is the account's, so the next provider answers
+- each type Anthropic or OpenAI names is the error RubyLLM raises for its status, context length included, with the provider's message and the response's headers, the guessed error its cause
+- a type said without a message takes RubyLLM's words for its status
+- an error whose guess was right, whose body names nothing known, or that the provider sent whole stays as it is
+- every entry of the type table and every guard is mutation-verified
+
 ### `spec/smith/streamed_requests_spec.rb`
 
 Purpose:

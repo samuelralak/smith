@@ -212,6 +212,7 @@ require_relative "smith/tool_failure_notification_failed"
 require_relative "smith/persistence_payload_conflict"
 require_relative "smith/exponential_backoff"
 require_relative "smith/interruptions"
+require_relative "smith/provider_errors"
 require_relative "smith/billing_refusals"
 
 # Event system (depends on Types)

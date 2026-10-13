@@ -70,7 +70,7 @@ RSpec.describe "Smith billing refusals" do
     expect { asking("SpecSpendCapWorkflow").new(context: {}).run! }.to raise_error(RubyLLM::PaymentRequiredError)
   end
 
-  it "takes a streamed request's refusal as one, though RubyLLM takes it as a server error" do
+  it "takes a streamed request's refusal as one, as the provider named it, though RubyLLM takes it as a server error" do
     waits_for_credit
     sink = Class.new { %i[start delta reset finish fail].each { define_method(_1) { |*| nil } } }.new
     Smith.config.stream_sinks = { reply: ->(_info) { sink } }
@@ -79,7 +79,7 @@ RSpec.describe "Smith billing refusals" do
     workflow = asking("SpecStreamedRefusalWorkflow", stream: :reply).new(context: {})
 
     expect { workflow.run! }.to raise_error(RubyLLM::PaymentRequiredError) do |error|
-      expect(error.cause).to be_a(RubyLLM::ServerError)
+      expect([error.cause.class, error.cause.cause.class]).to eq([RubyLLM::BadRequestError, RubyLLM::ServerError])
     end
     expect(server.requests.sole.body).to include("stream" => true)
   end

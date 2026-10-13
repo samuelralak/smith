@@ -117,6 +117,15 @@ rate limit. RubyLLM's own HTTP retries (`max_retries`) may repeat a 429 of a
 call that does not stream before Smith sees it (a refused request is not
 charged); a streamed call is sent once, so its refusal reaches Smith whole.
 
+RubyLLM guesses the status of a streamed request's error from the error
+event's type (Anthropic's adapter says 500 unless overloaded, OpenAI's 400
+unless a server error or a rate limit). Smith takes it as what the provider
+said it was, from the type in the body (Anthropic's `error.type`, OpenAI's
+`error.code`, else its `error.type`), through RubyLLM's own mapping, with the
+response's headers: a streamed bad request fails, a wrong key is the
+account's, an unknown model moves to the next candidate, an overload is a
+passing outage. An error the provider sent whole keeps its own status.
+
 Name only errors that mean your own systems failed. A provider's own failure
 (`RubyLLM::Error`, or its HTTP client's `Faraday::Error`) is the provider's
 whatever it was raised from, so naming a low-level class such as
