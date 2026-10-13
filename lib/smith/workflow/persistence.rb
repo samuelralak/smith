@@ -87,7 +87,7 @@ module Smith
       def restore_state(hash, allow_step_in_progress: false)
         validate_raw_step_in_progress!(hash) if
           self.class.idempotency_mode == :strict && !allow_step_in_progress
-        migrated = migrate_if_needed(hash)
+        migrated = apply_renames(migrate_if_needed(hash))
         normalized = normalize_persisted_state(migrated)
         persistence_version = validated_persistence_version(normalized)
         restore_persisted_keys(normalized)
@@ -445,6 +445,74 @@ module Smith
         end
 
         payload
+      end
+
+      # A run persisted under names a later version renamed
+      # (renamed_state, renamed_transition) carries on under the new
+      # ones: its state, the transition it takes next, the transition its
+      # wait, pending retry and pending batch are in, and its last failed
+      # step's names, each kept the type it was persisted as. A name the
+      # class still declares stays as it is.
+      RENAMED_RECORDS = {
+        awaiting: { transition: %w[transition] },
+        pending_retry: { transition: %w[transition] },
+        pending_batch: { transition: %w[transition] },
+        last_failed_step: { transition: %w[transition], state: %w[from to] }
+      }.freeze
+      private_constant :RENAMED_RECORDS
+
+      def apply_renames(payload)
+        return payload unless renames?
+
+        renamed = payload.dup
+        renamed[:state] = renamed_state_name(payload[:state])
+        renamed[:next_transition_name] = renamed_transition_name(payload[:next_transition_name]) if
+          payload.key?(:next_transition_name)
+        RENAMED_RECORDS.each_key { |key| renamed[key] = renamed_record(payload[key], RENAMED_RECORDS[key]) }
+        renamed
+      end
+
+      def renames? = !(self.class.renamed_states.empty? && self.class.renamed_transitions.empty?)
+
+      def renamed_state_name(name)
+        renamed_value(name) do |text|
+          self.class.send(:follow_renames, text, self.class.renamed_states) do |candidate|
+            self.class.resolve_state_name(candidate)
+          end
+        end
+      end
+
+      def renamed_transition_name(name)
+        renamed_value(name) do |text|
+          self.class.send(:follow_renames, text, self.class.renamed_transitions) do |candidate|
+            self.class.transition_named(candidate)
+          end
+        end
+      end
+
+      # A persisted name renamed, kept the type it was persisted as.
+      def renamed_value(name)
+        return name unless name.is_a?(String) || name.is_a?(Symbol)
+
+        renamed = yield(name.to_s)
+        name.is_a?(Symbol) ? renamed.to_sym : renamed
+      end
+
+      # A persisted record's name fields renamed, each by its kind
+      # (:state or :transition), under String or Symbol keys alike.
+      def renamed_record(record, fields_by_kind)
+        return record unless record.is_a?(Hash)
+
+        renamed = record.dup
+        fields_by_kind.each do |kind, fields|
+          fields.each do |field|
+            key = [field, field.to_sym].find { |candidate| renamed.key?(candidate) }
+            next if key.nil?
+
+            renamed[key] = kind == :state ? renamed_state_name(renamed[key]) : renamed_transition_name(renamed[key])
+          end
+        end
+        renamed
       end
 
       def normalize_persisted_state(hash)

@@ -141,7 +141,8 @@ module Smith
         check_deadline!
         namespace = ArtifactIntegration.instance_method(:execution_namespace).bind_call(self)
         token = IdempotencyKey.__send__(:root_scope, namespace)
-                              .within(:step, @step_count + 1, transition.name.to_s).within(:spawn).key
+                              .within(:step, @step_count + 1, self.class.transition_key_name(transition.name))
+                              .within(:spawn).key
         launch_child_runs(transition, token)
         nil
       end

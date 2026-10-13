@@ -140,7 +140,8 @@ module Smith
 
       def wait_token_for(transition, scope)
         IdempotencyKey.__send__(:root_scope, ArtifactIntegration.instance_method(:execution_namespace).bind_call(self))
-                      .within(:step, @step_count + 1, transition.name.to_s).within(:wait).key(scope)
+                      .within(:step, @step_count + 1, self.class.transition_key_name(transition.name))
+                      .within(:wait).key(scope)
       end
 
       def check_wait_admissible!(transition, seconds)

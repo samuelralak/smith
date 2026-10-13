@@ -29,6 +29,7 @@ module Smith
         def all_diagnostics
           [
             *StateDiagnostics.new(graph).to_a,
+            *RenameDiagnostics.new(graph).to_a,
             *TransitionDiagnostics.new(graph).to_a,
             *ReachabilityDiagnostics.new(graph, reachable_transition_names).to_a
           ]

@@ -72,12 +72,40 @@ What Smith does for you:
   `migrate_from` and after the `definition_digest` check, so a digest
   mismatch is reported as one and a migration can map an old name: bump
   `persistence_schema_version` and declare `migrate_from(<previous version>)`,
-  since migrations run only when the stored version is behind. Finished runs
-  are refused too, by `restore`, `restore_or_initialize`,
-  `restorable_billing_state?` and the class-level `run_persisted!`: to read the
-  outcome of a finished run whose terminal state was renamed, migrate it or
-  read the stored JSON directly. `stuck_for?` reports a stored run in an
-  unknown state as stuck, since it can neither advance nor restore
+  since migrations run only when the stored version is behind. A rename needs
+  neither: `renamed_state :old, to: :new` and `renamed_transition :old, to:
+  :new` map a run persisted under the old name to the new one after
+  `migrate_from` (a migration sees the names as they were persisted) and
+  before anything checks it (its state, the transition it takes next, the
+  transition its wait, pending retry or pending batch is in, and its last
+  failed step's names, each kept the type it was persisted as), so a run
+  waiting in a renamed step resumes there under its wait's own token. A
+  renamed transition keeps its keys: its steps' idempotency keys and wait
+  tokens are made under the first name in its chain
+  (`Workflow.transition_key_name`), so a step a deploy cut short runs again, a
+  retry makes its next attempt, and a delivery that came before its wait was
+  stored meets the block's token, all under the keys they had before the
+  rename. Renames chain (a to b, then b to c); a name is renamed at most once,
+  never back to a name it had, and at most one name is renamed to a given
+  transition, each refused with `ArgumentError` where it is declared. A name
+  the class still declares is never taken for an old one, and a rename to a
+  name the class does not know is refused as above when a run restores
+  through it; `validate_graph` reports both before then (`:rename_shadowed`,
+  a warning; `:renamed_to_unknown_state` and `:renamed_to_unknown_transition`,
+  errors). A subclass inherits its parent's renames. A state's rename stays
+  declared while runs persisted under its old name may remain; a
+  transition's, for good, since dropping it moves the transition's keys to
+  its new name.
+  `Workflow.current_state_name` and `current_transition_name` give what a
+  persisted name stands for now, renames followed. In strict mode a payload
+  caught mid-step is refused before renames apply, so
+  `Smith::StepInProgressOnRestore` names its transition as persisted. Finished
+  runs are refused too, by `restore`, `restore_or_initialize`,
+  `restorable_billing_state?` and the class-level `run_persisted!`: a finished
+  run whose terminal state was renamed restores while the rename is declared;
+  to read one whose terminal state was removed, migrate it or read the stored
+  JSON directly. `stuck_for?` reports a stored run in an unknown state
+  (renames followed) as stuck, since it can neither advance nor restore
 
 `preserve_seed: true` is intended for workflows whose seed is durable external
 conversation and whose later accepted outputs are internal stage handoffs. Smith
@@ -860,8 +888,9 @@ end
   transition raises `Smith::SerializationError`; one whose transition the
   class no longer declares exactly (kind, event, `into:`) or that does not
   start from the run's state raises `Smith::UnknownTransitionOnRestore`. A
-  `migrate_from` that renames such things must rewrite `awaiting` too, and
-  `pending_retry` for a retry wait.
+  rename declared with `renamed_transition` (or `renamed_state`) maps the
+  wait's transition first; a `migrate_from` that renames such things itself
+  must rewrite `awaiting` too, and `pending_retry` for a retry wait.
 - A wait that does not end within the store's persistence TTL is refused when
   it is entered, before the block runs. `stuck_for?` reports a waiting run as stuck
   only once its deadline has passed by the threshold.

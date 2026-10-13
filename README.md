@@ -137,8 +137,11 @@ Your app delivers events (`resume!`), schedules the timeout
 (`expire_wait!` once `deadline_at` passes), and runs the next step from a
 job. Smith stores runs through an adapter (`:active_record`, `:redis`,
 `:rails_cache`, `:memory` or your own) and refuses a state past
-`persistence_max_bytes`. Waits, child runs, durable retries, replay safety
-and storage: [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md).
+`persistence_max_bytes`. A later version can rename a state or a step
+(`renamed_state :drafted, to: :written`, `renamed_transition :approve, to:
+:review`), and runs persisted under the old names carry on under the new ones,
+waits included, under the keys they had. Waits, child runs, durable retries, replay safety, renames and
+storage: [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md).
 
 ## Agent outputs
 

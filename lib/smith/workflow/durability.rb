@@ -244,10 +244,11 @@ module Smith
           false
         end
 
-        # A state the class no longer knows can never advance or restore, so
-        # it is not terminal: an old one reports as stuck.
+        # A state the class no longer knows, renames followed, can never
+        # advance or restore, so it is not terminal: an old one reports as
+        # stuck.
         def terminal_payload_state?(klass, state_name, next_transition)
-          state = klass.resolve_state_name(state_name)
+          state = klass.current_state_name(state_name)
           !state.nil? && !klass.transition_from?(state) && next_transition.nil?
         end
 

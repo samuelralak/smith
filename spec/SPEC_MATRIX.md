@@ -2012,6 +2012,27 @@ Documented contracts covered:
 - `Batches#submit` raises a refusal as one and any other error as it is
 - these contracts are mutation-verified against the review fixes
 
+### `spec/smith/workflow/renamed_restore_spec.rb`
+
+Purpose:
+
+- pins that a workflow can rename a state or a transition and keep its persisted runs, under the keys they had (0.12.7)
+
+Architecture basis:
+
+- Persistence and durability (docs/PERSISTENCE.md): restore, waits, idempotency keys
+
+Documented contracts covered:
+
+- a run persisted in a renamed state, about to take a renamed transition, or waiting in one restores under the new names and carries on, each name kept the type it was persisted as, a last failed step's names included
+- renames chain; a name the class still declares is never taken for an old one; a rename to an unknown name is still refused on restore
+- a name renamed twice or back to a name it had, a blank name, and two names renamed to one transition are refused where declared; two states may be renamed to one
+- a renamed transition keeps its keys: a step cut short, a durable retry's next attempt, a delivery that came before its wait was stored, a map's relaunch and a spawn's relaunch all meet the keys they had before the rename
+- `current_state_name`, `current_transition_name` and `transition_key_name` follow renames; `stuck_for?`'s terminal check follows them too
+- subclasses inherit their parent's renames and keep their own
+- `validate_graph` reports a rename leading nowhere as an error and one whose old name is still declared as a warning
+- every guard and key site is mutation-verified
+
 ### `spec/smith/provider_errors_spec.rb`
 
 Purpose:

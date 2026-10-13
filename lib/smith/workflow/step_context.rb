@@ -99,7 +99,8 @@ module Smith
         namespace = ArtifactIntegration.instance_method(:execution_namespace).bind_call(self)
         outer = IdempotencyKey.__send__(:current_scope)
         base = outer && outer.run == namespace ? outer : IdempotencyKey.__send__(:root_scope, namespace)
-        IdempotencyKey.__send__(:install, base.within(:step, @step_count + 1, transition.name.to_s))
+        position = base.within(:step, @step_count + 1, self.class.transition_key_name(transition.name))
+        IdempotencyKey.__send__(:install, position)
       end
 
       def teardown_step_context
