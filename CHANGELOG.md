@@ -4,6 +4,33 @@ All notable changes to Smith are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Smith is pre-1.0 and under active development; expect occasional contract tightening between minor versions until 1.0.
 
+## [0.12.7] - 2026-10-13
+
+### Added
+
+- A workflow can rename a state or a transition and keep its persisted runs:
+  `renamed_state :old, to: :new` and `renamed_transition :old, to: :new`.
+  On restore, a run persisted under an old name is mapped to the new one
+  before anything checks it: its state, the transition it takes next, the
+  transition its wait, pending retry or pending batch is in, and its last
+  failed step's names, each kept the type it was persisted as. A run waiting
+  in a renamed step resumes there under its wait's own token; one in a
+  renamed state carries on from the new one. A renamed transition keeps its
+  keys: its steps' idempotency keys and wait tokens are made under the first
+  name in its chain (`Workflow.transition_key_name`), so a step cut short, a
+  retry or an early delivery meets the keys its earlier attempt used. Renames
+  chain (a to b, then b to c); a name renamed twice or back to a name it had,
+  and two names renamed to one transition, are refused where declared. A name
+  the class still declares is never taken for an old one, a rename to a name
+  the class does not know is still refused on restore
+  (`Smith::UnknownStateOnRestore`, `UnknownTransitionOnRestore`), and
+  `validate_graph` reports both (`:rename_shadowed`,
+  `:renamed_to_unknown_state`, `:renamed_to_unknown_transition`). Subclasses
+  inherit their parent's renames, and `stuck_for?` follows them. Renames apply
+  after `migrate_from`; no `persistence_schema_version` is needed for one.
+  `Workflow.current_state_name` and `current_transition_name` give what a
+  persisted name stands for now, renames followed.
+
 ## [0.12.6] - 2026-10-13
 
 ### Fixed
