@@ -4,6 +4,27 @@ All notable changes to Smith are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Smith is pre-1.0 and under active development; expect occasional contract tightening between minor versions until 1.0.
 
+## [0.12.6] - 2026-10-13
+
+### Fixed
+
+- An error of a streamed request is what the provider said it was
+  (`Smith::ProviderErrors`). RubyLLM builds a streamed request's error
+  response itself, guessing its status from the error event's type:
+  Anthropic's adapter says 500 unless overloaded, OpenAI's 400 unless a
+  server error or a rate limit. With 0.12.5 sending a streamed request
+  once, an Anthropic bad request, wrong key or unknown model looked like a
+  passing outage (fallbacks and retries instead of failing or moving to
+  another account), and an OpenAI wrong key, unknown model, regional refusal
+  or rate limit like a bad request (no fallback). Before, RubyLLM's retry
+  hid this by garbling the error into one of the response's real status.
+  Smith reads the type the provider gave in the body (Anthropic's
+  `error.type`, OpenAI's `error.code`, else its `error.type`) and, when it
+  names another status, raises what RubyLLM raises for that status, through
+  RubyLLM's own mapping (context length included), with the provider's
+  message and the response's headers, its cause the error RubyLLM raised.
+  An error the provider sent whole keeps its own status.
+
 ## [0.12.5] - 2026-10-13
 
 ### Fixed
