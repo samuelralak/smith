@@ -28,7 +28,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   workflow as it was, and a call the response memo replays counts its kept
   tool results by the tools its chat declares. `replay :unsafe` states the
   default; any other value raises `ArgumentError`; `ToolClass.replay_safe?`
-  reads it.
+  reads it. Each class declares it for itself: a subclass of a replay-safe
+  tool is unsafe until it says `replay :safe` too.
 
 ### Changed
 
@@ -45,12 +46,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   together) are the nearest declared; `param`s add up by name, up to a
   class that gave a `params` schema; a `params` schema is the nearest
   unless the subclass declares `param`s of its own; `capabilities` merge
-  key by key, `replay :safe` included (a subclass that does more than its
-  parent declares `replay :unsafe`). A tool none of whose classes declares
-  `authorize` runs as an undeclared tool always has, and a declaration made
-  on a parent after its subclass was created reaches the subclass
-  (`compatible_with` was copied when the subclass was made). Capture was
-  documented as opt-in per concrete class; it is now inherited too.
+  key by key, except `replay`, which is never inherited: a subclass of a
+  replay-safe tool is replay-safe only when it declares `replay :safe`
+  itself, as safety to run again depends on its own `perform`. A tool none
+  of whose classes declares `authorize` runs as an undeclared tool always
+  has, and a declaration made on a parent after its subclass was created
+  reaches the subclass (`compatible_with` was copied when the subclass was
+  made). Capture was documented as opt-in per concrete class; it is now
+  inherited too.
 
 ### Fixed
 
@@ -71,7 +74,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   its parent's `sensitivity`, and its requests carry its parent's
   description and parameters. A subclass meant to differ declares its own
   (`authorize { ... }`, `capabilities { privilege :none }`,
-  `capture_result(strict: false) { ... }`, `replay :unsafe`). As its
+  `capture_result(strict: false) { ... }`). As its
   requests change, the response memo misses once for a call with such a
   tool (its digest covers tools' descriptions and parameters), so a step
   cut by the upgrade's deploy pays for that call again and runs its tools
