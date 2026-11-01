@@ -4,6 +4,81 @@ All notable changes to Smith are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Smith is pre-1.0 and under active development; expect occasional contract tightening between minor versions until 1.0.
 
+## [0.13.0] - 2026-11-01
+
+### Added
+
+- A tool can declare `capabilities { replay :safe }`: running it again under
+  the same keys does what running it once did (a lookup, a search, a read,
+  one that calls a paid API included). Once a tool had run in a step, Smith
+  made no output repair, refusal fallback or truncation retry, took no
+  fallback model after a provider failure, and turned the step's failure
+  into `Smith::ToolOutcomeUncertain`, which no retry takes. Now only a tool
+  that is not replay-safe does that (any tool without the declaration, a
+  plain RubyLLM tool included). When every tool that ran in a step is
+  replay-safe, the step keeps its follow-ups, its fallback models and its
+  `retry_on`, durable retries included; each runs the tools again, under the
+  same idempotency keys and within the same `tool_calls` allowances. A
+  provider attempt set aside for a follow-up or a fallback model takes its
+  tools' captures out of the step's `tool_results` once the call has its
+  output (by identity, so a concurrent fan-out branch's stay; a call that
+  fails after all keeps every capture), and so does a retried step attempt
+  once its retry is certain, unless the retry continues a tool loop the
+  step paused for budget. Tool evidence reaches a parent step from a nested
+  workflow as it was, and a call the response memo replays counts its kept
+  tool results by the tools its chat declares. `replay :unsafe` states the
+  default; any other value raises `ArgumentError`; `ToolClass.replay_safe?`
+  reads it.
+
+### Changed
+
+- A `Smith::Tool` subclass inherits its parent's declarations, each read
+  from the nearest class that made it, so a subclass overrides one by
+  declaring it again. Before, a subclass inherited none of them: it ran
+  without its parent's `authorize` (failing open), `privilege`, trace
+  `sensitivity` and `capture_result`, and reached the model without its
+  parent's description and declared parameters (a host subclass of the
+  shipped `Tools::WebSearch` or `Tools::UrlFetcher` stub sent no
+  description and parameters guessed from its `perform`, all strings).
+  `description`, `with_params`, `category`, `authorize`, `before_execute`,
+  `compatible_with` and `capture_result` (its block and strictness
+  together) are the nearest declared; `param`s add up by name, up to a
+  class that gave a `params` schema; a `params` schema is the nearest
+  unless the subclass declares `param`s of its own; `capabilities` merge
+  key by key, `replay :safe` included (a subclass that does more than its
+  parent declares `replay :unsafe`). A tool none of whose classes declares
+  `authorize` runs as an undeclared tool always has, and a declaration made
+  on a parent after its subclass was created reaches the subclass
+  (`compatible_with` was copied when the subclass was made). Capture was
+  documented as opt-in per concrete class; it is now inherited too.
+
+### Fixed
+
+- A budget refusal that carries a paused tool loop
+  (`Smith::BudgetUnavailable#continuation`) spares a step from
+  `Smith::ToolOutcomeUncertain`, and is continued by its retry, only in the
+  run whose step paused (`paused_by`). One raised from a nested workflow, or
+  made by host code, reached the parent step as if the parent could
+  continue it, so the parent's retry started the child over and ran its
+  tools again, and could take the child's paused messages as its own.
+
+### Upgrading
+
+- A tool subclass that declared less than its parent now runs with its
+  parent's declarations: its parent's `authorize`, `privilege` and
+  `before_execute` apply (a call they deny raises `Smith::ToolPolicyDenied`),
+  its strict capture fails closed without a collector, its traces follow
+  its parent's `sensitivity`, and its requests carry its parent's
+  description and parameters. A subclass meant to differ declares its own
+  (`authorize { ... }`, `capabilities { privilege :none }`,
+  `capture_result(strict: false) { ... }`, `replay :unsafe`). As its
+  requests change, the response memo misses once for a call with such a
+  tool (its digest covers tools' descriptions and parameters), so a step
+  cut by the upgrade's deploy pays for that call again and runs its tools
+  again.
+- `Smith::EXECUTION_SEMANTICS_VERSION` stays `"7"`: no persisted state,
+  wait, pending retry or durable plan changes shape.
+
 ## [0.12.7] - 2026-10-13
 
 ### Added
