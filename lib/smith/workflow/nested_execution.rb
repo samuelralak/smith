@@ -16,9 +16,9 @@ module Smith
       end
 
       # A child that raises passes its error to the parent unchanged, after
-      # its billable usage is rolled up. If a tool ran in the child, the
-      # parent's step already carries that evidence and turns the failure
-      # into ToolOutcomeUncertain (GuardedStepExecution).
+      # its billable usage is rolled up. If a tool that is not replay-safe
+      # ran in the child, the parent's step already carries that evidence
+      # and turns the failure into ToolOutcomeUncertain (GuardedStepExecution).
       def run_child_workflow(child)
         child.run!
       rescue StandardError

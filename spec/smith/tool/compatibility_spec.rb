@@ -105,13 +105,17 @@ RSpec.describe Smith::Tool::Compatibility do
       expect(spec[:endpoints]).to eq(openai: Set[:responses])
     end
 
-    it "propagates compatible_with_spec to subclasses via the inherited hook" do
+    it "propagates compatible_with_spec to subclasses, one made before its parent declared included" do
       parent = Class.new(Smith::Tool) do
         compatible_with :anthropic
       end
       child = Class.new(parent)
+      late_parent = Class.new(Smith::Tool)
+      early_child = Class.new(late_parent)
+      late_parent.compatible_with :gemini
 
       expect(child.compatible_with_spec).to eq(parent.compatible_with_spec)
+      expect(early_child.compatible_with_spec[:providers]).to eq(Set[:gemini])
     end
 
     it "allows subclasses to override compatible_with without affecting parent" do

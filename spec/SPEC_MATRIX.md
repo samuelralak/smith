@@ -2047,7 +2047,8 @@ Documented contracts covered:
 
 - `description` (and `desc`), `with_params`, `category`, `authorize` and `before_execute` are the nearest declared up the chain, a grandchild's included, and a subclass's own replaces its parent's without changing the parent
 - `param`s add up by name (a subclass adds or replaces one); a `params` schema is the nearest, unless the subclass declares `param`s of its own; the parent's schema is unchanged
-- a declaration made on the parent after the subclass was created reaches the subclass
+- a declaration made on the parent after the subclass was created reaches the subclass, `compatible_with` included (spec/smith/tool/compatibility_spec.rb)
+- a grandchild's `param`s do not bring back parameters a class between replaced with a `params` schema
 - a host subclass of a shipped stub (`Tools::WebSearch`) keeps its description, parameters and compatibility
 - `capabilities` merge key by key: an inherited `privilege :elevated` denies the subclass, an inherited `sensitivity :high` strips its tool-call traces' content, and a subclass's own key (`privilege :none`) replaces only that key
 - an inherited `authorize` denies a subclass and a grandchild as it denies the parent; a subclass's own replaces it (and can call `superclass.authorize`); a tool none of whose classes declares one runs as before
@@ -2070,9 +2071,12 @@ Documented contracts covered:
 - after replay-safe tools only, an output repair, a refusal fallback and a truncation retry are made, each a new call from the step's messages whose tool loop runs again; a repair carries no tool messages of the set-aside attempt
 - after replay-safe tools only, a provider failure takes the fallback model, the step's failure is its own error, retried in process and durably (the stored waiting run holds no captures of the failed attempt), and the next attempt runs the tools again
 - a set-aside or retried attempt's captures leave `tool_results`, by identity: a concurrent fan-out branch's equal captures, made between them, stay; a tool loop paused for budget keeps its captures for the retry that continues it
+- captures leave only once they are replaced: a repair that fails at the provider, a fallback model that fails too, and a durable retry whose wait cannot be entered (past the persistence TTL) all leave the failed step with every capture
+- a budget refusal carrying a paused loop that is not the run's own (raised by a nested workflow or by host code) is uncertain after an unsafe tool, so the parent does not start the child over
 - once a tool that is not replay-safe ran (in one round with a safe one, or before one), the step is uncertain as before: no follow-up, no fallback, no retry wait, `ToolOutcomeUncertain`, its captures kept
 - a nested workflow's tool evidence reaches the parent step as it was: safe tools leave the parent's retry, an unsafe one makes it `ToolOutcomeUncertain`
 - a call the response memo replays after a crash counts its kept tool results by the tools its chat declares: all safe takes the fallback (the tools run again), one unsafe stays uncertain
+- the review fixes are mutation-verified against the full suite (12 mutants: 10 killed; 2 survive on unreachable states, a kept tool result answering no call, which record validation refuses, and an attempt without a start mark)
 
 ### `spec/smith/provider_errors_spec.rb`
 

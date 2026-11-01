@@ -34,40 +34,43 @@ module Smith
         schedule = retry_schedule(config)
         begin
           attempt += 1
-          attempt_scope, captured = enter_attempt(attempt, key_generation)
+          attempt_scope = enter_attempt(attempt, key_generation)
           run_attempt_under_keys(transition, attempt_scope)
         rescue StandardError => e
           Interruptions.pass!(e)
           raise unless retry_transition_error?(config, e, attempt)
 
           key_generation += 1 if new_idempotency_key_after?(config, e, attempt_scope)
-          leave_for_retry(e, captured)
+          keep_budget_continuation(e)
           delay = retry_delay(schedule, attempt)
           return wait_to_retry(transition, delay, attempt + 1, key_generation, e) if config[:durable]
 
           sleep(delay) if delay.positive?
+          drop_attempt_tool_results(e)
           retry
         end
       end
 
-      # The attempt under way, under `key_generation`: its idempotency scope,
-      # and where its tool results start.
+      # The attempt under way, under `key_generation`; returns its
+      # idempotency scope. `@attempt_tool_results_from` (transient, like
+      # `@step_attempt`) is where its tool results start.
       def enter_attempt(attempt, key_generation)
         @step_attempt = attempt
         @step_key_generation = key_generation
-        [attempt_idempotency_scope(key_generation), @tool_results_mutex.synchronize { @tool_results.length }]
+        @attempt_tool_results_from = @tool_results_mutex.synchronize { @tool_results.length }
+        attempt_idempotency_scope(key_generation)
       end
 
-      # What a failed attempt leaves the retry: a tool loop paused for
-      # budget leaves its continuation, which the retry goes on from with
-      # its tools' results; any other leaves none of its tool results (its
-      # tools were replay-safe, or it would not be retried, and the next
-      # attempt runs them again).
-      def leave_for_retry(error, tool_results_from)
-        return keep_budget_continuation(error) if error.is_a?(BudgetUnavailable) && error.continuation
-        return unless tool_results_from
+      # Once its retry is certain (in process, or waiting), a failed attempt's
+      # tool results go: its tools were replay-safe, or it would not be
+      # retried, and the next attempt runs them again. A tool loop this
+      # run's step paused for budget keeps them, as its retry goes on from
+      # them.
+      def drop_attempt_tool_results(error)
+        from = @attempt_tool_results_from
+        return if from.nil? || own_pause?(error)
 
-        @tool_results_mutex.synchronize { @tool_results.slice!(tool_results_from..) }
+        @tool_results_mutex.synchronize { @tool_results.slice!(from..) }
       end
 
       def attempt_idempotency_scope(key_generation)

@@ -71,16 +71,6 @@ module Smith
     private_constant :ExecutionAuthority
 
     class << self
-      # Tool subclasses inherit the parent's compatible_with spec by
-      # reference (the spec is a frozen Hash; immutability makes shared
-      # references safe). Subclasses can override by calling
-      # `compatible_with` again — assigns a NEW frozen Hash to its own
-      # @compatible_with_spec, leaving the parent untouched.
-      def inherited(subclass)
-        super
-        subclass.instance_variable_set(:@compatible_with_spec, @compatible_with_spec)
-      end
-
       # Declarative compatibility DSL. Examples:
       #   compatible_with :anthropic, :gemini
       #   compatible_with :anthropic, :gemini, openai: :responses
@@ -89,12 +79,14 @@ module Smith
       # Tools that NEVER declare compatible_with are universally compatible.
       # Consumed by Smith::Models::Normalizer.drop_incompatible_tools when
       # the resolved model rejects the (tools + thinking) combo and no
-      # routing fallback (e.g., openai_api_mode :auto) is available.
+      # routing fallback (e.g., openai_api_mode :auto) is available. The
+      # spec is a frozen Hash, read like the other declarations: a subclass
+      # takes the nearest one up its chain (Declarations).
       def compatible_with(*providers, except: nil, **provider_endpoints)
         @compatible_with_spec = Compatibility.parse(providers, except: except, **provider_endpoints)
       end
 
-      attr_reader :compatible_with_spec
+      def compatible_with_spec = declared(:@compatible_with_spec)
     end
 
     def execute(**kwargs)

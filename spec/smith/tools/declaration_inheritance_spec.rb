@@ -67,6 +67,8 @@ RSpec.describe "Smith::Tool declarations, inherited" do
       expect(schema(same)).to eq(schema(parent))
       expect(schema(own_params)["properties"].keys).to eq(%w[query])
       expect(schema(own_schema)["properties"].keys).to eq(%w[id])
+      expect(schema(tool("SpecSchemaGrandchildTool", own_schema) { param :page, type: :integer })["properties"].keys)
+        .to eq(%w[page])
     end
 
     it "gives a Smith-shipped stub's description, parameters and compatibility to the host's subclass" do

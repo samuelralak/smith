@@ -31,7 +31,8 @@ module Smith
   # whose tools had not run answers the call's first request without
   # sending it, and its tools run again, under the same keys; kept tool
   # results count as tools the step ran (charged to its tool-call
-  # allowances, and never run again by a retry or fallback). A call whose
+  # allowances, and never run again by a retry or fallback unless each is a
+  # replay-safe tool's). A call whose
   # messages cannot be kept (an attachment, or too many bytes) is not
   # stored, and is logged. A record Smith does not keep (its shape, or tool
   # results that do not answer its replies' calls) is ignored, and an error

@@ -4,9 +4,10 @@ module Smith
   class Agent
     # The tool results one provider attempt captures, kept apart so an
     # attempt the call sets aside (for a fallback model or a follow-up,
-    # possible only when its tools were replay-safe) takes them with it:
-    # the attempt that replaces it runs its tools again and captures anew.
-    # Each entry still reaches the step's collector as it comes.
+    # possible only when its tools were replay-safe) takes them with it once
+    # the call has its output: the attempt that replaced it ran its tools
+    # again and captured anew. Each entry still reaches the step's collector
+    # as it comes.
     module AttemptCaptures
       # A collector that passes each entry on and remembers it.
       class Scope
@@ -48,7 +49,14 @@ module Smith
         end
       end
 
-      def discard_captures(attempt) = drop_tool_results(attempt.captures)
+      # The accepted output; only now do the attempts set aside on the way
+      # take what their tools captured with them, so an invocation that
+      # fails after all keeps every capture, as before.
+      def accepted_output(agent_class, result, set_aside)
+        output = finalize_output(agent_class, result)
+        drop_tool_results(set_aside)
+        output
+      end
     end
   end
 end

@@ -72,7 +72,9 @@ module Smith
 
       def paused_loop(error, chat, start)
         continuation = Budget::Continuation.dump(@budget_continuation, chat.messages.drop(start || 0))
-        BudgetUnavailable.new(error.message, continuation:) if continuation && storable_pause?(continuation)
+        return unless continuation && storable_pause?(continuation)
+
+        BudgetUnavailable.new(error.message, continuation:, paused_by: self)
       end
 
       # Whether the run's state, with the paused loop kept, stays within

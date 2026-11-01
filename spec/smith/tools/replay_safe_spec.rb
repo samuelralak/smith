@@ -108,6 +108,21 @@ RSpec.describe "Smith::Tool replay :safe" do
       expect(failure(result).cause).to be_a(Smith::OutputInvalid)
       expect([runs.length, server.requests.length, captured(result)]).to eq([1, 2, ["toolu_a"]])
     end
+
+    it "keeps the set-aside attempt's captures when its repair fails, as the step fails" do
+      tool = lookup("SpecFailedRepairLookup", safe: true)
+      schema = score_schema
+      agent("SpecFailedRepairAgent") do
+        tools tool
+        output_schema schema
+      end
+      replies(calling(tool, id: "toolu_a"), answer('{"score":9}'), down)
+
+      result = asking("SpecFailedRepairWorkflow").new(context: {}).run!
+
+      expect(failure(result)).to be_a(Smith::OutputInvalid)
+      expect([runs.length, captured(result)]).to eq([1, ["toolu_a"]])
+    end
   end
 
   describe "the refusal fallback" do
@@ -171,6 +186,20 @@ RSpec.describe "Smith::Tool replay :safe" do
       expect(captured(result)).to eq(["toolu_b"])
     end
 
+    it "keeps the failed attempt's captures when the fallback model fails too" do
+      tool = lookup("SpecBothDownLookup", safe: true)
+      agent("SpecBothDownAgent") do
+        tools tool
+        fallback_models model: "claude-haiku-5-5", provider: :anthropic
+      end
+      replies(calling(tool, id: "toolu_a"), down, down)
+
+      result = asking("SpecBothDownWorkflow").new(context: {}).run!
+
+      expect(failure(result)).to be_a(Smith::AgentError)
+      expect([models, captured(result)]).to eq([%w[claude-sonnet-5-5 claude-sonnet-5-5 claude-haiku-5-5], ["toolu_a"]])
+    end
+
     it "takes no fallback after a tool that is not replay-safe" do
       result = failing_over("SpecUnsafeFallback", safe: false)
 
@@ -205,6 +234,19 @@ RSpec.describe "Smith::Tool replay :safe" do
 
       expect([done.state, done.context[:answer], runs.length]).to eq([:done, "Opens at 8.", 2])
       expect(captured(done)).to eq(["toolu_b"])
+    end
+
+    it "keeps the failed attempt's captures when its retry wait cannot be entered" do
+      tool = lookup("SpecShortLivedLookup", safe: true)
+      agent("SpecShortLivedAgent") { tools tool }
+      klass = retrying("SpecShortLivedWorkflow", attempts: 2, backoff: 600, durable: true)
+      klass.persistence_ttl(300)
+      replies(calling(tool, id: "toolu_a"), down)
+
+      result = klass.new(context: {}).run_persisted!("short-lived", adapter:)
+
+      expect(result.last_error.message).to match(/does not end within the persistence TTL/)
+      expect(captured(result)).to eq(["toolu_a"])
     end
 
     it "enters no retry wait after a tool that is not replay-safe" do
@@ -266,6 +308,34 @@ RSpec.describe "Smith::Tool replay :safe" do
       expect(failure(apart)).to be_a(Smith::ToolOutcomeUncertain)
       expect(runs.map(&:first)).to eq(%w[SpecMixedUnsafeLookup SpecMixedSafeLookup])
       expect(models.uniq).to eq(["claude-sonnet-5-5"])
+    end
+
+    it "is uncertain on a budget refusal carrying a paused loop that is not its run's own" do
+      paid = []
+      child = with_stubbed_class("SpecForeignPauseChild", workflow_class) do
+        initial_state :idle
+        transition :pay, from: :idle, to: :done do
+          compute do |_step|
+            Smith::Tool.current_tool_execution_tracker.mark_started!
+            paid << :paid
+            raise Smith::BudgetUnavailable.new("refused", continuation: [{ "role" => "assistant", "content" => "x" }])
+          end
+        end
+      end
+      parent = with_stubbed_class("SpecForeignPauseParent", workflow_class) do
+        initial_state :idle
+        state :failed
+        transition :delegate, from: :idle, to: :done do
+          workflow child
+          retry_on Smith::BudgetUnavailable, attempts: 2
+          on_failure :fail
+        end
+      end
+
+      result = parent.new.run!
+
+      expect(failure(result)).to be_a(Smith::ToolOutcomeUncertain)
+      expect(paid).to eq([:paid])
     end
 
     describe "in a nested workflow" do

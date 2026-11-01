@@ -74,12 +74,15 @@ module Smith
   # hold; nothing was sent. A BudgetExceeded, so it is not retried unless a
   # step's `retry_on` names it (a durable retry waits for budget). One that
   # paused a tool loop carries its `continuation` (Budget::Continuation),
-  # which the step's retry continues from.
+  # which the step's retry continues from, and the run whose step paused
+  # (`paused_by`): only that run's retry continues it, never a parent's,
+  # whose retry would start a nested workflow over.
   class BudgetUnavailable < BudgetExceeded
-    attr_reader :continuation
+    attr_reader :continuation, :paused_by
 
-    def initialize(message = "the budget ledger refused the request", continuation: nil)
+    def initialize(message = "the budget ledger refused the request", continuation: nil, paused_by: nil)
       @continuation = continuation
+      @paused_by = paused_by
       super(message)
     end
   end

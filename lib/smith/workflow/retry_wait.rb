@@ -24,6 +24,7 @@ module Smith
       # it waits to make. Like any wait it is not a step. The pending retry
       # is recorded before the wait, so an interrupt between the two leaves
       # a step that ended without a wait, whose pending retry is cleared.
+      # The run waits without the failed attempt's tool captures.
       def wait_to_retry(transition, seconds, attempt, key_generation, error)
         if @split_step_phase == :executing
           raise WorkflowError, "a durable retry cannot wait inside split-step execution"
@@ -38,6 +39,7 @@ module Smith
         @awaiting = WaitRecord.build_retry(transition, wait_token_for(transition, ["retry", attempt]), seconds,
                                            Time.now.utc)
         record_retry_trace(transition, :retrying, attempt:, error: error_name, deadline_at: @awaiting["deadline_at"])
+        drop_attempt_tool_results(error)
         WAIT_PENDING
       end
 

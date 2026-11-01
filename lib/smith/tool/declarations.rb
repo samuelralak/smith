@@ -5,8 +5,9 @@ module Smith
     # A tool class's declarations, which its subclasses inherit: each reads
     # the nearest class up the chain that declared it, so a subclass
     # overrides one by declaring it again. Parameters add up by name (a
-    # subclass's `param` adds one or replaces its parent's of that name), and
-    # a schema given with `params` gives way to the subclass's own `param`s.
+    # subclass's `param` adds one or replaces its parent's of that name), up
+    # to a class that gave a schema with `params`, which replaced the ones
+    # above it; that schema gives way to a subclass's own `param`s.
     # Capabilities (CapabilityDeclaration) merge key by key, and a capture
     # (CaptureConfiguration) comes with its strictness. A tool none of whose
     # classes declares `authorize` or `before_execute` runs without one, as
@@ -22,7 +23,8 @@ module Smith
       def param(name, **) = own_parameters[name] = RubyLLM::Parameter.new(name, **)
 
       def parameters
-        inherited = parent_tool&.parameters
+        parent = parent_tool
+        inherited = parent.parameters if parent && !parent.instance_variable_defined?(:@params_schema_definition)
         inherited.nil? || inherited.empty? ? own_parameters : inherited.merge(own_parameters)
       end
 

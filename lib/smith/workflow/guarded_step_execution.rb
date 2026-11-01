@@ -32,11 +32,10 @@ module Smith
 
       # A failure after a tool that is not replay-safe ran leaves its outcome
       # uncertain, unless its retry could not run the tool again: a terminal
-      # failure, or a tool loop paused for budget, whose retry continues
-      # from its tools' results.
+      # failure, or a tool loop this run's step paused for budget, whose
+      # retry continues from its tools' results (BudgetPause#own_pause?).
       def uncertain_after_tools?(tracker, error)
-        tracker.uncertain? && !terminal_retry_error?(error) &&
-          !(error.is_a?(BudgetUnavailable) && error.continuation)
+        tracker.uncertain? && !terminal_retry_error?(error) && !own_pause?(error)
       end
 
       def run_tracked_guarded_step(transition)

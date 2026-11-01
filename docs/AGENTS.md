@@ -55,9 +55,10 @@ end
   `Smith::ToolOutcomeUncertain` around the output error) or once the call has
   spent what its step reserved from a budget. After replay-safe tools only
   (`capabilities { replay :safe }`, docs/TOOLS_AND_GUARDRAILS.md), the
-  follow-up is made and its model may call them again; the set-aside reply's
-  tool captures leave `tool_results`. A follow-up that fails raises the
-  output error it was making up for, with the provider's error as its cause.
+  follow-up is made and its model may call them again; once there is an
+  output, the set-aside reply's tool captures leave `tool_results`. A
+  follow-up that fails raises the output error it was making up for, with
+  the provider's error as its cause.
 - Anthropic's structured outputs reject numeric, string-length and most
   array-size constraints: Smith sends Anthropic the schema without them, with
   `additionalProperties: false` on every object, and checks them on the parsed

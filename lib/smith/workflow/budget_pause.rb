@@ -37,7 +37,14 @@ module Smith
       def budget_pausable? = !@budget_pause_attempts.nil? && @step_attempt.to_i < @budget_pause_attempts
 
       def keep_budget_continuation(error)
-        @budget_continuation = error.continuation if error.is_a?(BudgetUnavailable) && error.continuation
+        @budget_continuation = error.continuation if own_pause?(error)
+      end
+
+      # A tool loop this run's own step paused, which its retry continues
+      # from its tools' results. One a nested workflow paused is not: the
+      # retry starts the child over, and its tools run again.
+      def own_pause?(error)
+        error.is_a?(BudgetUnavailable) && !error.continuation.nil? && error.paused_by.equal?(self)
       end
 
       # The paused loop's messages, after the attempt's prepared input.

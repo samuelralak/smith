@@ -101,10 +101,13 @@ that ran is replay-safe, the step keeps all three:
   again
 
 An attempt set aside for any of these takes its tools' captures
-(`capture_result`, strict or not) out of the step's `tool_results`, by
-identity, so a concurrent branch's are left. A retried attempt's go too,
-unless the retry continues a tool loop paused for budget, which keeps its
-tools' results. Tools that run again send the same idempotency keys, and count
+(`capture_result`, strict or not) out of the step's `tool_results` once the
+call has its output, by identity, so a concurrent branch's are left; a call
+that fails after all keeps every capture. A retried attempt's go too, once
+the retry is certain (a durable retry's wait entered), unless the retry
+continues a tool loop the step paused for budget, which keeps its tools'
+results (one a nested workflow paused counts as any failure of its tools).
+Tools that run again send the same idempotency keys, and count
 against the agent's `tool_calls` allowance and the workflow's `tool_calls`
 budget as any call does, so a step's tool calls stay bounded. Tool evidence
 from a nested workflow reaches its parent step as it was: a child whose tools

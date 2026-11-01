@@ -30,7 +30,8 @@ step is replay-safe, the step keeps its output repair, its refusal fallback
 and truncation retry, its fallback models after a provider failure, and its
 `retry_on`, durable retries included; each runs the tools again, under the
 same idempotency keys and within the same `tool_calls` allowances, and the
-captures of an attempt it sets aside are dropped from `tool_results`. See
+captures of an attempt it sets aside leave `tool_results` once the step has
+its output or its retry is certain. See
 [TOOLS_AND_GUARDRAILS.md](TOOLS_AND_GUARDRAILS.md), Replay-Safe Tools.
 
 Workflow transitions can also declare a bounded local retry policy:

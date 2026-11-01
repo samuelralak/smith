@@ -64,7 +64,8 @@ module Smith
       # each kept result answers a call to a tool of the chat's that
       # declares it.
       def mark_kept_tools(chat, ran, calls)
-        safe = calls.length == ran.length && calls.all? { replay_safe_tool?(chat.tools[_1.name.to_sym]) }
+        tools = calls.to_h { [_1.id, chat.tools[_1.name.to_sym]] }
+        safe = ran.all? { replay_safe_tool?(tools[_1]) }
         Tool.current_tool_execution_tracker&.mark_started!(replay_safe: safe)
       end
 

@@ -28,13 +28,14 @@ module Smith
 
       # The input's documents and images are read once (ContentBytes), and
       # its cached parts checked against every Anthropic model in the chain,
-      # before the first attempt.
-      def complete_with_provider(agent_class, prepared_input, shape:)
+      # before the first attempt. A candidate that fails over to the next
+      # joins `set_aside` (AttemptCaptures).
+      def complete_with_provider(agent_class, prepared_input, shape:, set_aside: [])
         chain = build_model_chain(agent_class).tap { check_chain_cache_breakpoints!(_1, prepared_input) }
-        ContentBytes.with(prepared_input) { attempt_candidates(agent_class, prepared_input, chain, shape) }
+        ContentBytes.with(prepared_input) { attempt_candidates(agent_class, prepared_input, chain, shape, set_aside) }
       end
 
-      def attempt_candidates(agent_class, prepared_input, chain, shape)
+      def attempt_candidates(agent_class, prepared_input, chain, shape, set_aside)
         candidates = ProviderCandidateSequence.new(chain)
         interrupted = nil
         candidates.each do |model_reference, index|
@@ -45,7 +46,7 @@ module Smith
 
           interrupted ||= attempt if Interruptions.find(attempt.error)
           candidates.suppress(account_failed_provider(attempt, model_reference))
-          fail_over!(attempt, agent_class, candidates, interrupted)
+          fail_over!(attempt, agent_class, candidates, interrupted, set_aside)
         end
 
         # Fail closed: an empty candidate chain (agent without a model)
@@ -55,15 +56,15 @@ module Smith
               "no executable model candidate for #{agent_class}; declare a model or fallback_models"
       end
 
-      # Returns when another candidate is left to try, the failed attempt set
-      # aside with what its tools captured. A candidate that met an
-      # interrupting error (an account out of credit) outlasts how a later
-      # one fails: the step was cut short, not failed, and is taken again
-      # from its first candidate once the host can do its part.
-      def fail_over!(attempt, agent_class, candidates, interrupted)
+      # Returns when another candidate is left to try, the failed attempt's
+      # captures set aside. A candidate that met an interrupting error (an
+      # account out of credit) outlasts how a later one fails: the step was
+      # cut short, not failed, and is taken again from its first candidate
+      # once the host can do its part.
+      def fail_over!(attempt, agent_class, candidates, interrupted, set_aside)
         handle_provider_failure!(attempt.error, attempt.model_reference, agent_class,
                                  fallback_available: candidates.fallback_available?, attempt_id: attempt.attempt_id)
-        discard_captures(attempt)
+        set_aside.concat(attempt.captures)
       rescue StandardError => e
         raise if interrupted.nil? || Interruptions.find(e)
 
