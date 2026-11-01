@@ -332,9 +332,11 @@ What you get:
 - a child that routes its failure through its own `on_failure` has handled it:
   the parent step fails with a non-retryable `Smith::WorkflowError`
   (`nested workflow failed: <child message>`, bounded to 1 KiB)
-- tool evidence travels up: when a tool ran in any of the child's steps, a
-  failure of the parent step becomes `Smith::ToolOutcomeUncertain` and is never
-  retried, exactly as when the tool runs in the parent step itself
+- tool evidence travels up: when a tool that is not replay-safe ran in any of
+  the child's steps, a failure of the parent step becomes
+  `Smith::ToolOutcomeUncertain` and is never retried, exactly as when the tool
+  runs in the parent step itself (a child whose tools were all
+  `replay :safe` leaves the parent's retry)
 - parent step count stays parent-scoped
 - parent and child share the outer budget ledger
 - nested best-known token/cost totals roll up into the parent result

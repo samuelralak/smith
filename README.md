@@ -240,7 +240,11 @@ everything else. Messages can carry documents and images.
 ## Tools and guardrails
 
 Agents can use `Smith::Tool` subclasses, with a budget on how many calls a
-step may make. Guardrails check inputs, outputs and tool calls. Smith ships
+step may make. Once a tool has run, a step is not retried and takes no
+fallback, as its tools would run again; a tool that is safe to run again (a
+lookup) declares `capabilities { replay :safe }`, and a step whose tools were
+all safe keeps its retries, fallbacks and output repair. Guardrails check
+inputs, outputs and tool calls. Smith ships
 `Tools::Think`; `Tools::WebSearch` and `Tools::UrlFetcher` are stubs that
 declare the interface, which you subclass with your own search or fetch.
 [`docs/TOOLS_AND_GUARDRAILS.md`](docs/TOOLS_AND_GUARDRAILS.md)

@@ -21,7 +21,8 @@ module Smith
       end
 
       # One invocation: the provider call, then whatever OutputIntegrity
-      # asks for until the response can be the output.
+      # asks for until the response can be the output. A response set aside
+      # takes what its tools captured with it.
       def invoke_agent(agent_class, prepared_input, output_schema: effective_output_schema(agent_class))
         check_deadline!
         plan = output_plan(agent_class, prepared_input, output_schema)
@@ -33,6 +34,7 @@ module Smith
           return finalize_output(agent_class, result) unless follow_up
 
           settle_rejected(result)
+          discard_captures(attempt)
           attempt = follow_up.call
         end
       end

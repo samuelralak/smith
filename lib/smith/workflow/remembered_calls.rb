@@ -53,11 +53,22 @@ module Smith
         messages = kept.fetch(:messages)
         messages.each { chat.add_message(_1) }
         ran = messages.filter_map { _1.tool_call_id if _1.role == :tool }
-        Tool.current_tool_execution_tracker&.mark_started! if ran.any?
-        charge_kept_calls(ran_calls(messages, ran))
+        calls = ran_calls(messages, ran)
+        mark_kept_tools(chat, ran, calls) if ran.any?
+        charge_kept_calls(calls)
       end
 
       def ran_calls(messages, ran) = messages.flat_map { _1.tool_calls&.values.to_a }.select { ran.include?(_1.id) }
+
+      # As the tools themselves would mark the step: replay-safe only when
+      # each kept result answers a call to a tool of the chat's that
+      # declares it.
+      def mark_kept_tools(chat, ran, calls)
+        safe = calls.length == ran.length && calls.all? { replay_safe_tool?(chat.tools[_1.name.to_sym]) }
+        Tool.current_tool_execution_tracker&.mark_started!(replay_safe: safe)
+      end
+
+      def replay_safe_tool?(tool) = tool.is_a?(Tool) && tool.class.replay_safe?
 
       # Each kept call against the agent's tool-call allowance and the
       # workflow's `tool_calls` budget, as a call that runs is, so a replay

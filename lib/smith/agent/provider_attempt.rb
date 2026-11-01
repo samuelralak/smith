@@ -30,6 +30,9 @@ module Smith
       # True for a response a host's response memo kept (ResponseMemo): the
       # call sent nothing.
       attribute :memo, Types::Bool.optional.default(nil)
+      # The tool results the attempt's tools captured (AttemptCaptures),
+      # which leave the step's with the attempt if it is set aside.
+      attribute :captures, Types::Array.default([].freeze)
 
       def self.success(completion:, model_reference:, **facts)
         new(completion:, model_reference:, error: nil, **facts)

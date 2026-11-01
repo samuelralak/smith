@@ -465,6 +465,17 @@ module Smith
       ->(entry) { @tool_results_mutex.synchronize { @tool_results << entry } }
     end
 
+    # Takes out what an attempt the step set aside had captured
+    # (Agent::AttemptCaptures), by identity, so an equal entry of another
+    # attempt or branch stays. `O(N + K)`.
+    def drop_tool_results(entries)
+      return if entries.empty?
+
+      dropped = {}.compare_by_identity
+      entries.each { dropped[_1] = true }
+      @tool_results_mutex.synchronize { @tool_results.reject! { dropped.key?(_1) } }
+    end
+
     def initialize_tool_result_state
       @tool_results = []
       @tool_results_mutex = Mutex.new

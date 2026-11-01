@@ -348,19 +348,27 @@ RSpec.describe "Smith::Tool runtime behavior" do
     tool_class.current_tool_result_collector = nil
   end
 
-  it "keeps capture opt-in per concrete subclass" do
+  it "gives a subclass its parent's capture, strictness included, until it declares its own" do
     captured = []
     tool_class.current_tool_result_collector = ->(entry) { captured << entry }
     parent = with_stubbed_class("SpecStrictCaptureParentTool", tool_class) do
       capture_result(strict: true) { |_kwargs, result| { inherited: result } }
       def perform(**_kwargs) = "parent-result"
     end
-    child = Class.new(parent)
+    child = with_stubbed_class("SpecStrictCaptureChildTool", parent)
+    own = with_stubbed_class("SpecLaxCaptureChildTool", parent) do
+      capture_result { |_kwargs, result| { own: result } }
+    end
 
-    expect(child.capture_result).to be_nil
-    expect(child.capture_result_strict?).to be(false)
-    expect(child.new.execute).to eq("parent-result")
-    expect(captured).to be_empty
+    expect([child.capture_result, child.capture_result_strict?]).to eq([parent.capture_result, true])
+    expect([own.capture_result_strict?, parent.capture_result_strict?]).to eq([false, true])
+    expect([child.new.execute, own.new.execute]).to eq(%w[parent-result parent-result])
+    expect(captured.map { _1.slice(:tool, :captured) })
+      .to eq([{ tool: "spec_strict_capture_child", captured: { inherited: "parent-result" } },
+              { tool: "spec_lax_capture_child", captured: { own: "parent-result" } }])
+    tool_class.current_tool_result_collector = nil
+    expect { child.new.execute }.to raise_error(Smith::ToolCaptureFailed)
+    expect(own.new.execute).to eq("parent-result")
   ensure
     tool_class.current_tool_result_collector = nil
   end

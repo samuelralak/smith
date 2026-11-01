@@ -23,7 +23,7 @@ module Smith
 
       def handle_provider_failure!(error, model_reference, agent_class, fallback_available:, attempt_id: nil)
         account_failed_attempt(error, model_reference, agent_class, attempt_id:)
-        if completed_tool_calls?
+        if uncertain_tool_calls?
           raise Smith::ToolOutcomeUncertain.new(
             "provider failed after tool execution began; retry or fallback could replay an uncertain outcome"
           ), cause: error
@@ -44,8 +44,10 @@ module Smith
         PROVIDER_ACCOUNT_ERRORS.any? { |error_class| error.is_a?(error_class) }
       end
 
-      def completed_tool_calls?
-        Tool.current_tool_execution_tracker&.started?
+      # A tool that is not replay-safe has run in the step: a fallback would
+      # run it again.
+      def uncertain_tool_calls?
+        Tool.current_tool_execution_tracker&.uncertain?
       end
 
       def fallback_eligible?(error)

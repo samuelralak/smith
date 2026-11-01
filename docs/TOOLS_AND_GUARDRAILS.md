@@ -41,6 +41,80 @@ configuration, programming, authorization-integrity, or durability failures.
 Smith applies policy and budgeting around that host boundary; it does not
 interpret a host's input schema or failure envelope.
 
+### Subclasses
+
+A subclass inherits every declaration of its parent's, each read from the
+nearest class that made it, so a subclass overrides one by declaring it
+again:
+
+- `description`, `with_params`, `category`, `authorize`, `before_execute`,
+  `compatible_with` and `capture_result` (its block and strictness
+  together): the nearest declared wins
+- `param`: parameters add up by name, so a subclass adds parameters or
+  replaces one of its parent's; a schema given with `params` is the
+  nearest one, unless the subclass declares `param`s of its own
+- `capabilities`: merged key by key, so a subclass's block sets or replaces
+  only the keys it names and keeps its parent's `privilege`, `sensitivity`
+  and `replay`
+
+An inherited `authorize` guards the subclass as it guards its parent; a
+subclass's own replaces it (call `superclass.authorize` inside it to keep
+both checks), and a tool none of whose classes declares one runs as an
+undeclared tool does. A subclass made before its parent declares something
+still reads it.
+
+### Replay-Safe Tools
+
+A tool that does the same when it runs again under the same keys (a lookup
+over the host's own data, a search, a read, even one that calls a paid API)
+can say so:
+
+```ruby
+class FindPlaces < Smith::Tool
+  description "Find places that match a description."
+  param :query, type: :string, required: true
+
+  capabilities do
+    replay :safe
+  end
+
+  def perform(query:) = PlaceIndex.search(query, limit: 5)
+end
+```
+
+Smith follows the tools each step attempt runs. Once a tool that is not
+replay-safe has run (any tool without the declaration, a plain RubyLLM tool
+included), the step makes no follow-up call for its output (the step fails
+with `Smith::ToolOutcomeUncertain` around the output error), takes no
+fallback model after a provider failure (`ToolOutcomeUncertain`), and a
+failure of the step becomes `ToolOutcomeUncertain`, which no retry takes:
+running the step's tools again could repeat what they did. When every tool
+that ran is replay-safe, the step keeps all three:
+
+- an output repair, a refusal fallback and a truncation retry are each a new
+  call from the step's messages (a repair adds the rejected reply and its
+  problems), so the model may call the tools again
+- a provider failure takes the agent's fallback models, each with a tool
+  loop of its own
+- a failure of the step is its own error, which `retry_on` retries (with
+  `durable: true`, a wait of the run), and the next attempt runs its tools
+  again
+
+An attempt set aside for any of these takes its tools' captures
+(`capture_result`, strict or not) out of the step's `tool_results`, by
+identity, so a concurrent branch's are left. A retried attempt's go too,
+unless the retry continues a tool loop paused for budget, which keeps its
+tools' results. Tools that run again send the same idempotency keys, and count
+against the agent's `tool_calls` allowance and the workflow's `tool_calls`
+budget as any call does, so a step's tool calls stay bounded. Tool evidence
+from a nested workflow reaches its parent step as it was: a child whose tools
+were all replay-safe leaves the parent's retry. A call the response memo
+replays counts its kept tool results the same way, by the tools its chat
+declares. A subclass inherits the declaration with its parent's other
+capabilities; one that does more than its parent (a lookup that also writes)
+declares `replay :unsafe`, which is also the default. Any other value raises
+`ArgumentError`, and `ToolClass.replay_safe?` reads it.
+
 ### Bounded Completion
 
 The default exhaustion policy remains fail-fast:
@@ -186,9 +260,9 @@ entry by raising an exception. A collector return value of `nil` or `false` is
 accepted; delivery is rejected only when the collector raises. Best-effort
 capture logs and continues as before.
 
-Capture policy is declared per concrete tool class and is not inherited. This
-preserves the historical opt-in contract and prevents a subclass from beginning
-to capture or fail strictly without its own declaration.
+A subclass inherits its parent's capture, strictness included, and replaces it
+with a `capture_result` of its own (Subclasses), so a subclass of a strictly
+capturing tool fails closed as its parent does.
 
 Strict capture validates that a collector exists before `perform`, but the
 capture block and collector run after `perform` returns. It is therefore
@@ -459,7 +533,8 @@ Smith ships `Tools::WebSearch`, `Tools::UrlFetcher`, and `Tools::Think`. Tools d
 `Tools::WebSearch` and `Tools::UrlFetcher` are stubs: they declare each
 tool's parameters and description, and their `perform` raises
 `NotImplementedError`. A host subclasses them with its own search or fetch
-behind `perform`. `Tools::Think` works as shipped.
+behind `perform`, and its subclass keeps their parameters, description and
+compatibility (Subclasses). `Tools::Think` works as shipped.
 
 ```ruby
 class WebSearch < Smith::Tools::WebSearch
@@ -499,8 +574,8 @@ Graceful exhaustion is an in-process protocol guarantee, not durable recovery
 for the model/tool loop. If the process exits after a tool begins and before the
 agent completes, the host must treat the outcome as uncertain unless it owns a
 durable per-invocation receipt and reconciliation contract. Smith also refuses
-to start a fresh fallback-model chat after tool execution has begun because that
-would discard the captured evidence and conversation protocol.
+to start a fresh fallback-model chat after a tool that is not replay-safe has
+begun, because the new chat would run its tools again (Replay-Safe Tools).
 
 Within a host invocation scope, `Smith::Tool.current_invocation` exposes the
 normalized tool-call ID and deterministic execution/batch ordinals. The ID is

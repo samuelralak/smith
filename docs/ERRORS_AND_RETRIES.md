@@ -15,9 +15,23 @@ Smith::Errors.retry_forbidden?(error)
 ```
 
 A nested workflow's step fails with the child's own error when the child
-raises it, so these answers carry through nesting. When a tool ran inside the
-child, the parent step's failure becomes `ToolOutcomeUncertain`, which is never
-retried.
+raises it, so these answers carry through nesting. When a tool that is not
+replay-safe ran inside the child, the parent step's failure becomes
+`ToolOutcomeUncertain`, which is never retried.
+
+## After tools ran
+
+A step's failure after one of its tools ran is `ToolOutcomeUncertain`, which
+no retry takes, and the step takes no fallback model and makes no follow-up
+call for its output: running the tools again could repeat what they did. A
+tool that declares `capabilities { replay :safe }` (a lookup, a search, a
+read) says running it again does no harm. When every tool that ran in the
+step is replay-safe, the step keeps its output repair, its refusal fallback
+and truncation retry, its fallback models after a provider failure, and its
+`retry_on`, durable retries included; each runs the tools again, under the
+same idempotency keys and within the same `tool_calls` allowances, and the
+captures of an attempt it sets aside are dropped from `tool_results`. See
+[TOOLS_AND_GUARDRAILS.md](TOOLS_AND_GUARDRAILS.md), Replay-Safe Tools.
 
 Workflow transitions can also declare a bounded local retry policy:
 
@@ -185,7 +199,8 @@ had just come, once, and its `:provider_call` trace says `memo: true`; a reply
 that was cut off or refused fails the step as it did. One that had not ended
 goes on from where it was kept. Kept after its tools' results, it continues
 from them: kept tool results count as tools the step ran, so no retry or
-fallback runs them again, and each is charged to the agent's `tool_calls`
+fallback runs them again (unless each is the result of a tool the chat
+declares replay-safe), and each is charged to the agent's `tool_calls`
 allowance and the workflow's `tool_calls` budget as it was. Kept while its
 tools ran (the step was cut inside a tool), the reply that called them is not
 asked for again: its tools run again, under the same idempotency keys, and the

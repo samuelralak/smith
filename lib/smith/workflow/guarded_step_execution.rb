@@ -22,19 +22,20 @@ module Smith
           ensure
             # Tool evidence travels up: a step running inside another step
             # (a nested workflow's step) marks the enclosing step too, so the
-            # enclosing step is never retried over tools that already ran.
-            previous_tracker&.mark_started! if tracker.started?
+            # enclosing step is never retried over tools that already ran,
+            # unless they were all replay-safe.
+            previous_tracker&.mark_started!(replay_safe: !tracker.uncertain?) if tracker.started?
             Tool.current_tool_execution_tracker = previous_tracker
           end
         end
       end
 
-      # A failure after a tool ran leaves its outcome uncertain, unless its
-      # retry could not run the tool again: a terminal failure, or a tool
-      # loop paused for budget, whose retry continues from its tools'
-      # results.
+      # A failure after a tool that is not replay-safe ran leaves its outcome
+      # uncertain, unless its retry could not run the tool again: a terminal
+      # failure, or a tool loop paused for budget, whose retry continues
+      # from its tools' results.
       def uncertain_after_tools?(tracker, error)
-        tracker.started? && !terminal_retry_error?(error) &&
+        tracker.uncertain? && !terminal_retry_error?(error) &&
           !(error.is_a?(BudgetUnavailable) && error.continuation)
       end
 

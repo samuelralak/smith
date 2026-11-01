@@ -31,7 +31,7 @@ module Smith
       end
 
       def mark_tool_execution_started!
-        self.class.current_tool_execution_tracker&.mark_started!
+        self.class.current_tool_execution_tracker&.mark_started!(replay_safe: self.class.replay_safe?)
         self.class.__send__(:current_tool_dispatch_start_handler)&.call(self)
       end
     end

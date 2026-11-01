@@ -34,22 +34,40 @@ module Smith
         schedule = retry_schedule(config)
         begin
           attempt += 1
-          @step_attempt = attempt
-          @step_key_generation = key_generation
-          attempt_scope = attempt_idempotency_scope(key_generation)
+          attempt_scope, captured = enter_attempt(attempt, key_generation)
           run_attempt_under_keys(transition, attempt_scope)
         rescue StandardError => e
           Interruptions.pass!(e)
           raise unless retry_transition_error?(config, e, attempt)
 
           key_generation += 1 if new_idempotency_key_after?(config, e, attempt_scope)
-          keep_budget_continuation(e)
+          leave_for_retry(e, captured)
           delay = retry_delay(schedule, attempt)
           return wait_to_retry(transition, delay, attempt + 1, key_generation, e) if config[:durable]
 
           sleep(delay) if delay.positive?
           retry
         end
+      end
+
+      # The attempt under way, under `key_generation`: its idempotency scope,
+      # and where its tool results start.
+      def enter_attempt(attempt, key_generation)
+        @step_attempt = attempt
+        @step_key_generation = key_generation
+        [attempt_idempotency_scope(key_generation), @tool_results_mutex.synchronize { @tool_results.length }]
+      end
+
+      # What a failed attempt leaves the retry: a tool loop paused for
+      # budget leaves its continuation, which the retry goes on from with
+      # its tools' results; any other leaves none of its tool results (its
+      # tools were replay-safe, or it would not be retried, and the next
+      # attempt runs them again).
+      def leave_for_retry(error, tool_results_from)
+        return keep_budget_continuation(error) if error.is_a?(BudgetUnavailable) && error.continuation
+        return unless tool_results_from
+
+        @tool_results_mutex.synchronize { @tool_results.slice!(tool_results_from..) }
       end
 
       def attempt_idempotency_scope(key_generation)

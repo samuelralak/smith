@@ -6,8 +6,10 @@ module Smith
   class Agent
     # The follow-up call an output failure may get (OutputIntegrity): a
     # refusal fallback, a truncation retry, or a repair, each within the
-    # agent's settings and never once a tool has run in the step, once the
-    # call has spent what its step reserved, or past MAX_CALLS calls.
+    # agent's settings and never once a tool that is not replay-safe has run
+    # in the step, once the call has spent what its step reserved, or past
+    # MAX_CALLS calls. A follow-up is a new chat from the step's messages,
+    # so the model may call replay-safe tools again.
     module OutputRecovery
       MAX_CALLS = 3 + OutputPolicy::MAX_REPAIRS
       REPAIR_NOTE = "Your previous reply could not be used as the required output:\n%s\n" \
@@ -20,7 +22,7 @@ module Smith
       private
 
       def recovery(plan, attempt, result, failure)
-        return if tools_ran? || plan.calls >= MAX_CALLS || budget_spent?(result)
+        return if tools_uncertain? || plan.calls >= MAX_CALLS || budget_spent?(result)
 
         case failure
         when OutputRefused then refusal_recovery(plan, attempt, failure)
@@ -29,7 +31,7 @@ module Smith
         end
       end
 
-      def tools_ran? = Tool.current_tool_execution_tracker&.started? || false
+      def tools_uncertain? = Tool.current_tool_execution_tracker&.uncertain? || false
 
       def refusal_recovery(plan, attempt, failure)
         fallback = plan.agent_class.on_refusal[:model]

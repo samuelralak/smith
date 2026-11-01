@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "provider_failure_handling"
+require_relative "attempt_captures"
 require_relative "content_bytes"
 require_relative "content_parts"
 require_relative "invocation_preparation"
@@ -15,6 +16,7 @@ module Smith
   class Agent
     module ProviderCompletion
       include ProviderFailureHandling
+      include AttemptCaptures
       include InvocationPreparation
       include ContentParts
       include ProviderCallTiming
@@ -53,16 +55,15 @@ module Smith
               "no executable model candidate for #{agent_class}; declare a model or fallback_models"
       end
 
-      # Returns when another candidate is left to try. A candidate that met
-      # an interrupting error (an account out of credit) outlasts how a later
+      # Returns when another candidate is left to try, the failed attempt set
+      # aside with what its tools captured. A candidate that met an
+      # interrupting error (an account out of credit) outlasts how a later
       # one fails: the step was cut short, not failed, and is taken again
       # from its first candidate once the host can do its part.
       def fail_over!(attempt, agent_class, candidates, interrupted)
-        handle_provider_failure!(
-          attempt.error, attempt.model_reference, agent_class,
-          fallback_available: candidates.fallback_available?,
-          attempt_id: attempt.attempt_id
-        )
+        handle_provider_failure!(attempt.error, attempt.model_reference, agent_class,
+                                 fallback_available: candidates.fallback_available?, attempt_id: attempt.attempt_id)
+        discard_captures(attempt)
       rescue StandardError => e
         raise if interrupted.nil? || Interruptions.find(e)
 
@@ -126,7 +127,7 @@ module Smith
         message_count = chat_message_count(chat)
         observed_reference = observed_model_reference(chat, fallback: model_reference)
         timer = ProviderCallTiming::Timer.start
-        response, stream, mode, call_facts = complete_chat(chat, observed_reference, collected = [], facts)
+        response, stream, mode, call_facts = captured_completion(chat, observed_reference, collected = [], facts)
         timer.stop
         completion = Completion.from_messages(response:, messages: new_chat_messages(chat, message_count), stream:,
                                               mode:)

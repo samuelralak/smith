@@ -2,7 +2,9 @@
 
 require "ruby_llm"
 
+require_relative "tool/declarations"
 require_relative "tool/capability_builder"
+require_relative "tool/capability_declaration"
 require_relative "tool/policy"
 require_relative "tool/call_budget"
 require_relative "tool/call_batch"
@@ -61,6 +63,8 @@ module Smith
     include ExecutionLifecycle
     include BudgetEnforcement
     include Capture
+    extend Declarations
+    extend CapabilityDeclaration
     extend CaptureConfiguration
     extend ScopedContext
 
@@ -91,32 +95,6 @@ module Smith
       end
 
       attr_reader :compatible_with_spec
-
-      def category(value = nil)
-        return @category if value.nil?
-
-        @category = value
-      end
-
-      def capabilities(&)
-        return @capabilities unless block_given?
-
-        builder = CapabilityBuilder.new
-        builder.instance_eval(&)
-        @capabilities = builder.to_h
-      end
-
-      def authorize(&block)
-        return @authorize unless block_given?
-
-        @authorize = block
-      end
-
-      def before_execute(&block)
-        return @before_execute unless block_given?
-
-        @before_execute = block
-      end
     end
 
     def execute(**kwargs)

@@ -50,11 +50,14 @@ end
   problems as "path: problem" lines. It then raises `Smith::OutputInvalid`,
   whose `problems` lists at most 20 of them. A blank output still raises
   `Smith::BlankAgentOutputError`.
-- No follow-up call is made once a tool has run in the step (the tools would
-  run again; the step fails with `Smith::ToolOutcomeUncertain` around the output
-  error) or once the call has spent what its step reserved from a budget. A
-  follow-up that fails raises the output error it was making up for, with the
-  provider's error as its cause.
+- No follow-up call is made once a tool that is not replay-safe has run in
+  the step (the tools would run again; the step fails with
+  `Smith::ToolOutcomeUncertain` around the output error) or once the call has
+  spent what its step reserved from a budget. After replay-safe tools only
+  (`capabilities { replay :safe }`, docs/TOOLS_AND_GUARDRAILS.md), the
+  follow-up is made and its model may call them again; the set-aside reply's
+  tool captures leave `tool_results`. A follow-up that fails raises the
+  output error it was making up for, with the provider's error as its cause.
 - Anthropic's structured outputs reject numeric, string-length and most
   array-size constraints: Smith sends Anthropic the schema without them, with
   `additionalProperties: false` on every object, and checks them on the parsed

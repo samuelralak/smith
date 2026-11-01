@@ -16,12 +16,13 @@ module Smith
     # output contract is sent back for repair up to `output_repairs`, then
     # raises OutputInvalid.
     #
-    # No follow-up call is made once a tool has run in the step (the tools
-    # would run again), once the call has spent what its step reserved, or
-    # past MAX_CALLS; a follow-up that fails raises the output failure it
-    # was making up for, with the provider's error as its cause. Every
-    # response is billed; one that is set aside settles with the
-    # invocation's failed attempts, and an :output_rejected trace names it.
+    # No follow-up call is made once a tool that is not replay-safe has run
+    # in the step (the tools would run again), once the call has spent what
+    # its step reserved, or past MAX_CALLS; a follow-up that fails raises the
+    # output failure it was making up for, with the provider's error as its
+    # cause. Every response is billed; one that is set aside settles with
+    # the invocation's failed attempts, takes what its tools captured with
+    # it, and an :output_rejected trace names it.
     module OutputIntegrity
       include OutputRecovery
 

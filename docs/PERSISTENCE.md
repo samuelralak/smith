@@ -935,7 +935,10 @@ end
   runs under the step-in-progress mark, so the restore of a run caught in it
   raises `Smith::StepInProgressOnRestore`.
 - No retry wait is entered once the run's wall-clock deadline has passed, after
-  a tool ran (`Smith::ToolOutcomeUncertain` is never retried), or for a backoff
+  a tool that is not replay-safe ran (`Smith::ToolOutcomeUncertain` is never
+  retried; after replay-safe tools only, the wait is entered, the run stored
+  without the failed attempt's tool captures, and the next attempt runs them
+  again), or for a backoff
   that does not end within the store's persistence TTL (the step fails with a
   `Smith::WorkflowError` whose cause is the attempt's error); runtime readiness
   reports a policy whose longest backoff, jitter included, reaches the TTL

@@ -2033,6 +2033,47 @@ Documented contracts covered:
 - `validate_graph` reports a rename leading nowhere as an error and one whose old name is still declared as a warning
 - every guard and key site is mutation-verified
 
+### `spec/smith/tools/declaration_inheritance_spec.rb`
+
+Purpose:
+
+- pins that a `Smith::Tool` subclass inherits every declaration of its parent's, each overridable, and that `authorize` is never lost on a subclass (0.13.0)
+
+Architecture basis:
+
+- Tools and guardrails (docs/TOOLS_AND_GUARDRAILS.md): Subclasses
+
+Documented contracts covered:
+
+- `description` (and `desc`), `with_params`, `category`, `authorize` and `before_execute` are the nearest declared up the chain, a grandchild's included, and a subclass's own replaces its parent's without changing the parent
+- `param`s add up by name (a subclass adds or replaces one); a `params` schema is the nearest, unless the subclass declares `param`s of its own; the parent's schema is unchanged
+- a declaration made on the parent after the subclass was created reaches the subclass
+- a host subclass of a shipped stub (`Tools::WebSearch`) keeps its description, parameters and compatibility
+- `capabilities` merge key by key: an inherited `privilege :elevated` denies the subclass, an inherited `sensitivity :high` strips its tool-call traces' content, and a subclass's own key (`privilege :none`) replaces only that key
+- an inherited `authorize` denies a subclass and a grandchild as it denies the parent; a subclass's own replaces it (and can call `superclass.authorize`); a tool none of whose classes declares one runs as before
+
+### `spec/smith/tools/replay_safe_spec.rb`
+
+Purpose:
+
+- pins that a tool declaring `capabilities { replay :safe }` leaves its step the follow-ups, fallbacks and retries a tool that ran would otherwise forbid, and that every other tool keeps the step as before (0.13.0)
+
+Architecture basis:
+
+- Tools and guardrails (docs/TOOLS_AND_GUARDRAILS.md): Replay-Safe Tools
+- Errors and retries (docs/ERRORS_AND_RETRIES.md): After tools ran, the response memo
+- Agent outputs (docs/AGENTS.md); durable retry (docs/PERSISTENCE.md)
+
+Documented contracts covered:
+
+- `replay :safe` and `replay :unsafe` are the only values, unsafe is the default, a subclass inherits it with its parent's other capabilities and undoes it with `replay :unsafe`, and `replay_safe?` reads it
+- after replay-safe tools only, an output repair, a refusal fallback and a truncation retry are made, each a new call from the step's messages whose tool loop runs again; a repair carries no tool messages of the set-aside attempt
+- after replay-safe tools only, a provider failure takes the fallback model, the step's failure is its own error, retried in process and durably (the stored waiting run holds no captures of the failed attempt), and the next attempt runs the tools again
+- a set-aside or retried attempt's captures leave `tool_results`, by identity: a concurrent fan-out branch's equal captures, made between them, stay; a tool loop paused for budget keeps its captures for the retry that continues it
+- once a tool that is not replay-safe ran (in one round with a safe one, or before one), the step is uncertain as before: no follow-up, no fallback, no retry wait, `ToolOutcomeUncertain`, its captures kept
+- a nested workflow's tool evidence reaches the parent step as it was: safe tools leave the parent's retry, an unsafe one makes it `ToolOutcomeUncertain`
+- a call the response memo replays after a crash counts its kept tool results by the tools its chat declares: all safe takes the fallback (the tools run again), one unsafe stays uncertain
+
 ### `spec/smith/provider_errors_spec.rb`
 
 Purpose:
@@ -3844,7 +3885,7 @@ Covered behaviors:
 - Strict capture preflights collector presence before perform
 - Strict capture rejects a non-callable collector before host hooks or perform
 - Collector nil/false return values are accepted; raising rejects delivery
-- Capture remains opt-in per concrete subclass for backward compatibility
+- A subclass inherits its parent's capture, strictness included, until it declares its own (0.13.0; before, capture was opt-in per concrete subclass)
 - Opaque host invocation context is nested, restored, and exception safe
 - Incomplete scoped context is rejected before any current value is mutated
 
@@ -4004,7 +4045,7 @@ Notes:
 - tool_results is persisted via to_state/from_state and restored on durable resume
 - Smith does not interpret captured payloads — host owns all projection
 - Capture is best-effort by default: failures logged, tool execution unaffected
-- Strict capture is per-concrete-class opt-in and raises Smith::ToolCaptureFailed rather than
+- Strict capture is opt-in, inherited by subclasses (0.13.0), and raises Smith::ToolCaptureFailed rather than
   permitting a checkpoint without required evidence
 - Strict capture is post-result evidence, not an operation transaction; its
   failure is terminal; direct retry declarations are rejected and broad retry
