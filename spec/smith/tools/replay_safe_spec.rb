@@ -68,19 +68,57 @@ RSpec.describe "Smith::Tool replay :safe" do
   def failure(result) = result.steps.last[:error]
 
   describe "the declaration" do
-    it "is `capabilities { replay :safe }`, unsafe by default, inherited, and undone by `replay :unsafe`" do
+    it "is `capabilities { replay :safe }`, and unsafe by default" do
       safe = Class.new(Smith::Tool) { capabilities { replay :safe } }
 
       expect(safe.replay_safe?).to be(true)
       expect(safe.capabilities).to eq(replay: :safe)
       expect(Class.new(Smith::Tool).replay_safe?).to be(false)
       expect(Class.new(Smith::Tool) { capabilities { replay :unsafe } }.replay_safe?).to be(false)
-      expect(Class.new(safe).replay_safe?).to be(true)
-      expect(Class.new(safe) { capabilities { sensitivity :high } }.replay_safe?).to be(true)
-      expect(Class.new(safe) { capabilities { replay :unsafe } }.replay_safe?).to be(false)
       [true, "safe", nil].each do |value|
         expect { Class.new(Smith::Tool) { capabilities { replay value } } }
           .to raise_error(ArgumentError, "replay is :safe or :unsafe"), value.inspect
+      end
+    end
+
+    it "is never inherited: a subclass is replay-safe only once it declares it itself" do
+      safe = Class.new(Smith::Tool) do
+        capabilities do
+          replay :safe
+          sensitivity :high
+        end
+      end
+      child = Class.new(safe)
+      guarded = Class.new(safe) { capabilities { privilege :authenticated } }
+      declared = Class.new(safe) { capabilities { replay :safe } }
+
+      expect([child.replay_safe?, guarded.replay_safe?, declared.replay_safe?]).to eq([false, false, true])
+      expect([child.capabilities, guarded.capabilities])
+        .to eq([{ sensitivity: :high }, { sensitivity: :high, privilege: :authenticated }])
+      expect(declared.capabilities).to eq(sensitivity: :high, replay: :safe)
+      expect(safe.replay_safe?).to be(true)
+
+      expect([Class.new(child).replay_safe?, Class.new(declared).replay_safe?]).to eq([false, false])
+      expect(Class.new(child) { capabilities { replay :safe } }.replay_safe?).to be(true)
+      expect(Class.new(declared) { capabilities { replay :safe } }.replay_safe?).to be(true)
+      expect(Class.new(Class.new(Smith::Tool) { capabilities { replay :safe } }).capabilities).to be_nil
+    end
+
+    it "makes a step whose tool is an undeclared subclass of a replay-safe one uncertain, until it declares" do
+      parent = lookup("SpecReplayParentLookup", safe: true)
+      [[false, Smith::ToolOutcomeUncertain, 1], [true, nil, 2]].each do |declares, error, ran|
+        runs.clear
+        tool = stub_const("SpecReplayChild#{declares}Lookup", Class.new(parent))
+        tool.capabilities { replay :safe } if declares
+        agent("SpecReplayChild#{declares}Agent") do
+          tools tool
+          fallback_models model: "claude-haiku-5-5", provider: :anthropic
+        end
+        replies(calling(tool, id: "toolu_a"), down, *(declares ? [calling(tool, id: "toolu_b"), answer("Ok.")] : []))
+
+        result = asking("SpecReplayChild#{declares}Workflow").new(context: {}).run!
+
+        expect([failure(result)&.class, runs.length]).to eq([error, ran]), "declares: #{declares}"
       end
     end
   end

@@ -2050,7 +2050,7 @@ Documented contracts covered:
 - a declaration made on the parent after the subclass was created reaches the subclass, `compatible_with` included (spec/smith/tool/compatibility_spec.rb)
 - a grandchild's `param`s do not bring back parameters a class between replaced with a `params` schema
 - a host subclass of a shipped stub (`Tools::WebSearch`) keeps its description, parameters and compatibility
-- `capabilities` merge key by key: an inherited `privilege :elevated` denies the subclass, an inherited `sensitivity :high` strips its tool-call traces' content, and a subclass's own key (`privilege :none`) replaces only that key
+- `capabilities` merge key by key, `replay` aside (never inherited): an inherited `privilege :elevated` denies the subclass, an inherited `sensitivity :high` strips its tool-call traces' content, and a subclass's own key (`privilege :none`) replaces only that key
 - an inherited `authorize` denies a subclass and a grandchild as it denies the parent; a subclass's own replaces it (and can call `superclass.authorize`); a tool none of whose classes declares one runs as before
 
 ### `spec/smith/tools/replay_safe_spec.rb`
@@ -2067,7 +2067,7 @@ Architecture basis:
 
 Documented contracts covered:
 
-- `replay :safe` and `replay :unsafe` are the only values, unsafe is the default, a subclass inherits it with its parent's other capabilities and undoes it with `replay :unsafe`, and `replay_safe?` reads it
+- `replay :safe` and `replay :unsafe` are the only values, unsafe is the default, and `replay_safe?` reads it; it is never inherited: a subclass (or grandchild) of a replay-safe tool is unsafe until it declares `replay :safe` itself, while keeping its parent's other capabilities, and a step using such an undeclared subclass stays uncertain (no fallback) until it declares
 - after replay-safe tools only, an output repair, a refusal fallback and a truncation retry are made, each a new call from the step's messages whose tool loop runs again; a repair carries no tool messages of the set-aside attempt
 - after replay-safe tools only, a provider failure takes the fallback model, the step's failure is its own error, retried in process and durably (the stored waiting run holds no captures of the failed attempt), and the next attempt runs the tools again
 - a set-aside or retried attempt's captures leave `tool_results`, by identity: a concurrent fan-out branch's equal captures, made between them, stay; a tool loop paused for budget keeps its captures for the retry that continues it

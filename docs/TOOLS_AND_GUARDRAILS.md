@@ -43,9 +43,9 @@ interpret a host's input schema or failure envelope.
 
 ### Subclasses
 
-A subclass inherits every declaration of its parent's, each read from the
-nearest class that made it, so a subclass overrides one by declaring it
-again:
+A subclass inherits every declaration of its parent's but `replay`, each
+read from the nearest class that made it, so a subclass overrides one by
+declaring it again:
 
 - `description`, `with_params`, `category`, `authorize`, `before_execute`,
   `compatible_with` and `capture_result` (its block and strictness
@@ -54,8 +54,8 @@ again:
   replaces one of its parent's; a schema given with `params` is the
   nearest one, unless the subclass declares `param`s of its own
 - `capabilities`: merged key by key, so a subclass's block sets or replaces
-  only the keys it names and keeps its parent's `privilege`, `sensitivity`
-  and `replay`
+  only the keys it names and keeps its parent's `privilege` and
+  `sensitivity`; `replay` is never inherited (Replay-Safe Tools)
 
 An inherited `authorize` guards the subclass as it guards its parent; a
 subclass's own replaces it (call `superclass.authorize` inside it to keep
@@ -113,10 +113,12 @@ budget as any call does, so a step's tool calls stay bounded. Tool evidence
 from a nested workflow reaches its parent step as it was: a child whose tools
 were all replay-safe leaves the parent's retry. A call the response memo
 replays counts its kept tool results the same way, by the tools its chat
-declares. A subclass inherits the declaration with its parent's other
-capabilities; one that does more than its parent (a lookup that also writes)
-declares `replay :unsafe`, which is also the default. Any other value raises
-`ArgumentError`, and `ToolClass.replay_safe?` reads it.
+declares. The declaration is never inherited, as whether a tool is safe to
+run again depends on its own `perform`: a subclass of a replay-safe tool is
+replay-safe only when it declares `replay :safe` itself (its other
+capabilities, description, parameters and capture it inherits). `replay
+:unsafe` states the default, any other value raises `ArgumentError`, and
+`ToolClass.replay_safe?` reads the class's own declaration.
 
 ### Bounded Completion
 
