@@ -312,6 +312,12 @@ a versioned persistence adapter whose `store_versioned` method accepts `ttl:`,
 and non-expiring workflow persistence. Smith explicitly pins `ttl: nil` for
 every boundary write, so a later global configuration change cannot turn an
 accepted checkpoint into expiring state.
+It does not run a step declared `from: nil` yet: `prepare_persisted_step!`
+refuses one with a `Smith::WorkflowError` naming the step, before anything is
+written, since a prepared step, and a fan-out's composite plan, are checked
+against the state their step is declared from. The run itself is unchanged
+and goes on through `advance_persisted!`; `Composite::Plan.build` likewise
+refuses a nil `from` with an `ArgumentError` rather than keeping it blank.
 `prepare_persisted_step!` writes the normal `step_in_progress` marker and returns
 the pending transition name without consuming it. Duplicate preparation on the
 same workflow object is rejected. The boundary is pinned to the exact

@@ -621,6 +621,28 @@ RSpec.describe "Smith::Workflow durable composite execution" do
     Smith::Agent::Registry.delete(:composite_exact_agent)
   end
 
+  it "refuses a plan with no from state instead of recording a blank one" do
+    register_composite_agent(:composite_origin_agent)
+    workflow_class = stub_const("SpecCompositeOriginWorkflow", Class.new(Smith::Workflow) do
+      definition_digest Digest::SHA256.hexdigest("composite-origin")
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+      transition(:finish, from: :idle, to: :done) do
+        execute :composite_origin_agent, parallel: true, count: 2
+      end
+    end)
+    plan = prepare_composite(workflow_class, "composite:origin").last.plan
+    attributes = %i[dispatch kind transition execution_namespace branches input_digest budget_state_digest]
+                 .to_h { [_1, plan.public_send(_1)] }
+
+    expect(Smith::Workflow::Composite::Plan.build(**attributes, from: plan.from)).to eq(plan)
+    expect { Smith::Workflow::Composite::Plan.build(**attributes, from: nil) }
+      .to raise_error(ArgumentError, /composite plan for :finish has no from state/)
+  ensure
+    Smith::Agent::Registry.delete(:composite_origin_agent)
+  end
+
   it "rejects oversized branch collections before deserializing branch entries" do
     register_composite_agent(:composite_bound_agent)
     workflow_class = stub_const("SpecCompositeBoundWorkflow", Class.new(Smith::Workflow) do

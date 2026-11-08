@@ -294,6 +294,38 @@ RSpec.describe "Smith::Workflow split-step persistence" do
     Smith.config.persistence_ttl = original_ttl
   end
 
+  it "refuses a step declared from: nil, naming it, before anything is written, and the run goes on as before" do
+    shared = Class.new(Smith::Workflow) do
+      idempotency_mode :strict
+      initial_state :idle
+      state :done
+
+      transition :route, from: :idle, to: :routed do
+        compute(routes: %i[shared]) { |step| step.route_to(:shared) }
+      end
+
+      transition :shared, from: nil, to: :done do
+        compute { |step| step.write_context(:shared, true) }
+      end
+
+      transition :shared_fan_out, from: nil, to: :done do
+        execute :spec_split_agent, parallel: true, count: 2
+      end
+    end
+    workflow = shared.new
+    workflow.advance_persisted!(key, adapter:)
+    stored = adapter.fetch(key)
+
+    expect { workflow.prepare_persisted_step!(key, adapter:) }
+      .to raise_error(Smith::WorkflowError, /does not run :shared: it is declared from: nil/)
+    expect([adapter.fetch(key), workflow.prepared_persisted_step]).to eq([stored, nil])
+    expect(workflow.advance_persisted!(key, adapter:)).to include(transition: :shared, to: :done)
+
+    fan_out = shared.from_state(JSON.parse(stored).merge("next_transition_name" => "shared_fan_out"))
+    expect { fan_out.prepare_persisted_step!("#{key}:fan-out", adapter:) }
+      .to raise_error(Smith::WorkflowError, /does not run :shared_fan_out: it is declared from: nil/)
+  end
+
   it "requires versioned, non-expiring persistence" do
     unversioned = Class.new do
       def store(_key, _payload); end

@@ -25,6 +25,7 @@ require_relative "split_step_persistence/state_snapshot"
 require_relative "split_step_persistence/preparation_claim"
 require_relative "split_step_persistence/preparation_recovery"
 require_relative "split_step_persistence/preparation"
+require_relative "split_step_persistence/unsupported_steps"
 require_relative "split_step_persistence/restart_safe_adapter"
 require_relative "split_step_persistence/recovery"
 require_relative "split_step_persistence/recovery_boundary"
@@ -66,6 +67,7 @@ module Smith
       include PreparationClaim
       include PreparationRecovery
       include Preparation
+      include UnsupportedSteps
       include RestartSafeAdapter
       include Recovery
       include RecoveryBoundary
