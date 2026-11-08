@@ -4,6 +4,21 @@ All notable changes to Smith are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Smith is pre-1.0 and under active development; expect occasional contract tightening between minor versions until 1.0.
 
+## [Unreleased]
+
+### Fixed
+
+- A failure in a step declared `from: nil` (one that runs from whichever
+  state routes to it) restores. Smith records the failure with the step's
+  declared origin, `from: nil`, as its step result, its `StepFailed` event
+  and its trace have it, but restore refused a record without a `from`
+  state (`Smith::PersistedFailureInvalid`), so a stored run could not go on
+  to the step's `on_failure`, and a run that ended failed there could not
+  be read back. Restore now takes a nil `from`, in lax and strict modes and
+  through every store adapter, and a run stored by 0.13.0 restores as it
+  is. Any other `from` is still a state name, and a record without the
+  field, or whose `transition` or `to` is not a name, is still refused.
+
 ## [0.13.0] - 2026-11-01
 
 ### Added

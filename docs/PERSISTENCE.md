@@ -60,6 +60,11 @@ What Smith does for you:
   not the caller's Hash
 - persists accepted session history
 - preserves chosen next transitions across persistence
+- keeps a step's failure across persistence: a restored run takes the step's
+  `on_failure`, and `RunResult#last_error` and `#failure_detail` read as they
+  did in the run that failed. A step declared `from: nil`, which runs from
+  whichever state routes to it, keeps `from: nil` there, as its step result
+  and its `StepFailed` event do
 - supports JSON host round-trips through `to_state` and `.from_state`
 - refuses to restore a payload whose state, or whose pending transition, the
   workflow class does not know (a deploy renamed or removed it, or the payload

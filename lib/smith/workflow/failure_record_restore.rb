@@ -45,10 +45,12 @@ module Smith
         identity_attributes(values).merge(error_attributes(values)).freeze
       end
 
+      # A step declared `from: nil` is recorded with that origin, as its
+      # step result is; any other `from` is a state name.
       def identity_attributes(values)
         {
           transition: normalize_identifier(values.fetch(:transition), transition_normalizer, "transition"),
-          from: normalize_identifier(values.fetch(:from), state_normalizer, "from state"),
+          from: optional_identifier(values.fetch(:from), state_normalizer, "from state"),
           to: normalize_identifier(values.fetch(:to), state_normalizer, "to state")
         }
       end
@@ -96,6 +98,10 @@ module Smith
 
       def normalize_identifier(value, normalizer, label)
         bounded_string(value, 256, label).then { normalizer.call(_1) }
+      end
+
+      def optional_identifier(value, normalizer, label)
+        value.nil? ? nil : normalize_identifier(value, normalizer, label)
       end
 
       def normalize_kind(value)

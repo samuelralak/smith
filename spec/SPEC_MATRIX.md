@@ -2033,6 +2033,22 @@ Documented contracts covered:
 - `validate_graph` reports a rename leading nowhere as an error and one whose old name is still declared as a warning
 - every guard and key site is mutation-verified
 
+### `spec/smith/workflow/from_nil_failure_spec.rb`
+
+Purpose:
+
+- pins that a failure in a step declared `from: nil` is stored, restored and routed by `on_failure` as any other step's (Unreleased)
+
+Architecture basis:
+
+- Persistence and durability (docs/PERSISTENCE.md): restore, durable retry, renames
+
+Documented contracts covered:
+
+- in lax and strict modes and through every shipped store adapter (Memory, ActiveRecordStore, RedisStore, CacheStore, RailsCache), the failure is stored with `from: nil`, the run restored one step at a time takes its `on_failure` route, and a run that ended failed there reads back `last_error` and `failure_detail` as the run that made them did
+- the class-level `run_persisted!`, `restore_or_initialize`, `restorable_billing_state?`, a durable retry's expired wait and a later version's renames all go through such a stored run
+- a record as 0.13.0 stored it restores; an origin that is not a state name (a number, blank, over 256 bytes), a record without `from`, and a nil `transition` or `to` are still refused
+
 ### `spec/smith/tools/declaration_inheritance_spec.rb`
 
 Purpose:
