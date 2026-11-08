@@ -46,7 +46,7 @@ module Smith
       end
 
       # A step declared `from: nil` is recorded with that origin, as its
-      # step result is; any other `from` is a state name.
+      # step result is; any other `from` must be text of 1 to 256 bytes.
       def identity_attributes(values)
         {
           transition: normalize_identifier(values.fetch(:transition), transition_normalizer, "transition"),

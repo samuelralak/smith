@@ -14,10 +14,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   is written, as a prepared step is checked against the state its step is
   declared from. It is not supported yet. Under 0.13.0 such a step was
   prepared, which stores its run as a step in progress, and then failed:
-  its work ran before "prepared execution did not return the claimed
-  transition" (a parallel or fan-out step failed before its branches ran),
-  so a retry ran the work again. A run stored that way still raises
-  `Smith::StepInProgressOnRestore` in strict mode.
+  its work ran first, a parallel or fan-out step's branches included, and
+  then "prepared execution did not return the claimed transition", so a
+  retry ran the work again. Only a parallel or fan-out step whose branches
+  the host ran through `prepare_composite_step!` failed in that call,
+  before any branch ran, its run left in progress all the same. A run
+  stored that way still raises `Smith::StepInProgressOnRestore` in strict
+  mode.
 
 ### Fixed
 
