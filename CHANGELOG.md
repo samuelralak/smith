@@ -18,6 +18,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   through every store adapter, and a run stored by 0.13.0 restores as it
   is. Any other `from` is still a state name, and a record without the
   field, or whose `transition` or `to` is not a name, is still refused.
+- A run whose last failed step was renamed (`renamed_transition`, or
+  `renamed_state` for the state it failed from or was headed to) restores.
+  The names a rename leads to are US-ASCII text, as a Symbol's name is,
+  and restore refused any failure record name not marked UTF-8
+  (`Smith::PersistedFailureInvalid`, "transition is invalid"), so such a
+  run could not go on to the step's `on_failure`, or be read back once it
+  ended failed. A failure record restored from `to_state` itself, without a
+  JSON round trip, was refused the same way. US-ASCII text is UTF-8 as it
+  stands and is now taken as such; text in any other encoding, or with
+  bytes outside its encoding, is still refused. Runs stored by 0.12.7 and
+  later restore as they are.
 
 ## [0.13.0] - 2026-11-01
 

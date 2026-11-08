@@ -190,6 +190,17 @@ RSpec.describe "Smith::Workflow usage tracking" do
       end
     end
 
+    it "restores from to_state itself, its names still Symbols" do
+      workflow = workflow_klass.new
+      workflow.send(:record_step_snapshot, transition: :run, from: :idle, to: :failed,
+                                           error: Smith::DeterministicStepFailure.new("tool outage"))
+
+      restored = workflow_klass.from_state(workflow.to_state)
+
+      expect(restored.send(:build_run_result, []).failure_detail.except(:error))
+        .to eq(transition: :run, from: :idle, to: :failed)
+    end
+
     it "synthesizes last_error from @last_failed_step on terminal-failed restore (DSF preserves retryable)" do
       original = workflow_klass.new
       original.instance_variable_set(:@last_failed_step, {

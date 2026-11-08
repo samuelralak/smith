@@ -24,6 +24,27 @@ RSpec.describe Smith::Workflow::FailureRecordText do
     expect(described_class.capture(hostile, limit: 64, label: "message")).to eq("provider failed")
   end
 
+  it "takes US-ASCII text and a Symbol's name as the UTF-8 text they are" do
+    source = +"verify"
+    source.force_encoding(Encoding::US_ASCII)
+
+    [source, :verify].each do |value|
+      captured = described_class.capture(value, limit: 64, label: "transition")
+
+      expect(captured).to eq("verify")
+      expect(captured.encoding).to eq(Encoding::UTF_8)
+      expect(captured).to be_frozen
+    end
+    expect(source.encoding).to eq(Encoding::US_ASCII)
+  end
+
+  it "still rejects US-ASCII text with bytes outside it, and binary text" do
+    ["verify\xFF".dup.force_encoding(Encoding::US_ASCII), "verify".b].each do |value|
+      expect { described_class.capture(value, limit: 64, label: "transition") }
+        .to raise_error(Smith::PersistedFailureInvalid, /transition is invalid/)
+    end
+  end
+
   it "rejects non-UTF-8 and oversized values" do
     expect do
       described_class.capture("failed".encode(Encoding::UTF_16LE), limit: 64, label: "message")

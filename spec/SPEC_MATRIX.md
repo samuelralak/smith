@@ -2025,6 +2025,7 @@ Architecture basis:
 Documented contracts covered:
 
 - a run persisted in a renamed state, about to take a renamed transition, or waiting in one restores under the new names and carries on, each name kept the type it was persisted as, a last failed step's names included
+- a run whose last failed step and both its states were renamed restores and takes the step's `on_failure`, or reads back its failure once it ended failed, in lax and strict modes through every shipped store adapter, a record as 0.13.0 stored it included (the restore itself, not only the mapped names)
 - renames chain; a name the class still declares is never taken for an old one; a rename to an unknown name is still refused on restore
 - a name renamed twice or back to a name it had, a blank name, and two names renamed to one transition are refused where declared; two states may be renamed to one
 - a renamed transition keeps its keys: a step cut short, a durable retry's next attempt, a delivery that came before its wait was stored, a map's relaunch and a spawn's relaunch all meet the keys they had before the rename
@@ -3958,8 +3959,9 @@ Covered behaviors:
 Covered behaviors:
 
 - persisted failure text is an owned, frozen, bounded UTF-8 copy
+- US-ASCII text and a Symbol's name are taken as the UTF-8 text they are, the caller's String left as it was
 - hostile String subclasses cannot replace native encoding, size, or copy checks
-- non-UTF-8 and oversized persisted text fails closed
+- non-UTF-8 and oversized persisted text fails closed, US-ASCII text with bytes outside it and binary text included
 
 ### `spec/smith/agent/persisted_chat_execution_context_spec.rb`
 

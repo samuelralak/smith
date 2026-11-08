@@ -15,11 +15,13 @@ module Smith
       MODULE_MATCH = Module.instance_method(:===)
       STRING_BYTESIZE = String.instance_method(:bytesize)
       STRING_ENCODING = String.instance_method(:encoding)
+      STRING_FORCE_ENCODING = String.instance_method(:force_encoding)
       STRING_INITIALIZE_COPY = String.instance_method(:initialize_copy)
       STRING_VALID_ENCODING = String.instance_method(:valid_encoding?)
       SYMBOL_TO_S = Symbol.instance_method(:to_s)
-      private_constant :MODULE_MATCH, :STRING_BYTESIZE, :STRING_ENCODING, :STRING_INITIALIZE_COPY,
-                       :STRING_VALID_ENCODING, :SYMBOL_TO_S
+      TEXT_ENCODINGS = [Encoding::UTF_8, Encoding::US_ASCII].freeze
+      private_constant :MODULE_MATCH, :STRING_BYTESIZE, :STRING_ENCODING, :STRING_FORCE_ENCODING,
+                       :STRING_INITIALIZE_COPY, :STRING_VALID_ENCODING, :SYMBOL_TO_S, :TEXT_ENCODINGS
 
       extend Dry::Initializer
 
@@ -33,8 +35,7 @@ module Smith
       end
 
       def call
-        text = owned_text
-        validate_encoding!(text)
+        text = utf8_text(owned_text)
         size = STRING_BYTESIZE.bind_call(text)
         return normalized(text, size) if normalize_length
         raise PersistedFailureInvalid, "persisted workflow failure #{label} is invalid" unless size.between?(1, limit)
@@ -44,11 +45,16 @@ module Smith
 
       private
 
-      def validate_encoding!(text)
-        valid = STRING_VALID_ENCODING.bind_call(text) && STRING_ENCODING.bind_call(text) == Encoding::UTF_8
-        return if valid
+      # US-ASCII text is UTF-8 text as it stands (a Symbol's name and a
+      # renamed state's or step's name are US-ASCII), so its owned copy is
+      # marked UTF-8; any other encoding, or bytes outside it, is refused.
+      def utf8_text(text)
+        encoding = STRING_ENCODING.bind_call(text)
+        unless STRING_VALID_ENCODING.bind_call(text) && TEXT_ENCODINGS.include?(encoding)
+          raise PersistedFailureInvalid, "persisted workflow failure #{label} is invalid"
+        end
 
-        raise PersistedFailureInvalid, "persisted workflow failure #{label} is invalid"
+        encoding == Encoding::UTF_8 ? text : STRING_FORCE_ENCODING.bind_call(text, Encoding::UTF_8)
       end
 
       # Message fields mirror capture normalization instead of rejecting on

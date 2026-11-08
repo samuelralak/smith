@@ -1,46 +1,17 @@
 # frozen_string_literal: true
 
 require "json"
-require "active_support"
-require "active_support/cache"
 
 # A step declared `from: nil` runs from whichever state routes to it. Its
 # failure keeps that declared origin, nil, as its step result, its
 # StepFailed event and its trace do, and is stored, restored and routed by
 # `on_failure` as any other step's.
 RSpec.describe "Smith::Workflow failure in a from: nil step" do
+  include EveryStoreAdapter
+
   let(:workflow_class) { require_const("Smith::Workflow") }
   let(:adapter) { Smith::PersistenceAdapters::Memory.new }
-
-  # An in-memory client with the calls RedisStore makes.
-  let(:redis_client) do
-    Class.new do
-      def initialize = @values = {}
-      def get(key) = @values[key]
-      def set(key, value, **) = @values.store(key, value)
-      def del(*keys) = keys.count { |key| @values.delete(key) }
-      def watch(_key) = yield
-      def unwatch = nil
-      def without_reconnect = yield
-
-      def multi
-        yield self
-        ["OK"]
-      end
-    end.new
-  end
-
-  let(:adapters) do
-    {
-      memory: Smith::PersistenceAdapters::Memory.new,
-      active_record: Smith::PersistenceAdapters::ActiveRecordStore.new(model: SmithWorkflowStateRecord),
-      redis: Smith::PersistenceAdapters::RedisStore.new(redis: redis_client),
-      cache_store: Smith::PersistenceAdapters::CacheStore.new(store: ActiveSupport::Cache::MemoryStore.new),
-      rails_cache: Smith::PersistenceAdapters::RailsCache.new(store: ActiveSupport::Cache::MemoryStore.new)
-    }
-  end
-
-  before { SmithWorkflowStateRecord.delete_all }
+  let(:adapters) { every_store_adapter }
 
   # draft routes to the shared check, declared from: nil, which fails and
   # takes `route`, itself from: nil.

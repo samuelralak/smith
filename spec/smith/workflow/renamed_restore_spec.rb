@@ -78,6 +78,91 @@ RSpec.describe "Smith::Workflow restore across renamed states and transitions" d
       .to include("transition" => "complete", "from" => "ready", "to" => "done")
   end
 
+  describe "a run whose last failed step was renamed" do
+    include EveryStoreAdapter
+
+    # draft, then the check step fails from the drafted state towards the
+    # checked one and takes `route`; `names` names the two states and the step.
+    def failing_version(name, mode, route, names = %i[drafted checked check], &renames)
+      drafted, checked, check = names
+      with_stubbed_class(name, workflow_class) do
+        idempotency_mode mode
+        initial_state :idle
+        state :failed
+        class_eval(&renames) if renames
+
+        transition(:draft, from: :idle, to: drafted) { compute { |_step| nil } }
+
+        transition check, from: drafted, to: checked do
+          compute { |_step| raise Smith::DeterministicStepFailure, "check failed" }
+          on_failure route
+        end
+
+        transition(:recover, from: drafted, to: :recovered) { compute { |step| step.write_context(:recovered, true) } }
+      end
+    end
+
+    def failing_first_version(name, mode, route) = failing_version(name, mode, route)
+
+    # The next version renames the failed step and both its states.
+    def failing_second_version(name, mode, route)
+      failing_version(name, mode, route, %i[written verified verify]) do
+        renamed_state :drafted, to: :written
+        renamed_state :checked, to: :verified
+        renamed_transition :check, to: :verify
+      end
+    end
+
+    def renamed_failure = { transition: :verify, from: :written, to: :verified }
+
+    %i[lax strict].each do |mode|
+      it "restores under the new names in #{mode} mode and takes the step's on_failure, in every store adapter" do
+        first = failing_first_version("SpecRenamedFailure#{mode.capitalize}FirstWorkflow", mode, :recover)
+        second = failing_second_version("SpecRenamedFailure#{mode.capitalize}SecondWorkflow", mode, :recover)
+
+        every_store_adapter.each do |name, store|
+          key = "renamed-failure-#{mode}-#{name}"
+          2.times { first.restore_or_initialize(key:, adapter: store).advance_persisted!(key, adapter: store) }
+
+          restored = second.restore(key, adapter: store)
+          expect([restored.state, restored.pending_transition_name]).to eq(%i[written recover]), name.to_s
+          expect(restored.run_persisted!(key, adapter: store).context[:recovered]).to be(true), name.to_s
+        end
+      end
+
+      it "reads back the failure of a run that ended failed, under the new names, in #{mode} mode" do
+        first = failing_first_version("SpecRenamedFailed#{mode.capitalize}FirstWorkflow", mode, :fail)
+        second = failing_second_version("SpecRenamedFailed#{mode.capitalize}SecondWorkflow", mode, :fail)
+
+        every_store_adapter.each do |name, store|
+          key = "renamed-failed-#{mode}-#{name}"
+          first.new.run_persisted!(key, adapter: store)
+
+          result = second.restore(key, adapter: store).run_persisted!(key, adapter: store)
+          expect(result.state).to eq(:failed), name.to_s
+          expect(result.last_error).to be_a(Smith::DeterministicStepFailure)
+          expect(result.failure_detail.except(:error)).to eq(renamed_failure), name.to_s
+        end
+      end
+    end
+
+    it "restores a record as 0.13.0 stored it" do
+      second = failing_second_version("SpecRenamedLiteralWorkflow", :lax, :fail)
+      record = {
+        "transition" => "check", "from" => "drafted", "to" => "checked",
+        "error_class" => "Smith::DeterministicStepFailure", "error_family" => "deterministic_step_failure",
+        "error_message" => "check failed", "error_retryable" => nil, "error_retry_forbidden" => false,
+        "error_kind" => nil, "error_details" => nil,
+        "error_cause_class" => nil, "error_cause_family" => nil, "error_cause_message" => nil
+      }
+      payload = json_round_trip(second.new).merge("state" => "failed", "last_failed_step" => record)
+
+      result = second.from_state(payload).send(:build_run_result, [])
+
+      expect(result.failure_detail.except(:error)).to eq(renamed_failure)
+    end
+  end
+
   it "resumes a run waiting in a renamed transition, under the wait's own token" do
     first = with_stubbed_class("SpecRenameWaitFirstWorkflow", workflow_class) do
       initial_state :asked
