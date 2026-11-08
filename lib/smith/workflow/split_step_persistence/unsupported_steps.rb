@@ -16,11 +16,12 @@ module Smith
           end
           return unless transition.from.nil?
 
-          # A prepared step, and a fan-out's composite plan, are checked
-          # against the state their step is declared from, which a step
-          # declared `from: nil` does not have; not supported yet.
+          # A prepared step is checked against the state its step is declared
+          # from, which a step declared `from: nil` does not have; not
+          # supported yet.
           raise WorkflowError, "split-step persistence does not run :#{transition.name}: it is declared from: nil, " \
-                               "and a prepared step is checked against the state its step is declared from"
+                               "and a prepared step is checked against the state its step is declared from; " \
+                               "run it with advance_persisted!"
         end
       end
     end

@@ -314,10 +314,9 @@ every boundary write, so a later global configuration change cannot turn an
 accepted checkpoint into expiring state.
 It does not run a step declared `from: nil` yet: `prepare_persisted_step!`
 refuses one with a `Smith::WorkflowError` naming the step, before anything is
-written, since a prepared step, and a fan-out's composite plan, are checked
-against the state their step is declared from. The run itself is unchanged
-and goes on through `advance_persisted!`; `Composite::Plan.build` likewise
-refuses a nil `from` with an `ArgumentError` rather than keeping it blank.
+written, since a prepared step is checked against the state its step is
+declared from. The run itself is unchanged: run that step with
+`advance_persisted!`.
 `prepare_persisted_step!` writes the normal `step_in_progress` marker and returns
 the pending transition name without consuming it. Duplicate preparation on the
 same workflow object is rejected. The boundary is pinned to the exact

@@ -10,13 +10,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 - Split-step persistence refuses a step declared `from: nil` when it is
   prepared: `prepare_persisted_step!` raises `Smith::WorkflowError` naming
-  the step, before anything is written, and the run goes on as before
-  through `advance_persisted!`. Such a step was prepared, then failed at
-  execution with "prepared execution did not return the claimed
-  transition", and a parallel or fan-out one could not build its plan, as
-  a prepared step and a composite plan are checked against the state their
-  step is declared from. It is not supported yet. `Composite::Plan.build`
-  refuses a nil `from` with an `ArgumentError` instead of keeping it blank.
+  the step and saying to run it with `advance_persisted!`, before anything
+  is written, as a prepared step is checked against the state its step is
+  declared from. It is not supported yet. Under 0.13.0 such a step was
+  prepared, which stores its run as a step in progress, and then failed:
+  its work ran before "prepared execution did not return the claimed
+  transition" (a parallel or fan-out step failed before its branches ran),
+  so a retry ran the work again. A run stored that way still raises
+  `Smith::StepInProgressOnRestore` in strict mode.
 
 ### Fixed
 

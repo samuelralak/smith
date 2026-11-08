@@ -48,10 +48,7 @@ module Smith
               dispatch: attributes.fetch(:dispatch),
               kind: attributes.fetch(:kind),
               transition: attributes.fetch(:transition).to_s,
-              # A step declared `from: nil` has no state to plan from: refused, never kept blank.
-              from: attributes.fetch(:from)&.to_s ||
-                    raise(ArgumentError, "composite plan for :#{attributes.fetch(:transition)} has no from state: " \
-                                         "split-step persistence does not run a step declared from: nil"),
+              from: attributes.fetch(:from).to_s,
               execution_namespace: attributes.fetch(:execution_namespace),
               branches: attributes.fetch(:branches),
               input_digest: attributes.fetch(:input_digest),

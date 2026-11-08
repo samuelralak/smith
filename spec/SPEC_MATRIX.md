@@ -1291,8 +1291,8 @@ Documented contracts covered:
   `store_versioned` method cannot accept explicit `ttl:`, and expiring
   persistence
 - preparation refuses a step declared `from: nil`, a fan-out one included,
-  with a `Smith::WorkflowError` naming the step, before anything is written;
-  the run then goes on through `advance_persisted!`
+  with a `Smith::WorkflowError` naming the step and saying to run it with
+  `advance_persisted!`, before anything is written; the run then goes on that way
 - restart-safe split steps additionally require exact-payload `replace_exact`
   and a bounded stable `persistence_identity`
 - exact dispatch claiming is a public work-free phase, retains the logical
@@ -4051,9 +4051,6 @@ Covered behaviors:
 
 - strict capture error family, tool name, and reason survive composite JSON
   transport and reconstruct as typed branch failure evidence
-- `Composite::Plan.build` refuses a nil `from` with an `ArgumentError` naming
-  the step instead of keeping it blank, and builds the same plan from its own
-  attributes
 - legacy non-capture error and failed branch-outcome JSON remains readable when
   optional tool metadata is absent
 

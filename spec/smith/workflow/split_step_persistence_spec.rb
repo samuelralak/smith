@@ -316,8 +316,8 @@ RSpec.describe "Smith::Workflow split-step persistence" do
     workflow.advance_persisted!(key, adapter:)
     stored = adapter.fetch(key)
 
-    expect { workflow.prepare_persisted_step!(key, adapter:) }
-      .to raise_error(Smith::WorkflowError, /does not run :shared: it is declared from: nil/)
+    refusal = /does not run :shared: it is declared from: nil.*; run it with advance_persisted!\z/
+    expect { workflow.prepare_persisted_step!(key, adapter:) }.to raise_error(Smith::WorkflowError, refusal)
     expect([adapter.fetch(key), workflow.prepared_persisted_step]).to eq([stored, nil])
     expect(workflow.advance_persisted!(key, adapter:)).to include(transition: :shared, to: :done)
 
