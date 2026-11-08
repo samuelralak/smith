@@ -89,6 +89,36 @@ RSpec.describe "Smith::Workflow failure in a from: nil step" do
           expect(restored.failure_detail.except(:error)).to eq(fresh.failure_detail.except(:error))
         end
       end
+
+      it "stores, restores and routes an agent step's failure too, in every store adapter" do
+        agent = with_stubbed_class("SpecFromNilAgent#{mode.capitalize}", Smith::Agent) do
+          register_as :spec_from_nil_agent
+          model "gpt-5-mini"
+        end
+        allow(agent).to receive(:chat) do
+          chat = Object.new
+          chat.define_singleton_method(:add_message) { |_message| nil }
+          chat.define_singleton_method(:complete) { raise RubyLLM::ServerError, "provider error" }
+          chat
+        end
+        klass = shared_check("SpecFromNilAgent#{mode.capitalize}Workflow", mode:) do
+          transition :check, from: nil, to: :checked do
+            execute :spec_from_nil_agent
+            on_failure :recover
+          end
+        end
+
+        adapters.each do |name, store|
+          key = "from-nil-agent-#{mode}-#{name}"
+          klass.new.persist!(key, adapter: store)
+          2.times { advance_restored(klass, key, store) }
+
+          expect(stored_failure(store, key))
+            .to include("transition" => "check", "from" => nil, "error_family" => "agent_error"), name.to_s
+          finished = advance_until_terminal(klass, key, store).run_persisted!(key, adapter: store)
+          expect([finished.state, finished.context[:recovered]]).to eq([:recovered, true]), name.to_s
+        end
+      end
     end
   end
 
@@ -130,31 +160,36 @@ RSpec.describe "Smith::Workflow failure in a from: nil step" do
       expect(klass.restore("durable", adapter:).run_persisted!("durable", adapter:).state).to eq(:recovered)
     end
 
-    it "goes through the renames of a later version, its origin kept nil" do
-      stored_after_failure(shared_check("SpecFromNilBeforeRenameWorkflow"), "renamed")
-      renamed = with_stubbed_class("SpecFromNilAfterRenameWorkflow", workflow_class) do
+    # The next version renames the shared check and its recovery.
+    def renamed_shared_check(name, route)
+      with_stubbed_class(name, workflow_class) do
         initial_state :idle
+        state :failed
+        renamed_transition :check, to: :verify
         renamed_transition :recover, to: :repair
 
-        transition :draft, from: :idle, to: :drafted do
-          compute(routes: %i[check]) { |step| step.route_to(:check) }
-        end
+        transition(:draft, from: :idle, to: :drafted) { compute(routes: %i[verify]) { |step| step.route_to(:verify) } }
 
-        transition :check, from: nil, to: :checked do
+        transition :verify, from: nil, to: :checked do
           compute { |_step| raise Smith::DeterministicStepFailure, "check failed" }
-          on_failure :repair
+          on_failure route
         end
 
-        transition :repair, from: nil, to: :recovered do
-          compute { |step| step.write_context(:recovered, true) }
-        end
+        transition(:repair, from: nil, to: :recovered) { compute { |step| step.write_context(:recovered, true) } }
       end
+    end
 
-      restored = renamed.restore("renamed", adapter:)
+    it "goes through the renames of a later version, its origin kept nil" do
+      stored_after_failure(shared_check("SpecFromNilBeforeRenameWorkflow"), "renamed")
+      shared_check("SpecFromNilFailedBeforeRenameWorkflow", route: :fail).new.run_persisted!("renamed-failed", adapter:)
+
+      restored = renamed_shared_check("SpecFromNilAfterRenameWorkflow", :repair).restore("renamed", adapter:)
+      failed = renamed_shared_check("SpecFromNilFailedAfterRenameWorkflow", :fail).restore("renamed-failed", adapter:)
 
       expect(restored.pending_transition_name).to eq(:repair)
-      expect(restored.instance_variable_get(:@last_failed_step)).to include(transition: :check, from: nil)
       expect(restored.run_persisted!("renamed", adapter:).state).to eq(:recovered)
+      expect(failed.run_persisted!("renamed-failed", adapter:).failure_detail.except(:error))
+        .to eq(transition: :verify, from: nil, to: :checked)
     end
   end
 

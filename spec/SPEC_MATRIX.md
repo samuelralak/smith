@@ -2049,8 +2049,8 @@ Architecture basis:
 
 Documented contracts covered:
 
-- in lax and strict modes and through every shipped store adapter (Memory, ActiveRecordStore, RedisStore, CacheStore, RailsCache), the failure is stored with `from: nil`, the run restored one step at a time takes its `on_failure` route, and a run that ended failed there reads back `last_error` and `failure_detail` as the run that made them did
-- the class-level `run_persisted!`, `restore_or_initialize`, `restorable_billing_state?`, a durable retry's expired wait and a later version's renames all go through such a stored run
+- in lax and strict modes and through every shipped store adapter (Memory, ActiveRecordStore, RedisStore, CacheStore, RailsCache), the failure of a deterministic or an agent step is stored with `from: nil`, the run restored one step at a time takes its `on_failure` route, and a run that ended failed there reads back `last_error` and `failure_detail` as the run that made them did
+- the class-level `run_persisted!`, `restore_or_initialize`, `restorable_billing_state?`, a durable retry's expired wait and a later version's renames (of the failed step itself too, read back through the run's result) all go through such a stored run
 - a record as 0.13.0 stored it restores; an origin that is not a state name (a number, blank, over 256 bytes), a record without `from`, and a nil `transition` or `to` are still refused
 
 ### `spec/smith/tools/declaration_inheritance_spec.rb`
