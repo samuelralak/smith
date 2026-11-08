@@ -190,15 +190,23 @@ RSpec.describe "Smith::Workflow usage tracking" do
       end
     end
 
-    it "restores from to_state itself, its names still Symbols" do
+    it "restores from to_state itself, its names still Symbols, changing none of the caller's text" do
       workflow = workflow_klass.new
       workflow.send(:record_step_snapshot, transition: :run, from: :idle, to: :failed,
                                            error: Smith::DeterministicStepFailure.new("tool outage"))
+      state = workflow.to_state
+      deprecated = Warning[:deprecated]
+      Warning[:deprecated] = true
 
-      restored = workflow_klass.from_state(workflow.to_state)
+      restored = nil
+      # A Symbol's name comes as a chilled String: changing it would warn.
+      expect { restored = workflow_klass.from_state(state) }.not_to output.to_stderr
 
       expect(restored.send(:build_run_result, []).failure_detail.except(:error))
         .to eq(transition: :run, from: :idle, to: :failed)
+      expect(state[:last_failed_step].slice(:transition, :from, :to)).to eq(transition: :run, from: :idle, to: :failed)
+    ensure
+      Warning[:deprecated] = deprecated
     end
 
     it "synthesizes last_error from @last_failed_step on terminal-failed restore (DSF preserves retryable)" do

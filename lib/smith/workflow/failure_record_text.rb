@@ -71,14 +71,16 @@ module Smith
       end
 
       def owned_text
-        return owned_string if string?
-        return SYMBOL_TO_S.bind_call(value) if symbol?
+        return owned_copy(value) if string?
+        return owned_copy(SYMBOL_TO_S.bind_call(value)) if symbol?
 
         raise PersistedFailureInvalid, "persisted workflow failure #{label} must be text"
       end
 
-      def owned_string
-        String.allocate.tap { STRING_INITIALIZE_COPY.bind_call(_1, value) }
+      # A copy of its own, so marking it UTF-8 changes neither the caller's
+      # String nor the String a Symbol's name comes as (chilled, or frozen).
+      def owned_copy(source)
+        String.allocate.tap { STRING_INITIALIZE_COPY.bind_call(_1, source) }
       end
 
       def string? = MODULE_MATCH.bind_call(String, value)
