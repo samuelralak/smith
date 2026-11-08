@@ -4,7 +4,7 @@ All notable changes to Smith are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Smith is pre-1.0 and under active development; expect occasional contract tightening between minor versions until 1.0.
 
-## [Unreleased]
+## [0.13.1] - 2026-11-08
 
 ### Changed
 
@@ -45,6 +45,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   stands and is now taken as such; text in any other encoding, or with
   bytes outside its encoding, is still refused. Runs stored by 0.12.7 and
   later restore as they are.
+
+### Upgrading
+
+- `Smith::EXECUTION_SEMANTICS_VERSION` stays `"7"`: no persisted state,
+  wait, pending retry or durable plan changes shape, and a run stored by
+  0.13.0 restores as it is.
 
 ## [0.13.0] - 2026-11-01
 
