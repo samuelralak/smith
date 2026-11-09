@@ -13,7 +13,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   batch mode each call of the loop, a round's generator and then its
   evaluator, is a batch request of its own, queued under a wait of its own,
   and the run waits for its result without holding a worker; the pending
-  batch keeps the loop's progress (the round, the call it waits for, the
+  batch keeps the loop's `progress` (the round, the call it waits for, the
   candidate, feedback and last score, and the verdicts so far, as JSON gives
   them). A delivery runs the step again at its attempt and the loop goes on
   from that progress: the call it waited for takes its result, nothing
@@ -21,12 +21,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   made, charged and held on a budget ledger once. The mode callable is asked
   at each call. A failed or missing result fails its call, and `retry_on`
   runs the step again with its loop afresh, as any retry of an optimize step
-  does. Progress that is not JSON, or that would take a stored run past
-  `persistence_max_bytes`, fails the step before anything is queued. Restore
-  checks the progress (its round, call, last score and kept verdicts) and
-  refuses one the step could not go on from with
-  `Smith::SerializationError`. Runtime readiness checks the generator and
-  the evaluator for a batch interface.
+  does, making and paying for the earlier rounds' calls again. Progress that
+  is not JSON, or that would take a stored run past `persistence_max_bytes`,
+  fails the step before anything is queued. Restore checks the progress (its
+  round, call, last score and kept verdicts) and that it is the progress of
+  the call the run's wait was made for, and refuses any other with
+  `Smith::SerializationError`; lowering `max_rounds` or dropping batch mode
+  therefore strands runs waiting under the old setting. Runtime readiness
+  checks the generator and the evaluator for a batch interface.
+
+### Changed
+
+- A batch wait's results settle their holds on a host's budget ledger before
+  the step runs again, so the request the step holds next (a retry's, or an
+  optimize step's next call) never overlaps them; a ledger with room for
+  one hold no longer refuses that request. Restore refuses a pending batch
+  whose attempt is not the one its wait's token was made for
+  (`Smith::SerializationError`); a run stored by Smith 0.13 restores as it
+  is.
 
 ## [0.13.1] - 2026-11-08
 

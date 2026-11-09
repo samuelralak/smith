@@ -258,18 +258,29 @@ An `optimize` step in batch mode sends each call of its loop as a batch
 request of its own, a round's generator and then its evaluator, since the
 evaluator reads what the generator wrote: a round is two waits. Each call is
 queued under a wait of its own (its round and call tell the token apart), and
-the run's pending batch keeps the loop's progress: the round, the call it
-waits for, the candidate, the feedback and last score, and the verdicts so
-far, as JSON gives them. A candidate or feedback that is not JSON fails the
-step before anything is queued, as does progress that would take a stored run
-past `persistence_max_bytes` (`Smith::PersistedStateTooLarge`). A delivery
-runs the step again at its attempt and the loop goes on from that progress:
-the call it waited for takes its result, nothing before it runs again
-(`before_eval` included), and the next call is batched in turn, so each call
-is made, charged and held on a budget ledger once. The mode callable is asked
-at each call; a call it gives `:sync` goes over the wire and the loop goes on.
+the run's pending batch keeps the loop's progress (`progress`): the round, the
+call it waits for, the candidate, the feedback and last score, and the
+verdicts so far, as JSON gives them. A candidate or feedback that is not JSON
+fails the step before anything is queued, as does progress that would take a
+stored run past `persistence_max_bytes` (`Smith::PersistedStateTooLarge`). A
+delivery settles its result's hold, then runs the step again at its attempt,
+and the loop goes on from that progress: the call it waited for takes its
+result, nothing before it runs again (`before_eval` included), and the next
+call is batched in turn, so each call is made, charged and held on a budget
+ledger once. The mode callable is asked at each call; a call it gives `:sync`
+goes over the wire and the loop goes on.
+
 A failed or missing result fails its call as on any batch step, and
 `retry_on` (in process, as an optimize step takes no durable retry) runs the
-step again: as on any retry of an optimize step, the loop starts afresh,
-under the mode the callable gives the new attempt (`attempt == 1 ? :batch :
-:sync` sends the whole loop over the wire).
+step again: as on any retry of an optimize step, the loop starts afresh, so
+the new attempt makes, and pays for, the earlier rounds' calls again, under
+the mode the callable gives it (`attempt == 1 ? :batch : :sync` sends the
+whole loop over the wire). A delivery that crashes leaves the stored wait as
+it was: in lax mode the host delivers the results again and the loop goes on
+as it would have; in strict mode the delivery was stored as a step under way,
+so the run raises `Smith::StepInProgressOnRestore`, as any batch step's does,
+and the host decides. Restore refuses progress the step could not go on from
+(a round past `max_rounds`, or a call the run's wait was not made for) with
+`Smith::SerializationError`, so lowering `max_rounds`, or dropping batch mode,
+strands the runs waiting under the old setting: keep both until those waits
+have drained.

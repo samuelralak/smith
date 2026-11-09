@@ -2054,8 +2054,9 @@ Documented contracts covered:
 - the progress kept with each wait (round, call, candidate, feedback, verdicts); `before_eval` runs once a round and callables read every verdict so far across waits; the mode callable is asked at each call and a `:sync` call goes over the wire
 - a missing result fails its call, and an in-process `retry_on` runs the loop afresh under the new attempt's mode; an errored result fails through `on_failure`; a delivery that crashes keeps the stored wait, and a second delivery goes on as the first would have
 - a call whose request changed is resent over the wire under `:resend`, its batch result charged; progress past `persistence_max_bytes` fails the step before anything is queued
-- run budgets charge each result once; a host ledger holds each call's request under its custom_id and settles it with its result
-- restore refuses missing, malformed or out-of-range loop progress, and loop progress on another kind of batch step
+- run budgets charge each result once; a host ledger holds each call's request under its custom_id and settles it with its result before the next call is held, so a ledger with room for one hold takes the next
+- in strict mode a crashed delivery leaves the run stored as a step under way (`StepInProgressOnRestore`), as on any batch step
+- restore refuses missing, malformed or out-of-range progress, progress that is not the progress of the call its wait was made for, and progress on another kind of batch step
 
 ### `spec/smith/workflow/from_nil_failure_spec.rb`
 
