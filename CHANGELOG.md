@@ -4,7 +4,7 @@ All notable changes to Smith are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Smith is pre-1.0 and under active development; expect occasional contract tightening between minor versions until 1.0.
 
-## [Unreleased]
+## [0.14.0] - 2026-11-09
 
 ### Added
 
@@ -39,6 +39,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   whose attempt is not the one its wait's token was made for
   (`Smith::SerializationError`); a run stored by Smith 0.13 restores as it
   is.
+
+### Upgrading
+
+- Restore checks that a stored batch wait's pending batch is the one its
+  token was made for (its attempt, and an optimize step's round and call).
+  Runs stored by Smith 0.13 pass; a pending batch edited by hand, or moved
+  to another attempt, is refused with `Smith::SerializationError`.
+- A host ledger now sees a delivered result's hold settled before the
+  step's next hold is taken; a ledger that counted both at once no longer
+  needs room for them together.
+- While runs wait on an optimize step's batch, keep its `max_rounds` and its
+  batch mode as they were: restore refuses progress the step could not go
+  on from, so lowering one or dropping the other strands those runs until
+  their waits have drained.
+- `Smith::EXECUTION_SEMANTICS_VERSION` stays `"7"`: a workflow that does not
+  declare batch mode on an optimize step runs and stores as before.
 
 ## [0.13.1] - 2026-11-08
 
