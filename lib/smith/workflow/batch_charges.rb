@@ -30,7 +30,7 @@ module Smith
       # optimize step's generator or evaluator (the call its pending batch
       # `delivered` waited for), or the step's own.
       def batch_agent_class(transition, branch_key, delivered)
-        return optimizer_batch_agent(transition, delivered.fetch("loop")) if transition.optimized?
+        return optimizer_batch_agent(transition, delivered.fetch("progress")) if transition.optimized?
         return resolve_agent_class(transition) unless branch_key
 
         resolve_fanout_agent_class(transition, transition.fanout_config.fetch(:branches).fetch(branch_key))

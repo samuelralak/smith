@@ -9,7 +9,7 @@ module Smith
     # batch request of its own, as the evaluator reads what the generator
     # wrote. The call is captured as an agent step's is (BatchExecution), the
     # attempt ends, and the run waits for the result, its pending batch
-    # keeping the loop's progress (`loop`: the round, the call it waits for,
+    # keeping the loop's progress (`progress`: the round, the call it waits for,
     # the candidate, feedback and last score, and the verdicts so far, as
     # JSON gives them). A delivery runs the step again at its attempt, and
     # the loop goes on from that progress: the call it waited for takes its
@@ -64,7 +64,7 @@ module Smith
           admit_batch_call { reserve_serial_budget(effective_call_ledger, agent_budget: agent_class&.budget) }
           with_agent_context(agent_class) { capture_batch_request(agent_class, input, output_schema:) }
         end
-        send_batch(transition, { nil => capture }, position: [round, role], loop: progress)
+        send_batch(transition, { nil => capture }, position: [round, role], progress:)
       end
 
       # What a delivery's loop goes on from, as JSON gives it.
@@ -87,7 +87,7 @@ module Smith
       # verdicts as the pending batch kept them; none unless a result of
       # this step's loop is being delivered.
       def resume_optimizer_progress(state)
-        progress = @pending_batch&.fetch("loop", nil) if delivering_batch?
+        progress = @pending_batch&.fetch("progress", nil) if delivering_batch?
         return unless progress
 
         state.candidate, state.feedback, state.last_score =
@@ -118,7 +118,7 @@ module Smith
                                                                               transition_name: transition.name, role:)
       end
 
-      # A stored pending batch's loop progress (BatchWait): a call of a
+      # A stored pending batch's `progress` (BatchWait): a call of a
       # round the step runs, a last score that is a number or none, and kept
       # verdicts of attempts up to the batch's.
       def optimizer_progress?(transition, progress, attempt)

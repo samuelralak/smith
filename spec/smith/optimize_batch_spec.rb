@@ -182,7 +182,7 @@ RSpec.describe "Smith batch mode on an optimize step" do
     it "keeps the loop's progress with each wait: the round, the call it waits for, the candidate and feedback" do
       klass = drafting("SpecOptBatchProgressWorkflow")
       klass.new(context: {}).run_persisted!("opt-progress", adapter:)
-      stored = -> { JSON.parse(adapter.fetch("opt-progress"))["pending_batch"]["loop"] }
+      stored = -> { JSON.parse(adapter.fetch("opt-progress"))["pending_batch"]["progress"] }
 
       expect(stored.call).to include("round" => 0, "role" => "generator", "candidate" => nil)
       deliver(klass, "opt-progress", adapter, succeeded("first line"))
@@ -270,11 +270,25 @@ RSpec.describe "Smith batch mode on an optimize step" do
 
       expect { deliver(klass, "opt-crash", adapter, succeeded("line")) }.to raise_error(crash)
       stored = klass.restore("opt-crash", adapter:)
-      expect([stored.awaiting.token, stored.to_state[:pending_batch]["loop"]["role"]]).to eq([token, "generator"])
+      expect([stored.awaiting.token, stored.to_state[:pending_batch]["progress"]["role"]]).to eq([token, "generator"])
       expect(deliver(klass, "opt-crash", adapter, succeeded("line"))).to eq(:resumed)
       run = klass.restore("opt-crash", adapter:)
-      expect(run.to_state[:pending_batch]["loop"]).to include("role" => "evaluator", "candidate" => "line")
+      expect(run.to_state[:pending_batch]["progress"]).to include("role" => "evaluator", "candidate" => "line")
       expect([run.to_state[:usage_entries].length, queue.items.length]).to eq([1, 2])
+    end
+  end
+
+  describe "strict mode" do
+    it "stores a delivery as a step under way, so a crashed one is the host's to decide, as on any batch step" do
+      crash = Class.new(Exception) # rubocop:disable Lint/InheritException
+      klass = drafting("SpecOptBatchStrictCrashWorkflow", idempotency: :strict,
+                                                          before_eval: ->(_state, _context) { raise crash })
+      klass.new(context: {}).run_persisted!("opt-strict-crash", adapter:)
+
+      expect { deliver(klass, "opt-strict-crash", adapter, succeeded("line")) }.to raise_error(crash)
+      expect(JSON.parse(adapter.fetch("opt-strict-crash"))["step_in_progress"]).to be(true)
+      expect { deliver(klass, "opt-strict-crash", adapter, succeeded("line")) }
+        .to raise_error(Smith::StepInProgressOnRestore)
     end
   end
 
@@ -294,7 +308,8 @@ RSpec.describe "Smith batch mode on an optimize step" do
 
       expect(deliver(klass, "opt-changed", adapter, succeeded("a Monday line"))).to eq(:resumed)
       run = klass.restore("opt-changed", adapter:)
-      expect(run.to_state[:pending_batch]["loop"]).to include("role" => "evaluator", "candidate" => "a Tuesday line")
+      expect(run.to_state[:pending_batch]["progress"])
+        .to include("role" => "evaluator", "candidate" => "a Tuesday line")
       expect(run.to_state[:usage_entries].map { _1.values_at(:mode, :attempt_kind) })
         .to contain_exactly(%i[batch failed_attempt], [nil, :completed_attempt])
       expect(server.requests.sole.body.to_json).to include("Today is Tuesday.")
@@ -316,6 +331,36 @@ RSpec.describe "Smith batch mode on an optimize step" do
   end
 
   describe "budgets" do
+    it "settles a delivered call's hold before the next call is held, so a capped ledger takes the next" do
+      saved = Smith.config.budget_hold_output_tokens
+      Smith.config.budget_hold_output_tokens = 1_000
+      Smith.config.pricing = { %w[anthropic claude-sonnet-5-5] => { input_cost_per_token: 0.000003,
+                                                                    output_cost_per_token: 0.000015 } }
+      holds = {}
+      spent = [0]
+      capped = Class.new do
+        define_method(:reserve!) do |amount, key:, expires_at:|
+          admitted = holds.values.sum + spent.first + amount.tokens <= 1_500
+          holds[key] = amount.tokens if admitted
+          admitted && expires_at && true
+        end
+        define_method(:reconcile!) { |key, amount| holds.delete(key) && (spent[0] += amount.tokens) }
+        define_method(:release!) { |key| holds.delete(key) }
+      end.new
+      klass = drafting("SpecOptBatchCappedWorkflow")
+      klass.budget_ledger { |_context| capped }
+      workflow = klass.new(context: {})
+      workflow.run!
+      token = workflow.awaiting.token
+
+      expect(workflow.resume!(event: :batch_result, token:, payload: { token => succeeded("line") })).to eq(:resumed)
+      expect([workflow.waiting?, workflow.to_state[:pending_batch]["progress"]["role"]]).to eq([true, "evaluator"])
+      expect(holds.keys).to eq([workflow.awaiting.token])
+    ensure
+      Smith.config.budget_hold_output_tokens = saved
+      Smith.config.pricing = nil
+    end
+
     it "charges each result once, as it comes, and holds each request on a host's ledger until its result" do
       ledger = Smith::Budget::Ledger.new(limits: { total_tokens: 1_000 })
       workflow = drafting("SpecOptBatchBudgetWorkflow").new(context: {}, ledger:)
@@ -345,15 +390,14 @@ RSpec.describe "Smith batch mode on an optimize step" do
       workflow.resume!(event: :batch_result, token: first, payload: { first => succeeded("line") })
       second = workflow.awaiting.token
 
-      expect(calls).to contain_exactly([:reserve, first], [:reconcile, first], [:reserve, second])
-      expect(calls.first).to eq([:reserve, first])
+      expect(calls).to eq([[:reserve, first], [:reconcile, first], [:reserve, second]])
     ensure
       Smith.config.pricing = nil
     end
   end
 
   describe "restoring" do
-    it "refuses a pending batch whose loop progress is missing, malformed or past the step's rounds" do
+    it "refuses a pending batch whose progress is missing, malformed or past the step's rounds" do
       klass = drafting("SpecOptBatchRestoreWorkflow")
       klass.new(context: {}).run_persisted!("opt-restore", adapter:)
       state = JSON.parse(adapter.fetch("opt-restore"))
@@ -361,18 +405,31 @@ RSpec.describe "Smith batch mode on an optimize step" do
       restore = ->(changes) { klass.from_state(state.merge("pending_batch" => pending.merge(changes))) }
 
       expect(restore.call({}).awaiting.kind).to eq(:batch)
-      loop_state = pending["loop"]
+      loop_state = pending["progress"]
       [nil, "x", loop_state.merge("round" => 2), loop_state.merge("round" => -1), loop_state.merge("role" => "worker"),
        loop_state.merge("last_score" => "high"), loop_state.except("feedback"), loop_state.merge("extra" => 1),
        loop_state.merge("evaluations" => { "1" => [{ "round" => 0 }] }),
        loop_state.merge("evaluations" => { "x" => [] })].each do |progress|
-        expect { restore.call("loop" => progress) }.to raise_error(Smith::SerializationError), progress.inspect
+        expect { restore.call("progress" => progress) }.to raise_error(Smith::SerializationError), progress.inspect
       end
-      expect { klass.from_state(state.merge("pending_batch" => pending.except("loop"))) }
+      expect { klass.from_state(state.merge("pending_batch" => pending.except("progress"))) }
         .to raise_error(Smith::SerializationError)
     end
 
-    it "refuses loop progress on another kind of batch step" do
+    it "refuses progress that is not the progress of the wait it was stored with" do
+      klass = drafting("SpecOptBatchBoundWorkflow", max_rounds: 3)
+      klass.new(context: {}).run_persisted!("opt-bound", adapter:)
+      state = JSON.parse(adapter.fetch("opt-bound"))
+      pending = state["pending_batch"]
+      restore = ->(progress) { klass.from_state(state.merge("pending_batch" => pending.merge("progress" => progress))) }
+
+      expect(restore.call(pending["progress"]).awaiting.kind).to eq(:batch)
+      [pending["progress"].merge("round" => 2), pending["progress"].merge("role" => "evaluator")].each do |progress|
+        expect { restore.call(progress) }.to raise_error(Smith::SerializationError, /its wait/), progress.inspect
+      end
+    end
+
+    it "refuses progress on another kind of batch step" do
       klass = with_stubbed_class("SpecOptBatchPlainWorkflow", workflow_class) do
         initial_state :idle
         state :failed
@@ -387,7 +444,7 @@ RSpec.describe "Smith batch mode on an optimize step" do
       progress = { "round" => 0, "role" => "generator", "candidate" => nil, "feedback" => nil, "last_score" => nil,
                    "evaluations" => {} }
 
-      expect { klass.from_state(state.merge("pending_batch" => state["pending_batch"].merge("loop" => progress))) }
+      expect { klass.from_state(state.merge("pending_batch" => state["pending_batch"].merge("progress" => progress))) }
         .to raise_error(Smith::SerializationError)
     end
   end

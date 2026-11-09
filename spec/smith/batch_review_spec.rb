@@ -285,12 +285,16 @@ RSpec.describe "Smith batch mode: review fixes" do
 
     retrying = batching("SpecReviewRestoreRetryWorkflow") { retry_on attempts: 2, backoff: 1 }
     retrying.new(context: {}).run_persisted!("run-restore-retry", adapter:)
+    first = JSON.parse(adapter.fetch("run-restore-retry"))
+    expect { retrying.from_state(first.merge("pending_batch" => first["pending_batch"].merge("attempt" => 2))) }
+      .to raise_error(Smith::SerializationError, /its wait/)
+    resume(retrying, "run-restore-retry", queue.items.last[:custom_id] => errored("overloaded_error"))
     retried = JSON.parse(adapter.fetch("run-restore-retry"))
     again = lambda do |changes|
       retrying.from_state(retried.merge("pending_batch" => retried["pending_batch"].merge(changes)))
     end
-    expect(again.call("attempt" => 2).awaiting.attempt).to eq(2)
-    expect { again.call("attempt" => 2, "key_generation" => 1) }.to raise_error(Smith::SerializationError)
+    expect(again.call({}).awaiting.attempt).to eq(2)
+    expect { again.call("key_generation" => 1) }.to raise_error(Smith::SerializationError)
 
     fanned = fanning("SpecReviewRenamed")
     fanned.new(context: {}).run_persisted!("run-renamed", adapter:)

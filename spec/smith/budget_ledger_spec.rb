@@ -437,6 +437,35 @@ RSpec.describe "Smith budget ledgers" do
       expect(ledger.keys.uniq).to eq([queue.items.sole[:custom_id]])
     end
 
+    it "settles a delivered result's hold before its retry holds the next request" do
+      agent("SpecLedgerRetryAgent")
+      one = nil
+      one = ledger_class.new(admit: lambda do |_amount|
+        settled = one.calls.reject { _1.first == :reserve }.map { _1[1] }
+        (one.calls.select { _1.first == :reserve }.map { _1[1] } - settled).uniq.length == 1
+      end)
+      klass = with_stubbed_class("SpecLedgerRetryWorkflow", workflow_class) do
+        initial_state :idle
+        state :failed
+        budget_ledger { |_context| one }
+        seed_messages { |_context| [{ role: :user, content: "classify this posting" }] }
+        transition :ask, from: :idle, to: :done do
+          execute :spec_ledger_agent, mode: :batch
+          retry_on attempts: 2, backoff: 1
+          on_failure :fail
+        end
+      end
+      workflow = klass.new(context: {})
+      workflow.run!
+      first = queue.items.sole[:custom_id]
+      errored = { "type" => "errored", "error" => { "type" => "error", "error" => { "type" => "api_error" } } }
+
+      expect(deliver(workflow, first => errored)).to eq(:resumed)
+      expect(workflow.awaiting.attempt).to eq(2)
+      second = queue.items.last[:custom_id]
+      expect(one.calls.map { _1.first(2) }).to eq([[:reserve, first], [:release, first], [:reserve, second]])
+    end
+
     it "releases holds taken when the step fails before queuing them" do
       agent("SpecLedgerShapeAgent")
       stamp = Class.new(Smith::Guardrails) do

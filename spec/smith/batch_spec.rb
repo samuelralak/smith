@@ -470,5 +470,17 @@ RSpec.describe "Smith batch mode: a step's requests sent as a batch, and its res
       synced = batching("SpecBatchNowSyncWorkflow", mode: :sync)
       expect { synced.from_state(state) }.to raise_error(Smith::UnknownTransitionOnRestore)
     end
+
+    it "refuses a pending batch whose attempt is not the one its wait was made for" do
+      agent("SpecBatchBoundAgent")
+      klass = batching("SpecBatchBoundWorkflow") { retry_on attempts: 2, backoff: 1 }
+      klass.new(context: {}).run_persisted!("run-bound", adapter:)
+      state = JSON.parse(adapter.fetch("run-bound"))
+      moved = state["pending_batch"].merge("attempt" => 2)
+
+      expect(klass.from_state(state).awaiting.attempt).to eq(1)
+      expect { klass.from_state(state.merge("pending_batch" => moved)) }
+        .to raise_error(Smith::SerializationError, /its wait/)
+    end
   end
 end

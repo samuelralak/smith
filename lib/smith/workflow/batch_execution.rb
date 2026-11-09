@@ -18,9 +18,9 @@ module Smith
       # Batches end within 24 hours; the wait allows one more.
       WAIT_SECONDS = 25 * 3600
       # The requests an attempt captured, for the step to queue, and an
-      # optimize step's progress (`loop`, OptimizerBatch).
-      Captured = Data.define(:token, :requests, :attempt, :key_generation, :loop) do
-        def initialize(loop: nil, **) = super
+      # optimize step's `progress` (OptimizerBatch).
+      Captured = Data.define(:token, :requests, :attempt, :key_generation, :progress) do
+        def initialize(progress: nil, **) = super
       end
 
       private
@@ -100,14 +100,14 @@ module Smith
       end
 
       # `position` tells apart the waits of one attempt (an optimize step's
-      # calls), `loop` is its progress.
-      def send_batch(transition, captures, position: [], loop: nil)
+      # calls), `progress` is its loop's.
+      def send_batch(transition, captures, position: [], progress: nil)
         refuse_batch_wait!
         token = wait_token_for(transition, ["batch", @step_attempt || 1, *position])
         captured = captures.transform_values(&:call)
         hold_batch!(token, captured.transform_values(&:last))
         Captured.new(token:, requests: captured.transform_values(&:first), attempt: @step_attempt || 1,
-                     key_generation: @step_key_generation || 0, loop:)
+                     key_generation: @step_key_generation || 0, progress:)
       end
 
       # The run can wait for a batch: a queue takes its requests, it is not
@@ -151,7 +151,7 @@ module Smith
         record = { "transition" => transition.name.to_s, "attempt" => captured.attempt,
                    "key_generation" => captured.key_generation,
                    "requests" => ids.transform_values { Batch.digest(_1) } }
-        record["loop"] = captured.loop if captured.loop
+        record["progress"] = captured.progress if captured.progress
         record.freeze
       end
     end

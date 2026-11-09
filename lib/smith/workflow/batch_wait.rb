@@ -17,7 +17,7 @@ module Smith
     module BatchWait
       PENDING_BATCH_FIELDS = %w[attempt key_generation requests transition].freeze
       # An optimize step's pending batch also keeps its loop's progress.
-      PENDING_LOOP_FIELDS = (PENDING_BATCH_FIELDS + %w[loop]).sort.freeze
+      PENDING_LOOP_FIELDS = (PENDING_BATCH_FIELDS + %w[progress]).sort.freeze
       DIGEST = /\A\h{64}\z/
       private_constant :PENDING_BATCH_FIELDS, :PENDING_LOOP_FIELDS, :DIGEST
 
@@ -57,17 +57,18 @@ module Smith
 
       # The step runs again at the batch's attempt, each call taking its
       # result. It may enter another wait (a batch sent again, or a durable
-      # retry's backoff); otherwise it counts. A completion that raises
-      # leaves the run waiting.
+      # retry's backoff); otherwise it counts. The results settle their
+      # holds first, so a request the step holds next never overlaps them. A
+      # completion that raises leaves the run waiting.
       def complete_batch_wait(transition, entries, done)
         record = @awaiting
         delivered = @pending_batch
         @awaiting = nil
         @batch_delivery = Batch::Delivery.new(entries, on_change: transition.on_request_change || :keep)
+        settle_batch_holds(transition, record.fetch("token"), entries, delivered)
         step = with_step_context(transition) do
           Execution.instance_method(:execute_step_body).bind_call(self, transition)
         ensure
-          settle_batch_holds(transition, record.fetch("token"), entries, delivered)
           charge_untaken_batch_results(transition, delivered)
         end
         settle_batch_wait(step)
@@ -104,16 +105,31 @@ module Smith
       # retry policy allows, a key generation only a declared
       # `new_idempotency_key_on` moves, the digest of each request the
       # step's branches send, and for an optimize step its loop's progress
-      # (OptimizerBatch); a stored batch wait needs one. Anything else
-      # raises SerializationError.
+      # (OptimizerBatch); a stored batch wait needs one, the one its token
+      # was made for. Anything else raises SerializationError.
       def restore_pending_batch(value)
         return if value.nil? && !batch_waiting?
 
         record = value.is_a?(Hash) ? value.transform_keys(&:to_s) : {}
+        check_pending_batch!(record)
+        record.transform_values(&:freeze).freeze
+      end
+
+      def check_pending_batch!(record)
         raise Smith::SerializationError, "persisted workflow pending_batch is invalid" unless
           well_formed_pending_batch?(record)
+        return if batch_wait_made_for?(record)
 
-        record.transform_values(&:freeze).freeze
+        raise Smith::SerializationError, "persisted workflow pending_batch is not the one its wait was made for"
+      end
+
+      # The wait's token is the one the step makes for the record's attempt
+      # (and an optimize step's round and call), so no stored record moves a
+      # wait to another attempt or call.
+      def batch_wait_made_for?(record)
+        transition = self.class.transition_named(@awaiting["transition"])
+        position = transition.optimized? ? record["progress"].values_at("round", "role") : []
+        wait_token_for(transition, ["batch", record["attempt"], *position]) == @awaiting["token"]
       end
 
       def well_formed_pending_batch?(record)
@@ -125,7 +141,7 @@ module Smith
       def pending_batch_parts?(transition, record)
         allowed_batch_position?(transition, *record.values_at("attempt", "key_generation")) &&
           batch_digests?(transition, record["requests"]) &&
-          (!transition.optimized? || optimizer_progress?(transition, record["loop"], record["attempt"]))
+          (!transition.optimized? || optimizer_progress?(transition, record["progress"], record["attempt"]))
       end
 
       def pending_batch_fields(transition) = transition.optimized? ? PENDING_LOOP_FIELDS : PENDING_BATCH_FIELDS
