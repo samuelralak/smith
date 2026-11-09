@@ -16,17 +16,21 @@ module Smith
         Thread.current[:smith_call_reservation] = ledger.reserve_spent!(estimates)
       end
 
-      def charge_untaken_batch_results(transition)
+      def charge_untaken_batch_results(transition, delivered)
         @batch_delivery.untaken.each do |branch_key, entry|
           next unless entry.result["type"] == "succeeded"
 
           Attribution.with(branch_key:) do
-            charge_batch_result(batch_agent_class(transition, branch_key), entry.result.fetch("message"))
+            charge_batch_result(batch_agent_class(transition, branch_key, delivered), entry.result.fetch("message"))
           end
         end
       end
 
-      def batch_agent_class(transition, branch_key)
+      # The agent whose call a result answers: a fan-out branch's, an
+      # optimize step's generator or evaluator (the call its pending batch
+      # `delivered` waited for), or the step's own.
+      def batch_agent_class(transition, branch_key, delivered)
+        return optimizer_batch_agent(transition, delivered.fetch("loop")) if transition.optimized?
         return resolve_agent_class(transition) unless branch_key
 
         resolve_fanout_agent_class(transition, transition.fanout_config.fetch(:branches).fetch(branch_key))

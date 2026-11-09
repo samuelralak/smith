@@ -16,8 +16,10 @@ module Smith
     # by a sibling's failure) is charged all the same (BatchCharges).
     module BatchWait
       PENDING_BATCH_FIELDS = %w[attempt key_generation requests transition].freeze
+      # An optimize step's pending batch also keeps its loop's progress.
+      PENDING_LOOP_FIELDS = (PENDING_BATCH_FIELDS + %w[loop]).sort.freeze
       DIGEST = /\A\h{64}\z/
-      private_constant :PENDING_BATCH_FIELDS, :DIGEST
+      private_constant :PENDING_BATCH_FIELDS, :PENDING_LOOP_FIELDS, :DIGEST
 
       private
 
@@ -59,13 +61,14 @@ module Smith
       # leaves the run waiting.
       def complete_batch_wait(transition, entries, done)
         record = @awaiting
+        delivered = @pending_batch
         @awaiting = nil
         @batch_delivery = Batch::Delivery.new(entries, on_change: transition.on_request_change || :keep)
         step = with_step_context(transition) do
           Execution.instance_method(:execute_step_body).bind_call(self, transition)
         ensure
-          settle_batch_holds(transition, record.fetch("token"), entries)
-          charge_untaken_batch_results(transition)
+          settle_batch_holds(transition, record.fetch("token"), entries, delivered)
+          charge_untaken_batch_results(transition, delivered)
         end
         settle_batch_wait(step)
         return done if wait_pending?(step)
@@ -99,8 +102,9 @@ module Smith
       # A persisted pending batch names the stored batch wait's transition
       # (which WaitRecord checked is still a batch step), an attempt its
       # retry policy allows, a key generation only a declared
-      # `new_idempotency_key_on` moves, and the digest of each request the
-      # step's branches send; a stored batch wait needs one. Anything else
+      # `new_idempotency_key_on` moves, the digest of each request the
+      # step's branches send, and for an optimize step its loop's progress
+      # (OptimizerBatch); a stored batch wait needs one. Anything else
       # raises SerializationError.
       def restore_pending_batch(value)
         return if value.nil? && !batch_waiting?
@@ -114,10 +118,17 @@ module Smith
 
       def well_formed_pending_batch?(record)
         transition = self.class.transition_named(@awaiting["transition"]) if batch_waiting?
-        transition && record.keys.sort == PENDING_BATCH_FIELDS && record["transition"] == transition.name.to_s &&
-          allowed_batch_position?(transition, *record.values_at("attempt", "key_generation")) &&
-          batch_digests?(transition, record["requests"])
+        transition && record.keys.sort == pending_batch_fields(transition) &&
+          record["transition"] == transition.name.to_s && pending_batch_parts?(transition, record)
       end
+
+      def pending_batch_parts?(transition, record)
+        allowed_batch_position?(transition, *record.values_at("attempt", "key_generation")) &&
+          batch_digests?(transition, record["requests"]) &&
+          (!transition.optimized? || optimizer_progress?(transition, record["loop"], record["attempt"]))
+      end
+
+      def pending_batch_fields(transition) = transition.optimized? ? PENDING_LOOP_FIELDS : PENDING_BATCH_FIELDS
 
       def allowed_batch_position?(transition, attempt, generation)
         config = transition.retry_config

@@ -125,6 +125,8 @@ module Smith
         commit_execution_primitive!("workflow")
       end
 
+      # `mode:` and `on_request_change:` as on `execute`: in batch mode each
+      # of the loop's calls is a batch request of its own (OptimizerBatch).
       def optimize(generator:, evaluator:, max_rounds:, evaluator_schema:,
                    improvement_threshold: nil,
                    evaluator_context: nil,
@@ -133,16 +135,19 @@ module Smith
                    on_converged: :raise,
                    on_threshold: :raise,
                    input: nil,
-                   output_to: nil)
+                   output_to: nil,
+                   mode: nil,
+                   on_request_change: nil)
         validate_execution_primitive_conflict!("optimize")
         assign_step_io!(input, output_to)
+        assign_batch_mode!(mode, on_request_change)
         validate_optimize_controls!(generator, evaluator, max_rounds, evaluator_schema)
         validate_optimize_exit_modes!(on_exhaustion: on_exhaustion, on_converged: on_converged,
                                       on_threshold: on_threshold)
         validate_optimize_evaluator_context!(evaluator_context)
         validate_optimize_before_eval!(before_eval)
 
-        config = {
+        @optimization_config = {
           generator: normalize_agent_reference!(generator, "optimizer generator"),
           evaluator: normalize_agent_reference!(evaluator, "optimizer evaluator"),
           max_rounds: max_rounds,
@@ -153,8 +158,6 @@ module Smith
           on_converged: on_converged,
           on_threshold: on_threshold
         }.freeze
-
-        @optimization_config = config
         commit_execution_primitive!("optimize")
       end
 
@@ -174,8 +177,7 @@ module Smith
       def fan_out(branches:, input: nil, output_to: nil, mode: nil, on_request_change: nil)
         validate_execution_primitive_conflict!("fan_out")
         assign_step_io!(input, output_to)
-        @batch_mode = batch_mode!(mode, stream: nil, parallel: false)
-        @on_request_change = request_change!(on_request_change)
+        assign_batch_mode!(mode, on_request_change)
 
         normalized = normalize_fanout_branches!(branches)
         @fanout_branch_lookup = normalized.to_h do |key, agent|
@@ -321,6 +323,13 @@ module Smith
         raise WorkflowError, "mode: is not available on a parallel step" if parallel
 
         mode
+      end
+
+      # `mode:` and `on_request_change:` of a step that has no stream and no
+      # parallel copies (`fan_out`, `optimize`).
+      def assign_batch_mode!(mode, on_request_change)
+        @batch_mode = batch_mode!(mode, stream: nil, parallel: false)
+        @on_request_change = request_change!(on_request_change)
       end
 
       # What a batch result does when the step renders another request by

@@ -5,10 +5,13 @@ require "json"
 require_relative "agent_result"
 require_relative "execution_result_snapshot"
 require_relative "optimization_state"
+require_relative "optimizer_batch"
 
 module Smith
   class Workflow
     module EvaluatorOptimizer
+      include OptimizerBatch
+
       private
 
       def execute_optimization_step(transition, prepared_input: nil)
@@ -26,15 +29,21 @@ module Smith
           role: :evaluator
         )
         pend_evaluations
-        run_optimization_loop(state)
+        run_optimization_loop(state, transition)
       end
 
-      def run_optimization_loop(state)
-        state.config[:max_rounds].times do |round|
+      # From round 0, or from the round and call a batch delivery goes on
+      # from (OptimizerBatch).
+      def run_optimization_loop(state, transition)
+        first, call = resume_optimizer_progress(state)
+        ((first || 0)...state.config[:max_rounds]).each do |round|
+          at_evaluator = round == first && call == "evaluator"
           # The overlay scopes every trace and usage fact from this round's
           # generator and evaluator calls to the round that produced them.
           result = Attribution.with(round: round) do
-            IdempotencyKey.__send__(:within, :round, round) { run_optimization_round(state, round) }
+            IdempotencyKey.__send__(:within, :round, round) do
+              run_optimization_round(state, round, transition, at_evaluator:)
+            end
           end
           return result if result
         end
@@ -44,12 +53,13 @@ module Smith
       end
 
       # Each role is a position of its own in the round, so the generator,
-      # the before_eval callback and the evaluator never share a key.
-      def run_optimization_round(state, round)
-        IdempotencyKey.__send__(:within, :generator) { generate_candidate!(state, round) }
-        rejection = IdempotencyKey.__send__(:within, :before_eval) { before_eval_rejection(state) }
-        evaluation = rejection ||
-                     normalize_evaluation(IdempotencyKey.__send__(:within, :evaluator) { evaluate_candidate(state) })
+      # the before_eval callback and the evaluator never share a key. A
+      # round a delivery goes on from at its evaluator has its candidate.
+      def run_optimization_round(state, round, transition, at_evaluator: false)
+        rejection = generate_and_screen(state, round, transition) unless at_evaluator
+        evaluation = rejection || normalize_evaluation(
+          IdempotencyKey.__send__(:within, :evaluator) { evaluate_candidate(state, round, transition) }
+        )
         validate_evaluation_structure!(evaluation)
         validate_evaluation_fields!(evaluation, state.config)
         record_evaluation(state, evaluation, round, rejection ? :before_eval : :evaluator)
@@ -201,15 +211,19 @@ module Smith
         end
       end
 
-      def generate_candidate!(state, round)
-        input = prepare_generator_input(state.prepared_input, round, state.candidate, state.feedback)
-        result = invoke_agent_with_budget(state.generator_class, input)
-        state.candidate = result
+      # The round's candidate, and a before_eval rejection of it, if any.
+      def generate_and_screen(state, round, transition)
+        IdempotencyKey.__send__(:within, :generator) { generate_candidate!(state, round, transition) }
+        IdempotencyKey.__send__(:within, :before_eval) { before_eval_rejection(state) }
       end
 
-      def evaluate_candidate(state)
-        input = build_evaluator_input(state)
-        invoke_with_evaluator_schema(state.evaluator_class, state.config[:evaluator_schema], input)
+      def generate_candidate!(state, round, transition)
+        input = prepare_generator_input(state.prepared_input, round, state.candidate, state.feedback)
+        state.candidate = optimizer_call(transition, state, round, "generator", input)
+      end
+
+      def evaluate_candidate(state, round, transition)
+        optimizer_call(transition, state, round, "evaluator", build_evaluator_input(state))
       end
 
       # evaluator_context: :inject_state appends the candidate as a
@@ -246,10 +260,6 @@ module Smith
 
         evaluation = normalize_evaluation(verdict)
         evaluation if evaluation.key?(:accept) && evaluation[:accept].equal?(false)
-      end
-
-      def invoke_with_evaluator_schema(evaluator_class, schema, input)
-        invoke_agent_with_budget(evaluator_class, input, output_schema: schema)
       end
 
       def invoke_agent_with_budget(agent_class, prepared_input, output_schema: agent_class.output_schema)

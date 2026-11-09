@@ -27,6 +27,7 @@ module Smith
 
         def agents(transition)
           return transition.fanout_config.fetch(:branches).values if transition.fanout?
+          return transition.optimization_config.values_at(:generator, :evaluator) if transition.optimized?
 
           [transition.agent_name]
         end

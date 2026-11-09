@@ -17,15 +17,19 @@ module Smith
     module BatchExecution
       # Batches end within 24 hours; the wait allows one more.
       WAIT_SECONDS = 25 * 3600
-      # The requests an attempt captured, for the step to queue.
-      Captured = Data.define(:token, :requests, :attempt, :key_generation)
+      # The requests an attempt captured, for the step to queue, and an
+      # optimize step's progress (`loop`, OptimizerBatch).
+      Captured = Data.define(:token, :requests, :attempt, :key_generation, :loop) do
+        def initialize(loop: nil, **) = super
+      end
 
       private
 
       # The attempt sends its requests as a batch: its mode says so and no
-      # result of it is being delivered.
+      # result of it is being delivered. An optimize step batches each of
+      # its loop's calls instead (OptimizerBatch).
       def batch_send?(transition)
-        transition.batches? && !delivering_batch? && batch_mode_for(transition) == :batch
+        transition.batches? && !transition.optimized? && !delivering_batch? && batch_mode_for(transition) == :batch
       end
 
       # A delivery runs only the stored batch wait's step (BatchWait).
@@ -45,10 +49,11 @@ module Smith
 
       # An agent step's batch: its one call.
       def send_agent_batch(transition, agent_class, prepared_input)
-        send_batch(transition, nil => lambda do
+        capture = lambda do
           admit_batch_call { reserve_for_serial(transition, effective_call_ledger) }
           with_agent_context(agent_class) { capture_batch_request(agent_class, prepared_input) }
-        end)
+        end
+        send_batch(transition, { nil => capture })
       end
 
       # A fan-out's batch: each branch's call, captured in its own branch
@@ -82,11 +87,11 @@ module Smith
 
       # The request the agent's call would send (BatchExchange throws it out
       # of the call before anything is sent), and its hold.
-      def capture_batch_request(agent_class, prepared_input)
+      def capture_batch_request(agent_class, prepared_input, **call)
         @batch_capture = nil
         request = catch(Providers::BatchExchange::CAPTURED) do
           @batch_capturing = true
-          invoke_agent(agent_class, prepared_input)
+          invoke_agent(agent_class, prepared_input, **call)
           nil
         ensure
           @batch_capturing = false
@@ -94,13 +99,15 @@ module Smith
         [request || raise(BatchModeUnavailable, "a batch step's agent made no provider request"), @batch_capture.hold]
       end
 
-      def send_batch(transition, captures)
+      # `position` tells apart the waits of one attempt (an optimize step's
+      # calls), `loop` is its progress.
+      def send_batch(transition, captures, position: [], loop: nil)
         refuse_batch_wait!
-        token = wait_token_for(transition, ["batch", @step_attempt || 1])
+        token = wait_token_for(transition, ["batch", @step_attempt || 1, *position])
         captured = captures.transform_values(&:call)
         hold_batch!(token, captured.transform_values(&:last))
         Captured.new(token:, requests: captured.transform_values(&:first), attempt: @step_attempt || 1,
-                     key_generation: @step_key_generation || 0)
+                     key_generation: @step_key_generation || 0, loop:)
       end
 
       # The run can wait for a batch: a queue takes its requests, it is not
@@ -141,8 +148,11 @@ module Smith
       end
 
       def pending_batch_record(transition, captured, ids)
-        { "transition" => transition.name.to_s, "attempt" => captured.attempt,
-          "key_generation" => captured.key_generation, "requests" => ids.transform_values { Batch.digest(_1) } }.freeze
+        record = { "transition" => transition.name.to_s, "attempt" => captured.attempt,
+                   "key_generation" => captured.key_generation,
+                   "requests" => ids.transform_values { Batch.digest(_1) } }
+        record["loop"] = captured.loop if captured.loop
+        record.freeze
       end
     end
   end

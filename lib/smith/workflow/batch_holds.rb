@@ -40,12 +40,13 @@ module Smith
       # Each result settles the hold its request took on a host's budget
       # ledger (BatchExecution), taken by a call or not: a succeeded one
       # reconciles what it cost, any other (or a wait that expired) releases.
-      def settle_batch_holds(transition, token, entries)
+      # `delivered` is the pending batch the results answer.
+      def settle_batch_holds(transition, token, entries, delivered)
         ledger = settling_ledger
         return unless ledger
 
         entries.each do |branch_key, entry|
-          spent = batch_spent(transition, branch_key, entry.result)
+          spent = batch_spent(transition, branch_key, entry.result, delivered)
           Budget::HostLedger.settle(ledger, Batch.custom_id(token, branch_key), spent)
         end
       end
@@ -60,12 +61,12 @@ module Smith
         nil
       end
 
-      def batch_spent(transition, branch_key, result)
+      def batch_spent(transition, branch_key, result, delivered)
         return unless result["type"] == "succeeded"
 
         message = result.fetch("message")
         usage = batch_reply_usage(message)
-        model = batch_model_id(batch_agent_class(transition, branch_key), message)
+        model = batch_model_id(batch_agent_class(transition, branch_key, delivered), message)
         Budget::HostLedger.amount(usage, model:, provider: "anthropic", mode: :batch) if usage
       end
     end

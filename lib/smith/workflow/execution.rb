@@ -76,7 +76,7 @@ module Smith
         prepared_input = step_prepared_input(transition)
         return send_agent_batch(transition, agent_class, prepared_input) if batch_send?(transition)
 
-        guarded_agent_output(transition, agent_class, prepared_input)
+        optimizer_batch_output(transition) { guarded_agent_output(transition, agent_class, prepared_input) }
       end
 
       def guarded_agent_output(transition, agent_class, prepared_input)
