@@ -17,9 +17,9 @@ module Smith
     module BatchWait
       PENDING_BATCH_FIELDS = %w[attempt key_generation requests transition].freeze
       # An optimize step's pending batch also keeps its loop's progress.
-      PENDING_LOOP_FIELDS = (PENDING_BATCH_FIELDS + %w[progress]).sort.freeze
+      PENDING_PROGRESS_FIELDS = (PENDING_BATCH_FIELDS + %w[progress]).sort.freeze
       DIGEST = /\A\h{64}\z/
-      private_constant :PENDING_BATCH_FIELDS, :PENDING_LOOP_FIELDS, :DIGEST
+      private_constant :PENDING_BATCH_FIELDS, :PENDING_PROGRESS_FIELDS, :DIGEST
 
       private
 
@@ -144,7 +144,7 @@ module Smith
           (!transition.optimized? || optimizer_progress?(transition, record["progress"], record["attempt"]))
       end
 
-      def pending_batch_fields(transition) = transition.optimized? ? PENDING_LOOP_FIELDS : PENDING_BATCH_FIELDS
+      def pending_batch_fields(transition) = transition.optimized? ? PENDING_PROGRESS_FIELDS : PENDING_BATCH_FIELDS
 
       def allowed_batch_position?(transition, attempt, generation)
         config = transition.retry_config
