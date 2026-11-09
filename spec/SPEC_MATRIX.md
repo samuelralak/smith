@@ -2037,6 +2037,26 @@ Documented contracts covered:
 - `validate_graph` reports a rename leading nowhere as an error and one whose old name is still declared as a warning
 - every guard and key site is mutation-verified
 
+### `spec/smith/optimize_batch_spec.rb`
+
+Purpose:
+
+- pins batch mode on an `optimize` step: each call of its loop a batch request of its own, the run waiting between calls and going on from the loop's progress (Unreleased)
+
+Architecture basis:
+
+- Agents (docs/AGENTS.md): Batch mode; Persistence (docs/PERSISTENCE.md): waits, restore
+
+Documented contracts covered:
+
+- `optimize` takes `mode:` and `on_request_change:`, needs `on_failure` to batch, shows its mode in graph inspection, and runtime readiness reports a generator or evaluator that cannot batch
+- in lax and strict modes, through every shipped store adapter, each call waits in turn (generator, then evaluator, round by round), each delivery goes on from the stored progress, and each call's usage is recorded once with `mode: :batch` and its round
+- the progress kept with each wait (round, call, candidate, feedback, verdicts); `before_eval` runs once a round and callables read every verdict so far across waits; the mode callable is asked at each call and a `:sync` call goes over the wire
+- a missing result fails its call, and an in-process `retry_on` runs the loop afresh under the new attempt's mode; an errored result fails through `on_failure`; a delivery that crashes keeps the stored wait, and a second delivery goes on as the first would have
+- a call whose request changed is resent over the wire under `:resend`, its batch result charged; progress past `persistence_max_bytes` fails the step before anything is queued
+- run budgets charge each result once; a host ledger holds each call's request under its custom_id and settles it with its result
+- restore refuses missing, malformed or out-of-range loop progress, and loop progress on another kind of batch step
+
 ### `spec/smith/workflow/from_nil_failure_spec.rb`
 
 Purpose:

@@ -403,6 +403,10 @@ value, including a Hash with `accept: true`, is ignored and the evaluator
 judges as before. A deterministic check that makes a candidate unacceptable
 can reject it this way without spending an evaluator call.
 
+`mode: :batch` (or a callable of the context and attempt) sends each call of
+the loop through the provider's batch API, the run waiting for each result
+and going on from where the loop stood: docs/AGENTS.md, Batch mode.
+
 Every round's verdict is an output. Once its loop has run, the step's record
 carries its verdicts under `:evaluations`, in attempt and round order, whether
 the step completed or failed (a step that failed before its loop, or any other

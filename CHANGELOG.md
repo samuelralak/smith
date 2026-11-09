@@ -4,6 +4,30 @@ All notable changes to Smith are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Smith is pre-1.0 and under active development; expect occasional contract tightening between minor versions until 1.0.
 
+## [Unreleased]
+
+### Added
+
+- `optimize` takes `mode:` (`:sync`, `:batch`, or a callable of the context
+  and attempt) and `on_request_change:`, as `execute` and `fan_out` do. In
+  batch mode each call of the loop, a round's generator and then its
+  evaluator, is a batch request of its own, queued under a wait of its own,
+  and the run waits for its result without holding a worker; the pending
+  batch keeps the loop's progress (the round, the call it waits for, the
+  candidate, feedback and last score, and the verdicts so far, as JSON gives
+  them). A delivery runs the step again at its attempt and the loop goes on
+  from that progress: the call it waited for takes its result, nothing
+  before it runs again, and the next call is batched in turn, so each call is
+  made, charged and held on a budget ledger once. The mode callable is asked
+  at each call. A failed or missing result fails its call, and `retry_on`
+  runs the step again with its loop afresh, as any retry of an optimize step
+  does. Progress that is not JSON, or that would take a stored run past
+  `persistence_max_bytes`, fails the step before anything is queued. Restore
+  checks the progress (its round, call, last score and kept verdicts) and
+  refuses one the step could not go on from with
+  `Smith::SerializationError`. Runtime readiness checks the generator and
+  the evaluator for a batch interface.
+
 ## [0.13.1] - 2026-11-08
 
 ### Changed

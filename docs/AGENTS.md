@@ -219,7 +219,7 @@ end
 ```
 
 `mode:` is `:sync` (the default), `:batch`, or a callable of the context and
-the step attempt returning one, on `execute` and `fan_out`; a batch step
+the step attempt returning one, on `execute`, `fan_out` and `optimize`; a batch step
 declares `on_failure`, and cannot stream or be `parallel:`. Smith prepares
 the call as a synchronous one, admits it against the budget, and hands the
 exact request (the provider payload and the call's own headers, never the
@@ -253,3 +253,23 @@ built in, and a batch request is one turn, so a batching agent has no tools;
 runtime readiness reports a missing queue (`:batch_queue_missing`) and an
 agent that cannot batch (`:batch_unavailable`), and graph inspection shows the
 mode.
+
+An `optimize` step in batch mode sends each call of its loop as a batch
+request of its own, a round's generator and then its evaluator, since the
+evaluator reads what the generator wrote: a round is two waits. Each call is
+queued under a wait of its own (its round and call tell the token apart), and
+the run's pending batch keeps the loop's progress: the round, the call it
+waits for, the candidate, the feedback and last score, and the verdicts so
+far, as JSON gives them. A candidate or feedback that is not JSON fails the
+step before anything is queued, as does progress that would take a stored run
+past `persistence_max_bytes` (`Smith::PersistedStateTooLarge`). A delivery
+runs the step again at its attempt and the loop goes on from that progress:
+the call it waited for takes its result, nothing before it runs again
+(`before_eval` included), and the next call is batched in turn, so each call
+is made, charged and held on a budget ledger once. The mode callable is asked
+at each call; a call it gives `:sync` goes over the wire and the loop goes on.
+A failed or missing result fails its call as on any batch step, and
+`retry_on` (in process, as an optimize step takes no durable retry) runs the
+step again: as on any retry of an optimize step, the loop starts afresh,
+under the mode the callable gives the new attempt (`attempt == 1 ? :batch :
+:sync` sends the whole loop over the wire).

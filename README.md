@@ -206,7 +206,8 @@ anything is sent, and a step can wait for budget instead.
 register as the model writes it. Treat it as a draft: Smith checks the reply
 only once it is complete. `execute :triager, mode: :batch` sends the request
 through Anthropic's batch API at half price; the run waits, and your app
-delivers the result when the batch ends.
+delivers the result when the batch ends. `fan_out` and `optimize` take the same
+`mode:`; an `optimize` step batches each call of its loop in turn.
 [`docs/AGENTS.md`](docs/AGENTS.md)
 
 ## Untrusted content
