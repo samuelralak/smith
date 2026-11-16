@@ -4,6 +4,18 @@ All notable changes to Smith are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Smith is pre-1.0 and under active development; expect occasional contract tightening between minor versions until 1.0.
 
+## [Unreleased]
+
+### Fixed
+
+- An agent step in a workflow whose budget declares `wall_clock` gets its
+  output repair, its truncation retry and its refusal fallback again. The
+  step's reservation names every budget dimension, `wall_clock` among them
+  at 0, and the check that stops follow-up calls once a call has spent its
+  reservation compared the tokens spent against that 0, so any response
+  counted as spent and no follow-up was made. The check now weighs only
+  tokens and cost; the deadline is still checked before a follow-up.
+
 ## [0.14.0] - 2026-11-09
 
 ### Added

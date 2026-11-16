@@ -291,6 +291,28 @@ RSpec.describe "Smith output integrity: stop reasons, typed output errors, contr
       expect(run("SpecJsonTextWorkflow", :spec_output_other).output).to eq("title" => "ok", "score" => 1)
     end
 
+    it "repairs within a workflow whose budget also bounds its wall clock" do
+      review = schema
+      agent("SpecTimedRepairAgent", [["not json at all", anthropic_body("end_turn")],
+                                     [{ "title" => "fine", "score" => 3 }, anthropic_body("end_turn")]]) do
+        output_schema review
+      end
+      klass = with_stubbed_class("SpecTimedRepairWorkflow", workflow_class) do
+        initial_state :idle
+        state :failed
+        budget total_cost: 1.0, wall_clock: 120
+        transition :ask, from: :idle, to: :done do
+          execute :spec_output_agent
+          on_failure :fail
+        end
+      end
+
+      result = klass.new(context: {}).run!
+
+      expect(result.output).to eq("title" => "fine", "score" => 3)
+      expect(chats.size).to eq(2)
+    end
+
     it "checks the agent's output contract, with no repair when repairs are off" do
       contract = Class.new do
         def call(output)

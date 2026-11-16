@@ -115,13 +115,18 @@ module Smith
       end
 
       # Whether the responses so far have reached what the call's step
-      # reserved in any budget dimension.
+      # reserved in any token or cost dimension. A reservation names every
+      # budget the workflow declares, wall_clock among them at 0; a call
+      # spends only tokens and cost, and the deadline is checked before the
+      # follow-up is made.
       def budget_spent?(result)
         reservation = Thread.current[:smith_call_reservation]
         return false unless reservation
 
         spent = extract_actuals([*Array(Thread.current[:smith_failed_agent_results]), result])
         reservation.amounts.any? do |dimension, amount|
+          next false unless Workflow::BudgetIntegration::BUDGET_DIMENSIONS.include?(dimension)
+
           used = Workflow::BudgetIntegration::COST_DIMENSIONS.include?(dimension) ? spent[:cost] : spent[:tokens]
           used >= amount
         end
