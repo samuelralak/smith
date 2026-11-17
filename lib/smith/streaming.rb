@@ -6,7 +6,9 @@ require_relative "streaming/json_field"
 
 module Smith
   # A step declared with `execute Agent, stream: :name` sends its reply's
-  # text, as the model writes it, to a sink the host gives it. The host
+  # text, as the model writes it, to a sink the host gives it; one declared
+  # with `optimize ..., stream: :name` sends its generator's, round after
+  # round. The host
   # registers a callable under that name in `Smith.config.stream_sinks`;
   # when the step starts, Smith calls it with the step's info (the stream's
   # name, the run's execution key, the transition) and streams to the sink

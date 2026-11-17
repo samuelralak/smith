@@ -20,11 +20,16 @@ module Smith
             next unless transition.stream
             next missing_sink(transition) unless Smith.config.stream_sinks.key?(transition.stream)
 
-            whole_replies(transition) if responses_route?(transition.agent_name)
+            whole_replies(transition) if responses_route?(streamed_agent(transition))
           end
         end
 
         private
+
+        # The agent whose text streams: an `optimize` step's generator.
+        def streamed_agent(transition)
+          transition.optimized? ? transition.optimization_config.fetch(:generator) : transition.agent_name
+        end
 
         def responses_route?(agent)
           agent_class = Agent::Registry.binding_for(agent)&.fetch(:agent_class)
@@ -81,10 +86,10 @@ module Smith
         def whole_replies(transition)
           Diagnostic.new(
             severity: :warning, code: :stream_whole_replies, transition: transition.name,
-            target: transition.agent_name,
+            target: streamed_agent(transition),
             message: "Transition #{Reference.format(transition.name)} streams agent " \
-                     "#{Reference.format(transition.agent_name)}, whose calls go to OpenAI's Responses API, which " \
-                     "does not stream: its sink gets each reply as one delta.",
+                     "#{Reference.format(streamed_agent(transition))}, whose calls go to OpenAI's Responses API, " \
+                     "which does not stream: its sink gets each reply as one delta.",
             suggestion: "Accept whole replies there, or keep the agent on Chat Completions " \
                         "(Smith.config.openai_api_mode = :off, and no openai_api_mode param)."
           )

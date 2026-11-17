@@ -139,11 +139,17 @@ class Answer < Smith::Workflow
 end
 ```
 
+An `optimize` step takes `stream:` too: its generator's replies stream round
+after round, its evaluator's never (a verdict is not the step's words), and a
+round the evaluator or `before_eval` rejects is withdrawn as the generator
+writes again; the last round ends with `finish` or `fail` alone.
+
 A sink defines any of `start(info)` (each provider call: the step's info with
 the attempt, model and provider), `delta(text)` (each text chunk; tool calls,
 thinking and `<think>` text are not sent), `reset(reason)` (Smith discarded the
-text sent so far: `:retry`, `:fallback`, `:truncation` or `:repair`; and
-`:retry_wait`, the last word, while a durable retry waits), `finish(output)`
+text sent so far: `:retry`, `:fallback`, `:truncation` or `:repair`;
+`:rejected`, an `optimize` step's round its evaluator or `before_eval` refused;
+and `:retry_wait`, the last word, while a durable retry waits), `finish(output)`
 (the output the step accepted, after guardrails, the output contract and
 `output_to:`, once the step is stored) and `fail(error_class)`. Streamed text is
 a draft: guardrails and output checks run on the whole reply, so nothing should

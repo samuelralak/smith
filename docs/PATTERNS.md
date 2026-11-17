@@ -406,6 +406,9 @@ can reject it this way without spending an evaluator call.
 `mode: :batch` (or a callable of the context and attempt) sends each call of
 the loop through the provider's batch API, the run waiting for each result
 and going on from where the loop stood: docs/AGENTS.md, Batch mode.
+`stream: :name` instead sends the generator's drafts to a sink as they are
+written, a rejected draft withdrawn as the next begins: docs/AGENTS.md,
+Streaming.
 
 Every round's verdict is an output. Once its loop has run, the step's record
 carries its verdicts under `:evaluations`, in attempt and round order, whether

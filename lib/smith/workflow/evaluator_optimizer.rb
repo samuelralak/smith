@@ -217,13 +217,18 @@ module Smith
         IdempotencyKey.__send__(:within, :before_eval) { before_eval_rejection(state) }
       end
 
+      # A later round's draft replaces the one rejected before it, whose
+      # streamed text is withdrawn first (`reset(:rejected)`).
       def generate_candidate!(state, round, transition)
+        withdraw_streamed(:rejected) if round.positive?
         input = prepare_generator_input(state.prepared_input, round, state.candidate, state.feedback)
         state.candidate = optimizer_call(transition, state, round, "generator", input)
       end
 
+      # A verdict is never the step's words: a streamed step's sink hears its
+      # generator alone.
       def evaluate_candidate(state, round, transition)
-        optimizer_call(transition, state, round, "evaluator", build_evaluator_input(state))
+        unstreamed { optimizer_call(transition, state, round, "evaluator", build_evaluator_input(state)) }
       end
 
       # evaluator_context: :inject_state appends the candidate as a

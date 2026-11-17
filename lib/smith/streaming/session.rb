@@ -14,6 +14,8 @@ module Smith
     #   :fallback     another model answers (a provider failure, or a refusal)
     #   :truncation   the reply was cut off and is asked for again
     #   :repair       the reply could not be the output and is asked for again
+    #   :rejected     an `optimize` step's evaluator (or `before_eval`)
+    #                 rejected the round, and its generator writes again
     #   :retry_wait   the step waits out a durable retry's backoff
     #
     # The step then ends with `finish(output)`, the output it accepted

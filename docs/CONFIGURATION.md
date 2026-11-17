@@ -108,7 +108,7 @@ Smith.configure do |config|
     }
   )
 
-  # Streamed steps (`execute Agent, stream: :answer`): a callable that takes the
+  # Streamed steps (`execute Agent, stream: :answer`, and `optimize`'s): a callable that takes the
   # step's info and returns its sink, or nil to stream nothing.
   config.stream_sinks = { answer: ->(info) { AnswerStream.new(info[:execution_key]) } }
 
@@ -198,7 +198,7 @@ from JSON or YAML has.
 | `interrupting_errors` | Subclasses of StandardError that interrupt a step instead of failing it, such as the host's database or queue out of reach: met in a step (or as the cause of an error that was, never through a provider's own failure), they take no route, no retry and no failure record, reach the caller as raised, and leave the run as the step left it. Smith does not count them ([ERRORS_AND_RETRIES.md](ERRORS_AND_RETRIES.md), Interrupting errors). None by default | Name the errors that mean your own systems failed, never ones a step can cause every time (a query timeout) |
 | `budget_hold_ttl` | Seconds a provider request's hold on a workflow's `budget_ledger` lasts unsettled (default 3600): each hold's `expires_at` is this from now, and a batch request's is its 25-hour wait longer. Past it the request's process is taken to have died | Raise it above the longest request (its retries and stream included) |
 | `budget_hold_output_tokens` | The most output tokens a request's hold on a workflow's `budget_ledger` counts (default nil: the request's own `max_tokens`, else the model's maximum). Only the hold changes, not the request; a longer reply is reconciled at what it cost | Set it when agents leave `max_tokens` unset and a small budget would refuse calls on their huge holds |
-| `stream_sinks` | The sinks `execute Agent, stream: :name` steps send text to, by name: callables that take a step's info (`stream`, `execution_key`, `transition`) and return that step's sink, or nil to stream nothing | Register each name a workflow streams to; readiness reports a missing one |
+| `stream_sinks` | The sinks `execute Agent, stream: :name` and `optimize ..., stream: :name` steps send text to, by name: callables that take a step's info (`stream`, `execution_key`, `transition`) and return that step's sink, or nil to stream nothing | Register each name a workflow streams to; readiness reports a missing one |
 | `persistence_adapter` | Adapter for durable workflow state | `:redis`, `:rails_cache`, `:active_record`, `:memory`, or a custom object |
 | `persistence_options` | Per-adapter options (client, namespace, model, columns) | See "Built-In Persistence Adapters" |
 | `persistence_ttl` | Global TTL for persisted state (Integer/Float seconds; nil = no expiry). `:active_record` cannot expire state, so its writes refuse a non-nil TTL (reads and deletes still work, and `smith doctor --durability` flags the combination) | Set when long-tail abandoned workflows accumulate in storage |

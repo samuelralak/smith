@@ -30,6 +30,15 @@ module Smith
         @step_stream = nil
       end
 
+      # Calls the block's agent unheard by the step's sink.
+      def unstreamed
+        stream = @step_stream
+        @step_stream = nil
+        yield
+      ensure
+        @step_stream = stream
+      end
+
       def accept_streamed(session, output)
         return session.finish(output) unless @persistence_key
 

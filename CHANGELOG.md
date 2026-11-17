@@ -6,6 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+### Added
+
+- An `optimize` step streams: `optimize ..., stream: :name` sends its
+  generator's replies to the sink, round after round, as `execute` does. The
+  evaluator never streams, since its reply is a verdict, and a rejected
+  round's text is withdrawn with `reset(:rejected)` as the generator writes
+  again; the last round ends as any streamed step does, with `finish` (the
+  output kept, `:return_last` included) or `fail`. Runtime readiness checks
+  the generator's route. A streamed `optimize` step cannot batch.
+
 ### Fixed
 
 - An agent step in a workflow whose budget declares `wall_clock` gets its

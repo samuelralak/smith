@@ -87,7 +87,7 @@ run's context for later steps.
 | Ruby | `compute { \|step\| ... }` | Runs your code; reads and writes the context |
 | Route | `route :classifier, routes: {...}` | Picks the next transition from an agent's answer |
 | Fan-out | `execute :agent, parallel: true`, `fan_out branches: {...}` | Calls agents concurrently |
-| Refine | `optimize generator:, evaluator:` | Drafts and critiques in bounded rounds |
+| Refine | `optimize generator:, evaluator:` | Drafts and critiques in bounded rounds; `stream:` streams the drafts |
 | Delegate | `orchestrate orchestrator:, worker:` | Plans tasks and hands them to workers |
 | Nest | `workflow OtherWorkflow` | Runs another workflow as one step |
 | Wait | `await :event, into:, timeout:`, `delay seconds` | Waits for an event your app delivers, or for a time |
@@ -204,8 +204,10 @@ anything is sent, and a step can wait for budget instead.
 
 `execute :writer, stream: :answer` sends the reply's text to a sink you
 register as the model writes it. Treat it as a draft: Smith checks the reply
-only once it is complete. `execute :triager, mode: :batch` sends the request
-through Anthropic's batch API at half price; the run waits, and your app
+only once it is complete. An `optimize` step streams its generator's drafts the
+same way, a draft its evaluator or `before_eval` rejects withdrawn as the next
+begins. `execute :triager, mode: :batch` sends the request through Anthropic's
+batch API at half price; the run waits, and your app
 delivers the result when the batch ends. `fan_out` and `optimize` take the same
 `mode:`; an `optimize` step batches each call of its loop in turn.
 [`docs/AGENTS.md`](docs/AGENTS.md)
