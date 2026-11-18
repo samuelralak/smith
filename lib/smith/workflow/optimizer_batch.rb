@@ -17,12 +17,14 @@ module Smith
     # and charged, once. The step's mode is asked at each call.
     module OptimizerBatch
       ROLES = %w[generator evaluator].freeze
-      PROGRESS_FIELDS = %w[candidate evaluations feedback last_score role round].freeze
+      PROGRESS_FIELDS = %w[candidate evaluations feedback last_score role round told].freeze
+      # A wait kept before the round carried what before_generate told it.
+      UNTOLD_FIELDS = (PROGRESS_FIELDS - %w[told]).freeze
       RECORD_FIELDS = %w[round source verdict].freeze
       SOURCES = %w[evaluator before_eval].freeze
       ATTEMPT = /\A[1-9]\d*\z/
       CAPTURED = :smith_optimizer_batch
-      private_constant :ROLES, :PROGRESS_FIELDS, :RECORD_FIELDS, :SOURCES, :ATTEMPT, :CAPTURED
+      private_constant :ROLES, :PROGRESS_FIELDS, :UNTOLD_FIELDS, :RECORD_FIELDS, :SOURCES, :ATTEMPT, :CAPTURED
 
       private
 
@@ -70,7 +72,7 @@ module Smith
       # What a delivery's loop goes on from, as JSON gives it.
       def optimizer_progress(state, round, role)
         progress = { "round" => round, "role" => role, "candidate" => state.candidate, "feedback" => state.feedback,
-                     "last_score" => state.last_score, "evaluations" => kept_evaluations }
+                     "last_score" => state.last_score, "evaluations" => kept_evaluations, "told" => state.told }
         Batch.deep_freeze(JSON.parse(JSON.generate(progress)))
       rescue JSON::GeneratorError, JSON::NestingError, Encoding::UndefinedConversionError
         raise WorkflowError, "an optimize step waits for a batch only with JSON values for its candidate and feedback"
@@ -90,11 +92,15 @@ module Smith
         progress = @pending_batch&.fetch("progress", nil) if delivering_batch?
         return unless progress
 
-        state.candidate, state.feedback, state.last_score =
-          snapshot_value(progress.values_at("candidate", "feedback", "last_score"))
+        restore_loop_state(state, progress)
         restore_kept_evaluations(progress.fetch("evaluations"))
         state.evaluations = @pending_evaluations.values.last.dup.freeze
         progress.values_at("round", "role")
+      end
+
+      def restore_loop_state(state, progress)
+        state.candidate, state.feedback, state.last_score, state.told =
+          snapshot_value(progress.values_at("candidate", "feedback", "last_score", "told"))
       end
 
       # Kept verdicts back as the loop records them, in attempt order, the
@@ -119,12 +125,18 @@ module Smith
       end
 
       # A stored pending batch's `progress` (BatchWait): a call of a
-      # round the step runs, a last score that is a number or none, and kept
-      # verdicts of attempts up to the batch's.
+      # round the step runs, a last score that is a number or none, words
+      # before_generate told the round or none, and kept verdicts of attempts
+      # up to the batch's.
       def optimizer_progress?(transition, progress, attempt)
-        progress.is_a?(Hash) && progress.keys.sort == PROGRESS_FIELDS && optimizer_position?(transition, progress) &&
-          (progress["last_score"].nil? || progress["last_score"].is_a?(Numeric)) &&
+        progress.is_a?(Hash) && [PROGRESS_FIELDS, UNTOLD_FIELDS].include?(progress.keys.sort) &&
+          optimizer_position?(transition, progress) && progress_values?(progress) &&
           kept_evaluations?(progress["evaluations"], attempt)
+      end
+
+      def progress_values?(progress)
+        (progress["last_score"].nil? || progress["last_score"].is_a?(Numeric)) &&
+          (progress["told"].nil? || progress["told"].is_a?(String))
       end
 
       def optimizer_position?(transition, progress)

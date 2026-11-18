@@ -421,11 +421,17 @@ pending write, for the host to publish once the step is accepted) sets aside
 what they staged before the next round builds on it. The generator of a later
 round is given the rejected candidate and the evaluator's feedback, not its
 tool calls, so it should be told that a candidate sent back keeps nothing its
-tools did. A provider attempt the call sets aside inside one round (a fallback
-model, a repair) is not a round: its captures leave `tool_results` as before,
-and `before_generate` does not run between it and the attempt that replaces
-it. The return value is ignored, and a raise fails the step as a raise from
-`before_eval` does. `before_generate`, `before_eval` and the exit modes read
+tools did. It returns `{ rejected_round: String }` to say what the rejected
+round's tools left: a later round's generator is told it after the evaluator's
+feedback (`[smith:rejected-round]`), copied and bounded as a message's words
+are, so it revises the candidate rather than starts again; the words are kept
+with a batch wait, so a delivered round is the request sent. A round 0, blank
+words or any other return value tells the generator nothing more, and a
+`rejected_round` that is not a String fails the step. A provider attempt the
+call sets aside inside one round (a fallback model, a repair) is not a round:
+its captures leave `tool_results` as before, and `before_generate` does not run
+between it and the attempt that replaces it. A raise fails the step as a raise
+from `before_eval` does. `before_generate`, `before_eval` and the exit modes read
 the round under way from `state.round`, from 0 in each attempt, and every tool
 capture a round takes names it (`round` on its `tool_results` entry), so a host
 tells the accepted round's captures from those of the rounds its step

@@ -265,8 +265,9 @@ request of its own, a round's generator and then its evaluator, since the
 evaluator reads what the generator wrote: a round is two waits. Each call is
 queued under a wait of its own (its round and call tell the token apart), and
 the run's pending batch keeps the loop's progress (`progress`): the round, the
-call it waits for, the candidate, the feedback and last score, and the
-verdicts so far, as JSON gives them. A candidate or feedback that is not JSON
+call it waits for, the candidate, the feedback and last score, what
+`before_generate` told the round (`rejected_round`), and the verdicts so far,
+as JSON gives them. A candidate or feedback that is not JSON
 fails the step before anything is queued, as does progress that would take a
 stored run past `persistence_max_bytes` (`Smith::PersistedStateTooLarge`). A
 delivery settles its result's hold, then runs the step again at its attempt,

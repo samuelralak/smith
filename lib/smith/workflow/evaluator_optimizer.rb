@@ -247,20 +247,41 @@ module Smith
 
       # Everything this step's earlier rounds and attempts did belongs to a
       # round the loop rejected or an attempt that failed, so a host sets
-      # aside what they staged here, before a later round builds on it.
+      # aside what they staged here, before a later round builds on it, and
+      # may say what they were (`{ rejected_round: String }`), since the
+      # candidate does not carry its tools' work.
       def run_before_generate(state)
+        state.told = nil
         callback = state.config[:before_generate]
         return unless callback
 
-        callback.call(state, @context)
+        state.told = rejected_round_note(callback.call(state, @context))
         nil
+      end
+
+      # The words under `rejected_round` of a Hash before_generate returns,
+      # copied and bounded as a message's are; anything else, or blank
+      # words, tells the round nothing.
+      def rejected_round_note(returned)
+        return unless returned.is_a?(Hash)
+
+        note = returned.key?(:rejected_round) ? returned[:rejected_round] : returned["rejected_round"]
+        return if note.nil?
+        raise WorkflowError, "before_generate's rejected_round must be a String" unless note.is_a?(String)
+
+        copy = StringSnapshot.copy(note, freeze: true)
+        if StringSnapshot.bytesize(copy) > MessageValueNormalizer::MAX_BYTES
+          raise WorkflowError, "before_generate's rejected_round is over #{MessageValueNormalizer::MAX_BYTES} bytes"
+        end
+
+        copy unless copy.strip.empty?
       end
 
       # A later round's draft replaces the one rejected before it, whose
       # streamed text is withdrawn first (`reset(:rejected)`).
       def generate_candidate!(state, round, transition)
         withdraw_streamed(:rejected) if round.positive?
-        input = prepare_generator_input(state.prepared_input, round, state.candidate, state.feedback)
+        input = prepare_generator_input(state.prepared_input, round, state.candidate, state.feedback, state.told)
         state.candidate = optimizer_call(transition, state, round, "generator", input)
       end
 
@@ -359,15 +380,16 @@ module Smith
         nil
       end
 
-      def prepare_generator_input(prepared_input, round, prior_candidate, feedback)
+      # A later round is told its rejected candidate, the evaluator's
+      # feedback and what before_generate said the round's tools left.
+      def prepare_generator_input(prepared_input, round, prior_candidate, feedback, told)
         return prepared_input if round.zero?
 
+        content = "[smith:refinement-round] #{round + 1}\n[smith:evaluator-feedback]\n#{feedback}"
+        content += "\n[smith:rejected-round]\n#{told}" if told
         (prepared_input&.dup || []).push(
           { role: :assistant, content: candidate_content(prior_candidate) },
-          {
-            role: :user,
-            content: "[smith:refinement-round] #{round + 1}\n[smith:evaluator-feedback]\n#{feedback}"
-          }
+          { role: :user, content: }
         )
       end
 

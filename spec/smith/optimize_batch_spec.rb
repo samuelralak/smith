@@ -195,6 +195,23 @@ RSpec.describe "Smith batch mode on an optimize step" do
       )
     end
 
+    it "keeps what before_generate told a batched round with its wait, so its delivery is the request sent" do
+      server.reply(json: message("two wired", id: "msg_wire"))
+      before_generate = ->(state, _context) { { rejected_round: "kept #{state.round}" } if state.round.positive? }
+      klass = drafting("SpecOptBatchToldWorkflow", before_generate:, on_request_change: :fail)
+      klass.new(context: {}).run_persisted!("opt-told", adapter:)
+      deliver(klass, "opt-told", adapter, succeeded("one"))
+      deliver(klass, "opt-told", adapter, verdict(false, "again"))
+      stored = JSON.parse(adapter.fetch("opt-told"))["pending_batch"]["progress"]
+
+      expect(request_texts(last_request).last)
+        .to end_with("[smith:evaluator-feedback]\nagain\n[smith:rejected-round]\nkept 1")
+      expect(stored).to include("round" => 1, "role" => "generator", "told" => "kept 1")
+      expect(deliver(klass, "opt-told", adapter, succeeded("two"))).to eq(:resumed)
+      expect(deliver(klass, "opt-told", adapter, verdict(true))).to eq(:resumed)
+      expect([klass.restore("opt-told", adapter:).state, server.requests]).to eq([:done, []])
+    end
+
     it "runs before_generate and before_eval once a round, and hands callables every verdict so far, across waits" do
       seen = []
       exhausted = lambda do |state|

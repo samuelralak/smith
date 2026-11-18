@@ -17,7 +17,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   `before_eval` and the exit modes read the round under way from
   `state.round`, and each tool capture an optimize round takes names it
   (`round` on its `tool_results` entry), so a host tells the accepted round's
-  captures from those of the rounds its step rejected.
+  captures from those of the rounds its step rejected. It returns
+  `{ rejected_round: String }` to say what the rejected round's tools left,
+  since a candidate does not carry its tools' work: a later round's generator
+  is told it after the evaluator's feedback (`[smith:rejected-round]`), copied
+  and bounded as a message's words are and kept with a batch wait, so the
+  generator revises the candidate. Round 0, blank words and any other return
+  value tell it nothing; a `rejected_round` that is not a String fails the step.
 - An `optimize` step streams: `optimize ..., stream: :name` sends its
   generator's replies to the sink, round after round, as `execute` does. The
   evaluator never streams, since its reply is a verdict, and a rejected

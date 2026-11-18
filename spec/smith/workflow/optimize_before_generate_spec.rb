@@ -94,6 +94,46 @@ RSpec.describe "Smith optimize before_generate" do
     expect([result.state, staged]).to eq([:done, ["two"]])
   end
 
+  it "tells a later round's generator what it says the rejected round left, after the feedback" do
+    writer = writes("one", "two")
+    judge([rejected("again"), accepted])
+    before_generate = lambda do |state, _context|
+      { rejected_round: "You staged #{staged.join(", ")}." } if state.round.positive?
+    end
+
+    result = drafting("SpecStageNoteWorkflow", before_generate:).new(context: {}).run!
+    refining = writer.calls.find { |messages| messages.last.content.to_s.start_with?("[smith:refinement-round]") }
+
+    expect(result.state).to eq(:done)
+    expect(refining.last.content.to_s)
+      .to eq("[smith:refinement-round] 2\n[smith:evaluator-feedback]\nagain\n[smith:rejected-round]\nYou staged one.")
+  end
+
+  it "tells a later round nothing more for a bare String, blank words or anything but rejected_round" do
+    [->(_state, _context) { "You staged one." }, ->(_state, _context) { { rejected_round: "  " } },
+     ->(_state, _context) { staged.dup }].each_with_index do |before_generate, index|
+      staged.clear
+      writer = writes("one", "two")
+      judge([rejected("again"), accepted])
+
+      drafting("SpecStageQuietWorkflow#{index}", before_generate:).new(context: {}).run!
+      refining = writer.calls.find { |messages| messages.last.content.to_s.start_with?("[smith:refinement-round]") }
+
+      expect(refining.last.content.to_s).to eq("[smith:refinement-round] 2\n[smith:evaluator-feedback]\nagain")
+    end
+  end
+
+  it "fails the step when rejected_round is not a String" do
+    writes("one", "two")
+    judge([rejected("again"), accepted])
+
+    result = drafting("SpecStageBadNoteWorkflow", before_generate: ->(_state, _context) { { rejected_round: 1 } })
+             .new(context: {}).run!
+
+    expect([result.state, result.last_error.message])
+      .to eq([:failed, "before_generate's rejected_round must be a String"])
+  end
+
   it "runs before a retried attempt's first round, whose captures alone remain" do
     writes("one", "two")
     judge([:outage, accepted])
