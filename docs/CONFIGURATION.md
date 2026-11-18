@@ -26,6 +26,7 @@ Use agent classes for invocation behavior:
 - `output_schema`
 - `output_contract`, `output_repairs`
 - `on_truncation`, `on_refusal`
+- `prompt_cache` (`:none` or `:automatic`, Anthropic's automatic prompt cache for an agent with a tool loop)
 - `data_volume`
 - `fallback_models`
 - `register_as`

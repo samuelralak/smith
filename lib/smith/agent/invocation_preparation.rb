@@ -36,11 +36,11 @@ module Smith
 
       # The messages, with their content parts (ContentParts) as `provider`
       # takes them.
-      def add_prepared_input(chat, prepared_input, provider = nil)
+      def add_prepared_input(chat, prepared_input, provider, shape)
         return unless prepared_input
 
         prepared_input = provider_safe_prepared_input(prepared_input)
-        check_cache_breakpoints!(chat, prepared_input, provider)
+        check_cache_breakpoints!(chat, prepared_input, provider, shape)
         with_built_contents do
           prepared_input = prepared_input.map do |message|
             Message.parts?(message) ? provider_parts_message(message, provider) : message

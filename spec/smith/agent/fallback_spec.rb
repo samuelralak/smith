@@ -899,7 +899,7 @@ RSpec.describe "Smith::Agent fallback model chains" do
         :complete_with_provider,
         agent,
         [{ role: :user, content: "input" }],
-        shape: Smith::Agent::ProviderRequest::Shape.new(output_schema: nil, output_limit: nil)
+        shape: Smith::Agent::ProviderRequest::Shape.new(output_schema: nil, output_limit: nil, prompt_cache: :none)
       )
     end.to raise_error(NoMethodError, /broken provider integration/)
     expect(attempts).to eq([[:openai, "primary"]])

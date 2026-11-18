@@ -31,7 +31,7 @@ module Smith
       # before the first attempt. A candidate that fails over to the next
       # joins `set_aside` (AttemptCaptures).
       def complete_with_provider(agent_class, prepared_input, shape:, set_aside: [])
-        chain = build_model_chain(agent_class).tap { check_chain_cache_breakpoints!(_1, prepared_input) }
+        chain = build_model_chain(agent_class).tap { check_chain_cache_breakpoints!(_1, prepared_input, shape) }
         ContentBytes.with(prepared_input) { attempt_candidates(agent_class, prepared_input, chain, shape, set_aside) }
       end
 
@@ -150,7 +150,8 @@ module Smith
 
       def prepared_attempt_chat(agent_class, prepared_input, model_reference, shape)
         chat = attempt_chat(agent_class, model_reference)
-        add_prepared_input(chat, prepared_input, observed_model_reference(chat, fallback: model_reference).provider)
+        add_prepared_input(chat, prepared_input, observed_model_reference(chat, fallback: model_reference).provider,
+                           shape)
         continue_paused_loop(chat)
         shaped_chat(chat, model_reference, shape)
       end

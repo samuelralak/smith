@@ -84,6 +84,7 @@ Smith ships a per-attempt normalizer that translates the request payload to what
 - Anthropic 4.0–4.6 budget_tokens
 - OpenAI gpt-5 family reasoning_effort with `/v1/responses` routing when tools + thinking are combined
 - Gemini 2.5+ budget_tokens
+- Anthropic's automatic prompt cache (a top-level `cache_control`) for an agent declaring `prompt_cache :automatic`, on a call over the wire alone, counted among the request's four cache breakpoints
 
 Override the inferred profile per-app via `Smith::Models.register(Profile.new(...))`.
 Profiles are keyed by both provider and model id. Pass `provider:` to

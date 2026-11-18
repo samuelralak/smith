@@ -24,23 +24,33 @@ module Smith
 
       private
 
-      # Counts the cached blocks already in the chat (its instructions) and
-      # those the prepared input adds, before any is added.
-      def check_cache_breakpoints!(chat, messages, provider)
+      # Counts the cached blocks already in the chat (its instructions), those
+      # the prepared input adds, and an automatic prompt cache, the call's own
+      # (`shape`, ProviderRequest) or a top-level marker the chat's params
+      # carry, once, before any is added.
+      def check_cache_breakpoints!(chat, messages, provider, shape)
         return unless anthropic?(provider)
 
-        cached = chat_cache_controls(chat) +
+        automatic = automatic_breakpoint?(chat, shape, provider)
+        cached = chat_cache_controls(chat) + (automatic ? 1 : 0) +
                  messages.sum { |message| message_parts(message).count { |part| Content.cached?(part) } }
         return if cached <= MAX_CACHE_BREAKPOINTS
 
-        raise ContentUnavailable, "#{cached} blocks ask to be cached; Anthropic takes at most " \
-                                  "#{MAX_CACHE_BREAKPOINTS} cache breakpoints in one request"
+        counted = automatic ? ", an automatic prompt cache counting one" : ""
+        raise ContentUnavailable, "#{cached} cache breakpoints are asked for#{counted}; Anthropic takes at most " \
+                                  "#{MAX_CACHE_BREAKPOINTS} in one request"
       end
 
-      def check_chain_cache_breakpoints!(chain, prepared_input)
+      def automatic_breakpoint?(chat, shape, provider) = automatic_cache?(shape, provider) || chat_cache_marked?(chat)
+
+      def check_chain_cache_breakpoints!(chain, prepared_input, shape)
         return unless chain.any? { |reference| anthropic?(reference.provider) }
 
-        check_cache_breakpoints!(nil, Array(prepared_input), :anthropic)
+        check_cache_breakpoints!(nil, Array(prepared_input), :anthropic, shape)
+      end
+
+      def chat_cache_marked?(chat)
+        chat.respond_to?(:params) && chat.params.is_a?(Hash) && cached_block?(chat.params)
       end
 
       # A model the chain reaches whose provider takes no such content.

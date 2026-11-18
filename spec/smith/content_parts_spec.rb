@@ -270,7 +270,7 @@ RSpec.describe "Smith content parts: Smith::Content and Smith::Message" do
       four = reading("SpecPartsFourMore", "x") { |_ref| Smith::Message.user(Array.new(4) { Smith::Content.text("p#{_1}", cache: true) }) }
 
       expect(three.new.run!.state).to eq(:done)
-      expect(four.new.run!.last_error.message).to match(/5 blocks ask to be cached/)
+      expect(four.new.run!.last_error.message).to match(/5 cache breakpoints are asked for/)
     end
 
     it "counts cache points across the chat and every Anthropic model in the chain, and refuses system input" do
@@ -278,7 +278,7 @@ RSpec.describe "Smith content parts: Smith::Content and Smith::Message" do
       four = reading("SpecPartsFour", "x") { |_ref| Smith::Message.user(Array.new(4) { Smith::Content.text("p#{_1}", cache: true) }) }
       five = reading("SpecPartsFive", "x") { |_ref| Smith::Message.user(Array.new(5) { Smith::Content.text("p#{_1}", cache: true) }) }
       expect(four.new.run!.state).to eq(:done)
-      expect(five.new.run!.last_error.message).to match(/5 blocks ask to be cached/)
+      expect(five.new.run!.last_error.message).to match(/5 cache breakpoints are asked for/)
 
       Smith::Agent::Registry.delete(:spec_parts_reader)
       reader(:openai)

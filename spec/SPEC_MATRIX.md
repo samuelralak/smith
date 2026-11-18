@@ -2038,6 +2038,12 @@ Documented contracts covered:
 - `validate_graph` reports a rename leading nowhere as an error and one whose old name is still declared as a warning
 - every guard and key site is mutation-verified
 
+### `spec/smith/agent/prompt_cache_spec.rb`
+
+Purpose:
+
+- pins `prompt_cache :automatic`: a top-level `cache_control` on an Anthropic request over the wire alone, never a batch request, inherited, refusing another mode, and counted among the four breakpoints with a top-level marker the chat already carries, three marked parts sent and four refused (Unreleased)
+
 ### `spec/smith/optimize_batch_spec.rb`
 
 Purpose:

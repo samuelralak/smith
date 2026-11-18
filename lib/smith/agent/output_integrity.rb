@@ -29,7 +29,7 @@ module Smith
       # What one invocation has tried so far.
       Plan = Struct.new(:agent_class, :input, :output_schema, :json_schema, :repairs_left, :retried, :fell_back,
                         :output_limit, :calls) do
-        def shape = ProviderRequest::Shape.new(output_schema:, output_limit:)
+        def shape = ProviderRequest::Shape.new(output_schema:, output_limit:, prompt_cache: agent_class.prompt_cache)
       end
       private_constant :Plan
 

@@ -8,6 +8,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Added
 
+- `prompt_cache :automatic` on an agent asks Anthropic to cache each
+  request's longest prefix (a top-level `cache_control`, the breakpoint moving
+  with the request's last block), so a tool loop reads each request's prefix
+  from the cache rather than sending it again at full price. It counts as one
+  of a request's four breakpoints, as a top-level marker a chat's params
+  already carry does; other providers and a batch request are asked nothing;
+  the hold already prices a request-level marker at the cache-write rate.
+  Too many breakpoints now read "N cache breakpoints are asked for" (", an
+  automatic prompt cache counting one" where it does).
 - `optimize ..., before_generate: ->(state, context)` runs before each round's
   generator is asked, the first round of every attempt included. Whatever this
   step's rounds and attempts did before it belongs to a round the loop

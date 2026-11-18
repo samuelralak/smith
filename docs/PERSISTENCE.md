@@ -792,7 +792,15 @@ Smith::Message.system([Smith::Content.text(house_style, cache: true)])     # in 
   request: Smith counts the chat's own (cached instructions) with its parts,
   against every Anthropic model in the step's chain, and refuses more before
   the first call. Concurrent branches (`parallel:`, `fan_out`) each write the
-  cache.
+  cache. An agent whose tool loop sends a growing conversation again declares
+  `prompt_cache :automatic`: each Anthropic request then carries a top-level
+  `cache_control`, Anthropic placing the breakpoint on the request's last
+  block and moving it forward as the loop grows, so each request reads the
+  one before it from the cache. It counts as one of the four breakpoints, as
+  a top-level marker the chat's params already carry does; other providers
+  and a batch request (one turn read once) are asked nothing. An agent whose
+  request ends in words read once (a judge's single call) pays the write
+  premium for nothing, so it is for agents with a tool loop.
 - **Other providers** get the parts as one text in their order: text parts as
   they are, a `text/plain` document inline (`<file name='document-2.txt'
   mime_type='text/plain'>...</file>`), and `[attached: image-3.png]` where each
