@@ -271,10 +271,10 @@ fails the step before anything is queued, as does progress that would take a
 stored run past `persistence_max_bytes` (`Smith::PersistedStateTooLarge`). A
 delivery settles its result's hold, then runs the step again at its attempt,
 and the loop goes on from that progress: the call it waited for takes its
-result, nothing before it runs again (`before_eval` included), and the next
-call is batched in turn, so each call is made, charged and held on a budget
-ledger once. The mode callable is asked at each call; a call it gives `:sync`
-goes over the wire and the loop goes on.
+result, nothing before it runs again (`before_generate` and `before_eval`
+included), and the next call is batched in turn, so each call is made, charged
+and held on a budget ledger once. The mode callable is asked at each call; a
+call it gives `:sync` goes over the wire and the loop goes on.
 
 A failed or missing result fails its call as on any batch step, and
 `retry_on` (in process, as an optimize step takes no durable retry) runs the

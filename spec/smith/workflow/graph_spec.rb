@@ -652,6 +652,7 @@ RSpec.describe "Smith::Workflow graph inspection" do
                  evaluator_schema: evaluator_schema,
                  improvement_threshold: 0.1,
                  evaluator_context: :inject_state,
+                 before_generate: ->(_state, _context) {},
                  before_eval: ->(_state, _context) {},
                  on_exhaustion: :return_last
       end
@@ -678,6 +679,7 @@ RSpec.describe "Smith::Workflow graph inspection" do
       evaluator_schema: "SpecGraphOptimizationEvaluatorSchema",
       evaluator_context: :inject_state,
       improvement_threshold: 0.1,
+      before_generate: :callable,
       before_eval: :callable
     )
     expect(optimize.fetch(:evaluator_schema)).to be_frozen

@@ -1192,11 +1192,12 @@ end
 - A key is unique to the run, the step's position and the scope. The position
   is the step number and transition, then any nested workflow step, parallel or
   fan-out branch (durable composite branches included), optimizer round and
-  role (generator, `before_eval`, evaluator), or orchestrator round and worker
-  task. A worker task is named by its content and which copy of equal tasks it
-  is, so a replayed orchestrator that lists the same tasks in another order
-  keeps each task's key. A transition that runs again later in the run (a loop,
-  or an `on_failure` route back to it) has a new step number and so new keys.
+  role (`before_generate`, generator, `before_eval`, evaluator), or
+  orchestrator round and worker task. A worker task is named by its content and
+  which copy of equal tasks it is, so a replayed orchestrator that lists the
+  same tasks in another order keeps each task's key. A transition that runs
+  again later in the run (a loop, or an `on_failure` route back to it) has a
+  new step number and so new keys.
 - Use a scope to tell apart several requests of one step. A tool can run several
   times in a step, and a replayed model may word or order its calls
   differently, so a tool's scope is required and should be the request's stable

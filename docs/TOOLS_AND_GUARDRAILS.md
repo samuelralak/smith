@@ -245,6 +245,13 @@ result.tool_results
 
 Captured tool results survive persistence — they are included in `to_state` and restored via `from_state`.
 
+A capture taken in an `optimize` round names it (`round`, from 0 in each
+attempt), so a host can tell the accepted round's captures from those of the
+rounds its step rejected (docs/PATTERNS.md, Evaluator-Optimizer,
+`before_generate`); any other capture has no `round`. The round is the step's
+own: captures of two optimize steps in one run are told apart by the tools the
+host gives each.
+
 `tool_results` is designed for compact structured evidence (URLs, metadata, refs). Hosts should avoid storing large raw payloads there. If large tool outputs are needed, use artifacts and capture refs or metadata instead.
 
 Capture is best-effort by default for backward compatibility. Hosts that cannot

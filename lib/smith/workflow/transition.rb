@@ -130,9 +130,12 @@ module Smith
       # `stream:` as on `execute`, for the generator's replies alone, round
       # after round: a round the evaluator or `before_eval` rejects is
       # withdrawn (`reset(:rejected)`), and the evaluator never streams.
+      # `before_generate:` runs before each round's generator is asked, so a
+      # host can set aside what an earlier round or attempt left.
       def optimize(generator:, evaluator:, max_rounds:, evaluator_schema:,
                    improvement_threshold: nil,
                    evaluator_context: nil,
+                   before_generate: nil,
                    before_eval: nil,
                    on_exhaustion: :raise,
                    on_converged: :raise,
@@ -149,7 +152,7 @@ module Smith
         validate_optimize_exit_modes!(on_exhaustion: on_exhaustion, on_converged: on_converged,
                                       on_threshold: on_threshold)
         validate_optimize_evaluator_context!(evaluator_context)
-        validate_optimize_before_eval!(before_eval)
+        validate_optimize_callbacks!(before_generate:, before_eval:)
 
         @optimization_config = {
           generator: normalize_agent_reference!(generator, "optimizer generator"),
@@ -157,7 +160,7 @@ module Smith
           max_rounds: max_rounds,
           evaluator_schema: evaluator_schema, improvement_threshold: improvement_threshold,
           evaluator_context: evaluator_context,
-          before_eval: before_eval,
+          before_generate: before_generate, before_eval: before_eval,
           on_exhaustion: on_exhaustion,
           on_converged: on_converged,
           on_threshold: on_threshold
@@ -717,11 +720,12 @@ module Smith
               "optimize evaluator_context must be nil, :inject_state or a callable; got #{evaluator_context.inspect}"
       end
 
-      def validate_optimize_before_eval!(before_eval)
-        return if before_eval.nil?
-        return if before_eval.respond_to?(:call)
+      def validate_optimize_callbacks!(**callbacks)
+        callbacks.each do |name, callback|
+          next if callback.nil? || callback.respond_to?(:call)
 
-        raise WorkflowError, "optimize before_eval must respond to :call; got #{before_eval.inspect}"
+          raise WorkflowError, "optimize #{name} must respond to :call; got #{callback.inspect}"
+        end
       end
     end
   end

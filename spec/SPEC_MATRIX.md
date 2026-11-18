@@ -2052,12 +2052,29 @@ Documented contracts covered:
 
 - `optimize` takes `mode:` and `on_request_change:`, needs `on_failure` to batch, shows its mode in graph inspection, and runtime readiness reports a generator or evaluator that cannot batch
 - in lax and strict modes, through every shipped store adapter, each call waits in turn (generator, then evaluator, round by round), each delivery goes on from the stored progress, and each call's usage is recorded once with `mode: :batch` and its round
-- the progress kept with each wait (round, call, candidate, feedback, verdicts); `before_eval` runs once a round and callables read every verdict so far across waits; the mode callable is asked at each call and a `:sync` call goes over the wire
+- the progress kept with each wait (round, call, candidate, feedback, verdicts); `before_generate` and `before_eval` run once a round and callables read every verdict so far across waits; the mode callable is asked at each call and a `:sync` call goes over the wire
 - a missing result fails its call, and an in-process `retry_on` runs the loop afresh under the new attempt's mode; an errored result fails through `on_failure`; a delivery that crashes keeps the stored wait, and a second delivery goes on as the first would have
 - a call whose request changed is resent over the wire under `:resend`, its batch result charged; progress past `persistence_max_bytes` fails the step before anything is queued
 - run budgets charge each result once; a host ledger holds each call's request under its custom_id and settles it with its result before the next call is held, so a ledger with room for one hold takes the next
 - in strict mode a crashed delivery leaves the run stored as a step under way (`StepInProgressOnRestore`), as on any batch step
 - restore refuses missing, malformed or out-of-range progress, progress that is not the progress of the call its wait was made for, and progress on another kind of batch step
+
+### `spec/smith/workflow/optimize_before_generate_spec.rb`
+
+Purpose:
+
+- pins `optimize ..., before_generate:` and the round a capture names, so a host can set aside what a rejected round or a failed attempt staged (Unreleased)
+
+Architecture basis:
+
+- Evaluator-Optimizer (docs/PATTERNS.md); Tool Result Capture (docs/TOOLS_AND_GUARDRAILS.md)
+
+Documented contracts covered:
+
+- `before_generate` runs before each round's generator with the live context and `state.round`, so a host's staged work from a rejected round is gone before the next round writes
+- it runs again before an in-process retry's first round, after the failed attempt's tools ran, and only that attempt's captures remain
+- a raise fails the step before the round's generator is asked; a non-callable is refused when the workflow loads
+- each capture an optimize round takes names its round, concurrent tool calls' included; a provider attempt set aside inside a round takes its captures with it, the kept ones naming the round; the round survives a persisted run's restore; a capture outside an optimize round has none
 
 ### `spec/smith/workflow/from_nil_failure_spec.rb`
 

@@ -50,7 +50,7 @@ module Smith
         @resolved_parallel_branch_count = nil
       end
 
-      # Hooks that receive the live context (`before_eval`,
+      # Hooks that receive the live context (`before_generate`, `before_eval`,
       # `after_completion`, guardrails) can write to it directly. At the end
       # of the step every new top-level key must be a Symbol that an explicit
       # `persist` list allows, and every new or replaced value takes the

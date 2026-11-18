@@ -37,12 +37,16 @@ module Smith
       def run_optimization_loop(state, transition)
         first, call = resume_optimizer_progress(state)
         ((first || 0)...state.config[:max_rounds]).each do |round|
-          at_evaluator = round == first && call == "evaluator"
+          state.round = round
+          resumed = round == first
+          at_evaluator = resumed && call == "evaluator"
           # The overlay scopes every trace and usage fact from this round's
           # generator and evaluator calls to the round that produced them.
           result = Attribution.with(round: round) do
             IdempotencyKey.__send__(:within, :round, round) do
-              run_optimization_round(state, round, transition, at_evaluator:)
+              with_round_captures(round) do
+                run_optimization_round(state, round, transition, at_evaluator:, resumed:)
+              end
             end
           end
           return result if result
@@ -52,11 +56,34 @@ module Smith
                     "optimization exhausted #{state.config[:max_rounds]} rounds without acceptance")
       end
 
+      # Every tool capture the round takes names it (`round`), as its usage
+      # entries, traces and verdicts do. The round's collector stamps each
+      # entry on its way to the step's, in place, so the captures of an
+      # attempt a call sets aside still leave by identity
+      # (Agent::AttemptCaptures); it is the collector, not the attribution,
+      # that reaches concurrent tool calls.
+      def with_round_captures(round, &block)
+        collector = Tool.current_tool_result_collector
+        return yield unless collector.respond_to?(:call)
+
+        stamped = ->(entry) { collector.call(entry.is_a?(Hash) ? entry.merge!(round:) : entry) }
+        Thread.handle_interrupt(Object => :never) do
+          Tool.current_tool_result_collector = stamped
+          begin
+            Thread.handle_interrupt(Object => :immediate, &block)
+          ensure
+            Tool.current_tool_result_collector = collector
+          end
+        end
+      end
+
       # Each role is a position of its own in the round, so the generator,
-      # the before_eval callback and the evaluator never share a key. A
-      # round a delivery goes on from at its evaluator has its candidate.
-      def run_optimization_round(state, round, transition, at_evaluator: false)
-        rejection = generate_and_screen(state, round, transition) unless at_evaluator
+      # the before_generate and before_eval callbacks and the evaluator never
+      # share a key. A round a delivery goes on from at its evaluator has its
+      # candidate, and one it goes on from at its generator asked
+      # before_generate when its request was batched.
+      def run_optimization_round(state, round, transition, at_evaluator: false, resumed: false)
+        rejection = generate_and_screen(state, round, transition, resumed:) unless at_evaluator
         evaluation = rejection || normalize_evaluation(
           IdempotencyKey.__send__(:within, :evaluator) { evaluate_candidate(state, round, transition) }
         )
@@ -212,9 +239,21 @@ module Smith
       end
 
       # The round's candidate, and a before_eval rejection of it, if any.
-      def generate_and_screen(state, round, transition)
+      def generate_and_screen(state, round, transition, resumed: false)
+        IdempotencyKey.__send__(:within, :before_generate) { run_before_generate(state) } unless resumed
         IdempotencyKey.__send__(:within, :generator) { generate_candidate!(state, round, transition) }
         IdempotencyKey.__send__(:within, :before_eval) { before_eval_rejection(state) }
+      end
+
+      # Everything this step's earlier rounds and attempts did belongs to a
+      # round the loop rejected or an attempt that failed, so a host sets
+      # aside what they staged here, before a later round builds on it.
+      def run_before_generate(state)
+        callback = state.config[:before_generate]
+        return unless callback
+
+        callback.call(state, @context)
+        nil
       end
 
       # A later round's draft replaces the one rejected before it, whose

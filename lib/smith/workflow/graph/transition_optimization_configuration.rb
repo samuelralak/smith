@@ -32,6 +32,7 @@ module Smith
             evaluator_schema_label: label(config.fetch(:evaluator_schema)),
             evaluator_context: callable_marker(config[:evaluator_context]),
             improvement_threshold: config[:improvement_threshold],
+            before_generate: callable_marker(config[:before_generate]),
             before_eval: callable_marker(config[:before_eval])
           }
         end

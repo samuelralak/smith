@@ -47,6 +47,7 @@ module Smith
             evaluator_schema: config.fetch(:evaluator_schema_label),
             evaluator_context: config[:evaluator_context],
             improvement_threshold: config[:improvement_threshold],
+            before_generate: config[:before_generate],
             before_eval: config[:before_eval]
           }
         end

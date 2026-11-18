@@ -411,6 +411,28 @@ value, including a Hash with `accept: true`, is ignored and the evaluator
 judges as before. A deterministic check that makes a candidate unacceptable
 can reject it this way without spending an evaluator call.
 
+`before_generate: ->(state, context) { ... }` runs before each round's
+generator is asked, the first round of every attempt included (a round a batch
+delivery goes on from asked it when its request was batched), and may write to
+the workflow context as `before_eval` may. Whatever this step's earlier rounds
+and attempts did belongs to a round the loop rejected or an attempt that
+failed, so a host whose generator's tools stage work for the candidate (a
+pending write, for the host to publish once the step is accepted) sets aside
+what they staged before the next round builds on it. The generator of a later
+round is given the rejected candidate and the evaluator's feedback, not its
+tool calls, so it should be told that a candidate sent back keeps nothing its
+tools did. A provider attempt the call sets aside inside one round (a fallback
+model, a repair) is not a round: its captures leave `tool_results` as before,
+and `before_generate` does not run between it and the attempt that replaces
+it. The return value is ignored, and a raise fails the step as a raise from
+`before_eval` does. `before_generate`, `before_eval` and the exit modes read
+the round under way from `state.round`, from 0 in each attempt, and every tool
+capture a round takes names it (`round` on its `tool_results` entry), so a host
+tells the accepted round's captures from those of the rounds its step
+rejected. The round is the step's own: captures of two optimize steps in one
+run, or of a transition that runs again, are told apart by the host, by the
+tools it gives each step.
+
 `mode: :batch` (or a callable of the context and attempt) sends each call of
 the loop through the provider's batch API, the run waiting for each result
 and going on from where the loop stood: docs/AGENTS.md, Batch mode.
@@ -456,13 +478,13 @@ loop is kept, whether it accepts, converges, or trips the improvement
 threshold. A step whose completion fails after its loop (a split step's
 snapshot over its limits) keeps its verdicts on the failure record. A nested
 workflow's verdicts stay on its own run: the parent's step carries the child's
-usage, not its verdicts. A callable
-(`before_eval` or an exit mode) reads its own loop's verdicts so far from
-`state.evaluations`, a frozen copy without `attempt`, so it cannot rewrite the
-step's. Verdicts are content, so they are an output and never a
-trace: nothing about them reaches a trace adapter. Like `steps`, they belong to
-the run that executed the step, so a terminal restore has none; a host that
-needs them later stores them when the run returns.
+usage, not its verdicts. A callable (`before_generate`, `before_eval` or an
+exit mode) reads its own loop's verdicts so far from `state.evaluations`, a
+frozen copy without `attempt`, so it cannot rewrite the step's. Verdicts are
+content, so they are an output and never a trace: nothing about them reaches a
+trace adapter. Like `steps`, they belong to the run that executed the step, so
+a terminal restore has none; a host that needs them later stores them when the
+run returns.
 
 Why this matters:
 
@@ -661,7 +683,7 @@ The yielded step object exposes a narrow, read-heavy surface:
 - **Idempotency keys**: `step.idempotency_key(scope = nil)` is a key for a request the step sends outside the system, the same on every attempt of the step and after a restore, unique to the run, the step and the scope. `step.attempt` is the attempt under way, from 1. See `docs/PERSISTENCE.md`, Replay Safety.
 - **Outcome**: `step.write_outcome(kind:, payload:)` stores a workflow-owned terminal payload without smuggling it through context. The payload is persisted with the workflow and surfaced on `RunResult.outcome`, `RunResult.outcome_kind`, and `RunResult.outcome_payload`.
 - **Context writes**: `step.write_context(key, value)` takes a Symbol key. The value is stored at the call in the context's key shape: every Hash key at every depth becomes the Symbol of its String form, which is what a restore produces, so `step.read_context` later in the same step, the next step, and a restored run all read the same keys. Values are not converted (see `docs/PERSISTENCE.md`). Two keys that become the same Symbol, a value that contains itself, or nesting deeper than 100 levels fail the write with `Smith::WorkflowError`.
-- **Persist list as an allow-list**: when the workflow's `Smith::Context` declares `persist :a, :b`, writing any other key raises `Smith::UndeclaredContextKey`, in every run, persisted or not and nested or not, so the list is the context's declared shape rather than a filter applied at checkpoints. A rejected write fails the step even when the step body rescues the error. With `persist :auto`, or no `persist` declaration, any Symbol key may be written. Hooks that receive the live context (`before_eval`, `after_completion`, guardrails) are held to the same rules at the end of their step: a new top-level key must be a Symbol the list allows, a violation fails the step and puts the context's top-level values back as they were when the step started, and new or replaced values take the context's key shape.
+- **Persist list as an allow-list**: when the workflow's `Smith::Context` declares `persist :a, :b`, writing any other key raises `Smith::UndeclaredContextKey`, in every run, persisted or not and nested or not, so the list is the context's declared shape rather than a filter applied at checkpoints. A rejected write fails the step even when the step body rescues the error. With `persist :auto`, or no `persist` declaration, any Symbol key may be written. Hooks that receive the live context (`before_generate`, `before_eval`, `after_completion`, guardrails) are held to the same rules at the end of their step: a new top-level key must be a Symbol the list allows, a violation fails the step and puts the context's top-level values back as they were when the step started, and new or replaced values take the context's key shape.
 - **Context reads**: `step.context` returns an isolated snapshot of the workflow context at step start. Mutating that snapshot does not mutate workflow state. `step.read_context(key)` returns a merged view — pending `write_context` values override the snapshot. Use `read_context` when you need read-after-write coherence within the same step.
 - **No output**: Deterministic steps produce no session message output. `last_output` continues to mean the last agent output.
 - **No budget**: No tokens or cost consumed.

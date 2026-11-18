@@ -8,6 +8,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Added
 
+- `optimize ..., before_generate: ->(state, context)` runs before each round's
+  generator is asked, the first round of every attempt included. Whatever this
+  step's rounds and attempts did before it belongs to a round the loop
+  rejected or an attempt that failed, so a host whose generator's tools stage
+  work for the candidate (a pending write it publishes once the step is
+  accepted) sets it aside before the next round builds on it. `before_generate`,
+  `before_eval` and the exit modes read the round under way from
+  `state.round`, and each tool capture an optimize round takes names it
+  (`round` on its `tool_results` entry), so a host tells the accepted round's
+  captures from those of the rounds its step rejected.
 - An `optimize` step streams: `optimize ..., stream: :name` sends its
   generator's replies to the sink, round after round, as `execute` does. The
   evaluator never streams, since its reply is a verdict, and a rejected

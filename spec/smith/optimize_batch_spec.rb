@@ -195,20 +195,23 @@ RSpec.describe "Smith batch mode on an optimize step" do
       )
     end
 
-    it "runs before_eval once a round, and hands callables every verdict so far, across waits" do
+    it "runs before_generate and before_eval once a round, and hands callables every verdict so far, across waits" do
       seen = []
       exhausted = lambda do |state|
         seen << state.evaluations.map { _1.slice(:round, :source) }
         state.candidate
       end
       ran = []
-      klass = drafting("SpecOptBatchCallablesWorkflow", on_exhaustion: exhausted,
+      generating = []
+      before_generate = ->(state, _context) { generating << state.round }
+      klass = drafting("SpecOptBatchCallablesWorkflow", on_exhaustion: exhausted, before_generate:,
                                                         before_eval: ->(state, _context) { ran << state.candidate })
       klass.new(context: {}).run_persisted!("opt-callables", adapter:)
       ["one", verdict(false, "again"), "two", verdict(false, "still")].each do |result|
         deliver(klass, "opt-callables", adapter, result.is_a?(String) ? succeeded(result) : result)
       end
 
+      expect(generating).to eq([0, 1])
       expect(ran).to eq(%w[one two])
       expect(seen).to eq([[{ round: 0, source: :evaluator }, { round: 1, source: :evaluator }]])
       expect(klass.restore("opt-callables", adapter:).to_state[:context][:draft]).to eq("two")
