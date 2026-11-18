@@ -3,7 +3,8 @@
 module Smith
   class Agent
     # What one provider call asks for beyond its messages: the output schema
-    # as the provider takes it, and a larger output limit when a cut-off
+    # as the provider takes it, the agent's output limit under the name an
+    # OpenAI model that reasons takes, and a larger one when a cut-off
     # response is retried.
     module ProviderRequest
       Shape = Data.define(:output_schema, :output_limit)
@@ -11,9 +12,17 @@ module Smith
       private
 
       def shaped_chat(chat, model_reference, shape)
-        provider = observed_model_reference(chat, fallback: model_reference).provider
+        observed = observed_model_reference(chat, fallback: model_reference)
+        provider = observed.provider
+        chat = named_output_limit(chat, observed)
         chat = with_output_limit(chat, provider, shape.output_limit) if shape.output_limit
         shape.output_schema ? chat.with_schema(provider_output_schema(shape.output_schema, provider)) : chat
+      end
+
+      def named_output_limit(chat, observed)
+        return chat unless chat.respond_to?(:with_params) && chat.respond_to?(:params) && chat.params.is_a?(Hash)
+
+        chat.with_params(**Providers::OutputLimit.named(observed.provider, chat.params, observed))
       end
 
       def with_output_limit(chat, provider, limit)

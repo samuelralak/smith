@@ -39,6 +39,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Fixed
 
+- An agent's output cap (`params max_tokens:`) reaches an OpenAI model that
+  reasons as `max_completion_tokens` (or `max_output_tokens` on the Responses
+  API) on every attempt, not only a retry: OpenAI's Chat Completions refuses
+  `max_tokens` from those models, so a step without tools on one failed its
+  first call. Any other OpenAI chat, an OpenAI-compatible server's among them,
+  keeps its own `max_tokens`.
+
 - An agent step in a workflow whose budget declares `wall_clock` gets its
   output repair, its truncation retry and its refusal fallback again. The
   step's reservation names every budget dimension, `wall_clock` among them

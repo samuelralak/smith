@@ -5,7 +5,9 @@ module Smith
     # A provider's own parameter for the most tokens a response may hold,
     # merged into the request when an agent retries a cut-off response
     # (`on_truncation retry_with: { max_tokens: n }`). A provider not listed
-    # here is not retried.
+    # here is not retried. An agent's own cap (`params max_tokens:`) goes to
+    # an OpenAI model that reasons under the name it takes on every attempt
+    # (`named`): its Chat Completions refuses `max_tokens` from those models.
     module OutputLimit
       PROVIDERS = %w[anthropic openai gemini vertexai bedrock].freeze
       PARAM_PATHS = {
@@ -40,6 +42,25 @@ module Smith
         return set if set.is_a?(Integer)
 
         anthropic_default(model_reference.model_id) if provider.to_s == "anthropic"
+      end
+
+      # The params with the cap of a request to an OpenAI model that reasons
+      # under the name its path takes (`max_completion_tokens`, or
+      # `max_output_tokens` on the Responses API); any other request, an
+      # OpenAI-compatible server's `max_tokens` among them, unchanged.
+      def named(provider, chat_params, model_reference)
+        limit = provider.to_s == "openai" && reasons?(model_reference) ? current("openai", chat_params, nil) : nil
+        return chat_params unless limit.is_a?(Integer)
+
+        caps = PARAM_PATHS.fetch("openai").flatten.flat_map { |key| [key, key.to_s] }
+        unnamed = chat_params.except(*caps)
+        unnamed.merge(params("openai", unnamed, limit))
+      end
+
+      def reasons?(model_reference)
+        ::RubyLLM.models.find(model_reference.model_id.to_s, "openai").capabilities.include?("reasoning")
+      rescue ::RubyLLM::ModelNotFoundError
+        false
       end
 
       def openai_key(chat_params)

@@ -178,6 +178,14 @@ RSpec.describe "Smith output integrity: stop reasons, typed output errors, contr
       expect(limit.params("vertexai", {}, 9)).to eq(generationConfig: { maxOutputTokens: 9 })
       expect(limit.params("bedrock", {}, 9)).to eq(inferenceConfig: { maxTokens: 9 })
       expect(limit.supported?("mistral")).to be(false)
+      reasons = Smith::Agent::ModelReference.new(model_id: "gpt-5.5", provider: :openai)
+      plain = Smith::Agent::ModelReference.new(model_id: "gpt-4.1", provider: :openai)
+      expect(limit.named("openai", { max_tokens: 9, top_p: 1 }, reasons)).to eq(top_p: 1, max_completion_tokens: 9)
+      expect(limit.named("openai", { "max_tokens" => 9, openai_api_mode: :responses }, reasons))
+        .to eq(openai_api_mode: :responses, max_output_tokens: 9)
+      expect(limit.named("openai", { max_tokens: 9 }, plain)).to eq(max_tokens: 9)
+      expect(limit.named("anthropic", { max_tokens: 9 }, reasons)).to eq(max_tokens: 9)
+      expect(limit.named("openai", { top_p: 1 }, reasons)).to eq(top_p: 1)
 
       agent("SpecOtherProviderAgent", [["half", { "stopReason" => "max_tokens" }]], provider: :mistral,
                                                                                     model: "mistral-large") do
