@@ -677,7 +677,12 @@ end
   transcript, as it does for the transcript. A fan-out's branches share one
   `input:`. An optimizer's `input:` is its generator's, and also its
   evaluator's under `evaluator_context: :inject_state`, which then sees the
-  input followed by the candidate and no injected state.
+  input followed by the candidate and no injected state. A callable
+  `evaluator_context:` builds the evaluator's messages itself instead: it gets
+  copies of the candidate and the context and returns messages checked as an
+  `input:` callable's are, so the evaluator can read only its own part of the
+  context and keep the same prefix from round to round (for a provider's
+  prompt cache).
 - `output_to: :key` writes the step's output to `key` instead of the
   transcript, once the step completes. The value is JSON-shaped (Symbols
   become Strings) and in the context's key shape, so it reads the same after a

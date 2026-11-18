@@ -113,7 +113,10 @@ Images and documents count so as RubyLLM attachments and in raw content blocks
 set, caps the output part (an agent with no `max_tokens` is otherwise held for
 the model's maximum, which can be tens of thousands of tokens, and a longer
 reply is reconciled at what it cost). It is priced from the pricing catalog
-under the id RubyLLM resolves the model to; `cost` is nil for an unpriced
+under the id RubyLLM resolves the model to, a request that marks a block for a
+prompt cache (`cache_control` on the request or on a message's block) with its
+input at the dearer of plain input and a cache write, since all of it may be
+written; `cost` is nil for an unpriced
 model, which runtime readiness warns of (`:budget_ledger_unpriced`, for every
 agent that charges the ledger), and its readiness metrics name the scope keys.
 

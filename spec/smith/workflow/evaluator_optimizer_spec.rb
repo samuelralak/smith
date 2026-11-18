@@ -858,7 +858,72 @@ RSpec.describe "Smith::Workflow::EvaluatorOptimizer runtime behavior" do
                      evaluator_schema: Class.new, evaluator_context: :wat
           end
         end
-      end.to raise_error(workflow_error, /evaluator_context must be nil or :inject_state/)
+      end.to raise_error(workflow_error, /evaluator_context must be nil, :inject_state or a callable/)
+    end
+  end
+
+  describe "evaluator_context: a callable" do
+    def built_workflow(name, built)
+      with_stubbed_class(name, workflow_class) do
+        initial_state :idle
+        state :done
+        state :failed
+
+        transition :translate, from: :idle, to: :done do
+          optimize generator: :spec_opt_gen_built, evaluator: :spec_opt_eval_built,
+                   max_rounds: 3, evaluator_schema: Class.new, evaluator_context: built
+          on_failure :fail
+        end
+      end.new(context: { topic: "rivers" })
+    end
+
+    before do
+      generator = with_stubbed_class("SpecOptGenBuilt", agent_class) do
+        register_as :spec_opt_gen_built
+        model "gpt-5-mini"
+      end
+      @evaluator = with_stubbed_class("SpecOptEvalBuilt", agent_class) do
+        register_as :spec_opt_eval_built
+        model "gpt-5-mini"
+      end
+      stub_agent(generator, "candidate prose")
+      @evaluator_inputs = Queue.new
+      inputs = @evaluator_inputs
+      allow(@evaluator).to receive(:chat) do
+        messages = []
+        chat = Object.new
+        chat.define_singleton_method(:messages) { messages }
+        chat.define_singleton_method(:with_instructions) { |_instructions| self }
+        chat.define_singleton_method(:add_message) { |m| messages << { role: m[:role], content: m[:content] } }
+        chat.define_singleton_method(:with_schema) { |_s| self }
+        chat.define_singleton_method(:complete) do
+          inputs << messages.dup
+          Struct.new(:content, :input_tokens, :output_tokens).new({ accept: true, feedback: nil, score: 0.95 }, 5, 3)
+        end
+        chat
+      end
+    end
+
+    it "gives the evaluator the messages it builds from copies of the candidate and the context" do
+      built = lambda do |candidate, context|
+        judged = "Judge #{candidate} on #{context.fetch(:topic)}"
+        context[:topic] = "changed"
+        [{ role: :user, content: judged }]
+      end
+
+      result = built_workflow("SpecOptBuiltWorkflow", built).run!
+
+      expect(result.state).to eq(:done)
+      expect(@evaluator_inputs.pop).to eq([{ role: :user, content: "Judge candidate prose on rivers" }])
+      expect(result.context[:topic]).to eq("rivers")
+    end
+
+    it "refuses messages a step's input: would refuse" do
+      result = built_workflow("SpecOptBuiltEmptyWorkflow", ->(_candidate, _context) { [] }).run!
+
+      expect(result.state).to eq(:failed)
+      expect(result.last_error.message).to match(/evaluator_context: must return a non-empty Array/)
+      expect(@evaluator_inputs).to be_empty
     end
   end
 

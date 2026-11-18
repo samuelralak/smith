@@ -233,11 +233,21 @@ module Smith
 
       # evaluator_context: :inject_state appends the candidate as a
       # user turn to the prepared_input the generator received, so the
-      # evaluator sees the same seed_messages + inject_state context.
-      # Default nil keeps the legacy candidate-only payload.
+      # evaluator sees the same seed_messages + inject_state context. A
+      # callable builds the evaluator's messages itself from copies of the
+      # candidate and the context, checked as a step's input: is, so the
+      # evaluator can read its own part of the context and keep a stable
+      # prefix across rounds. Default nil keeps the legacy candidate-only
+      # payload.
       def build_evaluator_input(state)
+        mode = state.config[:evaluator_context]
+        if mode.respond_to?(:call)
+          return checked_input(mode.call(snapshot_value(state.candidate), snapshot_value(@context)),
+                               "evaluator_context:")
+        end
+
         content = candidate_content(state.candidate)
-        return [{ role: :user, content: }] unless state.config[:evaluator_context] == :inject_state
+        return [{ role: :user, content: }] unless mode == :inject_state
 
         prior = Array(state.prepared_input).dup
         prior.push(role: :user, content:)

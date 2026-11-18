@@ -389,6 +389,14 @@ class TranslationWorkflow < Smith::Workflow
 end
 ```
 
+What the evaluator reads is `evaluator_context:`'s to say. Left out, it reads
+the candidate alone; `:inject_state` gives it the generator's input followed by
+the candidate; a callable `->(candidate, context) { messages }` builds its
+messages itself from copies of the candidate and the context, checked as an
+`input:` callable's are, so an evaluator reads only its own part of the context
+and, with what changes each round in its last message, keeps the same prefix
+from round to round for a provider's prompt cache.
+
 `before_eval: ->(state, context) { ... }` runs after each candidate is
 generated and before the evaluator is called, and may write to the workflow
 context (a new top-level key must be a Symbol that the context's `persist` list

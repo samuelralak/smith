@@ -1792,6 +1792,7 @@ Documented contracts covered:
 - an `output_to:` key outside an explicit persist list is refused before any agent call and reported by validation (`:output_to_not_persisted`, `:await_into_not_persisted` for an await's `into:`); `persist :auto` records the key; a fan-out aggregate reads the same live and restored; a step whose result is refused leaves the context unchanged
 - an isolated fan-out, optimizer or orchestrator without `input:` is refused at runtime and in validation; an isolated step that runs no agent injects no state; an isolated workflow nesting a shared one draws a warning; an isolated run restores between steps
 - route, optimize (generator, and evaluator under `evaluator_context: :inject_state`) and orchestrate run on `input:`, and optimize and orchestrate write `output_to:`
+- a callable `evaluator_context:` gives the evaluator exactly the messages it builds from copies of the candidate and the context, checked as an `input:` callable's are (an empty or oversized return fails the step before the evaluator is called)
 - the host admits only user, assistant and tool messages; restored session messages and composite input messages must carry a known role
 - `Smith::Untrusted.escape` covers every line break, invisible and decorated prefixes, `human:`/`ai:`, full-width colons and look-alike tags; inside a step the boundary is the same for the same step and text and differs across runs, so a durable composite step's wrapped input is prepared identically on recovery
 - the review fixes above are mutation-verified against the full suite
@@ -2191,6 +2192,7 @@ Documented contracts covered:
 - a call's first request is held and every round of its tool loop reconciled under its own round; a request that failed without usage is released before a fallback model's, which has its own attempt id
 - a nested workflow without its own ledger charges the enclosing run's; each sync fan-out branch is held from its own thread; a tool's own RubyLLM call is not held
 - a request's cache reads and writes reconcile as input
+- a request that marks a block for the prompt cache is held with its input at the dearer of plain input and a cache write; an unmarked one, or a model with no cache-write rate, as plain input
 - a batch refusal releases the sibling holds already taken before a retry's backoff
 - a batch request is held at capture under its `custom_id`, at the batch discount, until its 25-hour wait plus `budget_hold_ttl`; delivery reconciles a succeeded result and releases an errored one; a refusal queues nothing; an expired wait releases its holds; a step that fails before queuing releases the holds it took
 - readiness warns of an agent whose model has no price only when the workflow declares a ledger; `budget_hold_ttl` must be a positive Integer

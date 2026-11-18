@@ -91,6 +91,7 @@ RSpec.describe "Smith::Workflow nested execution" do
     expect(result.state).to eq(:failed)
     expect(result.steps.first[:error]).to be_a(workflow_error)
     expect(result.steps.first[:error].message).to include("nested workflow failed")
+    expect(result.steps.first[:error].cause.message).to include("provider down")
   end
 
   it "rejects workflow binding to a non-class" do

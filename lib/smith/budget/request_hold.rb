@@ -41,10 +41,40 @@ module Smith
         context_window = model.context_window if model.respond_to?(:context_window)
         input = [input_estimate(*request.values_at(:messages, :tools, :schema)), context_window].compact.min
         output = [output_cap(provider, request[:params], model), Smith.config.budget_hold_output_tokens].compact.min
-        Amount.new(input_tokens: input, output_tokens: output,
-                   cost: Pricing.compute_cost(model: model.id, provider: provider.to_s, input_tokens: input,
-                                              output_tokens: output, mode:))
+        price = price_for(provider, model, output, mode)
+        Amount.new(input_tokens: input, output_tokens: output, cost: most_cost(price, input, cache_marked?(request)))
       end
+
+      # The request's cost with its input as the tokens name it: read plainly,
+      # or written to a prompt cache.
+      def price_for(provider, model, output, mode)
+        lambda do |**tokens|
+          Pricing.compute_cost(model: model.id, provider: provider.to_s, output_tokens: output, mode:, **tokens)
+        end
+      end
+
+      # A request that marks a block for a prompt cache may have all its input
+      # written to it, which can cost more than input read plainly, so it is
+      # held at the dearer of the two; any other request, or a model with no
+      # cache-write rate, is held as plain input.
+      def most_cost(price, input, cached)
+        costs = [price.call(input_tokens: input)]
+        costs << price.call(input_tokens: 0, cache_write_tokens: input) if cached
+        costs.compact.max
+      end
+
+      # A cache marker on the request's own params or on a block of one of its
+      # messages, where Smith puts a cached part's.
+      def cache_marked?(request)
+        marked_block?(request[:params]) || Array(request[:messages]).any? { marked_message?(_1) }
+      end
+
+      def marked_message?(message)
+        content = message.content if message.respond_to?(:content)
+        content.is_a?(::RubyLLM::Content::Raw) && Array(content.value).any? { marked_block?(_1) }
+      end
+
+      def marked_block?(block) = block.is_a?(Hash) && !(block[:cache_control] || block["cache_control"]).nil?
 
       def input_estimate(messages, tools, schema)
         counter = Counter.new

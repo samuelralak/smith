@@ -711,10 +711,10 @@ module Smith
       end
 
       def validate_optimize_evaluator_context!(evaluator_context)
-        return if evaluator_context.nil? || evaluator_context == :inject_state
+        return if evaluator_context.nil? || evaluator_context == :inject_state || evaluator_context.respond_to?(:call)
 
         raise WorkflowError,
-              "optimize evaluator_context must be nil or :inject_state; got #{evaluator_context.inspect}"
+              "optimize evaluator_context must be nil, :inject_state or a callable; got #{evaluator_context.inspect}"
       end
 
       def validate_optimize_before_eval!(before_eval)

@@ -74,14 +74,20 @@ module Smith
                              "agent in an isolated session and must declare input:"
       end
 
-      # A non-empty Array of at most MessageBatch::MAX_MESSAGES user and
-      # assistant messages, bounded and JSON-shaped like session messages.
       # The callable gets a copy of the context, so it cannot change the
       # run's.
       def step_input_messages(transition)
-        messages = transition.step_input.call(snapshot_value(@context))
+        checked_input(transition.step_input.call(snapshot_value(@context)), "input:")
+      end
+
+      # A non-empty Array of at most MessageBatch::MAX_MESSAGES user and
+      # assistant messages, bounded and JSON-shaped like session messages, as
+      # a step's `input:` or an optimizer's callable `evaluator_context:`
+      # (`option`) returns them.
+      def checked_input(messages, option)
         unless messages.is_a?(Array) && !messages.empty? && messages.length <= MessageBatch::MAX_MESSAGES
-          raise WorkflowError, "input: must return a non-empty Array of at most #{MessageBatch::MAX_MESSAGES} messages"
+          raise WorkflowError,
+                "#{option} must return a non-empty Array of at most #{MessageBatch::MAX_MESSAGES} messages"
         end
 
         MessageValueNormalizer.new(messages, label: "step input").call.map { |message| step_input_message(message) }

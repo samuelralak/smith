@@ -531,4 +531,21 @@ RSpec.describe "Smith budget ledgers" do
     expect([held.output_tokens, asked.output_tokens]).to eq([1_000, 50])
     expect { Smith.config.budget_hold_output_tokens = 0 }.to raise_error(ArgumentError)
   end
+
+  it "holds a request that marks a block for the prompt cache at the dearer of plain input and a cache write" do
+    model = Struct.new(:id, :max_tokens, :context_window).new("claude-sonnet-5-5", 100, nil)
+    plain = [RubyLLM::Message.new(role: :user, content: "x" * 2_976)]
+    block = { type: "text", text: "x" * 2_976, cache_control: { type: "ephemeral" } }
+    marked = [RubyLLM::Message.new(role: :user, content: RubyLLM::Content::Raw.new([block]))]
+    rates = { input_cost_per_token: 0.000002, output_cost_per_token: 0.00001, cache_write_cost_per_token: 0.0000025 }
+    Smith.config.pricing = { %w[anthropic claude-sonnet-5-5] => rates }
+    hold = lambda do |messages|
+      Smith::Budget::RequestHold.for_request(provider: "anthropic", model:, messages:, tools: {}, schema: nil,
+                                             params: { max_tokens: 100 })
+    end
+
+    expect(hold.call(plain).cost).to be_within(1e-12).of((1_000 * 0.000002) + (100 * 0.00001))
+    held = hold.call(marked)
+    expect(held.cost).to be_within(1e-12).of((held.input_tokens * 0.0000025) + (100 * 0.00001))
+  end
 end

@@ -15,6 +15,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   again; the last round ends as any streamed step does, with `finish` (the
   output kept, `:return_last` included) or `fail`. Runtime readiness checks
   the generator's route. A streamed `optimize` step cannot batch.
+- A nested workflow's failure keeps the child's own error as the parent's
+  error's `cause`, so a host can read what the child failed on (a
+  `DeterministicStepFailure`'s details, for one) beyond the parent error's
+  message.
+- `optimize ..., evaluator_context:` takes a callable, which builds the
+  evaluator's messages from copies of the candidate and the context, checked
+  as an `input:` callable's are. An evaluator can then read only its own part
+  of the context, and one whose round-by-round material sits in its last
+  message keeps the same prefix across rounds, which a provider's prompt
+  cache can reuse; under `:inject_state` it re-read the generator's whole
+  input every round.
 
 ### Fixed
 
@@ -25,6 +36,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   reservation compared the tokens spent against that 0, so any response
   counted as spent and no follow-up was made. The check now weighs only
   tokens and cost; the deadline is still checked before a follow-up.
+- A request's budget hold covers input written to a prompt cache. The hold
+  priced its estimated input at the plain input rate, so a prompt marked for
+  caching, whose writes cost more (1.25x on Anthropic's five-minute cache),
+  could spend past what was held for it. A request that marks a block for
+  the cache (`cache_control` on the request or on a message's block) is now
+  held with its input at the dearer of plain input and a cache write; any
+  other request, and a model with no cache-write rate, is held as before.
 
 ## [0.14.0] - 2026-11-09
 

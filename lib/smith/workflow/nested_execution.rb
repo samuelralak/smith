@@ -88,11 +88,13 @@ module Smith
 
         # A child that handled its failure through its own `on_failure` route
         # has already applied its failure policy, so the parent sees a
-        # non-retryable WorkflowError, as before.
+        # non-retryable WorkflowError, as before, its cause the child's own
+        # error, so a host can still read what the child failed on.
         failed_step = child_result.steps.find { |s| s.key?(:error) }
         if failed_step
           raise WorkflowError,
-                "nested workflow failed: #{DiagnosticText.capture(failed_step[:error]&.message.to_s, max_bytes: 1024)}"
+                "nested workflow failed: #{DiagnosticText.capture(failed_step[:error]&.message.to_s, max_bytes: 1024)}",
+                cause: failed_step[:error]
         end
 
         child_result.output
