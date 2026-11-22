@@ -259,6 +259,21 @@ RSpec.describe "Smith::Interruptions" do
       expect(parallel.preferred_error([wrapped, fatal])).to equal(fatal)
     end
 
+    it "prefers a request that may have been billed to an interruption, so the step is never taken again over it" do
+      wrapped = begin
+        begin
+          raise SpecOutage, "down"
+        rescue SpecOutage
+          raise SpecOutageWrapper, "wrapped"
+        end
+      rescue SpecOutageWrapper => e
+        e
+      end
+      uncertain = Smith::RequestOutcomeUncertain.new("the read timed out after the request was sent")
+
+      expect(Smith::Workflow::Parallel.preferred_error([wrapped, uncertain])).to equal(uncertain)
+    end
+
     it "stops the parent's step when an inline child run meets one, instead of handing back a failed child" do
       Smith.config.run_launcher = Smith::Launchers::Inline.new
       working("SpecOutageChildWorkflow") { |_step| raise SpecOutage, "down" }

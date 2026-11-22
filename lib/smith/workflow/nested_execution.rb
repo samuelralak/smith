@@ -9,6 +9,8 @@ module Smith
 
       def execute_nested_workflow(transition)
         check_deadline!
+        return execute_nested_items(transition) if transition.nested_items
+
         child = build_child_workflow(transition.workflow_class)
         child_result = run_child_workflow(child)
         reject_waiting_child!(child, child_result)
@@ -47,19 +49,23 @@ module Smith
 
       # A nested workflow inherits the run's untrusted keys, and charges the
       # run's budget ledger unless it names its own.
-      def new_nested_workflow(child_class)
+      # An item's child takes its item under its key (`item`: [key, value]),
+      # and spends within its own budget when it is given one.
+      def new_nested_workflow(child_class, item: nil, ledger: @ledger)
+        context = @context.dup
+        context[item.first] = item.last if item
         StepIO.with_inherited_untrusted_keys(untrusted_context_keys) do
           Budget::HostLedger.inheriting(method(:run_budget_ledger)) do
             ResponseMemo.inheriting([*@memo_attempts, @step_attempt.to_i]) do
-              child_class.new(context: @context.dup, ledger: @ledger, created_at: @created_at)
+              child_class.new(context:, ledger:, created_at: @created_at)
             end
           end
         end
       end
 
-      def build_child_workflow(child_class)
+      def build_child_workflow(child_class, item: nil, ledger: @ledger)
         @split_step_active_execution_authorization&.verify_workflow!(child_class)
-        child = new_nested_workflow(child_class)
+        child = new_nested_workflow(child_class, item:, ledger:)
         unless child.instance_of?(child_class)
           raise WorkflowError, "nested workflow constructor returned #{child.class} instead of #{child_class}"
         end
@@ -91,6 +97,10 @@ module Smith
         # non-retryable WorkflowError, as before, its cause the child's own
         # error, so a host can still read what the child failed on.
         failed_step = child_result.steps.find { |s| s.key?(:error) }
+        # A failure nothing may ask again for (an uncertain request, a tool's
+        # uncertain outcome) stays itself, however the child routed it.
+        raise failed_step[:error] if failed_step && Smith::Errors.retry_forbidden?(failed_step[:error])
+
         if failed_step
           raise WorkflowError,
                 "nested workflow failed: #{DiagnosticText.capture(failed_step[:error]&.message.to_s, max_bytes: 1024)}",

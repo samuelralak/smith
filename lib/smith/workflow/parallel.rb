@@ -28,17 +28,23 @@ module Smith
         count
       end
 
-      def self.execute(branches:)
+      # `concurrency` caps how many of these branches run at once, below the
+      # configured parallel_concurrency.
+      def self.execute(branches:, concurrency: nil)
         validate_branch_count!(branches.length)
         context = ExecutionContext.current
-        return NestedExecution.new(branches:, context:).call if context
+        return NestedExecution.new(branches:, context:, concurrency:).call if context
 
-        RootExecution.new(branches:).call
+        RootExecution.new(branches:, concurrency:).call
       end
 
+      # A request that may have been billed outranks an interruption, which
+      # takes the step again: a branch's uncertain request is never sent
+      # twice because another branch was cut short.
       def self.preferred_error(reasons)
         errors = Array(reasons).compact
         process_fatal_error(errors) ||
+          uncertain_request(errors) ||
           interruption(errors) ||
           notification_failure(errors) ||
           terminal_execution_error(errors) ||
@@ -48,6 +54,8 @@ module Smith
 
       def self.process_fatal_error(errors) = errors.find { !_1.is_a?(StandardError) }
 
+      def self.uncertain_request(errors) = errors.find { _1.is_a?(RequestOutcomeUncertain) }
+
       def self.interruption(errors) = errors.find { Interruptions.find(_1) }
 
       def self.notification_failure(errors) = errors.find { _1.is_a?(ToolFailureNotificationFailed) }
@@ -56,8 +64,8 @@ module Smith
 
       def self.ordinary_error(errors) = errors.find { !_1.is_a?(Cancellation) }
 
-      private_class_method :process_fatal_error, :interruption, :notification_failure, :terminal_execution_error,
-                           :ordinary_error
+      private_class_method :process_fatal_error, :uncertain_request, :interruption, :notification_failure,
+                           :terminal_execution_error, :ordinary_error
     end
   end
 end

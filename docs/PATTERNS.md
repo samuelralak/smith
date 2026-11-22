@@ -342,6 +342,57 @@ What you get:
 - nested best-known token/cost totals roll up into the parent result
 - artifact scope is preserved across nesting
 
+### A fan-out over items
+
+`workflow Child, over:, item_to:` runs the child once an item, each run in a
+branch of its own with its item under `item_to:` in its copy of the context:
+
+```ruby
+class DrawFrame < Smith::Workflow
+  initial_state :idle
+  state :done
+
+  transition :draw, from: :idle, to: :done do
+    optimize generator: :drawer, evaluator: :frame_critic, evaluator_schema: Verdict, max_rounds: 3,
+             input: ->(context) { Drawer.input(context[:pose]) },
+             evaluator_context: ->(drawn, context) { FrameCritic.input(drawn, context[:pose]) }
+  end
+end
+
+class DrawSet < Smith::Workflow
+  initial_state :idle
+  state :drawn
+  state :failed
+
+  transition :draw, from: :idle, to: :drawn do
+    workflow DrawFrame, over: ->(context) { context[:poses] }, item_to: :pose, concurrency: 6,
+                        output_to: :frames
+    on_failure :fail
+  end
+end
+```
+
+What you get:
+
+- one outcome an item, in the items' order: `{ output: ... }` (the child's
+  final output), or `{ refused: message }` when the child ended on a refused
+  response (`Smith::OutputRefused`, routed through its `on_failure` or raised),
+  so a host can try a refused item again its own way
+- any other failure of any item fails the step, as a nested workflow's does,
+  the other items cancelled as a fan-out's are
+- at most `concurrency:` items at once (below `parallel_concurrency`), so
+  their writes (a database-backed artifact store, a ledger) fit a connection
+  pool
+- each item's idempotency keys, usage entries and traces are its own
+  (`branch_key` is the item's index), and its usage rolls up into the parent
+- each item's run spends within an equal share of what the run's budget has
+  left in every dimension, held while it runs and settled at what it spent
+- a failure nothing may ask again for (`Smith::Errors.retry_forbidden?`) fails
+  the step as itself, however the item's run routed it
+- an item is a value the host computes; one that carries outside words is
+  marked by naming its `item_to:` key untrusted in the run's context
+- no items is no runs and an empty Array
+
 ## Example 8: Evaluator-Optimizer
 
 Use `optimize` when one agent generates candidates and another agent evaluates whether the result is acceptable.

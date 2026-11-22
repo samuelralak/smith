@@ -11,6 +11,7 @@ module Smith
 
         option :branches
         option :context
+        option :concurrency, optional: true
 
         def initialize(...)
           super
@@ -34,7 +35,7 @@ module Smith
 
         def prepare
           context.raise_if_cancelled!
-          @reserved_workers = context.reserve_workers(branches.length - 1)
+          @reserved_workers = context.reserve_workers(running_at_once - 1)
           return if @reserved_workers.zero?
 
           @values = Array.new(branches.length)
@@ -42,6 +43,8 @@ module Smith
           @futures = []
           @reserved_workers.times { @futures << build_future }
         end
+
+        def running_at_once = [branches.length, concurrency].compact.min
 
         def execute
           return execute_inline if @reserved_workers.zero?

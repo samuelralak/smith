@@ -9,7 +9,7 @@ module Smith
                   :router_config, :workflow_class, :optimization_config, :orchestrator_config,
                   :fanout_config, :retry_config, :deterministic_block, :deterministic_kind,
                   :deterministic_routes, :deterministic_fallthrough, :await_config, :timeout_transition,
-                  :step_input, :output_to, :stream, :batch_mode, :on_request_change
+                  :step_input, :output_to, :stream, :batch_mode, :on_request_change, :nested_items
 
       def initialize(name, from:, to:, &)
         @name = own_identifier(name)
@@ -115,11 +115,22 @@ module Smith
         commit_execution_primitive!("route")
       end
 
-      def workflow(klass)
+      # Runs `klass` in-process as one step. With `over:` (a callable of a
+      # copy of the context returning an Array of items) it is a fan-out
+      # over items: one nested run an item, each with its item under the
+      # context key `item_to:`, at most `concurrency:` at once (the
+      # configured parallel_concurrency when not given). Each item's outcome
+      # is its own: `{ "output" => ... }`, or `{ "refused" => message }` when
+      # its run ended on a refused response (OutputRefused), in the items'
+      # order; any other failure fails the step. No items is no runs and an
+      # empty Array. `output_to:` names the context key the outcomes go to.
+      def workflow(klass, over: nil, item_to: nil, concurrency: nil, output_to: nil)
         raise WorkflowError, "workflow binding must be a Class" unless klass.is_a?(Class)
         raise WorkflowError, "workflow binding must be a Smith::Workflow subclass" unless klass < Workflow
 
         validate_execution_primitive_conflict!("workflow")
+        @nested_items = nested_items!(over, item_to, concurrency)
+        assign_step_io!(nil, output_to) if output_to
 
         @workflow_class = klass
         commit_execution_primitive!("workflow")
@@ -472,6 +483,20 @@ module Smith
 
         validate_distinct_fanout_agents!(normalized)
         normalized.freeze
+      end
+
+      def nested_items!(over, item_to, concurrency)
+        return if [over, item_to, concurrency].all?(&:nil?)
+        raise WorkflowError, "workflow over: must respond to call" unless over.respond_to?(:call)
+        raise WorkflowError, "workflow item_to: must be a Symbol context key" unless item_to.is_a?(Symbol)
+
+        { over:, item_to:, concurrency: nested_concurrency!(concurrency) }.freeze
+      end
+
+      def nested_concurrency!(concurrency)
+        return concurrency if concurrency.nil? || (concurrency.is_a?(Integer) && concurrency.positive?)
+
+        raise WorkflowError, "workflow concurrency: must be a positive Integer"
       end
 
       def validate_fanout_size!(branches)

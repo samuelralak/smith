@@ -10,6 +10,7 @@ module Smith
         extend Dry::Initializer
 
         option :branches
+        option :concurrency, optional: true
 
         def call
           Thread.handle_interrupt(Object => :never) do
@@ -30,7 +31,7 @@ module Smith
         def prepare
           @completed = false
           @signal = CancellationSignal.new
-          @concurrency = Smith.config.parallel_concurrency
+          @concurrency = [Smith.config.parallel_concurrency, concurrency].compact.min
           @nesting_limit = Smith.config.parallel_nesting_limit
           @executor = build_executor
           @futures = build_futures(build_context)
