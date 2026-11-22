@@ -4,6 +4,39 @@ All notable changes to Smith are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Smith is pre-1.0 and under active development; expect occasional contract tightening between minor versions until 1.0.
 
+## [Unreleased]
+
+### Fixed
+
+- `orchestrate` reads String-keyed structured replies. RubyLLM parses a
+  structured reply as JSON, with String keys, and the step looked up the
+  orchestrator's decision (`tasks`, `final`, `stop`) and each schema's
+  `required_keys` by the key as written, so a real orchestrator's
+  `{"tasks": [...]}` failed with "orchestrator must emit exactly one of
+  :tasks, :final, or :stop", as did a run under `Smith::Testing` stubs, whose
+  Hash outputs reach the step as JSON. The decision, its tasks, the workers'
+  outputs and the final output are now read by either spelling of each key,
+  Symbol or String, and passed on as the agents gave them.
+- `orchestrate` takes a decision that gives its unused keys as null:
+  `{"tasks": null, "final": {...}, "stop": null}` is a final. OpenAI's strict
+  structured output needs every key, so its replies take this form, as do
+  those of a `RubyLLM::Schema` whose keys are declared nullable (`any_of`
+  with `null`). With its defaults a `RubyLLM::Schema` requires all three
+  keys with values, and such a decision is refused. The decision must still
+  name exactly one of the three, counted over the keys that hold a value
+  (`false` is a value).
+
+### Upgrading
+
+- A decision naming two of `tasks`, `final` and `stop` in different
+  spellings (`{tasks: [...], "final" => {...}}`, which only host code can
+  build) is refused; 0.16.0 ran its Symbol key and ignored the other.
+- A decision whose only key holds null (`{final: nil}`, `{stop: nil}`,
+  `{tasks: nil}`) still fails, now with "orchestrator must emit exactly one
+  of :tasks, :final, or :stop" rather than the error its value gave.
+- A schema whose `required_keys` are Strings now accepts Symbol-keyed data,
+  which it refused.
+
 ## [0.16.0] - 2026-11-22
 
 ### Added

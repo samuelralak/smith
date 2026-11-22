@@ -2,6 +2,7 @@
 
 require "json"
 
+require_relative "../output_keys"
 require_relative "orchestration_state"
 require_relative "worker_execution"
 
@@ -49,8 +50,7 @@ module Smith
       end
 
       def run_orchestration_round(state, round)
-        decision = call_orchestrator(state, round)
-        validate_orchestrator_decision!(decision)
+        decision = validate_orchestrator_decision!(call_orchestrator(state, round))
 
         return validated_final(decision[:final], state.config) if decision.key?(:final)
         raise WorkflowError, "orchestrator stopped: #{decision[:stop]}" if decision.key?(:stop)
@@ -97,9 +97,13 @@ module Smith
         )
       end
 
+      # Returns the decision's one field under its Symbol, whichever way the
+      # reply spells it (OutputKeys). A key holding null names nothing.
       def validate_orchestrator_decision!(output)
         raise WorkflowError, "orchestrator output must be a Hash" unless output.is_a?(Hash)
-        return if %i[tasks final stop].one? { |k| output.key?(k) }
+
+        named = %i[tasks final stop].select { |k| OutputKeys.value?(output, k) }
+        return { named.first => OutputKeys.read(output, named.first) } if named.one?
 
         raise WorkflowError, "orchestrator must emit exactly one of :tasks, :final, or :stop"
       end
@@ -124,11 +128,13 @@ module Smith
         final
       end
 
+      # A required key is found in either spelling (OutputKeys); the data is
+      # passed on as the agent gave it.
       def check_schema_keys!(data, schema, label)
         raise WorkflowError, "#{label} must be a Hash" unless data.is_a?(Hash)
         return unless schema.respond_to?(:required_keys)
 
-        missing = schema.required_keys.reject { |k| data.key?(k) }
+        missing = schema.required_keys.reject { |k| OutputKeys.key?(data, k) }
         raise WorkflowError, "#{label} missing required keys: #{missing.join(", ")}" unless missing.empty?
       end
     end

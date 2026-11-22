@@ -987,7 +987,7 @@ Notes:
 - Pipeline runtime behavior is covered in `spec/smith/workflow/pipeline_spec.rb`.
 - Router runtime behavior is covered in `spec/smith/workflow/router_spec.rb`.
 - Evaluator-optimizer runtime behavior is covered in `spec/smith/workflow/evaluator_optimizer_spec.rb`.
-- Orchestrator-worker runtime behavior is covered in `spec/smith/workflow/orchestrator_worker_spec.rb`.
+- Orchestrator-worker runtime behavior is covered in `spec/smith/workflow/orchestrator_worker_spec.rb` and, over a provider's String-keyed replies, `spec/smith/workflow/orchestrator_worker_keys_spec.rb`.
 
 ### `spec/smith/workflow/pipeline_spec.rb`
 
@@ -1183,6 +1183,25 @@ Notes:
 
 - This covers the first local orchestrator-worker backend, not the future durable/distributed worker execution backend.
 - Workers remain bounded by Smith-owned limits and inherited parent protections; the helper does not create a free-form multi-agent swarm.
+
+### `spec/smith/workflow/orchestrator_worker_keys_spec.rb`
+
+Purpose:
+
+- asserts that an orchestrate step reads String-keyed structured replies, and decisions that give their unused keys as null
+
+Architecture basis:
+
+- Section 5.2, Workflow Execution (Orchestrator-worker helper)
+
+Documented contracts covered:
+
+- over the local provider server, String-keyed `tasks`, `final` and `stop` decisions run, end and stop as Symbol-keyed ones do
+- a decision that gives its unused keys as null (OpenAI's strict route, a `RubyLLM::Schema` decision) is read by the one key that holds a value
+- a decision in which none or two of `tasks`, `final` and `stop` hold a value, in either spelling, still fails with the same error
+- tasks, worker outputs and final outputs are checked against `required_keys` in either spelling, a key holding null counting as given, as on 0.16.0; a task or final output that is not a Hash still fails; the final output is kept as the orchestrator gave it
+- `Smith::Testing` stubs, whose Hash outputs reach the step as JSON, drive an orchestrate step
+- a persisted run cut after its first round's worker reply restores, replays those kept String-keyed calls from the response memo, and finishes
 
 ### `spec/smith/workflow/serialization_spec.rb`
 
