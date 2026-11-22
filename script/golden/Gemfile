@@ -1,0 +1,12 @@
+# frozen_string_literal: true
+
+# The released Smith that script/core_invisibility_golden generates
+# spec/fixtures/core_invisibility_golden.json from, in a bundle of its own,
+# the default. A release's golden comes from here, the pin moved to it. A
+# slice's golden comes from the commit it is built on (--commit), which is
+# this release's code until master holds a change that alters a scenario's
+# output; either way "identical" means identical to the code the slice
+# starts from.
+source "https://rubygems.org"
+
+gem "smith-agents", "= 0.16.0"

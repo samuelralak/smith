@@ -58,6 +58,10 @@ module Smith
         PROVIDER_ACCOUNT_ERRORS.any? { |error_class| error.is_a?(error_class) }
       end
 
+      # A model the chain reaches whose provider takes no such content
+      # (ContentParts builds the content).
+      def unsupported_content?(error) = error.is_a?(::RubyLLM::UnsupportedAttachmentError)
+
       # A tool that is not replay-safe has run in the step: a fallback would
       # run it again.
       def uncertain_tool_calls?

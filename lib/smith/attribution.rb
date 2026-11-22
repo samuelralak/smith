@@ -21,7 +21,18 @@ module Smith
   module Attribution
     THREAD_KEY = :smith_attribution
 
-    Context = Data.define(:execution_key, :transition, :from, :to, :branch_key, :round, :workflow) do
+    # `trial` is an opaque eval trial id (Smith::AttemptObservation
+    # routes by it). It is last and optional, so a Context built by position
+    # or without it means what it did, and it stays out of to_fields, so
+    # traces, events and usage entries never carry it.
+    Context = Data.define(:execution_key, :transition, :from, :to, :branch_key, :round, :workflow, :trial) do
+      # Data passes every member by keyword, so the list is Data's own.
+      def initialize( # rubocop:disable Metrics/ParameterLists
+        execution_key:, transition:, from:, to:, branch_key:, round:, workflow:, trial: nil
+      )
+        super
+      end
+
       # Overlay semantics: nil overrides are ignored so an inner scope can
       # only add or replace attribution, never blank an outer value.
       def merge(**overrides)

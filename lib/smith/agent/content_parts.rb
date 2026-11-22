@@ -3,6 +3,8 @@
 require "base64"
 require "stringio"
 
+require_relative "../cache_markers"
+
 module Smith
   class Agent
     # A message with content parts (Smith::Message) as the provider takes
@@ -53,9 +55,6 @@ module Smith
         chat.respond_to?(:params) && chat.params.is_a?(Hash) && cached_block?(chat.params)
       end
 
-      # A model the chain reaches whose provider takes no such content.
-      def unsupported_content?(error) = error.is_a?(::RubyLLM::UnsupportedAttachmentError)
-
       def chat_cache_controls(chat)
         return 0 unless chat.respond_to?(:messages)
 
@@ -65,7 +64,7 @@ module Smith
         end
       end
 
-      def cached_block?(block) = block.is_a?(Hash) && !(block[:cache_control] || block["cache_control"]).nil?
+      def cached_block?(block) = CacheMarkers.marked?(block)
 
       # A parts message's parts: checked where they came in (input:, seeds,
       # restore) and again before the first attempt (ContentBytes).

@@ -1,0 +1,71 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Slice 0's micro-benchmark: the time per step of a 1,000-step run whose
+# agent is answered by Smith::Testing's stub (no network), so a regression in
+# the provider-attempt path shows against the released gem.
+#
+#   BUNDLE_GEMFILE=script/golden/Gemfile bundle exec ruby script/core_invisibility_benchmark   # released
+#   bundle exec ruby -Ilib script/core_invisibility_benchmark [--observer] [--trial]          # this tree
+#
+# --observer installs an observer that keeps nothing; --trial also runs
+# inside a trial scope, so every attempt is observed.
+
+require "optparse"
+
+options = { observer: false, trial: false, rounds: 9, steps: 1_000 }
+OptionParser.new do |parser|
+  parser.on("--observer") { options[:observer] = true }
+  parser.on("--trial") { options[:trial] = options[:observer] = true }
+  parser.on("--rounds N", Integer) { options[:rounds] = _1 }
+end.parse!
+
+require "smith"
+require "smith/testing"
+
+RubyLLM.configure { _1.anthropic_api_key = "test" }
+STEPS = options[:steps]
+
+module StepBenchmark
+  class Agent < Smith::Agent
+    register_as :benchmark_agent
+    model "claude-sonnet-5-5", provider: :anthropic, assume_model_exists: true
+    instructions { |_context| "Answer briefly." }
+  end
+
+  class Run < Smith::Workflow
+    initial_state :working
+    max_transitions STEPS
+    seed_messages { |_context| [{ role: :user, content: "Is the clinic open?" }] }
+    transition :ask, from: :working, to: :working do
+      execute :benchmark_agent, output_to: :answer
+    end
+  end
+end
+
+if options[:observer]
+  observer = Class.new { def attempt_finished(_observation) = nil }.new
+  Smith::AttemptObservation.install(observer)
+end
+Smith::Testing.stub_agent(StepBenchmark::Agent, outputs: ["Open at 8."], usage: { input_tokens: 12, output_tokens: 4 })
+
+# Seconds for one run of STEPS steps.
+run = lambda do
+  workflow = StepBenchmark::Run.new(context: {})
+  started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  STEPS.times { workflow.advance! }
+  Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+end
+timed = options[:trial] ? -> { Smith::Attribution.with(trial: "benchmark") { run.call } } : run
+
+timed.call # warm-up, not counted
+per_step = Array.new(options[:rounds]) do
+  GC.start
+  timed.call * 1_000_000 / STEPS
+end.sort
+source = $LOADED_FEATURES.find { _1.end_with?("/lib/smith.rb") }
+puts format("smith %<version>s (%<source>s) observer=%<observer>s trial=%<trial>s: per step median %<median>.1f us, " \
+            "min %<min>.1f us, max %<max>.1f us over %<rounds>d runs of %<steps>d steps",
+            version: Smith::VERSION, source:, observer: options[:observer], trial: options[:trial],
+            median: per_step[per_step.length / 2], min: per_step.first, max: per_step.last,
+            rounds: per_step.length, steps: STEPS)

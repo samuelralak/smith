@@ -17,6 +17,9 @@ module Smith
 
     module_function
 
+    # Whether a block (or a request's params) asks for a cache breakpoint.
+    def marked?(block) = block.is_a?(Hash) && !(block[:cache_control] || block["cache_control"]).nil?
+
     # A request payload (a batch request's params, a chat's params): its own
     # marker, and those of its system blocks, its messages' blocks and its
     # tools.

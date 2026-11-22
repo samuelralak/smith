@@ -14,7 +14,7 @@ require_relative "observed_model"
 
 module Smith
   class Agent
-    module ProviderCompletion
+    module ProviderCompletion # rubocop:disable Metrics/ModuleLength -- attempt_model passes what its observation reads
       include ProviderFailureHandling
       include AttemptCaptures
       include InvocationPreparation
@@ -118,10 +118,12 @@ module Smith
         raise Smith::AgentError, "invalid model block result for #{agent_class}: #{e.message}"
       end
 
-      # rubocop:disable Metrics/AbcSize -- one provider attempt is a single
-      # cohesive lifecycle (identity, prepared chat, observed model, timed
-      # completion, prefix accounting on failure); splitting it would scatter
-      # the rescue-path accounting away from what it accounts for.
+      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one provider
+      # attempt is a single cohesive lifecycle (identity, prepared chat,
+      # observed model, timed completion, prefix accounting on failure);
+      # splitting it would scatter the rescue-path accounting away from what it
+      # accounts for. Both recordings pass what the attempt's observation
+      # reads (ProviderCallTiming); a helper would add a name to every workflow.
       def attempt_model(agent_class, prepared_input, model_reference, shape:, attempt_index:)
         facts = { attempt_id: SecureRandom.uuid, attempt_index:, agent_name: agent_class.register_as }
         chat = prepared_attempt_chat(agent_class, prepared_input, model_reference, shape)
@@ -133,7 +135,8 @@ module Smith
         completion = Completion.from_messages(response:, messages: new_chat_messages(chat, message_count), stream:,
                                               mode:)
 
-        completed_provider_attempt(completion, observed_reference, timer, facts.merge(call_facts.to_h))
+        completed_provider_attempt(completion, observed_reference, timer, facts.merge(call_facts.to_h),
+                                   agent_class:, chat:, sent_count: message_count)
       rescue StandardError => e
         timer&.stop
         observed_reference ||= observed_model_reference(chat, fallback: model_reference)
@@ -141,12 +144,13 @@ module Smith
           agent_class, observed_reference, new_chat_messages(chat, message_count),
           attempt_id: facts[:attempt_id], stream: streamed(collected || [])
         )
-        attempt = failed_provider_attempt(e, observed_reference, timer, facts, prefix_usages)
+        attempt = failed_provider_attempt(e, observed_reference, timer, facts, prefix_usages,
+                                          agent_class:, chat:, sent_count: message_count)
         raise unless provider_failure?(e) || unsupported_content?(e)
 
         attempt
       end
-      # rubocop:enable Metrics/AbcSize
+      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
 
       def prepared_attempt_chat(agent_class, prepared_input, model_reference, shape)
         chat = attempt_chat(agent_class, model_reference)

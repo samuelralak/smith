@@ -1,0 +1,74 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# The shared "no difference" harness (slice-1a design, section 3.5): runs the
+# scenarios in script/golden/scenarios.rb against a local server answering as
+# Anthropic (and as OpenAI's image edits) and prints, as one JSON document,
+# everything Smith sent, saved, traced, emitted, streamed, logged and raised.
+#
+# Where the golden file comes from. A release's golden comes from the
+# released gem, the default; a slice's golden comes from the commit the slice
+# is built on, which is the release's own code until master holds a change
+# that alters a scenario's output for a good reason. The file's header names
+# which: the gem's sha256, or the commit's id. Neither is ever a working tree.
+# Either names where Smith's code came from; the harness (these scripts and
+# scenarios) is always this tree's.
+#
+# From the released gem, in its own bundle (the one network use):
+#   BUNDLE_GEMFILE=script/golden/Gemfile bundle install
+#   BUNDLE_GEMFILE=script/golden/Gemfile bundle exec ruby script/core_invisibility_golden --write
+#
+# From a commit: a `git archive` of it, in a bundle of its own built from
+# installed gems (script/golden/commit_source.rb):
+#   ruby script/core_invisibility_golden --write --commit <commit the slice is built on>
+#
+# The working tree (spec/smith/core_invisibility_spec.rb runs these):
+#   ruby -Ilib script/core_invisibility_golden --mode plain|observer|trial|concurrent
+#
+# plain: nothing installed. observer: a test observer installed, no trial.
+# trial: the observer installed and every scenario inside a trial scope.
+# concurrent: as trial, only the concurrent scenarios, branches in parallel.
+
+require "json"
+require "optparse"
+require_relative "golden/commit_source"
+
+golden = File.expand_path("../spec/fixtures/core_invisibility_golden.json", __dir__)
+options = { mode: "plain", write: nil, commit: nil }
+OptionParser.new do |parser|
+  parser.on("--mode MODE", %w[plain observer trial concurrent]) { options[:mode] = _1 }
+  parser.on("--write [PATH]") { options[:write] = _1 || golden }
+  parser.on("--commit REF") { options[:commit] = _1 }
+end.parse!
+
+if options[:commit]
+  abort "--commit names where a golden file comes from: give --write too" unless options[:write]
+  abort "--write takes the plain mode" unless options[:mode] == "plain"
+  begin
+    exit CoreInvisibility::CommitSource.write_golden(options[:commit], options[:write]) ? 0 : 1
+  rescue CoreInvisibility::CommitSource::Refused => e
+    abort e.message
+  end
+end
+
+require "smith"
+require "ruby_llm"
+require_relative "../spec/support/sse_server"
+%w[determinism normal record hooks support host_surface hosts define replies runner].each do |file|
+  require_relative "golden/#{file}"
+end
+
+CoreInvisibility::Hooks.install!
+require_relative "golden/scenarios"
+
+if options[:write]
+  source = CoreInvisibility::Environment.smith["source"]
+  unless %w[release commit].include?(source)
+    abort "the golden file comes from the released gem (script/golden/Gemfile) or a commit (--commit), not #{source}"
+  end
+  abort "--write takes the plain mode" unless options[:mode] == "plain"
+end
+
+document = CoreInvisibility::Runner.new(options[:mode]).call
+text = "#{JSON.pretty_generate(document)}\n"
+options[:write] ? File.write(options[:write], text) : $stdout.write(text)

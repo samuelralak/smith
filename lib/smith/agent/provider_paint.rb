@@ -60,30 +60,42 @@ module Smith
                          { attempt_id: SecureRandom.uuid, attempt_index:, agent_name: agent_class.register_as })
       end
 
+      # The paint's input (PaintInput: its prompt and images) is read once and
+      # handed on as it was sent, to the paint and to the attempt's record.
+      # The image the provider answered reaches the record through a local
+      # that ends with this attempt, kept or not, so nothing holds it longer
+      # than 0.16.0 does (its completion holds the kept image's ref alone).
       def painting_attempt(agent_class, prepared_input, model_reference, facts)
         chat = painting_chat(agent_class, prepared_input, model_reference)
         observed = observed_model_reference(chat, fallback: model_reference)
         timer = ProviderCallTiming::Timer.start
-        completion = painted(agent_class, chat, observed, facts[:attempt_id])
-        completed_provider_attempt(completion, observed, timer.stop, facts)
+        sent = PaintInput.of(chat.messages)
+        image = nil
+        completion = painted(agent_class, chat, sent, observed, facts[:attempt_id]) { image = _1 }
+        completed_provider_attempt(completion, observed, timer.stop, facts, agent_class:, request: sent, image:)
       rescue StandardError => e
-        failed_paint(agent_class, e, observed || model_reference, timer&.stop, facts)
+        failed_paint(agent_class, e, observed || model_reference, timer&.stop, facts, sent, image)
       end
 
       # A paint's failure traced as any attempt's: one whose outcome is
       # uncertain is raised as RequestOutcomeUncertain, its cause the
       # transport's error; an image that was drawn and billed but could not be
       # kept has its usage recorded before its error goes on.
-      def failed_paint(agent_class, error, model_reference, timer, facts)
+      # rubocop:disable Metrics/ParameterLists -- the paint's input and the
+      # image (one that came back and could not be kept) are passed as they
+      # are, for the attempt's record, so nothing is built for them.
+      def failed_paint(agent_class, error, model_reference, timer, facts, sent, image)
         usages = error.is_a?(Unkept) ? [error.usage].compact : []
         record_billed_usages(agent_class, usages, :partial_attempt, model_reference, attempt_id: facts[:attempt_id])
         error = error.reason if error.is_a?(Unkept)
         error = outcome_uncertain(error) if Providers::RequestOutcome.uncertain?(error)
-        attempt = failed_provider_attempt(error, model_reference, timer, facts, usages)
+        attempt = failed_provider_attempt(error, model_reference, timer, facts, usages,
+                                          agent_class:, request: sent, image:)
         raise error unless provider_failure?(error) || unsupported_content?(error)
 
         attempt
       end
+      # rubocop:enable Metrics/ParameterLists
 
       def painting_chat(agent_class, prepared_input, model_reference)
         chat = agent_class.chat(**model_reference.chat_options, **bridge_workflow_inputs(agent_class))
@@ -94,14 +106,17 @@ module Smith
         chat
       end
 
-      def painted(agent_class, chat, model_reference, attempt_id)
-        prompt, images = PaintInput.of(chat.messages)
+      # Yields the provider's image before it is kept, for the attempt's
+      # record (painting_attempt).
+      def painted(agent_class, chat, sent, model_reference, attempt_id)
+        prompt, images = sent
         request = agent_class.image_request
         provider = chat_provider(chat)
         image = held_paint(provider, attempt_id) do
           provider.paint(prompt, model: model_reference.model_id, size: request.fetch(:size),
                                  with: images.empty? ? nil : images, params: request)
         end
+        yield image
         painted_completion(agent_class, image)
       rescue ::RubyLLM::BadRequestError => e
         raise unless moderation_blocked?(e)

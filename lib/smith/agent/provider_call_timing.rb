@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../attempt_observation"
 require_relative "../diagnostic_text"
 
 module Smith
@@ -8,6 +9,8 @@ module Smith
     # attempt's single measured duration wraps the whole chat completion
     # (including any provider-side tool loop). Per-network-round timing
     # belongs to the host's RubyLLM notification subscriptions, not Smith.
+    # Where an attempt is recorded, the eval observation seam reads its slot
+    # too (AttemptObservation, required above).
     module ProviderCallTiming
       EXCEPTION_CAUSE = Exception.instance_method(:cause)
       private_constant :EXCEPTION_CAUSE
@@ -110,12 +113,26 @@ module Smith
         nil
       end
 
-      def completed_provider_attempt(completion, observed_reference, timer, facts)
+      # Every provider attempt is recorded here, beside its one :provider_call
+      # trace, whichever path made it (a chat's completion, ProviderCompletion;
+      # an image's paint, ProviderPaint), so the observation seam
+      # (AttemptObservation) sits here too: one observation per trace. Each
+      # caller passes what an observation is read from, never builds it: the
+      # agent class, and a chat with how many of its messages were sent, or an
+      # image's request and the image the provider answered (kept or not).
+      # With no observer installed an attempt reads one nil.
+      # rubocop:disable Metrics/ParameterLists -- what an observation reads is
+      # passed as it is, so an app that installs no observer allocates nothing.
+      def completed_provider_attempt(completion, observed_reference, timer, facts,
+                                     agent_class:, chat: nil, sent_count: nil, request: nil, image: nil)
         usage = ProviderUsage.sum(completion.provider_usages)&.with_response_facts(completion.response_facts)
         attempt = ProviderAttempt.success(
           completion:, model_reference: observed_reference, duration_ms: timer.elapsed_ms, usage:, **facts
         )
         record_provider_call_trace(attempt)
+        if AttemptObservation.observer
+          AttemptObservation.observe(attempt, agent_class, chat:, sent_count:, request:, image:)
+        end
         attempt
       end
 
@@ -127,7 +144,8 @@ module Smith
       # An error is recorded as what the provider said it was
       # (ProviderErrors), a billing refusal as the provider account's
       # (BillingRefusals).
-      def failed_provider_attempt(error, observed_reference, timer, facts, prefix_usages)
+      def failed_provider_attempt(error, observed_reference, timer, facts, prefix_usages,
+                                  agent_class:, chat: nil, sent_count: nil, request: nil, image: nil)
         error = BillingRefusals.classified(ProviderErrors.classified(error))
         aborted = !provider_failure?(error)
         usages = aborted ? prefix_usages : [*prefix_usages, ProviderUsage.from_message(error)].compact
@@ -136,8 +154,12 @@ module Smith
           usage: ProviderUsage.sum(usages), **facts
         )
         record_provider_call_trace(attempt, aborted:)
+        if AttemptObservation.observer
+          AttemptObservation.observe(attempt, agent_class, chat:, sent_count:, request:, image:)
+        end
         attempt
       end
+      # rubocop:enable Metrics/ParameterLists
     end
   end
 end

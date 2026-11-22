@@ -11,9 +11,12 @@ require "socket"
 # before it answers (`after:` seconds) or close the connection once the
 # request is read (`drop: true`). Requests are recorded with their method,
 # path, headers and bodies, parsed when JSON and kept as they came otherwise
-# (a multipart upload).
+# (a multipart upload), and the raw body bytes (the core invisibility
+# harness compares those byte for byte). A responder given to `answer` picks
+# a reply from the request itself, before the queue, so concurrent requests
+# get the same replies in any order.
 class SseServer
-  Request = Struct.new(:path, :body, :verb, :headers)
+  Request = Struct.new(:path, :body, :verb, :headers, :raw)
 
   attr_reader :requests
 
@@ -21,20 +24,27 @@ class SseServer
     @server = TCPServer.new("127.0.0.1", 0)
     @replies = Queue.new
     @requests = []
+    @responder = nil
     @thread = Thread.new { serve }
   end
 
   def url = "http://127.0.0.1:#{@server.addr[1]}"
 
   # `fate`: `after:` seconds to wait before answering, or `drop: true`.
-  def reply(events: nil, json: nil, text: nil, status: "200 OK", **fate)
-    @replies << if fate[:drop] then [:drop]
-                elsif events then [:events, events]
-                elsif text then [:text, text]
-                else [:json, json, status, fate[:after]]
-                end
+  def reply(**)
+    @replies << entry(**)
     self
   end
+
+  # The block takes a Request and returns `reply`'s keywords, or nil to
+  # take the next queued reply.
+  def answer(&responder)
+    @responder = responder
+    self
+  end
+
+  def pending_replies = @replies.size
+  def clear_replies = @replies.clear
 
   def close
     @thread.kill
@@ -56,15 +66,29 @@ class SseServer
     verb, path, headers = read_head(client)
     length = headers.fetch("content-length", "0").to_i
     body = length.positive? ? client.read(length) : ""
-    @requests << Request.new(path, parsed(body, headers), verb, headers)
-    respond(client)
+    request = Request.new(path, parsed(body, headers), verb, headers, body)
+    @requests << request
+    respond(client, request)
   end
 
-  def respond(client)
+  def entry(events: nil, json: nil, text: nil, status: "200 OK", **fate)
+    if fate[:drop] then [:drop]
+    elsif events then [:events, events]
+    elsif text then [:text, text]
+    else [:json, json, status, fate[:after]]
+    end
+  end
+
+  def respond(client, request)
+    answered = @responder&.call(request)
+    return write_reply(client, *entry(**answered)) if answered
     return write_json(client, { error: { message: "no reply queued" } }, status: "500 Internal Server Error") if
       @replies.empty?
 
-    kind, payload, status, after = @replies.pop
+    write_reply(client, *@replies.pop)
+  end
+
+  def write_reply(client, kind, payload = nil, status = nil, after = nil)
     case kind
     when :drop then nil
     when :events then write_events(client, payload)

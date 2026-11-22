@@ -2063,6 +2063,24 @@ Purpose:
 
 - pins `prompt_cache :automatic`: a top-level `cache_control` on an Anthropic request over the wire alone, never a batch request, inherited, refusing another mode, and counted among the four breakpoints with a top-level marker the chat already carries, three marked parts sent and four refused (Unreleased)
 
+### `spec/smith/attempt_observation_spec.rb`
+
+Purpose:
+
+- pins the experimental recorder seam: one observer per process; an empty slot read once per provider attempt and nothing called; an installed observer never called outside a trial and handed one frozen attempt per provider attempt inside one, read where it ran; an empty slot read once on a failed attempt too, an image's throttle on its way to the fallback; an image agent's attempt (it paints, never passing `ProviderCompletion#attempt_model`) observed once, as its one `:provider_call` trace, a throttled one and its fallback each once, its record the request's text as sent and its settings and a reference to the image that came back (MIME type, byte size, SHA-256 digest), never the image's bytes, an image that came back and could not be kept described as a kept one is, no `RubyLLM::Image` alive past its attempt (none during `after_completion`), and a moderation block's record the request alone; Smith's failure kinds in order, with fixed words for a refused key, account or model; an observer or logger that raises never changes a step, and the logger gets the error class only; an observation frozen only at its top, its messages holding the chat's own objects; the seam's names never shadowing a host's constants in its agent, workflow or tool classes; `Attribution::Context#trial` last and optional, out of `to_fields`; `AttemptObservation::Transcript` offering `messages` and `painting` alone and reading no attachment's bytes (Unreleased)
+
+### `spec/smith/core_invisibility_spec.rb`
+
+Purpose:
+
+- the shared "no difference" harness: the twenty-three scenarios of `script/core_invisibility_golden` (an image agent, a fan-out over items, and steps that end failed with their failure records among them), every artifact store call recorded, the golden written in its own bundle from the released gem (its sha256 in the header) or from a `git archive` of a named commit (its id in the header; an archive with a file changed, added or gone or code in its Gemfile, an unknown commit, or a working tree refused; the golden bundle handed the gems the suite sees, a vendored bundle's included), run on the tree in child processes, equal the golden file generated from the released gem byte for byte without an observer, with one installed and no trial, and inside a trial (no extra random draw, one observation per `:provider_call` trace); a concurrent run of the parallel, fan-out and fan-out over items scenarios matches by counts and branch content; the host surface of Workflow, Agent, Context and Tool (method names, Object and Kernel names they override, constants a host's class body can see) unchanged, a method a later slice adds named `smith_` or a listed DSL macro, nothing removed (Unreleased)
+
+### `spec/smith/contracts/ruby_llm_spec.rb`
+
+Purpose:
+
+- RubyLLM's public touch points Smith relies on, through its public interface only: the message, content, tool call, thinking and attachment readers the transcript uses, a paint's `RubyLLM::Image` and its base64 `data`, a schema reply parsed into a Hash, the `*_api_base` options, and one public error class per provider status (Unreleased)
+
 ### `spec/smith/optimize_batch_spec.rb`
 
 Purpose:

@@ -6,6 +6,49 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+### Added
+
+- Experimental and internal: `Smith::AttemptObservation`, a seam for
+  evals. Each provider attempt reads one process-wide observer slot where
+  Smith records the attempt beside its `:provider_call` trace, so a chat's
+  completion and an image's paint are each observed once; the slot is empty
+  unless something installs an observer, and the attempt calls nothing when
+  it is empty. An installed observer gets one `AttemptObservation::Attempt`
+  per attempt (its messages as `AttemptObservation::Transcript`, tokens, how
+  it ended, where it ran), and only inside a trial's scope; an observer that
+  raises is logged by class and never changes the step. An attempt is frozen
+  only at its top: the strings, parsed replies and tool arguments in its
+  messages are the chat's own, which the step goes on to use, so an observer
+  must not change them; it copies what it keeps before changing it. An image
+  agent's attempt holds its request's text (the prompt as sent) and settings,
+  and a reference to the image that came back, kept or not (its MIME type,
+  byte size and SHA-256 digest), never the image's bytes; the image is held
+  for the record no longer than the attempt. The seam lives under `Smith`, not
+  `Smith::Agent`, so none of its names shadows a host's own constant in an
+  agent class. The private methods that record an attempt
+  (`completed_provider_attempt`, `failed_provider_attempt`, and an image's
+  `painted` and `failed_paint`) take new arguments; none is API.
+- `Smith::Attribution::Context` gains an optional `trial`, its last member,
+  so a context built by position or without it means what it did. It stays
+  out of `to_fields`, so traces, events and usage entries never carry it;
+  `to_h`, `inspect`, `members` and `deconstruct_keys` do show it, and a
+  Context an earlier Smith marshalled does not load (Smith never marshals or
+  saves one; a run persists as JSON).
+- A shared "no difference" harness for core changes:
+  `script/core_invisibility_golden` runs twenty-three scenarios against a
+  local server answering as Anthropic (and as OpenAI's image edits) and
+  records every request, memo key, batch digest, saved state, artifact store
+  call, usage entry, trace, event, stream delivery, ledger call, log line,
+  raised error and random draw, and the names a host's workflow, agent,
+  context or tool class can collide with (methods, Object and Kernel
+  overrides, constants). `spec/smith/core_invisibility_spec.rb` compares
+  this tree with a golden file generated in a bundle of its own from the
+  released gem (`script/golden/Gemfile`), or from a `git archive` of a named
+  commit (`--commit`): a release's golden from the gem, a slice's from the
+  commit it is built on; the file's header names the gem's sha256 or the
+  commit's id, and never a working tree. `script/core_invisibility_benchmark`
+  times a 1,000-step stubbed run. None of it goes into the gem.
+
 ### Fixed
 
 - `orchestrate` reads String-keyed structured replies. RubyLLM parses a
