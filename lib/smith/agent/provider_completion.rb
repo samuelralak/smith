@@ -66,7 +66,7 @@ module Smith
                                  fallback_available: candidates.fallback_available?, attempt_id: attempt.attempt_id)
         set_aside.concat(attempt.captures)
       rescue StandardError => e
-        raise if interrupted.nil? || Interruptions.find(e)
+        raise if interrupted.nil? || Interruptions.find(e) || Smith::Errors.retry_forbidden?(e)
 
         raise terminal_provider_error(interrupted.error, interrupted.model_reference), cause: interrupted.error
       end

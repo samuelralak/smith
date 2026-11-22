@@ -16,6 +16,7 @@ module Smith
         "Smith::ToolCaptureFailed" => "tool_capture_failed",
         "Smith::ToolFailureNotificationFailed" => "tool_failure_notification_failed",
         "Smith::ToolOutcomeUncertain" => "tool_outcome_uncertain",
+        "Smith::RequestOutcomeUncertain" => "request_outcome_uncertain",
         "Smith::ToolExecutionNotAdmitted" => "tool_execution_not_admitted",
         "Smith::BoundedCompletionError" => "bounded_completion_error",
         "Smith::PersistedFailureInvalid" => "persisted_failure_invalid",
@@ -25,8 +26,7 @@ module Smith
         "Smith::DeadlineExceeded" => "deadline_exceeded",
         "Smith::ProviderPermanentFailure" => "provider_permanent_failure",
         "Smith::BudgetExceeded" => "budget_exceeded", "Smith::BudgetUnavailable" => "budget_exceeded",
-        "Smith::GuardrailFailed" => "guardrail_failed",
-        "Smith::WaitTimedOut" => "wait_timed_out",
+        "Smith::GuardrailFailed" => "guardrail_failed", "Smith::WaitTimedOut" => "wait_timed_out",
         "Smith::ChildRunsFailed" => "child_runs_failed",
         "Smith::WorkflowError" => "workflow_error", "Smith::PersistedStateTooLarge" => "workflow_error",
         "Smith::UnresolvedTransitionError" => "workflow_error",
@@ -41,13 +41,13 @@ module Smith
       }.freeze
       KNOWN_FAMILIES = %w[
         deterministic_step_failure tool_guardrail_failed tool_failure_notification_failed tool_capture_failed
-        tool_outcome_uncertain tool_execution_not_admitted bounded_completion_error persisted_failure_invalid
-        deadline_exceeded provider_permanent_failure budget_exceeded guardrail_failed agent_error workflow_error
-        wait_timed_out output_failure child_runs_failed other
+        tool_outcome_uncertain request_outcome_uncertain tool_execution_not_admitted bounded_completion_error
+        persisted_failure_invalid deadline_exceeded provider_permanent_failure budget_exceeded guardrail_failed
+        agent_error workflow_error wait_timed_out output_failure child_runs_failed other
       ].freeze
       RETRY_FORBIDDEN_FAMILIES = %w[
-        tool_capture_failed tool_failure_notification_failed tool_outcome_uncertain tool_execution_not_admitted
-        bounded_completion_error persisted_failure_invalid
+        tool_capture_failed tool_failure_notification_failed tool_outcome_uncertain request_outcome_uncertain
+        tool_execution_not_admitted bounded_completion_error persisted_failure_invalid
       ].freeze
       DETAIL_VALIDATORS = {
         "Smith::ToolCaptureFailed" => ->(details) { Smith::ToolCaptureFailed.from_details(details) },

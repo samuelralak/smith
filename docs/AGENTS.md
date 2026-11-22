@@ -76,6 +76,54 @@ with a failed step, and are never retried by `Smith::Errors.retryable?`, a job
 retry on `Smith::Errors.retryable_classes`, or a transition's
 `retry_on Smith::AgentError`: Smith's own retry, fallback and repairs have run.
 
+## Image agents
+
+An agent may answer with an image:
+
+```ruby
+class Drawer < Smith::Agent
+  register_as :drawer
+  model "gpt-image-2.6-sunburst", provider: :openai
+  image size: "1024x1024", quality: "low", background: "opaque", output_format: "png"
+  instructions "Draw this as a simple exercise illustration in blue ballpoint pen."
+end
+```
+
+Its attempt paints instead of chatting (RubyLLM's `Provider#paint`, OpenAI's
+image edits when the input carries images): its instructions and its input's
+text, joined, are the prompt, and its input's images (`Smith::Content.image`)
+are drawn from in order. Its answer is the image, kept in the run's artifacts:
+`{ type: "image", artifact: ref, media_type: "image/png" }`. The options are
+the provider's own words, passed as they are.
+
+- An image agent takes no tools, output schema or thinking, and its step is
+  neither streamed nor batched; any of them fails the step with a
+  `Smith::WorkflowError`.
+- Its request is held on the run's budget ledger at the image its size and
+  quality write (the pricing catalog's `image_output_tokens`) and its prompt
+  and images, and settled at what its usage cost; usage carries the image
+  parts of the input and output (`image_input_tokens`, `image_output_tokens`),
+  priced at the catalog's image rates. A size and quality the catalog prices
+  not is held unpriced, which a ledger may refuse.
+- A moderation block (`moderation_blocked`) is a refused response: it costs
+  nothing and goes to the agent's `on_refusal` (`Smith::OutputRefused` by
+  default).
+- Each request is sent once: RubyLLM's HTTP retries are off for it, and only a
+  throttle or a refusal of the account, the model or the content goes again
+  (to a fallback, or the step's retry); a server's error never does, since it
+  may have done the work (`Smith::ProviderPermanentFailure`). A request sent
+  whose answer never came (a read timeout, a gateway's 504, a connection lost
+  or TLS failing mid-exchange) raises `Smith::RequestOutcomeUncertain`, never
+  retried and never answered by a fallback, and its hold is charged whole,
+  since the provider may have billed it. A refusal's fallback paints too. An
+  answer with no image is an `OutputInvalid` whose usage is kept. An image can
+  take minutes: give the agent its own timeout with RubyLLM's `context`.
+- A paint keeps no response memo (an image is too large to keep twice), so a
+  step a crash replays paints again: a host that pays for images runs its
+  workflow in strict idempotency, where such a step fails instead.
+- The prompt is read from the system and user turns alone: an assistant turn
+  (an earlier answer, such as a rejected round's) is not sent.
+
 ## Models and request shaping
 
 Smith ships a per-attempt normalizer that translates the request payload to whatever the resolved model's provider family expects:

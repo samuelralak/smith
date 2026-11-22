@@ -53,6 +53,7 @@ module Smith
       @retry_forbidden_classes ||= [
         Smith::ToolCaptureFailed,
         Smith::ToolOutcomeUncertain,
+        Smith::RequestOutcomeUncertain,
         Smith::ToolExecutionNotAdmitted,
         Smith::ToolFailureNotificationFailed,
         Smith::BoundedCompletionError,
@@ -104,6 +105,13 @@ module Smith
   class ToolDispatchRejected < Error; end
   class BoundedCompletionError < Error; end
   class ToolOutcomeUncertain < Error; end
+
+  # A provider request that may have been billed although no answer came back:
+  # it was sent, then its answer timed out or its connection was lost. Never
+  # retried and never answered by a fallback, either of which could pay for
+  # the same work twice; its cause is the transport's error.
+  class RequestOutcomeUncertain < Error; end
+
   class AgentError < Error; end
 
   class BlankAgentOutputError < AgentError

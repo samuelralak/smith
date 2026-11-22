@@ -26,7 +26,9 @@ module Smith
         USAGE_ALLOWED_ATTRIBUTES = Workflow::UsageEntry.members.map(&:to_s).freeze
         USAGE_REQUIRED_ATTRIBUTES =
           (USAGE_ALLOWED_ATTRIBUTES - Workflow::UsageEntry::OPTIONAL_MEMBERS.map(&:to_s)).freeze
-        USAGE_COUNT_ATTRIBUTES = %w[cache_read_tokens cache_write_tokens thinking_tokens].freeze
+        USAGE_COUNT_ATTRIBUTES = %w[
+          cache_read_tokens cache_write_tokens thinking_tokens image_input_tokens image_output_tokens
+        ].freeze
         USAGE_MODES = %w[sync stream batch].freeze
         TOOL_REQUIRED_ATTRIBUTES = %w[tool captured].freeze
         TOOL_ALLOWED_ATTRIBUTES = (TOOL_REQUIRED_ATTRIBUTES + %w[tool_call_id]).freeze

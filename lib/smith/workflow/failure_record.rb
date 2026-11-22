@@ -17,6 +17,7 @@ module Smith
         [Smith::ToolFailureNotificationFailed, "tool_failure_notification_failed"],
         [Smith::ToolCaptureFailed, "tool_capture_failed"],
         [Smith::ToolOutcomeUncertain, "tool_outcome_uncertain"],
+        [Smith::RequestOutcomeUncertain, "request_outcome_uncertain"],
         [Smith::ToolExecutionNotAdmitted, "tool_execution_not_admitted"],
         [Smith::BoundedCompletionError, "bounded_completion_error"],
         [Smith::PersistedFailureInvalid, "persisted_failure_invalid"],
@@ -31,11 +32,13 @@ module Smith
         [Smith::ChildRunsFailed, "child_runs_failed"],
         [Smith::WorkflowError, "workflow_error"]
       ].freeze
+      UNCERTAINTY_WRAPPERS = [Smith::ToolOutcomeUncertain, Smith::RequestOutcomeUncertain].freeze
       BOOLEAN_VALUES = [true, false].freeze
       EXCEPTION_CAUSE = Exception.instance_method(:cause)
       EXCEPTION_MESSAGE = Exception.instance_method(:message)
       MODULE_MATCH = Module.instance_method(:===)
-      private_constant :ERROR_FAMILIES, :BOOLEAN_VALUES, :EXCEPTION_CAUSE, :EXCEPTION_MESSAGE, :MODULE_MATCH
+      private_constant :ERROR_FAMILIES, :UNCERTAINTY_WRAPPERS, :BOOLEAN_VALUES, :EXCEPTION_CAUSE, :EXCEPTION_MESSAGE,
+                       :MODULE_MATCH
 
       extend Dry::Initializer
 
@@ -71,7 +74,8 @@ module Smith
       # Uncertainty wrappers replace the causal failure at the transition
       # boundary; without this classification a restored host cannot
       # distinguish a deadline, cancellation, or defect behind an
-      # uncertain tool outcome.
+      # uncertain tool outcome, nor which transport error left a request's
+      # outcome uncertain.
       def cause_attributes(error)
         cause = uncertainty_cause(error)
         {
@@ -82,7 +86,7 @@ module Smith
       end
 
       def uncertainty_cause(error)
-        return unless MODULE_MATCH.bind_call(Smith::ToolOutcomeUncertain, error)
+        return unless UNCERTAINTY_WRAPPERS.any? { |wrapper| MODULE_MATCH.bind_call(wrapper, error) }
 
         cause = EXCEPTION_CAUSE.bind_call(error)
         cause if MODULE_MATCH.bind_call(Exception, cause)

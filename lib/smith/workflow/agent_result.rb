@@ -7,9 +7,12 @@ module Smith
     # `cache_write_tokens` are the prompt-cache input beside it, and
     # `total_tokens` adds all three to the output. `mode` is how the call was
     # made, set by streaming and batch steps (nil for an ordinary call).
+    # `image_input_tokens` and `image_output_tokens` are the image parts of
+    # the input and the output, inside their counts.
     AgentResult = Struct.new(
       :content, :input_tokens, :output_tokens, :cost, :model_used, :provider_used,
       :cache_read_tokens, :cache_write_tokens, :thinking_tokens, :stop_reason, :provider_message_id, :mode,
+      :image_input_tokens, :image_output_tokens,
       keyword_init: true
     ) do
       # The detail members of an AgentResult taken from a ProviderUsage.
@@ -57,7 +60,8 @@ module Smith
       end
     end
     AgentResult::USAGE_DETAIL_MEMBERS = %i[
-      cache_read_tokens cache_write_tokens thinking_tokens stop_reason provider_message_id
+      cache_read_tokens cache_write_tokens thinking_tokens stop_reason provider_message_id image_input_tokens
+      image_output_tokens
     ].freeze
     # rubocop:enable Style/RedundantStructKeywordInit
   end

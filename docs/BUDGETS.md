@@ -120,6 +120,16 @@ written; `cost` is nil for an unpriced
 model, which runtime readiness warns of (`:budget_ledger_unpriced`, for every
 agent that charges the ledger), and its readiness metrics name the scope keys.
 
+An image agent's request (an image `Provider#paint` draws) is held as its
+prompt counted as text, each image it draws from at 1,600 tokens priced as
+image input, and the image it writes at what the pricing catalog says its size
+and quality write (`image_output_tokens`), priced as image output; `cost` is
+nil when the catalog says nothing of that size and quality. It is reconciled
+at its usage, whose image parts are priced at the catalog's image rates. One
+whose answer never came once it was sent (a read timeout, a lost connection)
+is reconciled at its whole hold, since the provider may have billed it; its
+own HTTP retries are off, so it is never sent twice under one hold.
+
 A key is the provider attempt's `attempt_id` (as on its `:provider_call` trace)
 and the request's round, `"<attempt_id>:<n>"`, and for a batch request its
 `custom_id`. A batch request is held when its step captures it, at the batch

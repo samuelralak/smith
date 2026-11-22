@@ -17,7 +17,11 @@ module Smith
     # it failed before anything came back, its hold is released. Only the
     # call's own provider object is held, so a tool's own RubyLLM call is
     # not. While a batch step captures its request, the hold is noted on the
-    # capture instead, for the batch to reserve.
+    # capture instead, for the batch to reserve. An image agent's request
+    # (`Provider#paint`) is held the same way, at the image its size and
+    # quality write (Budget::RequestHold.for_image); one sent whose answer
+    # never came (RequestOutcome) is charged its whole hold, as it may have
+    # been billed.
     module RequestHolds
       HELD = :smith_request_holds
       private_constant :HELD
@@ -74,18 +78,31 @@ module Smith
         end
       end
 
+      # The paint (`request`: the provider's own), held.
+      def paint(provider, prompt, request, &paint)
+        holder = holder_for(provider)
+        return paint.call unless holder
+
+        amount = Budget::RequestHold.for_image(
+          provider: provider.slug, model: request.fetch(:model), prompt:, images: Array(request[:with]).length,
+          image: { size: request.fetch(:size), quality: request[:params].to_h[:quality] }
+        )
+        held(holder, amount, request.fetch(:model).to_s, charge_when_lost: true) { paint.call }
+      end
+
       def capture(provider, exchange, args, kwargs, block, &request)
         exchange.hold ||= hold(provider, args, kwargs, mode: :batch) if exchange.holding && exchange.result.nil?
         request.call(*args, **kwargs, &block)
       end
 
-      def held(holder, amount, model_id)
+      def held(holder, amount, model_id, charge_when_lost: false)
         key, reserved = open_round(holder, amount)
         stream = Stream.new(false)
         begin
           message = busy(holder) { yield(stream) }
         rescue Exception => e # rubocop:disable Lint/RescueException -- an interrupted request settles too
-          settle_failed(holder, key, spent(holder.provider, model_id, e) || (amount if stream.started), reserved)
+          lost = stream.started || (charge_when_lost && RequestOutcome.uncertain?(e))
+          settle_failed(holder, key, spent(holder.provider, model_id, e) || (amount if lost), reserved)
           raise
         end
         Budget::HostLedger.settle(holder.ledger, key, spent(holder.provider, model_id, message) || amount)
@@ -118,7 +135,11 @@ module Smith
       # What a request spent, from its reply (or the error that reported
       # usage), priced for the request's model; nil when it reported none.
       def spent(provider, model_id, reply)
-        usage = Agent::ProviderUsage.from_message(reply)
+        usage = if reply.is_a?(::RubyLLM::Image)
+                  Agent::ProviderUsage.from_image(reply.usage)
+                else
+                  Agent::ProviderUsage.from_message(reply)
+                end
         Budget::HostLedger.amount(usage, model: model_id, provider: provider.slug) if usage
       end
 
@@ -129,6 +150,10 @@ module Smith
           RequestHolds.complete(self, args, kwargs, block) do |*sent, **options, &chunks|
             super(*sent, **options, &chunks)
           end
+        end
+
+        def paint(prompt, **request)
+          RequestHolds.paint(self, prompt, request) { super }
         end
       end
     end

@@ -5,7 +5,9 @@ module Smith
     # Admission-time catalog validation, the raising surface for the rules
     # `compute_cost` applies without raising. See Pricing.validate_catalog!.
     module CatalogValidation
-      OPTIONAL_RATE_KEYS = %i[cache_read_cost_per_token cache_write_cost_per_token].freeze
+      OPTIONAL_RATE_KEYS = %i[
+        cache_read_cost_per_token cache_write_cost_per_token image_input_cost_per_token image_output_cost_per_token
+      ].freeze
 
       module_function
 
@@ -39,7 +41,24 @@ module Smith
         [entry, *tiers].each { |rates| validate_optional_rates!(key, rates) }
         values_at(entry, :batch_discount).each { |discount| validate_batch_discount!(key, discount) }
         reject_tier_batch_discount!(key, tiers)
+        values_at(entry, :image_output_tokens).each { |sizes| validate_image_output_tokens!(key, sizes) }
       end
+
+      # What an image of each size and quality writes, as the provider counts
+      # it: { "1024x1024" => { "low" => 823 } }, each count a positive Integer.
+      def validate_image_output_tokens!(key, sizes)
+        return if sizes.is_a?(Hash) && sizes.all? { |size, qualities| image_option?(size) && image_counts?(qualities) }
+
+        raise Smith::PricingConfigurationError, "image_output_tokens for #{key.inspect} must map each size to " \
+                                                "its qualities' positive Integer token counts"
+      end
+
+      def image_counts?(qualities)
+        qualities.is_a?(Hash) && !qualities.empty? &&
+          qualities.all? { |quality, count| image_option?(quality) && count.is_a?(Integer) && count.positive? }
+      end
+
+      def image_option?(value) = (value.is_a?(String) || value.is_a?(Symbol)) && !value.to_s.empty?
 
       def validate_optional_rates!(key, rates)
         return unless rates.is_a?(Hash)

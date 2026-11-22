@@ -161,7 +161,12 @@ sits inside a tier.
 Each entry, or each tier of a tiered entry, prices `input_cost_per_token` and
 `output_cost_per_token`, and optionally `cache_read_cost_per_token` and
 `cache_write_cost_per_token` for input read from or written to a prompt cache,
-which providers report apart from uncached input. A tier without its own cache
+which providers report apart from uncached input. A model that reads or draws
+images may price the image parts of its uncached input and its output apart
+(`image_input_cost_per_token`, `image_output_cost_per_token`, each the plain
+rate when absent), and say what an image of each size and quality writes
+(`image_output_tokens: { "1024x1024" => { "low" => 823 } }`, each a positive
+Integer), which an image agent's hold is priced from. A tier without its own cache
 rate uses the entry's. An entry may also carry `batch_discount`, the fraction
 taken off the cost of a call made in batch mode (`0.5` for half price). Cache
 rates and the batch discount are configured per catalog and count as `0` when

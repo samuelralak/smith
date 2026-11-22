@@ -26,6 +26,8 @@ module Smith
     # `thinking_tokens` are already inside `output_tokens`. `stop_reason` and
     # `provider_message_id` come from the provider response, and `mode` is
     # how the call was made (`:sync`, `:stream`, `:batch`).
+    # `image_input_tokens` and `image_output_tokens` are the image parts of
+    # `input_tokens` and `output_tokens`.
     # rubocop:disable Style/RedundantStructKeywordInit
     UsageEntry = Struct.new(
       :usage_id,
@@ -48,6 +50,8 @@ module Smith
       :stop_reason,
       :provider_message_id,
       :mode,
+      :image_input_tokens,
+      :image_output_tokens,
       keyword_init: true
     ) do
       def initialize(**attributes)
@@ -83,6 +87,7 @@ module Smith
     UsageEntry::OPTIONAL_MEMBERS = %i[
       transition branch_key round attempt_id workflow
       cache_read_tokens cache_write_tokens thinking_tokens stop_reason provider_message_id mode
+      image_input_tokens image_output_tokens
     ].freeze
     # rubocop:enable Style/RedundantStructKeywordInit
   end

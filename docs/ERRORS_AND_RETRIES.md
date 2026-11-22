@@ -82,6 +82,19 @@ took effect before a timeout. An error named in `new_idempotency_key_on:` (or
 took no effect, and the attempts after it use new keys. See
 [PERSISTENCE.md](PERSISTENCE.md), Replay Safety.
 
+## A request that may have been billed
+
+A request an image agent sent whose answer never came (its read timed out, a
+gateway answered 504, or its connection was lost once sent, TLS failing
+included) raises `Smith::RequestOutcomeUncertain`, its cause the transport's
+error: the provider may have done and billed the work. It is retry-forbidden
+(`Smith::Errors.retry_forbidden?`), takes no fallback, and its hold on the
+budget ledger is charged whole. A connection that never opened sent nothing,
+and fails over as any provider failure does. A retry-forbidden failure is
+never outranked by an interrupting error, in a step's fallbacks or among
+parallel branches, and a nested workflow that routed one through its own
+`on_failure` still fails its parent with it, so nothing takes the step again.
+
 ## Interrupting errors
 
 Some errors say the host could not do its part, not that a step went wrong:

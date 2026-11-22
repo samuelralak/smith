@@ -74,7 +74,9 @@ module Smith
         Amount.new(
           input_tokens: input + reads + writes, output_tokens: output,
           cost: Pricing.compute_cost(model:, provider:, input_tokens: input, output_tokens: output,
-                                     cache_read_tokens: reads, cache_write_tokens: writes, mode:)
+                                     cache_read_tokens: reads, cache_write_tokens: writes, mode:,
+                                     image_input_tokens: usage.image_input_tokens || 0,
+                                     image_output_tokens: usage.image_output_tokens || 0)
         )
       end
 

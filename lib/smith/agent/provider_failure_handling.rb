@@ -21,20 +21,34 @@ module Smith
 
       private
 
+      # A request whose outcome is uncertain is never sent again, to this
+      # model or another.
       def handle_provider_failure!(error, model_reference, agent_class, fallback_available:, attempt_id: nil)
         account_failed_attempt(error, model_reference, agent_class, attempt_id:)
+        raise error if error.is_a?(Smith::RequestOutcomeUncertain)
+
         if uncertain_tool_calls?
           raise Smith::ToolOutcomeUncertain.new(
             "provider failed after tool execution began; retry or fallback could replay an uncertain outcome"
           ), cause: error
         end
-        return if fallback_eligible?(error) && fallback_available
+        return if goes_again?(error, agent_class) && fallback_available
 
-        raise terminal_provider_error(error, model_reference), cause: error
+        raise terminal_provider_error(error, model_reference, agent_class), cause: error
+      end
+
+      # An image's request goes again, to another model or the step's retry,
+      # only after a throttle or a refusal of the account, the model or the
+      # content: a server's error may have done and billed the work.
+      def goes_again?(error, agent_class)
+        return fallback_eligible?(error) unless agent_class.image_request
+
+        throttled?(error) || provider_account_failure?(error) ||
+          model_permission_failure?(error) || model_unavailable?(error) || unsupported_content?(error)
       end
 
       def provider_failure?(error)
-        error.is_a?(RubyLLM::Error) ||
+        error.is_a?(RubyLLM::Error) || error.is_a?(Smith::RequestOutcomeUncertain) ||
           (defined?(RubyLLM::ModelNotFoundError) && error.is_a?(RubyLLM::ModelNotFoundError)) ||
           error.is_a?(Faraday::TimeoutError) ||
           error.is_a?(Faraday::ConnectionFailed)
@@ -63,6 +77,14 @@ module Smith
         TRANSIENT_ERRORS.any? { |error_class| error.is_a?(error_class) }
       end
 
+      def throttled?(error) = error.is_a?(RubyLLM::RateLimitError)
+
+      # A provider that struggled leaves the step its retries, but for an
+      # image's request only a throttle does (`goes_again?`).
+      def step_may_retry?(error, agent_class)
+        (transient_failure?(error) || transport_failure?(error)) && (!agent_class&.image_request || throttled?(error))
+      end
+
       def transport_failure?(error)
         error.is_a?(Faraday::TimeoutError) || error.is_a?(Faraday::ConnectionFailed)
       end
@@ -81,8 +103,8 @@ module Smith
         false
       end
 
-      def terminal_provider_error(error, model_reference)
-        return Smith::AgentError.new(error.message) if transient_failure?(error) || transport_failure?(error)
+      def terminal_provider_error(error, model_reference, agent_class = nil)
+        return Smith::AgentError.new(error.message) if step_may_retry?(error, agent_class)
         if unsupported_content?(error)
           return Smith::ContentUnavailable.new("#{model_reference} takes none of this content: #{error.message}")
         end

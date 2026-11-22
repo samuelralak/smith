@@ -123,7 +123,9 @@ module Smith
           cache_read_tokens: agent_result.cache_read_tokens || 0,
           cache_write_tokens: agent_result.cache_write_tokens || 0
         }
-        agent_result.cost = Smith::Pricing.compute_cost(**usage, mode: agent_result.mode || :sync)
+        images = { image_input_tokens: agent_result.image_input_tokens || 0,
+                   image_output_tokens: agent_result.image_output_tokens || 0 }
+        agent_result.cost = Smith::Pricing.compute_cost(**usage, **images, mode: agent_result.mode || :sync)
         agent_result.cache_unpriced = Smith::Pricing.cache_unpriced?(**usage.except(:output_tokens))
       end
     end

@@ -45,6 +45,22 @@ module Smith
         Amount.new(input_tokens: input, output_tokens: output, cost: most_cost(price, input, cache_marked?(request)))
       end
 
+      # The hold for an image a provider is asked to paint (Provider#paint):
+      # its prompt counted as text and each image it draws from (`images`, a
+      # count) at IMAGE_TOKENS, priced as image input, and the image it
+      # writes at what the pricing catalog says its `size` and `quality`
+      # write (Pricing.image_output_tokens), priced as image output. Unpriced
+      # (a nil cost) when the catalog says nothing of that size and quality.
+      def for_image(provider:, model:, prompt:, images:, image:)
+        text = ((prompt.to_s.bytesize + BYTES_PER_TOKEN - 1) / BYTES_PER_TOKEN) + MESSAGE_TOKENS
+        image_input = images * IMAGE_TOKENS
+        output = Pricing.image_output_tokens(model:, provider: provider.to_s, **image.slice(:size, :quality))
+        cost = output && Pricing.compute_cost(model:, provider: provider.to_s, input_tokens: text + image_input,
+                                              output_tokens: output, image_input_tokens: image_input,
+                                              image_output_tokens: output)
+        Amount.new(input_tokens: text + image_input, output_tokens: output || 0, cost:)
+      end
+
       # The request's cost with its input as the tokens name it: read plainly,
       # or written to a prompt cache.
       def price_for(provider, model, output, mode)

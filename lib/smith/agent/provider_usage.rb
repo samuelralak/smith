@@ -17,7 +17,9 @@ module Smith
       COUNT_READERS = {
         cache_read_tokens: %i[cache_read_tokens cached_tokens],
         cache_write_tokens: %i[cache_write_tokens cache_creation_tokens],
-        thinking_tokens: %i[thinking_tokens]
+        thinking_tokens: %i[thinking_tokens],
+        image_input_tokens: %i[image_input_tokens],
+        image_output_tokens: %i[image_output_tokens]
       }.freeze
       OPTIONAL_COUNTS = COUNT_READERS.keys.freeze
 
@@ -26,6 +28,8 @@ module Smith
       attribute :cache_read_tokens, Types::Integer.optional.default(nil)
       attribute :cache_write_tokens, Types::Integer.optional.default(nil)
       attribute :thinking_tokens, Types::Integer.optional.default(nil)
+      attribute :image_input_tokens, Types::Integer.optional.default(nil)
+      attribute :image_output_tokens, Types::Integer.optional.default(nil)
       attribute :stop_reason, Types::String.optional.default(nil)
       attribute :provider_message_id, Types::String.optional.default(nil)
       # How the response was made: :stream, :batch, or nil (synchronous).
@@ -39,6 +43,27 @@ module Smith
         return unless input_tokens.is_a?(Integer) && output_tokens.is_a?(Integer)
 
         new(input_tokens:, output_tokens:, **optional_counts(message), **Providers::ResponseFacts.from_message(message))
+      end
+
+      # The usage an image answer reports, as OpenAI's Images API words it:
+      # its input and output with the image part of each
+      # (`input_tokens_details`, `output_tokens_details`), its output all
+      # image when it gives no parts; nil when it reported none. The image
+      # API reads no prompt cache.
+      def self.from_image(usage, stop_reason: nil)
+        return unless usage.is_a?(Hash)
+
+        input, output = %w[input_tokens output_tokens].map { |name| image_count(usage, name) }
+        return unless input && output
+
+        new(input_tokens: input, output_tokens: output, stop_reason:,
+            image_input_tokens: image_count(usage.fetch("input_tokens_details", nil), "image_tokens"),
+            image_output_tokens: image_count(usage.fetch("output_tokens_details", nil), "image_tokens") || output)
+      end
+
+      def self.image_count(source, name)
+        value = source[name] || source[name.to_sym] if source.is_a?(Hash)
+        value if value.is_a?(Integer) && value >= 0
       end
 
       def self.optional_counts(message)
@@ -67,7 +92,7 @@ module Smith
             stop_reason: usages.last.stop_reason, provider_message_id: usages.last.provider_message_id,
             mode: usages.last.mode)
       end
-      private_class_method :optional_counts, :count_from
+      private_class_method :optional_counts, :count_from, :image_count
 
       # This usage with the stop reason and message id of `facts`, a
       # ResponseFacts result, in place of its own: a tool loop's summed

@@ -14,6 +14,7 @@ module Smith
         "tool_failure_notification_failed" => ->(record) { tool_failure_notification_failure(record) },
         "tool_capture_failed" => ->(record) { Smith::ToolCaptureFailed.from_details(record.fetch(:error_details)) },
         "tool_outcome_uncertain" => ->(record) { Smith::ToolOutcomeUncertain.new(record[:error_message]) },
+        "request_outcome_uncertain" => ->(record) { Smith::RequestOutcomeUncertain.new(record[:error_message]) },
         "tool_execution_not_admitted" => ->(record) { Smith::ToolExecutionNotAdmitted.new(record[:error_message]) },
         "bounded_completion_error" => ->(record) { Smith::BoundedCompletionError.new(record[:error_message]) },
         "persisted_failure_invalid" => ->(record) { Smith::PersistedFailureInvalid.new(record[:error_message]) },

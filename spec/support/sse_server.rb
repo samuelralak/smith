@@ -7,8 +7,11 @@ require "socket"
 # each request is answered by the next queued reply, either server-sent
 # events (`events:`, each a Hash sent as one `data:` line, or a String sent
 # as is), a JSON body (`json:`), or a text body (`text:`, a results file);
-# a request with no reply queued gets a 500. Requests are recorded with
-# their method, path, headers and parsed bodies.
+# a request with no reply queued gets a 500. A reply may instead wait
+# before it answers (`after:` seconds) or close the connection once the
+# request is read (`drop: true`). Requests are recorded with their method,
+# path, headers and bodies, parsed when JSON and kept as they came otherwise
+# (a multipart upload).
 class SseServer
   Request = Struct.new(:path, :body, :verb, :headers)
 
@@ -23,10 +26,12 @@ class SseServer
 
   def url = "http://127.0.0.1:#{@server.addr[1]}"
 
-  def reply(events: nil, json: nil, text: nil, status: "200 OK")
-    @replies << if events then [:events, events]
+  # `fate`: `after:` seconds to wait before answering, or `drop: true`.
+  def reply(events: nil, json: nil, text: nil, status: "200 OK", **fate)
+    @replies << if fate[:drop] then [:drop]
+                elsif events then [:events, events]
                 elsif text then [:text, text]
-                else [:json, json, status]
+                else [:json, json, status, fate[:after]]
                 end
     self
   end
@@ -51,7 +56,7 @@ class SseServer
     verb, path, headers = read_head(client)
     length = headers.fetch("content-length", "0").to_i
     body = length.positive? ? client.read(length) : ""
-    @requests << Request.new(path, (JSON.parse(body) unless body.empty?), verb, headers)
+    @requests << Request.new(path, parsed(body, headers), verb, headers)
     respond(client)
   end
 
@@ -59,12 +64,22 @@ class SseServer
     return write_json(client, { error: { message: "no reply queued" } }, status: "500 Internal Server Error") if
       @replies.empty?
 
-    kind, payload, status = @replies.pop
+    kind, payload, status, after = @replies.pop
     case kind
+    when :drop then nil
     when :events then write_events(client, payload)
     when :text then write_text(client, payload)
-    else write_json(client, payload, status:)
+    else
+      sleep(after) if after
+      write_json(client, payload, status:)
     end
+  end
+
+  def parsed(body, headers)
+    return if body.empty?
+    return body if headers["content-type"].to_s.start_with?("multipart/")
+
+    JSON.parse(body)
   end
 
   def read_head(client)

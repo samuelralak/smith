@@ -239,5 +239,58 @@ RSpec.describe Smith::Pricing do
       expect { described_class.validate_catalog!([]) }
         .to raise_error(Smith::PricingConfigurationError, /catalog must be a Hash/)
     end
+
+    it "admits image rates and the image output of each size and quality, and refuses a malformed one" do
+      entry = { input_cost_per_token: 0.000005, output_cost_per_token: 0.00003,
+                image_input_cost_per_token: 0.000008, image_output_cost_per_token: 0.00003,
+                image_output_tokens: { "1024x1024" => { "low" => 823 } } }
+
+      expect(described_class.validate_catalog!(%w[openai gpt-image] => entry)).to be_a(Hash)
+      [{ image_input_cost_per_token: -1 }, { image_output_tokens: { "1024x1024" => { "low" => 0 } } },
+       { image_output_tokens: { "1024x1024" => {} } }, { image_output_tokens: [823] }].each do |broken|
+        expect { described_class.validate_catalog!(%w[openai gpt-image] => entry.merge(broken)) }
+          .to raise_error(Smith::PricingConfigurationError)
+      end
+    end
+  end
+
+  describe "image tokens" do
+    before do
+      Smith.configure do |c|
+        c.pricing = {
+          %w[openai gpt-image] => { input_cost_per_token: 0.000005, output_cost_per_token: 0.00003,
+                                    image_input_cost_per_token: 0.000008,
+                                    image_output_tokens: { "1024x1024" => { "low" => 823 } } },
+          %w[openai plain] => { input_cost_per_token: 0.000005, output_cost_per_token: 0.00003 }
+        }
+      end
+    end
+
+    it "prices the image parts of the input and output at their own rates, the rest at the plain ones" do
+      cost = described_class.compute_cost(model: "gpt-image", provider: "openai", input_tokens: 400, output_tokens: 823,
+                                          image_input_tokens: 323, image_output_tokens: 823)
+
+      expect(cost).to be_within(1e-12).of((77 * 0.000005) + (323 * 0.000008) + (823 * 0.00003))
+    end
+
+    it "prices image tokens at the plain rate where the entry has no image rate, never more than their counts" do
+      plain = described_class.compute_cost(model: "plain", provider: "openai", input_tokens: 100, output_tokens: 10)
+      imaged = described_class.compute_cost(model: "plain", provider: "openai", input_tokens: 100, output_tokens: 10,
+                                            image_input_tokens: 100, image_output_tokens: 10)
+      capped = described_class.compute_cost(model: "gpt-image", provider: "openai", input_tokens: 10, output_tokens: 0,
+                                            image_input_tokens: 500)
+
+      expect(imaged).to eq(plain)
+      expect(capped).to be_within(1e-12).of(10 * 0.000008)
+    end
+
+    it "says what an image of a size and quality writes, nil where the entry says nothing" do
+      expect(described_class.image_output_tokens(model: "gpt-image", provider: "openai", size: "1024x1024",
+                                                 quality: "low")).to eq(823)
+      expect(described_class.image_output_tokens(model: "gpt-image", provider: "openai", size: "1024x1024",
+                                                 quality: "high")).to be_nil
+      expect(described_class.image_output_tokens(model: "plain", provider: "openai", size: "1024x1024",
+                                                 quality: "low")).to be_nil
+    end
   end
 end

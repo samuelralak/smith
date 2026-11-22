@@ -16,7 +16,9 @@ module Smith
     #              prompt_blocked (a Gemini prompt block),
     #              content_filter (OpenAI), SAFETY, RECITATION, BLOCKLIST,
     #              PROHIBITED_CONTENT, SPII, IMAGE_SAFETY (Gemini),
-    #              content_filtered, guardrail_intervened (Bedrock)
+    #              content_filtered, guardrail_intervened (Bedrock),
+    #              moderation_blocked (OpenAI's Images API, as an image
+    #              agent's attempt reads its refusal)
     module StopReason
       TRUNCATED = %w[
         max_tokens model_context_window_exceeded length max_output_tokens MAX_TOKENS output_limit_reached
@@ -24,7 +26,7 @@ module Smith
       ].freeze
       REFUSED = %w[
         refusal prompt_blocked content_filter SAFETY RECITATION BLOCKLIST PROHIBITED_CONTENT SPII IMAGE_SAFETY
-        content_filtered guardrail_intervened
+        content_filtered guardrail_intervened moderation_blocked
       ].freeze
 
       module_function

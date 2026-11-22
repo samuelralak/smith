@@ -74,7 +74,8 @@ module Smith
         {
           input_tokens: usage.input_tokens, output_tokens: usage.output_tokens,
           cache_read_tokens: usage.cache_read_tokens, cache_write_tokens: usage.cache_write_tokens,
-          thinking_tokens: usage.thinking_tokens, stop_reason: usage.stop_reason,
+          thinking_tokens: usage.thinking_tokens, image_input_tokens: usage.image_input_tokens,
+          image_output_tokens: usage.image_output_tokens, stop_reason: usage.stop_reason,
           provider_message_id: usage.provider_message_id, mode: usage.mode
         }
       end

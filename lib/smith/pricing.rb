@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "pricing/catalog_validation"
+require_relative "pricing/images"
 
 module Smith
   module Pricing
@@ -23,14 +24,21 @@ module Smith
     # Both shapes accept two optional rates beside input and output:
     # `:cache_read_cost_per_token` and `:cache_write_cost_per_token`, for
     # input read from or written to a prompt cache, which providers report
-    # apart from uncached input. An entry may also carry `:batch_discount`,
-    # the fraction a provider's batch API takes off (0.5 for half price),
-    # applied to the whole cost of a call made in `mode: :batch`. These are
-    # configured per catalog: a missing cache rate prices those tokens at 0,
-    # and a missing batch discount is 0, so a batch call costs the full
-    # rate. Tiers are
-    # chosen on the call's total input, uncached plus cache read plus cache
-    # write, since that is what long-context premiums are measured against.
+    # apart from uncached input. A model that reads or draws images may
+    # price its image tokens apart: `:image_input_cost_per_token` for the
+    # image part of its uncached input and `:image_output_cost_per_token`
+    # for the image part of its output, each falling back to the plain rate
+    # when absent, so an image token is never priced below a text one. Its
+    # entry says what an image of each size and quality writes
+    # (`:image_output_tokens`, { "1024x1024" => { "low" => 823 } }), which a
+    # request's hold is priced from (Budget::RequestHold). An entry may also
+    # carry `:batch_discount`, the fraction a provider's batch API takes off
+    # (0.5 for half price), applied to the whole cost of a call made in
+    # `mode: :batch`. These are configured per catalog: a missing cache rate
+    # prices those tokens at 0, and a missing batch discount is 0, so a batch
+    # call costs the full rate. Tiers are chosen on the call's total input,
+    # uncached plus cache read plus cache write, since that is what
+    # long-context premiums are measured against.
     #
     # Catalog keys are normalized once per assigned catalog object:
     #   ["provider", "model"] / [:provider, :model]  -> provider-qualified
@@ -44,16 +52,27 @@ module Smith
     # so accounting paths cannot mask a provider error with a pricing
     # configuration error. The legacy-only-key policy is enforced at
     # catalog admission time via `validate_catalog!`.
+    # `image_input_tokens` and `image_output_tokens` are the image parts of
+    # `input_tokens` and `output_tokens`, never more than them.
     # rubocop:disable Metrics/ParameterLists
     def self.compute_cost(model:, input_tokens:, output_tokens:, provider: nil, cache_read_tokens: 0,
-                          cache_write_tokens: 0, mode: :sync)
+                          cache_write_tokens: 0, image_input_tokens: 0, image_output_tokens: 0, mode: :sync)
       counts = [input_tokens, output_tokens, cache_read_tokens, cache_write_tokens].map { |count| token_count(count) }
       rates = rates_for(model, provider, counts[0] + counts[2] + counts[3])
       return nil unless rates
 
-      apply_mode(priced_tokens(rates, *counts), rates.fetch(:entry), mode)
+      images = Images.priced(rates, counts, token_count(image_input_tokens), token_count(image_output_tokens))
+      apply_mode(priced_tokens(rates, *counts) + images, rates.fetch(:entry), mode)
     end
     # rubocop:enable Metrics/ParameterLists
+
+    # What one image of `size` and `quality` writes on this model, as its
+    # catalog entry says (`:image_output_tokens`); nil when it says nothing.
+    def self.image_output_tokens(model:, provider:, size:, quality:)
+      catalog = Smith.config.pricing
+      entry = lookup_entry(normalized_index(catalog), model, provider) if catalog.is_a?(Hash)
+      Images.output_tokens(entry, size, quality)
+    end
 
     # True when the call's cache tokens were priced at 0 because its rates
     # have no cache rate for them; false when they were priced, absent, or
@@ -175,7 +194,8 @@ module Smith
       text unless text.nil? || text.empty?
     end
 
-    # Returns { input:, output:, cache_read:, cache_write:, entry: } or nil
+    # Returns { input:, output:, cache_read:, cache_write:, image_input:,
+    # image_output:, entry: } or nil
     # if no applicable input and output rate. Tiered shape is recognized by
     # the presence of a :tiers key; flat shape is the legacy default. A tier
     # without its own cache rate uses the entry's.
@@ -191,14 +211,14 @@ module Smith
     end
 
     def self.rates_from(source, defaults: nil)
-      rates = %i[input output cache_read cache_write].to_h { |name| [name, rate_at(source, defaults, name)] }
+      rates = RATES.to_h { |name| [name, rate_at(source, defaults, name)] }
       rates if rates[:input] && rates[:output]
     end
 
-    # A tier's own rate, else, for a cache rate, the entry's.
+    # A tier's own rate, else, for a cache or image rate, the entry's.
     def self.rate_at(source, defaults, name)
       rate = value_at(source, :"#{name}_cost_per_token")
-      rate = value_at(defaults, :"#{name}_cost_per_token") if rate.nil? && defaults && CACHE_RATES.include?(name)
+      rate = value_at(defaults, :"#{name}_cost_per_token") if rate.nil? && defaults && ENTRY_RATES.include?(name)
       rate if rate.is_a?(Numeric)
     end
 
@@ -207,8 +227,9 @@ module Smith
       maximum.nil? || input_tokens <= maximum
     end
 
-    CACHE_RATES = %i[cache_read cache_write].freeze
-    private_constant :CACHE_RATES
+    RATES = %i[input output cache_read cache_write image_input image_output].freeze
+    ENTRY_RATES = %i[cache_read cache_write image_input image_output].freeze
+    private_constant :RATES, :ENTRY_RATES
 
     private_class_method :rate_at, :lookup_entry, :normalized_index, :build_normalized_index, :canonical_key,
                          :array_key, :text_key, :scalar_key, :resolve_rates, :rates_from, :tier_applies?,
