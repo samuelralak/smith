@@ -25,6 +25,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   keys with values, and such a decision is refused. The decision must still
   name exactly one of the three, counted over the keys that hold a value
   (`false` is a value).
+- `Smith::Budget::HostLedger.amount` prices again every usage 0.15.0 priced
+  (any object, a `BasicObject` included, answering `input_tokens`,
+  `output_tokens`, `cache_read_tokens` and `cache_write_tokens`), but for one
+  whose `respond_to?` or `respond_to_missing?` is broken (it raises, or takes
+  the wrong arguments), which breaks Ruby's own `respond_to?` for it too, and
+  one that answers an image count it cannot give (its reader raises when
+  read, or its own `respond_to?` says yes to it with no public reader, none
+  or a private one). 0.16.0 read `image_input_tokens` and
+  `image_output_tokens` from every usage, so a host pricing a charge it
+  settles itself (a `Data` or `Struct` of the four counts) raised
+  `NoMethodError`. A usage carries an image count, priced at the catalog's
+  image rates as in 0.16.0, when its own `respond_to?` says it answers it (a
+  `Minitest::Mock`, a proxy forwarding `respond_to?`), or, if Ruby sees no
+  `respond_to?` of its own (a `BasicObject`), when `Kernel#respond_to?` sees
+  it publicly; otherwise it has no images. A count is read through
+  `Kernel#public_send`, and the usage's own `respond_to?` is called once for
+  each image count, twice an `amount`. What Smith records, holds and charges
+  for its own calls is unchanged. `docs/BUDGETS.md` now documents `amount`:
+  what a host passes, what it returns and when to call it.
 
 ### Upgrading
 

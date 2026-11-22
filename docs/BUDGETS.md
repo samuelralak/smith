@@ -145,3 +145,27 @@ request captured again, a delivery that ran twice): a reserve of it replaces
 its hold, a release ends it, and its reconcile is final, recorded once.
 Fan-out branches call the ledger from their own threads. RubyLLM's own retries
 (`max_retries`) resend a request under its one hold.
+
+A host that settles a charge itself (a batch result no run took, say, on the
+ledger under the key its hold had, its `custom_id`) prices the usage it read
+as Smith prices a response's:
+`Smith::Budget::HostLedger.amount(usage, model:, provider:, mode: :sync)`
+returns the `Smith::Budget::Amount` to reconcile: `input_tokens` counts the
+uncached input with the prompt-cache reads and writes, `output_tokens` the
+output, and `cost` their price from the pricing catalog (nil for an unpriced
+model; `mode: :batch` takes the entry's `batch_discount`). `usage` is any
+object, a `BasicObject` included, answering `input_tokens`, `output_tokens`,
+`cache_read_tokens` and `cache_write_tokens`; a count that is not a
+non-negative Integer counts as 0. It carries an image count
+(`image_input_tokens`, `image_output_tokens`), priced at the catalog's image
+rates, when its own `respond_to?` says it answers it, or, if Ruby sees no
+`respond_to?` of its own (a `BasicObject`), when `Kernel#respond_to?` sees it
+publicly (its methods, and its `respond_to_missing?` if it has one); otherwise
+it has no images. A count is read through `Kernel#public_send`, so a usage
+needs no `public_send` of its own; its own `respond_to?`, when Ruby sees one,
+is called once for each image count, twice an `amount`. The usages 0.15.0
+priced that `amount` cannot are one whose `respond_to?` or
+`respond_to_missing?` is broken (it raises, or takes the wrong arguments),
+which breaks Ruby's own `respond_to?` for it too, and one that answers an
+image count it cannot give: its reader raises when it is read, or its own
+`respond_to?` says yes to it with no public reader (none, or a private one).

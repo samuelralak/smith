@@ -29,7 +29,12 @@ module Smith
       METHODS = %i[reserve! reconcile! release!].freeze
       INHERITED = :smith_inherited_budget_ledger
       SCOPE_STRING_BYTES = 256
-      private_constant :INHERITED, :SCOPE_STRING_BYTES
+      IMAGE_COUNTS = %i[image_input_tokens image_output_tokens].freeze
+      # Kernel's own, bound to a usage, which then needs neither of its own
+      # (a BasicObject has neither).
+      RESPONDS = ::Kernel.instance_method(:respond_to?)
+      PUBLIC_SEND = ::Kernel.instance_method(:public_send)
+      private_constant :INHERITED, :SCOPE_STRING_BYTES, :IMAGE_COUNTS, :RESPONDS, :PUBLIC_SEND
 
       module_function
 
@@ -67,7 +72,23 @@ module Smith
       end
 
       # What a response's usage cost, as an Amount, priced as Smith prices
-      # usage; a count that is not a non-negative Integer counts as 0.
+      # usage: for a host that settles a charge itself (a batch result no run
+      # took, say), reconciling the Amount under the request's key. The usage
+      # is any object, a BasicObject included, answering input_tokens,
+      # output_tokens, cache_read_tokens and cache_write_tokens. It carries an
+      # image count (image_input_tokens, image_output_tokens) when its own
+      # respond_to? says it answers it, or, if Ruby sees no respond_to? of
+      # its own (a BasicObject), when Kernel#respond_to? sees it publicly
+      # (its methods, and its respond_to_missing? if it has one); otherwise
+      # it has no images. A count is read through Kernel's public_send, and
+      # one that is not a non-negative Integer counts as 0. Its own
+      # respond_to?, when Ruby sees one, is called once for each image count,
+      # twice an amount. A usage whose respond_to? or respond_to_missing? is
+      # broken (it raises, or takes the wrong arguments) raises here, as
+      # Ruby's own respond_to? does for it, and so does one that answers an
+      # image count it cannot give: its reader raises when read, or its own
+      # respond_to? says yes to it with no public reader (none, or a private
+      # one).
       def amount(usage, model:, provider:, mode: :sync)
         counts = [usage.input_tokens, usage.output_tokens, usage.cache_read_tokens, usage.cache_write_tokens]
         input, output, reads, writes = counts.map { _1.is_a?(Integer) && _1.positive? ? _1 : 0 }
@@ -75,10 +96,19 @@ module Smith
           input_tokens: input + reads + writes, output_tokens: output,
           cost: Pricing.compute_cost(model:, provider:, input_tokens: input, output_tokens: output,
                                      cache_read_tokens: reads, cache_write_tokens: writes, mode:,
-                                     image_input_tokens: usage.image_input_tokens || 0,
-                                     image_output_tokens: usage.image_output_tokens || 0)
+                                     **image_counts(usage))
         )
       end
+
+      # The image counts a usage answers, by name (see amount).
+      def image_counts(usage)
+        own = RESPONDS.bind_call(usage, :respond_to?)
+        IMAGE_COUNTS.to_h do |name|
+          answers = own ? usage.respond_to?(name) : RESPONDS.bind_call(usage, name)
+          [name, (PUBLIC_SEND.bind_call(usage, name) if answers)]
+        end
+      end
+      private_class_method :image_counts
 
       # The scope a run's ledger is built from: the values its `keys` have in
       # the run's trusted context when it is created, JSON scalars (a String

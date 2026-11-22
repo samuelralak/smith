@@ -2921,6 +2921,25 @@ Notes:
 
 - The spec uses `Ledger.new(limits:)` to construct the ledger through the public initializer.
 
+### `spec/smith/budget/host_ledger_spec.rb`
+
+Purpose:
+
+- asserts what `Smith::Budget::HostLedger.amount(usage, model:, provider:, mode:)` asks of a host's usage object and how it prices it
+
+Architecture basis:
+
+- `docs/BUDGETS.md`, Budget ledgers (a host that settles a charge itself)
+
+Documented contracts covered:
+
+- a usage that answers only `input_tokens`, `output_tokens`, `cache_read_tokens` and `cache_write_tokens` (a `Data`, a `Struct`, a plain object, a `BasicObject`, a `RubyLLM::Message`) is priced as 0.15.0 priced it, with no images
+- the image counts a usage carries (`image_input_tokens`, `image_output_tokens`) are priced at the catalog's image rates, for a host's `Struct`, a `BasicObject` and Smith's own `ProviderUsage` alike, and a usage answering only one of them is priced with that one
+- only an image count the usage answers publicly counts: a private reader is neither called nor counted
+- a usage with a `respond_to?` of its own is asked it: a `Minitest::Mock`-shaped usage, a class overriding `respond_to?` and a proxy forwarding it, each answering through `method_missing` with no `respond_to_missing?`, are priced with their image counts as on 0.16.0 and with four counts as on 0.15.0
+- a forwarding `BasicObject` with no `respond_to?` or `respond_to_missing?` of its own, as Ruby sees it, is priced as `Kernel#respond_to?` sees it: with no image counts
+- an image count that is nil, negative or not an Integer counts as none
+
 ### `spec/smith/context/contract_spec.rb`
 
 Purpose:
