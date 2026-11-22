@@ -4,6 +4,69 @@ All notable changes to Smith are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Smith is pre-1.0 and under active development; expect occasional contract tightening between minor versions until 1.0.
 
+## [0.16.0] - 2026-11-22
+
+### Added
+
+- An agent may answer with an image: `image size:, quality:, background:,
+  output_format:` (the provider's own words). Its attempt paints instead of
+  chatting (RubyLLM's `Provider#paint`, OpenAI's image edits when its input
+  carries images): its instructions and its input's text are the prompt, its
+  input's images (`Smith::Content.image`) are drawn from in order, and its
+  answer is the image kept in the run's artifacts as `Smith::Content.image(ref,
+  media_type:)`. An image agent takes no tools, output schema or thinking, and
+  its step is neither streamed nor batched (a `Smith::WorkflowError`).
+- An image's request is held on the run's budget ledger as any request is:
+  the pricing catalog says what an image of each size and quality writes
+  (`image_output_tokens`), and a model's image tokens may be priced apart
+  (`image_input_cost_per_token`, `image_output_cost_per_token`). Usage, usage
+  entries, `AgentResult` and the `:provider_call` trace carry the image parts
+  of the input and output (`image_input_tokens`, `image_output_tokens`), and
+  `Pricing.compute_cost` prices them.
+- `Smith::RequestOutcomeUncertain`: an image's request sent whose answer never
+  came (a read timeout, a connection lost once sent) may have been billed. It
+  is never retried (`Smith::Errors.retry_forbidden?`), takes no fallback, is
+  charged its whole hold, and persists with a failure family of its own
+  (`request_outcome_uncertain`), its cause the transport's error. An image's
+  request turns RubyLLM's HTTP retries off, so it is never sent twice. A
+  moderation block (`moderation_blocked`) is a refused response, costing
+  nothing, which the agent's `on_refusal` takes (`Smith::OutputRefused` by
+  default), its fallback painting too. Only a throttle or a refusal of the
+  account, the model or the content sends an image's request again; a
+  server's error is a `ProviderPermanentFailure`, and a gateway's 504 or TLS
+  failing mid-exchange is an uncertain outcome. An answer with no image is an
+  `OutputInvalid` whose usage is kept, as is that of an image the store could
+  not keep. A paint keeps no response memo.
+- A fan-out over items: `workflow Child, over: ->(context) { items },
+  item_to: :key, concurrency: n, output_to: :key` runs the nested workflow once
+  an item, each with its item under `item_to:` in its copy of the context, at
+  most `concurrency:` at once, each spending within an equal share of what the
+  run's budget has left in every dimension. Each item's outcome is its own, in
+  order: `{ output: ... }`, or `{ refused: message }` when its run ended on a
+  refused response; any other failure fails the step. A nested workflow step
+  may name `output_to:`.
+
+### Changed
+
+- A retry-forbidden failure (an uncertain request or tool outcome) is never
+  replaced by an interrupting error among a step's fallbacks, an uncertain
+  request outranks an interruption among parallel branches, and a nested
+  workflow that routed a retry-forbidden failure through its own
+  `on_failure` fails its parent with that error rather than a
+  `WorkflowError`, so nothing takes the step again over a request that may
+  have been billed.
+
+### Upgrading
+
+- `Smith::Workflow::AgentResult` and `UsageEntry` gain two optional members,
+  `image_input_tokens` and `image_output_tokens`, omitted from a usage entry's
+  hash when nil, so a checkpoint written before reads and writes back the same.
+- A host that rescued `Smith::WorkflowError` around a nested workflow whose
+  child failed on an uncertain request or tool outcome now sees that error
+  itself.
+- `Smith::EXECUTION_SEMANTICS_VERSION` stays `"7"`: a run stored by 0.15.0
+  holds no item fan-out and no image usage, and restores as it is.
+
 ## [0.15.0] - 2026-11-22
 
 ### Added
