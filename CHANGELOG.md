@@ -48,6 +48,37 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   commit it is built on; the file's header names the gem's sha256 or the
   commit's id, and never a working tree. `script/core_invisibility_benchmark`
   times a 1,000-step stubbed run. None of it goes into the gem.
+- `Smith::Evals::Statistics`, loaded alone by
+  `require "smith/evals/statistics"` (no workflow code, no observer):
+  `estimate`, `rate`, `detectable`, `required_samples` and `judge_check`
+  (frozen), and `compare` and `compare_many` (experimental until they
+  freeze). Smith picks the interval from the data (Wilson, the beta
+  posterior or t on an effective sample size for clustered samples; a
+  cluster-aware bootstrap for pass@k and pass^k) and returns frozen results
+  whose `to_h` is the `smith.evals.stats/1` form published in
+  `docs/evals/schemas/stats.schema.json`, display text included, rounded on
+  the decimal value. Every value being equal is decided exactly, never by
+  a spread that rounding left above zero; samples that all share one
+  cluster count as one independent unit; a bootstrap over fewer than two
+  clusters is not run and reads the whole scale (`too_few_units`); and
+  `detectable` gives null where no change is detectable, never the edge of
+  its search. Every interval holds the point shown with it: when every
+  trial passed, or every trial failed, the beta posterior is the one-sided
+  interval at the same confidence, and where an equal-tailed beta or
+  bootstrap interval would leave its point out it moves, at its level, until
+  the point is its end. A confidence is above 0 and at most 0.999999999, so
+  every level read from it can be computed. Student's t's quantile is
+  within 1e-10 relative at every level and every degree of freedom
+  above 0. Inputs digests and bootstraps
+  (SplitMix64 seeded by the digest) are exact everywhere; the closed forms
+  read the platform's `exp`, `log` and `lgamma`, so the same inputs give
+  the same bytes in any process on one platform. The formulas underneath
+  (`Statistics::Formulas`, `Statistics::Distributions`) are experimental.
+- `Smith::CanonicalJSON` (RFC 8785, `require "smith/canonical_json"`) and
+  `Smith::Scope` with `Smith::ScopeInvalid` (`require "smith/scope"`): one
+  byte form for hashed JSON, and the one tenant scope type, a frozen Hash of
+  at most 8 String pairs with a digest. Neither is loaded by
+  `require "smith"`.
 
 ### Fixed
 

@@ -1,0 +1,1072 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:smith:evals:1:stats",
+  "title": "Smith statistics results, smith.evals.stats/1",
+  "description": "The one statistics shape. Smith::Evals::Statistics returns these objects, eval record summaries embed them, and comparison documents carry them, so a stored record and a live call read the same. Frozen per type: estimate, detectable, required_samples and judge_check with slice 1a; comparison and comparison_set with slice 1b; agreement and adjusted are drafts until slice 2. Readers ignore unknown fields; removing or changing a field means smith.evals.stats/2. Numbers are stored at full double precision; display strings are Smith's rounding of exactly those numbers.",
+  "$defs": {
+    "schema": {
+      "const": "smith.evals.stats/1"
+    },
+    "warnings": {
+      "description": "Open list. Known: small_sample (under the small-sample threshold, 30 by default), few_clusters (clustering applies and there are under 30 clusters), uneven_trials (samples have different numbers of counted trials), no_variation (every value equal, decided exactly), interval_clipped (the interval was cut to 0..1, or is the whole scale because the data cannot bound it), no_samples, unpaired_samples (ids in only one of two runs), zero_discordant (no paired sample changed), clusters_ignored (a paired comparison whose samples share clusters; format 1 does not adjust paired intervals for clustering), too_few_units (a bootstrap over fewer than two clusters, a sample without a cluster key being its own: it would redraw the same data every time, so it is not run and the interval is the whole scale).",
+      "type": "array",
+      "items": {
+        "$ref": "urn:smith:evals:1:common#/$defs/code"
+      },
+      "uniqueItems": true
+    },
+    "unit_value": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 16
+    },
+    "display": {
+      "description": "Smith's rounding, so a screen never does arithmetic. percent: value times 100; points: a difference in percentage points, signed; score: a 0 to 1 value as it is. Rounded half away from zero on the decimal spelling of the stored number. A value that is not exactly 0 or 1 is never shown as the end of the scale ('100', '0', '1.00', '0.00'): decimals are added for all three values, up to 3, and a value still pinned at 3 decimals is rounded toward the inside. When a bound that decides a verdict would round onto its threshold, decimals are added the same way.",
+      "type": "object",
+      "required": [
+        "unit",
+        "decimals",
+        "point",
+        "lower",
+        "upper"
+      ],
+      "properties": {
+        "unit": {
+          "enum": [
+            "percent",
+            "points",
+            "score"
+          ]
+        },
+        "decimals": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "point": {
+          "$ref": "#/$defs/unit_value"
+        },
+        "lower": {
+          "$ref": "#/$defs/unit_value"
+        },
+        "upper": {
+          "$ref": "#/$defs/unit_value"
+        }
+      }
+    },
+    "range_display": {
+      "type": "object",
+      "required": [
+        "unit",
+        "decimals",
+        "low",
+        "typical",
+        "high"
+      ],
+      "properties": {
+        "unit": {
+          "enum": [
+            "points",
+            "count"
+          ]
+        },
+        "decimals": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "low": {
+          "type": "string"
+        },
+        "typical": {
+          "type": "string"
+        },
+        "high": {
+          "type": "string"
+        }
+      }
+    },
+    "detectable_display": {
+      "description": "As range_display, in points; null where the value is null (not detectable).",
+      "type": "object",
+      "required": [
+        "unit",
+        "decimals",
+        "low",
+        "typical",
+        "high"
+      ],
+      "properties": {
+        "unit": {
+          "const": "points"
+        },
+        "decimals": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "low": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "typical": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "high": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "reducer": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^(majority|any|all|mean|pass_at_[1-9][0-9]?|pass_all_[1-9][0-9]?)$"
+    },
+    "estimate": {
+      "type": "object",
+      "required": [
+        "schema",
+        "type",
+        "measure",
+        "reducer",
+        "method",
+        "method_revision",
+        "confidence",
+        "basis",
+        "n",
+        "successes",
+        "clusters",
+        "design_effect",
+        "n_effective",
+        "point",
+        "lower",
+        "upper",
+        "approximate",
+        "warnings",
+        "display",
+        "inputs_digest",
+        "seed"
+      ],
+      "properties": {
+        "schema": {
+          "$ref": "#/$defs/schema"
+        },
+        "type": {
+          "const": "estimate"
+        },
+        "measure": {
+          "description": "pass_rate: share of samples that pass under a binary reducer; mean: mean of per-sample values (a mean reducer, pass_at_k, pass_all_k); rate: successes over a total given as counts.",
+          "enum": [
+            "pass_rate",
+            "mean",
+            "rate"
+          ]
+        },
+        "reducer": {
+          "$ref": "#/$defs/reducer"
+        },
+        "method": {
+          "description": "wilson, beta_posterior, t, bootstrap. Open list; Smith chooses it from the data (design.md 7.3).",
+          "$ref": "urn:smith:evals:1:common#/$defs/code"
+        },
+        "method_revision": {
+          "description": "Raised when a formula is corrected; a stored result keeps the revision it was computed with.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "confidence": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "basis": {
+          "enum": [
+            "samples",
+            "counts"
+          ]
+        },
+        "n": {
+          "description": "Samples (or the total, for counts) the number rests on.",
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "successes": {
+          "description": "For pass_rate and rate, an integer count; for mean, the sum of per-sample values. Null when n is 0.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "clusters": {
+          "description": "Distinct clusters when at least one cluster holds two or more samples; null otherwise.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "design_effect": {
+          "description": "Korn and Graubard's design effect, at least 1, when clustering applies to a Wilson, beta posterior or t interval; null otherwise. When every sample shares one cluster it is n: one independent unit, so n_effective is 1.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "n_effective": {
+          "description": "n over the design effect: the sample size the interval was computed at. Null when clustering does not apply.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "point": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "lower": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "upper": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "approximate": {
+          "description": "True where the method is known to under-cover at this size (t below 30 samples, bootstrap below 200).",
+          "type": "boolean"
+        },
+        "warnings": {
+          "$ref": "#/$defs/warnings"
+        },
+        "display": {
+          "$ref": "#/$defs/display"
+        },
+        "inputs_digest": {
+          "description": "SHA-256 of 'smith.evals.stats/1\\n' and the canonical JSON {function, options, data}: what the result was computed from.",
+          "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+        },
+        "seed": {
+          "description": "For a bootstrap, the SplitMix64 seed as 16 hex digits (the first 16 hex digits of inputs_digest, unless the caller passed one); null otherwise, and null when too_few_units left nothing to resample.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{16}$"
+        }
+      }
+    },
+    "difference": {
+      "type": "object",
+      "required": [
+        "point",
+        "lower",
+        "upper"
+      ],
+      "properties": {
+        "point": {
+          "type": "number"
+        },
+        "lower": {
+          "type": "number"
+        },
+        "upper": {
+          "type": "number"
+        }
+      }
+    },
+    "comparison": {
+      "description": "One candidate against one baseline, paired by sample id. The difference is candidate minus baseline. Frozen with slice 1b.",
+      "type": "object",
+      "required": [
+        "schema",
+        "type",
+        "measure",
+        "reducer",
+        "method",
+        "method_revision",
+        "confidence",
+        "margin",
+        "pairs",
+        "only_in_baseline",
+        "only_in_candidate",
+        "baseline",
+        "candidate",
+        "changed",
+        "difference",
+        "p_value",
+        "test",
+        "verdict",
+        "verdict_rule",
+        "no_worse",
+        "approximate",
+        "warnings",
+        "display",
+        "inputs_digest"
+      ],
+      "properties": {
+        "schema": {
+          "$ref": "#/$defs/schema"
+        },
+        "type": {
+          "const": "comparison"
+        },
+        "measure": {
+          "enum": [
+            "pass_rate",
+            "mean"
+          ]
+        },
+        "reducer": {
+          "$ref": "#/$defs/reducer"
+        },
+        "method": {
+          "description": "newcombe_paired (pass/fail) or t_paired (values).",
+          "$ref": "urn:smith:evals:1:common#/$defs/code"
+        },
+        "method_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "confidence": {
+          "description": "The level of this interval (inside a comparison_set, the candidate's adjusted level).",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "margin": {
+          "type": "number",
+          "minimum": 0
+        },
+        "pairs": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "only_in_baseline": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "only_in_candidate": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "baseline": {
+          "$ref": "#/$defs/estimate"
+        },
+        "candidate": {
+          "$ref": "#/$defs/estimate"
+        },
+        "changed": {
+          "type": "object",
+          "required": [
+            "better",
+            "worse",
+            "same"
+          ],
+          "properties": {
+            "better": {
+              "$ref": "urn:smith:evals:1:common#/$defs/count"
+            },
+            "worse": {
+              "$ref": "urn:smith:evals:1:common#/$defs/count"
+            },
+            "same": {
+              "$ref": "urn:smith:evals:1:common#/$defs/count"
+            }
+          }
+        },
+        "difference": {
+          "$ref": "#/$defs/difference"
+        },
+        "p_value": {
+          "description": "The smallest alpha at which the interval at level 1 - alpha excludes the reading's threshold (the margin above, zero below): the same procedure the verdict reads. 1 when the point lies between zero and the margin.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "test": {
+          "description": "The classic test beside the interval: McNemar's exact test for pass/fail, the paired t test for values. Shown for reference; the verdict never reads it.",
+          "type": "object",
+          "required": [
+            "method",
+            "p_value"
+          ],
+          "properties": {
+            "method": {
+              "$ref": "urn:smith:evals:1:common#/$defs/code"
+            },
+            "p_value": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        },
+        "verdict": {
+          "description": "better when the lower bound is above the margin; worse when the upper bound is below zero; otherwise inconclusive.",
+          "enum": [
+            "better",
+            "inconclusive",
+            "worse"
+          ]
+        },
+        "verdict_rule": {
+          "const": "interval_vs_margin/1"
+        },
+        "no_worse": {
+          "description": "Filled when the caller passes no_worse_margin to compare. Inside a comparison set it is null here: the set's candidate carries the reading at the set's no-worse level.",
+          "$ref": "#/$defs/no_worse"
+        },
+        "approximate": {
+          "type": "boolean"
+        },
+        "warnings": {
+          "$ref": "#/$defs/warnings"
+        },
+        "display": {
+          "$ref": "#/$defs/display"
+        },
+        "inputs_digest": {
+          "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+        }
+      }
+    },
+    "comparison_set": {
+      "description": "Several candidates against one baseline, with Holm's correction fed by each comparison's own p_value. Every candidate named stays in the family (a candidate whose run did not finish counts with p = 1), so the correction is fixed before the data. Each compared candidate's interval is computed at the level Holm assigned it and its verdict is read from that interval, so a shown bound never contradicts a verdict. Frozen with slice 1b. The per-candidate intervals are not joint (simultaneous) intervals.",
+      "type": "object",
+      "required": [
+        "schema",
+        "type",
+        "measure",
+        "reducer",
+        "method",
+        "method_revision",
+        "confidence",
+        "margin",
+        "adjustment",
+        "no_worse_margin",
+        "no_worse_adjustment",
+        "baseline",
+        "candidates",
+        "warnings",
+        "inputs_digest"
+      ],
+      "properties": {
+        "schema": {
+          "$ref": "#/$defs/schema"
+        },
+        "type": {
+          "const": "comparison_set"
+        },
+        "measure": {
+          "enum": [
+            "pass_rate",
+            "mean"
+          ]
+        },
+        "reducer": {
+          "$ref": "#/$defs/reducer"
+        },
+        "method": {
+          "$ref": "urn:smith:evals:1:common#/$defs/code"
+        },
+        "method_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "confidence": {
+          "description": "The family's level.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "margin": {
+          "type": "number",
+          "minimum": 0
+        },
+        "adjustment": {
+          "type": "object",
+          "required": [
+            "method",
+            "method_revision",
+            "comparisons",
+            "family_confidence"
+          ],
+          "properties": {
+            "method": {
+              "const": "holm"
+            },
+            "method_revision": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "comparisons": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "family_confidence": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "exclusiveMaximum": 1
+            }
+          }
+        },
+        "no_worse_margin": {
+          "description": "The no-worse margin, declared before the data (for a group, in compare_models and recorded in header.group); null when none was declared.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "no_worse_adjustment": {
+          "description": "The no-worse readings are their own family, corrected by Bonferroni across every candidate named (not by Holm's superiority step levels, which are not a valid procedure for this family). Null when no margin was declared.",
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "method",
+                "comparisons",
+                "level"
+              ],
+              "properties": {
+                "method": {
+                  "const": "bonferroni"
+                },
+                "comparisons": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "level": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "exclusiveMaximum": 1
+                }
+              }
+            }
+          ]
+        },
+        "baseline": {
+          "type": "object",
+          "required": [
+            "label",
+            "estimate"
+          ],
+          "properties": {
+            "label": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "estimate": {
+              "$ref": "#/$defs/estimate"
+            }
+          }
+        },
+        "candidates": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "label",
+              "status",
+              "reason_code",
+              "p_value",
+              "adjusted_p",
+              "level",
+              "comparison",
+              "verdict",
+              "no_worse"
+            ],
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "status": {
+                "enum": [
+                  "compared",
+                  "not_compared"
+                ]
+              },
+              "reason_code": {
+                "description": "Why a candidate was not compared: member_incomplete, member_failed, member_cancelled, member_running. Null when compared.",
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "urn:smith:evals:1:common#/$defs/code"
+                  }
+                ]
+              },
+              "p_value": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 1
+              },
+              "adjusted_p": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 1
+              },
+              "level": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "exclusiveMinimum": 0,
+                "exclusiveMaximum": 1,
+                "description": "The level Holm assigned this candidate's interval. These per-candidate intervals agree with Holm's decisions but are not simultaneous intervals: never describe them as holding together at the family's level."
+              },
+              "comparison": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/comparison"
+                  }
+                ]
+              },
+              "verdict": {
+                "enum": [
+                  "better",
+                  "inconclusive",
+                  "worse",
+                  null
+                ]
+              },
+              "no_worse": {
+                "$ref": "#/$defs/no_worse"
+              }
+            }
+          }
+        },
+        "warnings": {
+          "$ref": "#/$defs/warnings"
+        },
+        "inputs_digest": {
+          "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+        }
+      }
+    },
+    "range": {
+      "type": "object",
+      "required": [
+        "low",
+        "typical",
+        "high"
+      ],
+      "properties": {
+        "low": {
+          "type": "number"
+        },
+        "typical": {
+          "type": "number"
+        },
+        "high": {
+          "type": "number"
+        }
+      }
+    },
+    "detectable_range": {
+      "description": "The smallest detectable change at each assumption: the larger of the smallest detectable increase and decrease, over the directions where some change up to the end of the scale is detectable. Null where no change in either direction is detectable at this size under that assumption: not detectable, never the edge of the search.",
+      "type": "object",
+      "required": [
+        "low",
+        "typical",
+        "high"
+      ],
+      "properties": {
+        "low": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "typical": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "high": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "assumptions": {
+      "type": "object",
+      "required": [
+        "correlation"
+      ],
+      "properties": {
+        "correlation": {
+          "description": "For paired results, the correlation between the two runs behind low, typical and high (0.7, 0.5, 0.3); null when unpaired.",
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/range"
+            }
+          ]
+        }
+      }
+    },
+    "detectable": {
+      "description": "The smallest change n samples can detect, in either direction, as a range over the stated assumptions; null at an assumption where no change is detectable at this size. Frozen with slice 1a.",
+      "type": "object",
+      "required": [
+        "schema",
+        "type",
+        "method",
+        "method_revision",
+        "n",
+        "baseline",
+        "paired",
+        "power",
+        "confidence",
+        "direction",
+        "smallest_difference",
+        "assumptions",
+        "display"
+      ],
+      "properties": {
+        "schema": {
+          "$ref": "#/$defs/schema"
+        },
+        "type": {
+          "const": "detectable"
+        },
+        "method": {
+          "const": "normal_approximation"
+        },
+        "method_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "n": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "baseline": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "paired": {
+          "type": "boolean"
+        },
+        "power": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "confidence": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "direction": {
+          "const": "either"
+        },
+        "smallest_difference": {
+          "$ref": "#/$defs/detectable_range"
+        },
+        "assumptions": {
+          "$ref": "#/$defs/assumptions"
+        },
+        "display": {
+          "$ref": "#/$defs/detectable_display"
+        }
+      }
+    },
+    "required_samples": {
+      "description": "How many samples a difference needs, as a range over the stated assumptions. Frozen with slice 1a.",
+      "type": "object",
+      "required": [
+        "schema",
+        "type",
+        "method",
+        "method_revision",
+        "baseline",
+        "difference",
+        "paired",
+        "power",
+        "confidence",
+        "samples",
+        "assumptions",
+        "display"
+      ],
+      "properties": {
+        "schema": {
+          "$ref": "#/$defs/schema"
+        },
+        "type": {
+          "const": "required_samples"
+        },
+        "method": {
+          "const": "normal_approximation"
+        },
+        "method_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "baseline": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "difference": {
+          "type": "number"
+        },
+        "paired": {
+          "type": "boolean"
+        },
+        "power": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "confidence": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "samples": {
+          "type": "object",
+          "required": [
+            "low",
+            "typical",
+            "high"
+          ],
+          "properties": {
+            "low": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "typical": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "high": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "assumptions": {
+          "$ref": "#/$defs/assumptions"
+        },
+        "display": {
+          "$ref": "#/$defs/range_display"
+        }
+      }
+    },
+    "bar_reading": {
+      "type": "object",
+      "required": [
+        "on_point",
+        "with_confidence"
+      ],
+      "properties": {
+        "on_point": {
+          "type": "boolean"
+        },
+        "with_confidence": {
+          "description": "The lower bound clears the bar.",
+          "type": "boolean"
+        }
+      }
+    },
+    "judge_check": {
+      "description": "How often a judge catches real failures and passes good answers, against labels. Frozen with slice 1a.",
+      "type": "object",
+      "required": [
+        "schema",
+        "type",
+        "catches_failures",
+        "passes_good",
+        "bar",
+        "meets_bar",
+        "gates_on"
+      ],
+      "properties": {
+        "schema": {
+          "$ref": "#/$defs/schema"
+        },
+        "type": {
+          "const": "judge_check"
+        },
+        "catches_failures": {
+          "$ref": "#/$defs/estimate"
+        },
+        "passes_good": {
+          "$ref": "#/$defs/estimate"
+        },
+        "bar": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "catches_failures",
+                "passes_good"
+              ],
+              "properties": {
+                "catches_failures": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "passes_good": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "meets_bar": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "catches_failures",
+                "passes_good"
+              ],
+              "properties": {
+                "catches_failures": {
+                  "$ref": "#/$defs/bar_reading"
+                },
+                "passes_good": {
+                  "$ref": "#/$defs/bar_reading"
+                }
+              }
+            }
+          ]
+        },
+        "gates_on": {
+          "description": "Which reading the suite gates on; with_confidence by default.",
+          "enum": [
+            "with_confidence",
+            "on_point"
+          ]
+        }
+      }
+    },
+    "agreement": {
+      "description": "DRAFT until slice 2. Raw agreement always comes with the chance-corrected value. Bands: landis_koch/1 for kappa (poor, slight, fair, moderate, substantial, almost_perfect); krippendorff/1 for alpha (unreliable below 0.667, tentative to 0.8, reliable from 0.8). The interval for the chance-corrected value is a unit bootstrap (SplitMix64), approximate; slice 2 adds its fixture.",
+      "type": "object",
+      "required": [
+        "schema",
+        "type"
+      ],
+      "properties": {
+        "schema": {
+          "$ref": "#/$defs/schema"
+        },
+        "type": {
+          "const": "agreement"
+        }
+      }
+    },
+    "adjusted": {
+      "description": "DRAFT until slice 2: Holm across several statistical gates, keyed by gate id.",
+      "type": "object",
+      "required": [
+        "schema",
+        "type"
+      ],
+      "properties": {
+        "schema": {
+          "$ref": "#/$defs/schema"
+        },
+        "type": {
+          "const": "adjusted"
+        }
+      }
+    },
+    "no_worse": {
+      "description": "The no-worse reading: the candidate is no worse than the baseline by more than the margin. Null when no margin was declared.",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "margin",
+            "level",
+            "lower",
+            "holds"
+          ],
+          "properties": {
+            "margin": {
+              "description": "The declared margin, as a share (0.05 is 5 points).",
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "level": {
+              "description": "The two-sided level of the interval whose lower bound is read: the comparison's confidence for one candidate; 1 - alpha/m inside a comparison set.",
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "exclusiveMaximum": 1
+            },
+            "lower": {
+              "description": "That interval's lower bound on candidate minus baseline.",
+              "type": "number"
+            },
+            "holds": {
+              "description": "True when lower is above minus the margin.",
+              "type": "boolean"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

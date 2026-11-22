@@ -50,6 +50,16 @@ an avoidable asymptotic regression as a release blocker.
   operation dimensions is `O(L + D)` time and space. Receipt lookup is expected
   `O(1)`; no operation scans or copies the active receipt registry. Integer and
   Float amounts use exact decimal arithmetic internally.
+- Evals statistics (`Smith::Evals::Statistics`) are `O(n log n)` time in
+  their samples (each call sorts them by id) and `O(n)` space (values,
+  cluster keys and index lists), except the cluster bootstrap
+  (`O(B (K + n))` for `B` resamples and `K` clusters, at most `10^8` draws,
+  refused above), the p-value bisection (100 interval evaluations) and
+  `compare_many` (`O(m n log n + m log m)`); the incomplete beta stops
+  within 2,000 iterations, the beta quantile within 400 and t's quantile
+  within 200. The inputs digest streams one sample at a time.
+  Canonical JSON is `O(N + sum k_i log k_i)` within 64 levels, 1,000,000
+  values and 64 MiB.
 - Retry delay calculation is `O(1)` time and space per attempt. A policy with
   `A` attempts performs at most `A` guarded operations and never materializes an
   exponential schedule.

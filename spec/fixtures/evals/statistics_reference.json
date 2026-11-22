@@ -1,0 +1,4965 @@
+{
+ "generated_by": {
+  "python": "3.14.3",
+  "scipy": "1.18.1",
+  "statsmodels": "0.15.0",
+  "numpy": "2.5.5",
+  "krippendorff": "0.9.0"
+ },
+ "normal_quantile": [
+  [
+   1e-10,
+   -6.361340902404056
+  ],
+  [
+   0.001,
+   -3.090232306167813
+  ],
+  [
+   0.025,
+   -1.9599639845400545
+  ],
+  [
+   0.05,
+   -1.6448536269514729
+  ],
+  [
+   0.1,
+   -1.2815515655446004
+  ],
+  [
+   0.5,
+   0.0
+  ],
+  [
+   0.8,
+   0.8416212335729143
+  ],
+  [
+   0.9,
+   1.2815515655446004
+  ],
+  [
+   0.95,
+   1.644853626951472
+  ],
+  [
+   0.975,
+   1.959963984540054
+  ],
+  [
+   0.995,
+   2.5758293035489004
+  ],
+  [
+   0.999,
+   3.090232306167813
+  ]
+ ],
+ "t_quantile_0975": [
+  [
+   1,
+   12.706204736174694
+  ],
+  [
+   2,
+   4.302652729749462
+  ],
+  [
+   3,
+   3.1824463052837078
+  ],
+  [
+   5,
+   2.5705818356363146
+  ],
+  [
+   10,
+   2.228138851986274
+  ],
+  [
+   29,
+   2.045229642132704
+  ],
+  [
+   30,
+   2.0422724563012378
+  ],
+  [
+   100,
+   1.983971518523552
+  ],
+  [
+   1000,
+   1.9623390808264078
+  ]
+ ],
+ "t_quantile_other": [
+  [
+   0.9,
+   4,
+   1.533206274058944
+  ],
+  [
+   0.995,
+   7,
+   3.4994832973504924
+  ],
+  [
+   0.6,
+   15,
+   0.25788530093726125
+  ]
+ ],
+ "incomplete_beta": [
+  [
+   0.5,
+   2,
+   3,
+   0.6875
+  ],
+  [
+   0.1,
+   0.5,
+   0.5,
+   0.20483276469913345
+  ],
+  [
+   0.9,
+   27.5,
+   4.5,
+   0.7243543214191879
+  ],
+  [
+   0.3,
+   10,
+   10,
+   0.032553356881300934
+  ]
+ ],
+ "beta_quantile": [
+  [
+   0.025,
+   27.5,
+   4.5,
+   0.7217975087982478
+  ],
+  [
+   0.975,
+   27.5,
+   4.5,
+   0.9548371019944646
+  ],
+  [
+   0.025,
+   1,
+   11,
+   0.002298972213814267
+  ],
+  [
+   0.975,
+   11,
+   1,
+   0.9977010277861857
+  ],
+  [
+   0.5,
+   2,
+   3,
+   0.3857275681323895
+  ]
+ ],
+ "wilson_95": [
+  [
+   21,
+   23,
+   0.7320401892425632,
+   0.9758199955157796
+  ],
+  [
+   18,
+   20,
+   0.6989663547715127,
+   0.9721335187862318
+  ],
+  [
+   45,
+   50,
+   0.7863976856252034,
+   0.9565242350681095
+  ],
+  [
+   90,
+   100,
+   0.8256343384950865,
+   0.9447708629393249
+  ],
+  [
+   0,
+   20,
+   0.0,
+   0.1611251580528194
+  ],
+  [
+   20,
+   20,
+   0.8388748419471804,
+   0.9999999999999999
+  ],
+  [
+   81,
+   263,
+   0.2552885198782742,
+   0.36620957698280004
+  ],
+  [
+   15,
+   148,
+   0.06238639953073628,
+   0.16048724172330803
+  ],
+  [
+   1,
+   29,
+   0.006113214292762667,
+   0.17175521879320294
+  ],
+  [
+   26,
+   30,
+   0.703186733179637,
+   0.9469034451594526
+  ],
+  [
+   27,
+   30,
+   0.7437891742081592,
+   0.9654001112526659
+  ]
+ ],
+ "beta_posterior_fractions": {
+  "fractions": [
+   1,
+   1,
+   0.6666666666666666,
+   1,
+   0.3333333333333333,
+   1,
+   1,
+   0.6666666666666666,
+   1,
+   0
+  ],
+  "n": 10,
+  "s": 7.666666666666666,
+  "estimate_mean": 0.7666666666666666,
+  "lower": 0.45036585271231544,
+  "upper": 0.9245674828524865
+ },
+ "t_interval_mean": {
+  "values": [
+   0.4025,
+   0.7691,
+   0.9904,
+   0.7227,
+   0.4559,
+   0.761,
+   0.8427,
+   0.7214,
+   0.5358,
+   0.9147,
+   0.5377,
+   0.8231,
+   0.9621,
+   0.5103,
+   0.421,
+   0.4569,
+   0.861,
+   0.9686,
+   0.591,
+   0.426,
+   0.6633,
+   0.4255,
+   0.7946,
+   0.7755,
+   0.6408,
+   0.6081,
+   0.7491,
+   0.9296,
+   0.5388,
+   0.4861,
+   0.4553,
+   0.8327
+  ],
+  "mean": 0.674165625,
+  "sd": 0.18749157333214878,
+  "t": 2.039513446396408,
+  "lower": 0.6065677043126764,
+  "upper": 0.7417635456873236
+ },
+ "newcombe_paired_95": [
+  {
+   "a": 1,
+   "b": 1,
+   "c": 7,
+   "d": 12,
+   "difference": -0.2857142857142857,
+   "psi": 0.0,
+   "lower": -0.506920226686141,
+   "upper": -0.025559124164859837
+  },
+  {
+   "a": 20,
+   "b": 6,
+   "c": 1,
+   "d": 5,
+   "difference": 0.15625,
+   "psi": 0.4108907018066591,
+   "lower": -0.010838232132146353,
+   "upper": 0.31646956685514943
+  },
+  {
+   "a": 25,
+   "b": 1,
+   "c": 0,
+   "d": 6,
+   "difference": 0.03125,
+   "psi": 0.8110048937761953,
+   "lower": -0.06900006498433085,
+   "upper": 0.13716896964548098
+  },
+  {
+   "a": 0,
+   "b": 0,
+   "c": 0,
+   "d": 10,
+   "difference": 0.0,
+   "psi": 0.0,
+   "lower": -0.27753279986288926,
+   "upper": 0.27753279986288926
+  },
+  {
+   "a": 10,
+   "b": 3,
+   "c": 3,
+   "d": 4,
+   "difference": 0.0,
+   "psi": 0.23076923076923078,
+   "lower": -0.24234340058822712,
+   "upper": 0.24234340058822712
+  },
+  {
+   "a": 24,
+   "b": 2,
+   "c": 1,
+   "d": 5,
+   "difference": 0.03125,
+   "psi": 0.6173320833221785,
+   "lower": -0.0991729201681274,
+   "upper": 0.16416343035543496
+  }
+ ],
+ "mcnemar_exact": [
+  [
+   6,
+   1,
+   0.125,
+   0.125
+  ],
+  [
+   1,
+   7,
+   0.0703125,
+   0.0703125
+  ],
+  [
+   0,
+   0,
+   1.0,
+   1.0
+  ],
+  [
+   5,
+   5,
+   1.0,
+   1.0
+  ],
+  [
+   12,
+   3,
+   0.03515625,
+   0.03515625
+  ],
+  [
+   0,
+   9,
+   0.00390625,
+   0.00390625
+  ]
+ ],
+ "paired_t_95": {
+  "x": [
+   0.9,
+   0.7,
+   0.8,
+   1.0,
+   0.6,
+   0.75,
+   0.85,
+   0.95,
+   0.5,
+   0.8
+  ],
+  "y": [
+   0.8,
+   0.7,
+   0.6,
+   0.9,
+   0.65,
+   0.7,
+   0.8,
+   0.85,
+   0.55,
+   0.6
+  ],
+  "mean_difference": 0.06999999999999999,
+  "lower": 0.006462416452662073,
+  "upper": 0.1335375835473379,
+  "p_value": 0.03429564527643565
+ },
+ "holm": {
+  "p": [
+   0.01,
+   0.04,
+   0.03,
+   0.005
+  ],
+  "adjusted": [
+   0.03,
+   0.06,
+   0.06,
+   0.02
+  ],
+  "reject_at_0.05": [
+   true,
+   false,
+   false,
+   true
+  ]
+ },
+ "sample_size": [
+  {
+   "p1": 0.8,
+   "p2": 0.85,
+   "unpaired_per_arm": 906,
+   "paired_rho_0.3": 634,
+   "paired_rho_0.5": 455,
+   "paired_rho_0.7": 275
+  },
+  {
+   "p1": 0.8,
+   "p2": 0.9,
+   "unpaired_per_arm": 199,
+   "paired_rho_0.3": 140,
+   "paired_rho_0.5": 103,
+   "paired_rho_0.7": 65
+  },
+  {
+   "p1": 0.7,
+   "p2": 0.8,
+   "unpaired_per_arm": 294,
+   "paired_rho_0.3": 205,
+   "paired_rho_0.5": 147,
+   "paired_rho_0.7": 89
+  }
+ ],
+ "detectable_increase_paired": [
+  {
+   "n": 50,
+   "baseline": 0.8,
+   "rho": 0.5,
+   "delta": 0.13819759548646532
+  },
+  {
+   "n": 120,
+   "baseline": 0.8,
+   "rho": 0.5,
+   "delta": 0.09289512149836815
+  },
+  {
+   "n": 275,
+   "baseline": 0.8,
+   "rho": 0.7,
+   "delta": 0.049985738921103084
+  }
+ ],
+ "cohen_kappa": {
+  "table": [
+   [
+    20,
+    5
+   ],
+   [
+    10,
+    15
+   ]
+  ],
+  "kappa": 0.3999999999999999
+ },
+ "krippendorff_alpha_nominal": {
+  "reliability_data": [
+   [
+    1,
+    2,
+    3,
+    3,
+    2,
+    1,
+    4,
+    1,
+    2,
+    null,
+    null,
+    null
+   ],
+   [
+    1,
+    2,
+    3,
+    3,
+    2,
+    2,
+    4,
+    1,
+    2,
+    5,
+    null,
+    3
+   ],
+   [
+    null,
+    3,
+    3,
+    3,
+    2,
+    3,
+    4,
+    2,
+    2,
+    5,
+    1,
+    null
+   ],
+   [
+    1,
+    2,
+    3,
+    3,
+    2,
+    4,
+    4,
+    1,
+    2,
+    5,
+    1,
+    null
+   ]
+  ],
+  "alpha": 0.743421052631579
+ },
+ "pass_at_k": [
+  {
+   "n": 5,
+   "c": 2,
+   "k": 2,
+   "pass_at_k": 0.7,
+   "pass_all_k": 0.1
+  },
+  {
+   "n": 3,
+   "c": 1,
+   "k": 1,
+   "pass_at_k": 0.33333333333333337,
+   "pass_all_k": 0.3333333333333333
+  },
+  {
+   "n": 3,
+   "c": 0,
+   "k": 2,
+   "pass_at_k": 0.0,
+   "pass_all_k": 0.0
+  },
+  {
+   "n": 10,
+   "c": 9,
+   "k": 5,
+   "pass_at_k": 1.0,
+   "pass_all_k": 0.5
+  },
+  {
+   "n": 4,
+   "c": 4,
+   "k": 3,
+   "pass_at_k": 1.0,
+   "pass_all_k": 1.0
+  }
+ ],
+ "bootstrap_percentile_mean": {
+  "data": [
+   1,
+   1,
+   0,
+   1,
+   1,
+   1,
+   0,
+   1,
+   1,
+   1,
+   1,
+   0,
+   1,
+   1,
+   1,
+   1,
+   1,
+   0,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   0,
+   1,
+   1,
+   1,
+   1,
+   1
+  ],
+  "n_resamples": 10000,
+  "lower": 0.7,
+  "upper": 0.9666666666666667,
+  "tolerance": 0.02
+ },
+ "splitmix64": {
+  "note": "outputs as 16 lowercase hex digits (64-bit values do not fit a JSON number exactly)",
+  "seed_0": [
+   "e220a8397b1dcdaf",
+   "6e789e6aa1b965f4",
+   "06c45d188009454f",
+   "f88bb8a8724c81ec",
+   "1b39896a51a8749b"
+  ],
+  "seed_1234567": [
+   "599ed017fb08fc85",
+   "2c73f08458540fa5",
+   "883ebce5a3f27c77",
+   "3fbef740e9177b3f",
+   "e3b8346708cb5ecd"
+  ],
+  "below_37_seed_42": [
+   16,
+   33,
+   2,
+   3,
+   6,
+   1,
+   12,
+   19,
+   23,
+   20,
+   23,
+   33
+  ]
+ },
+ "design_effect_wilson": [
+  {
+   "values": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    0,
+    0,
+    0
+   ],
+   "clusters": [
+    "k00",
+    "k01",
+    "k02",
+    "k03",
+    "k04",
+    "k05",
+    "k06",
+    "k07",
+    "k08",
+    "k09",
+    "k10",
+    "k11",
+    "k12",
+    "k13",
+    "k14",
+    "k15",
+    "k16",
+    "k17",
+    "k18",
+    "k19",
+    "k20",
+    "k21",
+    "k22",
+    "k23",
+    "k24",
+    "k25",
+    "k26",
+    "k27",
+    "k28",
+    "k29",
+    "k30",
+    "k31",
+    "k32",
+    "k00",
+    "k34",
+    "k35",
+    "k36"
+   ],
+   "design_effect": 1.033477174653645,
+   "n_effective": 35.801468002812946,
+   "lower": 0.7841566056451803,
+   "upper": 0.9724934942942292,
+   "plain_wilson": [
+    0.7869932065071162,
+    0.9720394258995521
+   ]
+  },
+  {
+   "values": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "clusters": [
+    "k00",
+    "k01",
+    "k02",
+    "k03",
+    "k04",
+    "k05",
+    "k06",
+    "k07",
+    "k08",
+    "k09",
+    "k10",
+    "k11",
+    "k12",
+    "k13",
+    "k14",
+    "k15",
+    "k16",
+    "k17",
+    "k18",
+    "k19",
+    "k20",
+    "k21",
+    "k22",
+    "k23",
+    "k24",
+    "k25",
+    "k26",
+    "k27",
+    "k28",
+    "k29",
+    "k30",
+    "k31",
+    "k32",
+    "k33",
+    "k34",
+    "k35",
+    "k30"
+   ],
+   "design_effect": 1.1599859599859599,
+   "n_effective": 31.896937787460665,
+   "lower": 0.5294870815087713,
+   "upper": 0.8323419937208054
+  },
+  {
+   "values": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+   ],
+   "clusters": [
+    "a",
+    "a",
+    "a",
+    "a",
+    "a",
+    "b",
+    "b",
+    "b",
+    "b",
+    "b"
+   ],
+   "design_effect": 1.0,
+   "note": "no variation: the design effect is 1"
+  }
+ ],
+ "bootstrap_splitmix_pass_at_2": {
+  "samples": [
+   {
+    "id": "b-00",
+    "trials": [
+     true,
+     false,
+     false
+    ],
+    "cluster": "c00"
+   },
+   {
+    "id": "b-01",
+    "trials": [
+     false,
+     false,
+     true
+    ],
+    "cluster": "c00"
+   },
+   {
+    "id": "b-02",
+    "trials": [
+     false,
+     false,
+     true
+    ],
+    "cluster": "c01"
+   },
+   {
+    "id": "b-03",
+    "trials": [
+     false,
+     true,
+     true
+    ],
+    "cluster": "c01"
+   },
+   {
+    "id": "b-04",
+    "trials": [
+     false,
+     true,
+     false
+    ],
+    "cluster": "c02"
+   },
+   {
+    "id": "b-05",
+    "trials": [
+     true,
+     true,
+     false
+    ],
+    "cluster": "c02"
+   },
+   {
+    "id": "b-06",
+    "trials": [
+     true,
+     false,
+     false
+    ],
+    "cluster": "c03"
+   },
+   {
+    "id": "b-07",
+    "trials": [
+     true,
+     false,
+     false
+    ],
+    "cluster": "c03"
+   },
+   {
+    "id": "b-08",
+    "trials": [
+     false,
+     false,
+     true
+    ],
+    "cluster": "c04"
+   },
+   {
+    "id": "b-09",
+    "trials": [
+     false,
+     false,
+     true
+    ],
+    "cluster": "c04"
+   },
+   {
+    "id": "b-10",
+    "trials": [
+     false,
+     true,
+     true
+    ],
+    "cluster": "c05"
+   },
+   {
+    "id": "b-11",
+    "trials": [
+     false,
+     true,
+     false
+    ],
+    "cluster": "c05"
+   },
+   {
+    "id": "b-12",
+    "trials": [
+     true,
+     true,
+     false
+    ],
+    "cluster": "c06"
+   },
+   {
+    "id": "b-13",
+    "trials": [
+     true,
+     false,
+     false
+    ],
+    "cluster": "c06"
+   },
+   {
+    "id": "b-14",
+    "trials": [
+     true,
+     false,
+     false
+    ],
+    "cluster": "c07"
+   },
+   {
+    "id": "b-15",
+    "trials": [
+     false,
+     false,
+     true
+    ],
+    "cluster": "c07"
+   },
+   {
+    "id": "b-16",
+    "trials": [
+     false,
+     false,
+     true
+    ],
+    "cluster": "c08"
+   },
+   {
+    "id": "b-17",
+    "trials": [
+     false,
+     true,
+     true
+    ],
+    "cluster": "c08"
+   },
+   {
+    "id": "b-18",
+    "trials": [
+     false,
+     true,
+     false
+    ],
+    "cluster": "c09"
+   },
+   {
+    "id": "b-19",
+    "trials": [
+     true,
+     true,
+     false
+    ],
+    "cluster": "c09"
+   },
+   {
+    "id": "b-20",
+    "trials": [
+     true,
+     false,
+     false
+    ],
+    "cluster": "c10"
+   },
+   {
+    "id": "b-21",
+    "trials": [
+     true,
+     false,
+     false
+    ],
+    "cluster": "c10"
+   },
+   {
+    "id": "b-22",
+    "trials": [
+     false,
+     false,
+     true
+    ],
+    "cluster": "c11"
+   },
+   {
+    "id": "b-23",
+    "trials": [
+     false,
+     false,
+     true
+    ],
+    "cluster": "c11"
+   },
+   {
+    "id": "b-24",
+    "trials": [
+     false,
+     true,
+     true
+    ],
+    "cluster": "c12"
+   },
+   {
+    "id": "b-25",
+    "trials": [
+     false,
+     true,
+     false
+    ],
+    "cluster": "c12"
+   },
+   {
+    "id": "b-26",
+    "trials": [
+     true,
+     true,
+     false
+    ],
+    "cluster": "c13"
+   },
+   {
+    "id": "b-27",
+    "trials": [
+     true,
+     false,
+     false
+    ],
+    "cluster": "c13"
+   },
+   {
+    "id": "b-28",
+    "trials": [
+     true,
+     false,
+     false
+    ],
+    "cluster": "c14"
+   },
+   {
+    "id": "b-29",
+    "trials": [
+     false,
+     false,
+     true
+    ],
+    "cluster": "c14"
+   }
+  ],
+  "resamples": 2000,
+  "confidence": 0.95,
+  "inputs_digest": "sha256:c6ad79c63e00db6c301d28714aee0d27e1008d6c57155dea3d376cbc4e36d6d2",
+  "seed": "c6ad79c63e00db6c",
+  "point": 0.7555555555555554,
+  "lower": 0.711111111111111,
+  "upper": 0.8
+ },
+ "interval_inversion_p": [
+  {
+   "a": 23,
+   "b": 11,
+   "c": 3,
+   "d": 0,
+   "margin": 0.0,
+   "p": 0.03189596030555137
+  },
+  {
+   "a": 94,
+   "b": 11,
+   "c": 2,
+   "d": 13,
+   "margin": 0.0,
+   "p": 0.015867368782848945
+  }
+ ],
+ "newcombe_at_level": [
+  {
+   "a": 23,
+   "b": 11,
+   "c": 3,
+   "d": 0,
+   "level": 0.9833333333333333,
+   "lower": -0.026416997460129182,
+   "upper": 0.43205471867797307
+  },
+  {
+   "a": 94,
+   "b": 11,
+   "c": 2,
+   "d": 13,
+   "level": 0.95,
+   "lower": 0.014926603950636157,
+   "upper": 0.13938784672990062
+  }
+ ],
+ "compare_many_holm": {
+  "note": "paired tables against the shared baseline (both, candidate only, baseline only, neither): a (23, 11, 3, 0), b (23, 9, 3, 2), c (23, 1, 3, 10); b and c take their outcomes from the tables (26, 6, 5, 0) and (20, 4, 9, 4), sample by sample",
+  "candidates": [
+   {
+    "label": "cand_a",
+    "p_value": 0.03189596030555137,
+    "adjusted_p": 0.09568788091665412,
+    "level": 0.9833333333333333,
+    "lower": -0.026416997460129182,
+    "upper": 0.43205471867797307,
+    "verdict": "inconclusive"
+   },
+   {
+    "label": "cand_b",
+    "p_value": 0.09207798719000787,
+    "adjusted_p": 0.18415597438001574,
+    "level": 0.9833333333333333,
+    "lower": -0.06973399330269317,
+    "upper": 0.37651723750023214,
+    "verdict": "inconclusive"
+   },
+   {
+    "label": "cand_c",
+    "p_value": 0.36631716140654447,
+    "adjusted_p": 0.36631716140654447,
+    "level": 0.9833333333333333,
+    "lower": -0.19445691907411644,
+    "upper": 0.08808922948146447,
+    "verdict": "inconclusive"
+   }
+  ]
+ },
+ "detectable_paired_range": {
+  "n": 120,
+  "baseline": 0.8,
+  "smallest_difference": {
+   "low": 0.08521371848362985,
+   "typical": 0.1112338902158218,
+   "high": 0.13262184439394828
+  },
+  "assumed_correlation": {
+   "low": 0.7,
+   "typical": 0.5,
+   "high": 0.3
+  },
+  "rule": "each value is the larger of the smallest increase and the smallest decrease"
+ },
+ "required_samples_paired_range": {
+  "baseline": 0.8,
+  "difference": 0.05,
+  "samples": {
+   "low": 275,
+   "typical": 455,
+   "high": 634
+  }
+ },
+ "display_rounding": {
+  "rule": "percent = value * 100 on the shortest decimal spelling of the double, rounded half away from zero",
+  "cases": [
+   [
+    0.735,
+    "74"
+   ],
+   [
+    0.725,
+    "73"
+   ],
+   [
+    0.7320401892425632,
+    "73"
+   ],
+   [
+    0.9758199955157796,
+    "98"
+   ],
+   [
+    0.005,
+    "1"
+   ],
+   [
+    0.0049,
+    "0"
+   ],
+   [
+    0.995,
+    "100"
+   ],
+   [
+    "points",
+    0.014926603950636157,
+    "+1.5"
+   ],
+   [
+    "points",
+    -0.026416997460129016,
+    "-2.6"
+   ],
+   [
+    "points",
+    0.0005,
+    "+0.1"
+   ],
+   [
+    "points",
+    -0.0005,
+    "-0.1"
+   ]
+  ]
+ },
+ "display_never_pinned": {
+  "rule": "a value strictly between 0 and 1 never shows as 100 or 0: decimals are added for all three values up to 3, then a still-pinned value is rounded toward the inside",
+  "cases": [
+   {
+    "point": 0.972972972972973,
+    "lower": 0.8576,
+    "upper": 0.9953,
+    "display": {
+     "unit": "percent",
+     "decimals": 1,
+     "point": "97.3",
+     "lower": "85.8",
+     "upper": "99.5"
+    }
+   },
+   {
+    "point": 1.0,
+    "lower": 0.9057,
+    "upper": 1.0,
+    "display": {
+     "unit": "percent",
+     "decimals": 0,
+     "point": "100",
+     "lower": "91",
+     "upper": "100"
+    }
+   },
+   {
+    "point": 0.9999,
+    "lower": 0.99,
+    "upper": 0.999996,
+    "display": {
+     "unit": "percent",
+     "decimals": 3,
+     "point": "99.990",
+     "lower": "99.000",
+     "upper": "99.999"
+    }
+   },
+   {
+    "point": 0.004,
+    "lower": 4e-07,
+    "upper": 0.03,
+    "display": {
+     "unit": "percent",
+     "decimals": 3,
+     "point": "0.400",
+     "lower": "0.001",
+     "upper": "3.000"
+    }
+   }
+  ]
+ },
+ "review_rulings": {
+  "note": "B1: every value equal, decided exactly; B2: one cluster holding every sample is one independent unit; S2: no bootstrap over fewer than two clusters; S3: null where no change is detectable; R2-N2: every interval holds its point (one-sided beta posterior when every trial passed or failed, else moved at its level)",
+  "equal_fractions_beta_posterior": {
+   "samples": [
+    {
+     "id": "q-000",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-001",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-002",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-003",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-004",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-005",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-006",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-007",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-008",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-009",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-010",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-011",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-012",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-013",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-014",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-015",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-016",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-017",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-018",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-019",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-020",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-021",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-022",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-023",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-024",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-025",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-026",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-027",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-028",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-029",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-030",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-031",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-032",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-033",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-034",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-035",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-036",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-037",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-038",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-039",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-040",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-041",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-042",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-043",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-044",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-045",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-046",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-047",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-048",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-049",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-050",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-051",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-052",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-053",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-054",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-055",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-056",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-057",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-058",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-059",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-060",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-061",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-062",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-063",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-064",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-065",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-066",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-067",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-068",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-069",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-070",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-071",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-072",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-073",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-074",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-075",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-076",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-077",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-078",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-079",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-080",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-081",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-082",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-083",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-084",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-085",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-086",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-087",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-088",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-089",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-090",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-091",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-092",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-093",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-094",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-095",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-096",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-097",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-098",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "q-099",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    }
+   ],
+   "reducer": "mean",
+   "scale": "binary",
+   "method": "beta_posterior",
+   "point": 0.3333333333333333,
+   "lower": 0.24860670430003126,
+   "upper": 0.43066594627080823,
+   "clusters": null,
+   "design_effect": null,
+   "n_effective": null,
+   "warnings": [
+    "no_variation"
+   ],
+   "seed": null
+  },
+  "equal_scores_in_clusters": {
+   "samples": [
+    {
+     "id": "a",
+     "trials": [
+      0.1
+     ],
+     "cluster": "x"
+    },
+    {
+     "id": "b",
+     "trials": [
+      0.1
+     ],
+     "cluster": "x"
+    },
+    {
+     "id": "c",
+     "trials": [
+      0.1
+     ],
+     "cluster": "y"
+    }
+   ],
+   "reducer": "mean",
+   "scale": "continuous",
+   "method": "t",
+   "point": 0.1,
+   "lower": 0.1,
+   "upper": 0.1,
+   "clusters": 2,
+   "design_effect": 1.0,
+   "n_effective": 3.0,
+   "warnings": [
+    "small_sample",
+    "few_clusters",
+    "no_variation"
+   ],
+   "seed": null
+  },
+  "one_cluster_wilson": {
+   "samples": [
+    {
+     "id": "s-000",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-001",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-002",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-003",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-004",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-005",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-006",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-007",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-008",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-009",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-010",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-011",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-012",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-013",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-014",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-015",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-016",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-017",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-018",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-019",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-020",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-021",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-022",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-023",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-024",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-025",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-026",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-027",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-028",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-029",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-030",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-031",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-032",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-033",
+     "trials": [
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-034",
+     "trials": [
+      false
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-035",
+     "trials": [
+      false
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "s-036",
+     "trials": [
+      false
+     ],
+     "cluster": "one"
+    }
+   ],
+   "reducer": "majority",
+   "scale": "binary",
+   "method": "wilson",
+   "point": 0.918918918918919,
+   "lower": 0.17470015353260365,
+   "upper": 0.9983546774321088,
+   "clusters": 1,
+   "design_effect": 37.0,
+   "n_effective": 1.0,
+   "warnings": [
+    "few_clusters"
+   ],
+   "seed": null
+  },
+  "effective_size_just_above_one": {
+   "samples": [
+    {
+     "id": "k-0",
+     "trials": [
+      0.9
+     ],
+     "cluster": "a"
+    },
+    {
+     "id": "k-1",
+     "trials": [
+      0.9
+     ],
+     "cluster": "a"
+    },
+    {
+     "id": "k-2",
+     "trials": [
+      0.9
+     ],
+     "cluster": "a"
+    },
+    {
+     "id": "k-3",
+     "trials": [
+      0.9
+     ],
+     "cluster": "a"
+    },
+    {
+     "id": "k-4",
+     "trials": [
+      0.9
+     ],
+     "cluster": "a"
+    },
+    {
+     "id": "k-5",
+     "trials": [
+      0.9
+     ],
+     "cluster": "a"
+    },
+    {
+     "id": "k-6",
+     "trials": [
+      0.9
+     ],
+     "cluster": "a"
+    },
+    {
+     "id": "k-7",
+     "trials": [
+      0.9
+     ],
+     "cluster": "a"
+    },
+    {
+     "id": "k-8",
+     "trials": [
+      0.9
+     ],
+     "cluster": "a"
+    },
+    {
+     "id": "k-9",
+     "trials": [
+      0.9
+     ],
+     "cluster": "a"
+    },
+    {
+     "id": "k-10",
+     "trials": [
+      0.9
+     ],
+     "cluster": "a"
+    },
+    {
+     "id": "k-11",
+     "trials": [
+      0.9
+     ],
+     "cluster": "a"
+    },
+    {
+     "id": "k-12",
+     "trials": [
+      0.9
+     ],
+     "cluster": "a"
+    },
+    {
+     "id": "k-13",
+     "trials": [
+      0.9
+     ],
+     "cluster": "a"
+    },
+    {
+     "id": "k-14",
+     "trials": [
+      0.9
+     ],
+     "cluster": "a"
+    },
+    {
+     "id": "k-15",
+     "trials": [
+      0.9
+     ],
+     "cluster": "a"
+    },
+    {
+     "id": "k-16",
+     "trials": [
+      0.9
+     ],
+     "cluster": "a"
+    },
+    {
+     "id": "k-17",
+     "trials": [
+      0.9
+     ],
+     "cluster": "a"
+    },
+    {
+     "id": "k-18",
+     "trials": [
+      0.9
+     ],
+     "cluster": "a"
+    },
+    {
+     "id": "k-19",
+     "trials": [
+      0.9
+     ],
+     "cluster": "a"
+    },
+    {
+     "id": "k-20",
+     "trials": [
+      0.1
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "k-21",
+     "trials": [
+      0.1
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "k-22",
+     "trials": [
+      0.1
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "k-23",
+     "trials": [
+      0.1
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "k-24",
+     "trials": [
+      0.1
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "k-25",
+     "trials": [
+      0.1
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "k-26",
+     "trials": [
+      0.1
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "k-27",
+     "trials": [
+      0.1
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "k-28",
+     "trials": [
+      0.1
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "k-29",
+     "trials": [
+      0.1
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "k-30",
+     "trials": [
+      0.1
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "k-31",
+     "trials": [
+      0.1
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "k-32",
+     "trials": [
+      0.1
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "k-33",
+     "trials": [
+      0.1
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "k-34",
+     "trials": [
+      0.1
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "k-35",
+     "trials": [
+      0.1
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "k-36",
+     "trials": [
+      0.1
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "k-37",
+     "trials": [
+      0.1
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "k-38",
+     "trials": [
+      0.1
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "k-39",
+     "trials": [
+      0.1
+     ],
+     "cluster": "b"
+    }
+   ],
+   "reducer": "mean",
+   "scale": "continuous",
+   "method": "t",
+   "point": 0.5,
+   "lower": 0.0,
+   "upper": 1.0,
+   "clusters": 2,
+   "design_effect": 39.99999999999999,
+   "n_effective": 1.0000000000000002,
+   "warnings": [
+    "few_clusters",
+    "interval_clipped"
+   ],
+   "seed": null
+  },
+  "bootstrap_one_cluster": {
+   "samples": [
+    {
+     "id": "b-00",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-01",
+     "trials": [
+      false,
+      false,
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-02",
+     "trials": [
+      false,
+      false,
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-03",
+     "trials": [
+      false,
+      true,
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-04",
+     "trials": [
+      false,
+      true,
+      false
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-05",
+     "trials": [
+      true,
+      true,
+      false
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-06",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-07",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-08",
+     "trials": [
+      false,
+      false,
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-09",
+     "trials": [
+      false,
+      false,
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-10",
+     "trials": [
+      false,
+      true,
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-11",
+     "trials": [
+      false,
+      true,
+      false
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-12",
+     "trials": [
+      true,
+      true,
+      false
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-13",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-14",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-15",
+     "trials": [
+      false,
+      false,
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-16",
+     "trials": [
+      false,
+      false,
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-17",
+     "trials": [
+      false,
+      true,
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-18",
+     "trials": [
+      false,
+      true,
+      false
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-19",
+     "trials": [
+      true,
+      true,
+      false
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-20",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-21",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-22",
+     "trials": [
+      false,
+      false,
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-23",
+     "trials": [
+      false,
+      false,
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-24",
+     "trials": [
+      false,
+      true,
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-25",
+     "trials": [
+      false,
+      true,
+      false
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-26",
+     "trials": [
+      true,
+      true,
+      false
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-27",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-28",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "b-29",
+     "trials": [
+      false,
+      false,
+      true
+     ],
+     "cluster": "one"
+    }
+   ],
+   "reducer": "pass_at_2",
+   "scale": "binary",
+   "method": "bootstrap",
+   "point": 0.7555555555555554,
+   "lower": 0.0,
+   "upper": 1.0,
+   "clusters": 1,
+   "design_effect": null,
+   "n_effective": null,
+   "warnings": [
+    "few_clusters",
+    "interval_clipped",
+    "too_few_units"
+   ],
+   "seed": null
+  },
+  "bootstrap_one_sample": {
+   "samples": [
+    {
+     "id": "a",
+     "trials": [
+      true,
+      true,
+      false
+     ],
+     "cluster": null
+    }
+   ],
+   "reducer": "pass_at_2",
+   "scale": "binary",
+   "method": "bootstrap",
+   "point": 1.0,
+   "lower": 0.0,
+   "upper": 1.0,
+   "clusters": null,
+   "design_effect": null,
+   "n_effective": null,
+   "warnings": [
+    "small_sample",
+    "interval_clipped",
+    "too_few_units"
+   ],
+   "seed": null
+  },
+  "beta_all_passed": {
+   "samples": [
+    {
+     "id": "p-00",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-01",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-02",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-03",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-04",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-05",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-06",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-07",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-08",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-09",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-10",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-11",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-12",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-13",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-14",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-15",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-16",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-17",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-18",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-19",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-20",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-21",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-22",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-23",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-24",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-25",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-26",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-27",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-28",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-29",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    }
+   ],
+   "reducer": "mean",
+   "scale": "binary",
+   "method": "beta_posterior",
+   "point": 1.0,
+   "lower": 0.9078859400526763,
+   "upper": 1.0,
+   "clusters": null,
+   "design_effect": null,
+   "n_effective": null,
+   "warnings": [
+    "no_variation"
+   ],
+   "seed": null
+  },
+  "beta_all_failed": {
+   "samples": [
+    {
+     "id": "p-00",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-01",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-02",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-03",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-04",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-05",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-06",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-07",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-08",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-09",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-10",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-11",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-12",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-13",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-14",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-15",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-16",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-17",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-18",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-19",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-20",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-21",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-22",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-23",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-24",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-25",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-26",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-27",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-28",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-29",
+     "trials": [
+      false,
+      false
+     ],
+     "cluster": null
+    }
+   ],
+   "reducer": "mean",
+   "scale": "binary",
+   "method": "beta_posterior",
+   "point": 0.0,
+   "lower": 0.0,
+   "upper": 0.0921140599473237,
+   "clusters": null,
+   "design_effect": null,
+   "n_effective": null,
+   "warnings": [
+    "no_variation"
+   ],
+   "seed": null
+  },
+  "beta_all_passed_few": {
+   "samples": [
+    {
+     "id": "p-00",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-01",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    },
+    {
+     "id": "p-02",
+     "trials": [
+      true,
+      true
+     ],
+     "cluster": null
+    }
+   ],
+   "reducer": "mean",
+   "scale": "binary",
+   "method": "beta_posterior",
+   "point": 1.0,
+   "lower": 0.472870804501588,
+   "upper": 1.0,
+   "clusters": null,
+   "design_effect": null,
+   "n_effective": null,
+   "warnings": [
+    "small_sample"
+   ],
+   "seed": null
+  },
+  "beta_near_end": {
+   "samples": [
+    {
+     "id": "n-0",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "n-1",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+     ],
+     "cluster": "one"
+    },
+    {
+     "id": "n-2",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false
+     ],
+     "cluster": "one"
+    }
+   ],
+   "reducer": "mean",
+   "scale": "binary",
+   "method": "beta_posterior",
+   "point": 0.9899999999999999,
+   "lower": 0.17333381142036533,
+   "upper": 0.9899999999999999,
+   "clusters": 1,
+   "design_effect": 3.0,
+   "n_effective": 1.0,
+   "warnings": [
+    "small_sample",
+    "few_clusters"
+   ],
+   "seed": null
+  },
+  "beta_low_level": {
+   "samples": [
+    {
+     "id": "t-0",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "t-1",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    },
+    {
+     "id": "t-2",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": null
+    }
+   ],
+   "reducer": "mean",
+   "scale": "binary",
+   "confidence": 0.1,
+   "method": "beta_posterior",
+   "point": 0.3333333333333333,
+   "lower": 0.3333333333333333,
+   "upper": 0.38997483548063117,
+   "clusters": null,
+   "design_effect": null,
+   "n_effective": null,
+   "warnings": [
+    "small_sample"
+   ],
+   "seed": null
+  },
+  "bootstrap_rounding": {
+   "samples": [
+    {
+     "id": "r-0",
+     "trials": [
+      true,
+      false,
+      false
+     ],
+     "cluster": "a"
+    },
+    {
+     "id": "r-1",
+     "trials": [
+      true,
+      true,
+      false
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "r-2",
+     "trials": [
+      true,
+      true,
+      false
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "r-3",
+     "trials": [
+      true,
+      true,
+      false
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "r-4",
+     "trials": [
+      true,
+      true,
+      false
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "r-5",
+     "trials": [
+      true,
+      true,
+      false
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "r-6",
+     "trials": [
+      true,
+      true,
+      false
+     ],
+     "cluster": "b"
+    },
+    {
+     "id": "r-7",
+     "trials": [
+      true,
+      true,
+      false
+     ],
+     "cluster": "b"
+    }
+   ],
+   "reducer": "pass_at_1",
+   "scale": "binary",
+   "confidence": 0.5,
+   "method": "bootstrap",
+   "point": 0.625,
+   "lower": 0.33333333333333326,
+   "upper": 0.625,
+   "clusters": 2,
+   "design_effect": null,
+   "n_effective": null,
+   "warnings": [
+    "small_sample",
+    "few_clusters"
+   ],
+   "seed": "318bc3fa8e0b3a03"
+  },
+  "bootstrap_low_level": {
+   "samples": [
+    {
+     "id": "k-0",
+     "trials": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c0"
+    },
+    {
+     "id": "k-1",
+     "trials": [
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c1"
+    },
+    {
+     "id": "k-2",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c2"
+    },
+    {
+     "id": "k-3",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false
+     ],
+     "cluster": "c3"
+    },
+    {
+     "id": "k-4",
+     "trials": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c4"
+    },
+    {
+     "id": "k-5",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c5"
+    },
+    {
+     "id": "k-6",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c0"
+    },
+    {
+     "id": "k-7",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+     ],
+     "cluster": "c1"
+    },
+    {
+     "id": "k-8",
+     "trials": [
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c2"
+    },
+    {
+     "id": "k-9",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c3"
+    },
+    {
+     "id": "k-10",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+     ],
+     "cluster": "c4"
+    },
+    {
+     "id": "k-11",
+     "trials": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c5"
+    },
+    {
+     "id": "k-12",
+     "trials": [
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c0"
+    },
+    {
+     "id": "k-13",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c1"
+    },
+    {
+     "id": "k-14",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false
+     ],
+     "cluster": "c2"
+    },
+    {
+     "id": "k-15",
+     "trials": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c3"
+    },
+    {
+     "id": "k-16",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c4"
+    },
+    {
+     "id": "k-17",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c5"
+    },
+    {
+     "id": "k-18",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+     ],
+     "cluster": "c0"
+    },
+    {
+     "id": "k-19",
+     "trials": [
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c1"
+    },
+    {
+     "id": "k-20",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c2"
+    },
+    {
+     "id": "k-21",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+     ],
+     "cluster": "c3"
+    },
+    {
+     "id": "k-22",
+     "trials": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c4"
+    },
+    {
+     "id": "k-23",
+     "trials": [
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c5"
+    },
+    {
+     "id": "k-24",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c0"
+    },
+    {
+     "id": "k-25",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false
+     ],
+     "cluster": "c1"
+    },
+    {
+     "id": "k-26",
+     "trials": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c2"
+    },
+    {
+     "id": "k-27",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c3"
+    },
+    {
+     "id": "k-28",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c4"
+    },
+    {
+     "id": "k-29",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+     ],
+     "cluster": "c5"
+    },
+    {
+     "id": "k-30",
+     "trials": [
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c0"
+    },
+    {
+     "id": "k-31",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c1"
+    },
+    {
+     "id": "k-32",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+     ],
+     "cluster": "c2"
+    },
+    {
+     "id": "k-33",
+     "trials": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c3"
+    },
+    {
+     "id": "k-34",
+     "trials": [
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c4"
+    },
+    {
+     "id": "k-35",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c5"
+    },
+    {
+     "id": "k-36",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false
+     ],
+     "cluster": "c0"
+    },
+    {
+     "id": "k-37",
+     "trials": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c1"
+    },
+    {
+     "id": "k-38",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c2"
+    },
+    {
+     "id": "k-39",
+     "trials": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false
+     ],
+     "cluster": "c3"
+    }
+   ],
+   "reducer": "pass_all_2",
+   "scale": "binary",
+   "confidence": 0.01,
+   "method": "bootstrap",
+   "point": 0.31999999999999995,
+   "lower": 0.31999999999999995,
+   "upper": 0.3204664099272571,
+   "clusters": 6,
+   "design_effect": null,
+   "n_effective": null,
+   "warnings": [
+    "few_clusters"
+   ],
+   "seed": "b39ce7dafb0753ff"
+  },
+  "not_detectable": [
+   {
+    "n": 5,
+    "baseline": 0.5,
+    "paired": false,
+    "smallest_difference": {
+     "low": null,
+     "typical": null,
+     "high": null
+    },
+    "display": {
+     "unit": "points",
+     "decimals": 0,
+     "low": null,
+     "typical": null,
+     "high": null
+    }
+   },
+   {
+    "n": 8,
+    "baseline": 0.5,
+    "paired": false,
+    "smallest_difference": {
+     "low": null,
+     "typical": null,
+     "high": null
+    },
+    "display": {
+     "unit": "points",
+     "decimals": 0,
+     "low": null,
+     "typical": null,
+     "high": null
+    }
+   },
+   {
+    "n": 1,
+    "baseline": 0.8,
+    "paired": true,
+    "smallest_difference": {
+     "low": null,
+     "typical": null,
+     "high": null
+    },
+    "display": {
+     "unit": "points",
+     "decimals": 0,
+     "low": null,
+     "typical": null,
+     "high": null
+    }
+   },
+   {
+    "n": 7,
+    "baseline": 0.5,
+    "paired": true,
+    "smallest_difference": {
+     "low": 0.378942164803226,
+     "typical": 0.46312539191872804,
+     "high": null
+    },
+    "display": {
+     "unit": "points",
+     "decimals": 0,
+     "low": "38",
+     "typical": "46",
+     "high": null
+    }
+   }
+  ]
+ }
+}

@@ -2081,6 +2081,32 @@ Purpose:
 
 - RubyLLM's public touch points Smith relies on, through its public interface only: the message, content, tool call, thinking and attachment readers the transcript uses, a paint's `RubyLLM::Image` and its base64 `data`, a schema reply parsed into a Hash, the `*_api_base` options, and one public error class per provider status (Unreleased)
 
+### `spec/smith/canonical_json_spec.rb`
+
+Purpose:
+
+- pins `Smith::CanonicalJSON` (RFC 8785): every number of the RFC's Appendix B as Node.js writes it, NaN and Infinity refused, members in UTF-16 order (the RFC's sorting and full examples), JSON.stringify's escaping, keys equal after Symbol conversion, integers past 2**53 - 1 and invalid UTF-8 refused, and the depth, value and byte bounds (Unreleased)
+
+### `spec/smith/scope_spec.rb`
+
+Purpose:
+
+- pins `Smith::Scope`: a frozen Hash of at most 8 String pairs with keys like "tenant", values of 1 to 256 bytes of UTF-8, Symbol keys converted, everything else refused with `Smith::ScopeInvalid` that never names a value, and a digest stable across processes and equal to the reference generator's (Unreleased)
+
+### `spec/smith/evals/statistics/*_spec.rb`
+
+Purpose:
+
+- pins `Smith::Evals::Statistics` against `spec/fixtures/evals/statistics_reference.json`: the distributions at 1e-9 relative, the closed forms at 1e-12, SplitMix64, its range draws and the seeded bootstrap exactly; the design-effect, interval-inversion, Holm, size and display cases; the no-worse family at 1 - alpha/m; every input bound refused before any work; every result valid against `docs/evals/schemas/stats.schema.json` as published and with unknown fields refused; the design's property tests; byte-identical JSON in two processes (Unreleased)
+- pins the slice 1a.1 review's rulings: equal values decided exactly (the beta posterior for 100 samples of 1 of 3, a design effect of 1 for equal values in clusters, equal paired differences zero wide); one cluster read as one independent unit with `few_clusters`; valid inputs never raising (an effective size just above 1, the beta posterior and McNemar at the largest counts); no bootstrap over fewer than two clusters; `detectable` null where nothing is detectable; t's quantile within 1e-10 relative of `spec/fixtures/evals/t_quantile_reference.json` at every level and degree of freedom it holds (Unreleased)
+- pins the round 2 review's rulings: every interval holds the point it is shown with, in its numbers and its text (the one-sided beta posterior when every trial passed or failed; the beta posterior and the bootstrap moved at their level where the equal-tailed cut leaves the point out); a confidence above 0.999999999 refused at every entry point with one plain message; `detectable` at every baseline strictly between 0 and 1 (Unreleased)
+
+### `spec/smith/evals/statistics_standalone_spec.rb`, `spec/smith/evals/no_ruby_llm_spec.rb` and `spec/smith/evals/rubocop_directives_spec.rb`
+
+Purpose:
+
+- `require "smith/evals/statistics"` alone, in a child process, loads no workflow code and installs no observer; `require "smith"` defines none of slice 1a.1's constants; no file under `lib/smith/evals/`, nor canonical JSON or the scope type, names the provider gem; their RuboCop directives use only `disable` and `enable`, which RuboCop 1.85 reads as 1.92 does (Unreleased)
+
 ### `spec/smith/optimize_batch_spec.rb`
 
 Purpose:

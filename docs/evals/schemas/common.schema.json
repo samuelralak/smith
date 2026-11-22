@@ -1,0 +1,475 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:smith:evals:1:common",
+  "title": "Smith evals: shared definitions (format version 1)",
+  "description": "Definitions shared by every Smith evals file. Readers ignore fields they do not know; objects are therefore open (no additionalProperties: false). A change that is not additive is a new format_version.",
+  "$defs": {
+    "format_version": {
+      "description": "The major version of a file format. Additive changes keep it.",
+      "const": 1
+    },
+    "eval_run_id": {
+      "description": "One eval run. 'er_' and 32 lowercase hex digits. Derived from the scope, suite name, idempotency key and (for a linked run) the variant digest when a key is given, otherwise random.",
+      "type": "string",
+      "pattern": "^er_[0-9a-f]{32}$"
+    },
+    "trial_id": {
+      "description": "One trial: 'tr_' and the first 32 hex digits of SHA-256 over the eval run id, sample id, trial index and candidate id. The same across a relaunch.",
+      "type": "string",
+      "pattern": "^tr_[0-9a-f]{32}$"
+    },
+    "candidate_id": {
+      "description": "A tuning candidate (slice 5a). Null for every trial before then.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^cd_[0-9a-f]{32}$"
+    },
+    "group_id": {
+      "description": "A group of linked eval runs (a model comparison). 'eg_' and 32 lowercase hex digits, derived from the scope, suite name and idempotency key.",
+      "type": "string",
+      "pattern": "^eg_[0-9a-f]{32}$"
+    },
+    "sample_id": {
+      "description": "A sample's id as the dataset gives it: 1 to 256 characters, no control characters.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "content_hash": {
+      "description": "SHA-256, lowercase hex, tagged 'sha256:'. JSON values are hashed as RFC 8785 canonical JSON, framed either by a 'name/N\\n' prefix or by a format field inside the hashed object; a single text is hashed as its UTF-8 bytes.",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "json_pointer": {
+      "description": "An RFC 6901 JSON Pointer. The empty string is the whole value.",
+      "type": "string",
+      "maxLength": 512,
+      "pattern": "^(/([^~/]|~[01])*)*$"
+    },
+    "timestamp": {
+      "description": "UTC, RFC 3339, with a Z and up to microseconds.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+    },
+    "name": {
+      "description": "A suite or dataset name.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.-]{0,127}$"
+    },
+    "scorer_name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
+    "split": {
+      "description": "dev (read and tune freely), holdout (the honest number), calibration (labels kept to check judges).",
+      "enum": [
+        "dev",
+        "holdout",
+        "calibration"
+      ]
+    },
+    "scope": {
+      "description": "The tenant scope every store call, header and summary carries (trial and segment lines are stored under it). String keys and values, at most 8; {} for a single-tenant host. One type everywhere: eval runs, definition references and run credential scopes (design.md 8.8).",
+      "type": "object",
+      "maxProperties": 8,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]{0,63}$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      }
+    },
+    "actor": {
+      "description": "Who did something: a person, a service (an API key, a CI job) or a policy (an automatic rule). The id is the host's own.",
+      "type": "object",
+      "required": [
+        "kind",
+        "id"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "person",
+            "service",
+            "policy"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      }
+    },
+    "nullable_actor": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/actor"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "code": {
+      "description": "A machine-readable code. Open vocabulary: readers treat an unknown code as its 'by' category says.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
+    "reason": {
+      "description": "Why something happened and who caused it.",
+      "type": "object",
+      "required": [
+        "code",
+        "by"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/code"
+        },
+        "by": {
+          "description": "subject: the thing under test; grader: a scorer; infrastructure: providers, stores, the host; eval_run: the eval run itself (its cap); operator: a person or service acting on the run.",
+          "enum": [
+            "subject",
+            "grader",
+            "infrastructure",
+            "eval_run",
+            "operator"
+          ]
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 1024
+        }
+      }
+    },
+    "nullable_reason": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/reason"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "error_info": {
+      "description": "An error as Smith classified it. family is Smith's failure family (or eval_cap, or other).",
+      "type": "object",
+      "required": [
+        "class",
+        "family",
+        "message"
+      ],
+      "properties": {
+        "class": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "family": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 1024
+        }
+      }
+    },
+    "nullable_error_info": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/error_info"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "count_map": {
+      "description": "Counts by code.",
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/code"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/count"
+      }
+    },
+    "tokens": {
+      "type": "object",
+      "required": [
+        "input",
+        "output",
+        "cache_read",
+        "cache_write",
+        "thinking"
+      ],
+      "properties": {
+        "input": {
+          "$ref": "#/$defs/count"
+        },
+        "output": {
+          "$ref": "#/$defs/count"
+        },
+        "cache_read": {
+          "$ref": "#/$defs/count"
+        },
+        "cache_write": {
+          "$ref": "#/$defs/count"
+        },
+        "thinking": {
+          "$ref": "#/$defs/count"
+        }
+      }
+    },
+    "cost_nanos": {
+      "description": "Cost in billionths of the record's cost_unit (USD unless the host says otherwise). Integer, so sums are exact.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "usage": {
+      "type": "object",
+      "required": [
+        "tokens",
+        "cost_nanos",
+        "cost_complete",
+        "provider_calls"
+      ],
+      "properties": {
+        "tokens": {
+          "$ref": "#/$defs/tokens"
+        },
+        "cost_nanos": {
+          "$ref": "#/$defs/cost_nanos"
+        },
+        "cost_complete": {
+          "description": "False when some call's usage or price was unknown, so cost_nanos is a floor.",
+          "type": "boolean"
+        },
+        "provider_calls": {
+          "$ref": "#/$defs/count"
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "required": [
+        "smith_version",
+        "execution_semantics_version",
+        "ruby_version",
+        "host_code_version"
+      ],
+      "properties": {
+        "smith_version": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "execution_semantics_version": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "ruby_version": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "host_code_version": {
+          "description": "The host's own code version (a git SHA, say), when it gives one.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        }
+      }
+    },
+    "outcome": {
+      "description": "A trial's outcome. Closed set: adding one is a new format_version.",
+      "enum": [
+        "scored",
+        "subject_failed",
+        "limit_hit",
+        "unscored",
+        "error",
+        "not_run"
+      ]
+    },
+    "value_source": {
+      "description": "Where a check or an input mapping reads a value: exactly one of output (the subject's answer), state (the kept end state), sample (the sample line) or value (a constant).",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "output"
+          ],
+          "properties": {
+            "output": {
+              "$ref": "#/$defs/json_pointer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "$ref": "#/$defs/json_pointer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "sample"
+          ],
+          "properties": {
+            "sample": {
+              "$ref": "#/$defs/json_pointer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "value"
+          ],
+          "properties": {
+            "value": {
+              "description": "Any JSON value."
+            }
+          }
+        }
+      ]
+    },
+    "llm": {
+      "description": "A model choice as data: the primary model, its settings and its fallbacks. The same shape as a definition's llm block (additions/design.md 2.3).",
+      "type": "object",
+      "required": [
+        "provider",
+        "model",
+        "settings",
+        "fallbacks"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$"
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "settings": {
+          "type": "object",
+          "properties": {
+            "temperature": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 2
+            },
+            "max_output_tokens": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "thinking": {
+              "type": "object",
+              "properties": {
+                "effort": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high"
+                  ]
+                },
+                "budget": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        },
+        "fallbacks": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "required": [
+              "provider",
+              "model"
+            ],
+            "properties": {
+              "provider": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "variant": {
+      "description": "The model variant a linked eval run used (slice 1b; shape frozen with 1b). digest is SHA-256 of the canonical JSON {format: 'smith.evals.variant/1', llm}; the label is not hashed.",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "label",
+            "llm",
+            "digest"
+          ],
+          "properties": {
+            "label": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "llm": {
+              "$ref": "#/$defs/llm"
+            },
+            "digest": {
+              "$ref": "#/$defs/content_hash"
+            }
+          }
+        }
+      ]
+    },
+    "component_version": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "version": {
+          "$ref": "#/$defs/content_hash"
+        }
+      }
+    }
+  }
+}
