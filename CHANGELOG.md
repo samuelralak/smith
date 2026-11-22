@@ -4,7 +4,7 @@ All notable changes to Smith are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Smith is pre-1.0 and under active development; expect occasional contract tightening between minor versions until 1.0.
 
-## [Unreleased]
+## [0.15.0] - 2026-11-22
 
 ### Added
 
@@ -75,6 +75,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   the cache (`cache_control` on the request or on a message's block) is now
   held with its input at the dearer of plain input and a cache write; any
   other request, and a model with no cache-write rate, is held as before.
+
+### Upgrading
+
+- A workflow whose budget declares `wall_clock` makes again the output
+  repairs, truncation retries and refusal fallbacks it had skipped, so its
+  steps may spend more of the budget than under 0.14.0.
+- A request marked for the prompt cache is held at the dearer of plain input
+  and a cache write, so a budget close to its limit refuses such a request
+  sooner.
+- `Smith::EXECUTION_SEMANTICS_VERSION` stays `"7"`: an optimize step's
+  stored batch wait may now carry the words `before_generate` told its round
+  (`told`), and a run stored by 0.14.0, which carries none, restores as it is.
 
 ## [0.14.0] - 2026-11-09
 
