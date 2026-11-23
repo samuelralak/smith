@@ -2,7 +2,7 @@
 
 require_relative "output_integrity"
 require_relative "provider_completion"
-require_relative "provider_paint"
+require_relative "../provider_paint"
 require_relative "usage_tracking"
 
 module Smith

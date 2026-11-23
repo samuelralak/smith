@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "timeout"
+
 RSpec.describe "Smith configuration contract" do
   it "exposes the top-level configure API used throughout the architecture" do
     expect(Smith).to respond_to(:configure)
@@ -153,7 +155,7 @@ RSpec.describe "Smith configuration contract" do
     Smith.configure { |config| config.persistence_ttl = 3600 }
 
     cached = Smith.persistence_adapter
-    Smith.instance_variable_set(:@_persistence_adapter_signature, nil)
+    Smith.instance_variable_set(:@_persistence_adapter_current, nil)
 
     expect(resolved).to be_a(Smith::PersistenceAdapters::ActiveRecordStore)
     expect(cached).to equal(resolved)
@@ -163,6 +165,71 @@ RSpec.describe "Smith configuration contract" do
       config.persistence_adapter = original_adapter
       config.persistence_options = original_options
       config.persistence_ttl = original_ttl
+    end
+  end
+
+  # A configuration is kept with its adapter only once the adapter is
+  # built, so one that fails to build fails on every call.
+  it "raises again for a configuration whose adapter failed to build, never giving the previous one's" do
+    original_adapter = Smith.config.persistence_adapter
+    original_options = Smith.config.persistence_options
+    Smith.configure do |config|
+      config.persistence_adapter = :memory
+      config.persistence_options = {}
+    end
+    previous = Smith.persistence_adapter
+    Smith.configure { |config| config.persistence_adapter = :cache_store }
+
+    asked = Array.new(2) do
+      Smith.persistence_adapter
+    rescue ArgumentError => e
+      e.message
+    end
+    expect(previous).to be_a(Smith::PersistenceAdapters::Memory)
+    expect(asked).to eq(["missing keyword: :store"] * 2)
+  ensure
+    Smith.configure do |config|
+      config.persistence_adapter = original_adapter
+      config.persistence_options = original_options
+    end
+  end
+
+  # Threads asking at once, at first use, share the one adapter built; none
+  # gets nil, or another configuration's adapter, while it is being built.
+  it "gives threads asking at once for a configuration's adapter the one adapter it builds" do
+    original_adapter = Smith.config.persistence_adapter
+    original_options = Smith.config.persistence_options
+    building = Queue.new
+    release = Queue.new
+    built = []
+    slow = Class.new do
+      define_method(:initialize) do
+        built << self
+        building << true
+        release.pop
+      end
+      %i[store fetch delete].each { |name| define_method(name) { |*| nil } }
+    end
+    Smith.configure do |config|
+      config.persistence_adapter = slow
+      config.persistence_options = {}
+    end
+
+    first = Thread.new { Smith.persistence_adapter }
+    building.pop
+    second = Thread.new { Smith.persistence_adapter }
+    Timeout.timeout(5) { Thread.pass until second.stop? }
+    release << true
+    answers = [first, second].map { _1.join(5)&.value }
+
+    expect(answers.first).to be_a(slow)
+    expect(answers.last).to equal(answers.first)
+    expect(built.length).to eq(1)
+  ensure
+    release << true
+    Smith.configure do |config|
+      config.persistence_adapter = original_adapter
+      config.persistence_options = original_options
     end
   end
 end

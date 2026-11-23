@@ -31,6 +31,51 @@ RSpec.describe Smith::PersistenceAdapters do
       adapter.delete("probe")
     end
 
+    # A store given as a callable is built on first use; threads that first
+    # use the adapter together share the one store it builds.
+    it "builds a cache store from its callable once for threads that first use it together" do
+      built = Queue.new
+      used = Queue.new
+      threads = []
+      store_class = Struct.new(:used) do
+        def write(*) = used << self
+        def read(*) = used << self
+      end
+      settled = lambda do
+        deadline = Time.now + 2
+        Thread.pass until built.size >= 2 || (threads.size == 2 && (threads - [Thread.current]).all?(&:stop?)) ||
+                          Time.now > deadline
+      end
+      adapter = described_class.resolve(:cache_store, store: lambda {
+        store_class.new(used).tap { built << _1 }.tap { settled.call }
+      })
+
+      threads << Thread.new { adapter.store("probe", "payload") }
+      Thread.pass until built.size >= 1
+      threads << Thread.new { adapter.fetch("probe") }
+      threads.each { _1.join(5) }
+      stores = Array.new(used.size) { used.pop }
+
+      expect([built.size, stores.length, stores.map(&:object_id).uniq.length]).to eq([1, 2, 1])
+    end
+
+    it "asks a cache store's source again after it raised, and refuses one that asks its adapter for the store" do
+      asked = 0
+      store = Object.new.tap { _1.define_singleton_method(:read) { |_key| "payload" } }
+      # Not there on first use (say, before the host's cache is set up).
+      source = -> { (asked += 1) == 1 ? nil : store }
+      adapter = described_class.resolve(:cache_store, store: source)
+      holder = {}
+      asking = described_class.resolve(:cache_store, store: -> { holder.fetch(:adapter).fetch("probe") })
+      holder[:adapter] = asking
+
+      expect { adapter.fetch("probe") }.to raise_error(ArgumentError, "cache store is required")
+      expect([adapter.fetch("probe"), asked]).to eq(["payload", 2])
+      expect { asking.fetch("probe") }
+        .to raise_error(Smith::Error, "the cache store's source asked its adapter for the cache store, " \
+                                      "which it was still building")
+    end
+
     it "resolves :rails_cache through Rails.cache" do
       cache = instance_double("RailsCache")
       stub_const("Rails", Class.new)

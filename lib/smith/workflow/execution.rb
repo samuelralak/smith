@@ -19,7 +19,6 @@ module Smith
       include StepStream
       include Agent::Lifecycle
       include NestedExecution
-      include NestedItemsExecution
       include EvaluatorOptimizer
       include OrchestratorWorker
       include ParallelExecution

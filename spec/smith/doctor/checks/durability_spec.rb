@@ -3,6 +3,15 @@
 require "smith/doctor"
 
 RSpec.describe Smith::Doctor::Checks::Durability do
+  # Smith keeps the adapter it resolved for a configuration, and these
+  # examples swap Rails between them, so each resolves its own.
+  before { forget_resolved_adapter }
+  after { forget_resolved_adapter }
+
+  def forget_resolved_adapter
+    Smith.instance_variable_set(:@_persistence_adapter_current, nil)
+  end
+
   it "warns when no persistence_adapter is configured" do
     original = Smith.config.persistence_adapter
     original_options = Smith.config.persistence_options
@@ -306,5 +315,36 @@ RSpec.describe Smith::Doctor::Checks::Durability do
       c.persistence_adapter = original
       c.persistence_options = original_options
     end
+  end
+
+  # Another configuration's adapter, resolved before, never stands in for
+  # one that cannot be built, however often the doctor runs.
+  it "fails the adapter check on every run while the adapter cannot be built" do
+    original = Smith.config.persistence_adapter
+    original_options = Smith.config.persistence_options
+    Smith.configure do |c|
+      c.persistence_adapter = :memory
+      c.persistence_options = {}
+    end
+    Smith.persistence_adapter
+    Smith.configure { |c| c.persistence_adapter = :cache_store }
+
+    runs = Array.new(2) do
+      report = Smith::Doctor::Report.new
+      described_class.run(report)
+      report.checks.map { [_1.name, _1.status] }
+    end
+    expect(runs).to eq([[["durability.adapter", :fail]]] * 2)
+  ensure
+    Smith.configure do |c|
+      c.persistence_adapter = original
+      c.persistence_options = original_options
+    end
+  end
+
+  # Last on purpose: in file order it follows examples that resolved an
+  # adapter, and none of theirs may reach it.
+  it "starts with no adapter an earlier example resolved" do
+    expect(Smith.instance_variable_get(:@_persistence_adapter_current)).to be_nil
   end
 end

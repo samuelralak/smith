@@ -96,6 +96,11 @@ are drawn from in order. Its answer is the image, kept in the run's artifacts:
 `{ type: "image", artifact: ref, media_type: "image/png" }`. The options are
 the provider's own words, passed as they are.
 
+- Only `image` makes an agent an image agent, and a subclass inherits it.
+  Smith reads what `image` declared, as its `image_request` and
+  `image_media_type` readers do, so a method or variable of the agent's own
+  named `image_request` leaves it an ordinary agent, and an image agent's own
+  `image_request` or `image_media_type` changes nothing.
 - An image agent takes no tools, output schema or thinking, and its step is
   neither streamed nor batched; any of them fails the step with a
   `Smith::WorkflowError`.

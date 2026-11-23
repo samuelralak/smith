@@ -32,19 +32,9 @@ module Smith
             "provider failed after tool execution began; retry or fallback could replay an uncertain outcome"
           ), cause: error
         end
-        return if goes_again?(error, agent_class) && fallback_available
+        return if ProviderFailureHandling.goes_again?(self, error, agent_class) && fallback_available
 
         raise terminal_provider_error(error, model_reference, agent_class), cause: error
-      end
-
-      # An image's request goes again, to another model or the step's retry,
-      # only after a throttle or a refusal of the account, the model or the
-      # content: a server's error may have done and billed the work.
-      def goes_again?(error, agent_class)
-        return fallback_eligible?(error) unless agent_class.image_request
-
-        throttled?(error) || provider_account_failure?(error) ||
-          model_permission_failure?(error) || model_unavailable?(error) || unsupported_content?(error)
       end
 
       def provider_failure?(error)
@@ -81,14 +71,6 @@ module Smith
         TRANSIENT_ERRORS.any? { |error_class| error.is_a?(error_class) }
       end
 
-      def throttled?(error) = error.is_a?(RubyLLM::RateLimitError)
-
-      # A provider that struggled leaves the step its retries, but for an
-      # image's request only a throttle does (`goes_again?`).
-      def step_may_retry?(error, agent_class)
-        (transient_failure?(error) || transport_failure?(error)) && (!agent_class&.image_request || throttled?(error))
-      end
-
       def transport_failure?(error)
         error.is_a?(Faraday::TimeoutError) || error.is_a?(Faraday::ConnectionFailed)
       end
@@ -108,7 +90,7 @@ module Smith
       end
 
       def terminal_provider_error(error, model_reference, agent_class = nil)
-        return Smith::AgentError.new(error.message) if step_may_retry?(error, agent_class)
+        return Smith::AgentError.new(error.message) if ProviderFailureHandling.step_may_retry?(self, error, agent_class)
         if unsupported_content?(error)
           return Smith::ContentUnavailable.new("#{model_reference} takes none of this content: #{error.message}")
         end
@@ -119,6 +101,34 @@ module Smith
           model_id: model_reference.model_id,
           source_error_class: error.class.name
         )
+      end
+
+      # Called on the module, so a workflow including it gains none of these
+      # names. Each reads the predicates above on `handler`, the workflow,
+      # where a host may have defined its own.
+      class << self
+        # An image's request goes again, to another model or the step's
+        # retry, only after a throttle or a refusal of the account, the
+        # model or the content: a server's error may have done and billed
+        # the work.
+        def goes_again?(handler, error, agent_class)
+          return handler.__send__(:fallback_eligible?, error) unless ImageRequest.declared(agent_class)
+
+          throttled?(error) || handler.__send__(:provider_account_failure?, error) ||
+            handler.__send__(:model_permission_failure?, error) || handler.__send__(:model_unavailable?, error) ||
+            handler.__send__(:unsupported_content?, error)
+        end
+
+        # A provider that struggled leaves the step its retries, but for an
+        # image's request only a throttle does (`goes_again?`).
+        def step_may_retry?(handler, error, agent_class)
+          (handler.__send__(:transient_failure?, error) || handler.__send__(:transport_failure?, error)) &&
+            (!ImageRequest.declared(agent_class) || throttled?(error))
+        end
+
+        private
+
+        def throttled?(error) = error.is_a?(RubyLLM::RateLimitError)
       end
     end
   end

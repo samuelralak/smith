@@ -98,7 +98,7 @@ module Smith
       end
 
       # `chat` and `sent_count` for a chat's attempt (its messages, and how
-      # many of them were sent); `request` for an image's (Agent::PaintInput:
+      # many of them were sent); `request` for an image's (Smith::PaintInput:
       # its prompt and images, as sent), and `image`, the RubyLLM::Image the
       # provider answered, kept or not (a store that failed). An attempt that
       # failed before either existed has neither, and no messages. The
@@ -131,10 +131,12 @@ module Smith
       end
 
       # [messages, how many of them were sent]. An image's request is one
-      # entry, its image kept as the agent's media type (ImageRequest).
+      # entry, its settings and its image's media type as the agent declared
+      # them (ImageRequest).
       def transcript(agent_class, chat, sent_count, request, image)
         if request
-          [Transcript.painting(request.first, agent_class.image_request, image, agent_class.image_media_type), 1]
+          [Transcript.painting(request.first, ImageRequest.declared(agent_class), image,
+                               ImageRequest.media_type(agent_class)), 1]
         elsif chat.respond_to?(:messages)
           [Transcript.messages(chat.messages), sent_count || 0]
         else

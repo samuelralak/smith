@@ -6,8 +6,7 @@ RSpec.describe Smith::Doctor::Checks::PersistenceCapabilities do
   before do
     @original_adapter = Smith.config.persistence_adapter
     @original_test_mode = Smith.config.test_mode
-    Smith.instance_variable_set(:@_persistence_adapter, nil)
-    Smith.instance_variable_set(:@_persistence_adapter_signature, nil)
+    Smith.instance_variable_set(:@_persistence_adapter_current, nil)
   end
 
   after do
@@ -15,8 +14,7 @@ RSpec.describe Smith::Doctor::Checks::PersistenceCapabilities do
       c.persistence_adapter = @original_adapter
       c.test_mode = @original_test_mode
     end
-    Smith.instance_variable_set(:@_persistence_adapter, nil)
-    Smith.instance_variable_set(:@_persistence_adapter_signature, nil)
+    Smith.instance_variable_set(:@_persistence_adapter_current, nil)
   end
 
   it "warns when no adapter is configured" do

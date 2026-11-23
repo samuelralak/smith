@@ -61,7 +61,7 @@ RSpec.describe "Smith image agents" do
     klass
   end
 
-  def drawing(name)
+  def drawing(name, **step)
     built = ledger
     with_stubbed_class(name, workflow_class) do
       initial_state :idle
@@ -73,7 +73,7 @@ RSpec.describe "Smith image agents" do
         compute { |step| step.write_context(:guide, Smith.artifacts.store(GUIDE, content_type: "image/png")) }
       end
       transition :draw, from: :stored, to: :done do
-        execute :spec_image_agent, input: POSE, output_to: :drawn
+        execute :spec_image_agent, input: POSE, output_to: :drawn, **step
         on_failure :fail
       end
     end
@@ -115,11 +115,12 @@ RSpec.describe "Smith image agents" do
   it "holds the image its size and quality write before sending, and settles what it cost" do
     image_agent("SpecHeldAgent")
     server.reply(json: painted)
-    run(drawing("SpecHeldWorkflow"))
+    result = run(drawing("SpecHeldWorkflow"))
     (_, key, hold), (_, settled_key, spent) = ledger.calls
 
     expect(ledger.kinds).to eq(%i[reserve reconcile])
-    expect(settled_key).to eq(key)
+    # Held under the attempt's own id, the one its usage is recorded under.
+    expect([key, settled_key]).to eq(["#{result.usage_entries.sole.attempt_id}:1"] * 2)
     expect([hold.output_tokens, hold.input_tokens]).to eq([823, hold.input_tokens])
     expect(hold.input_tokens).to be > Smith::Budget::RequestHold::IMAGE_TOKENS
     expect(hold.cost).to be > 823 * 0.00003
@@ -257,6 +258,127 @@ RSpec.describe "Smith image agents" do
       expect(failure(result).message).to include("answers with an image")
     end
     expect(server.requests).to be_empty
+  end
+
+  it "is refused in a streamed step and in a batch step, sending nothing" do
+    sink = Class.new { %i[start delta reset finish fail withdraw suspend].each { define_method(_1) { |*| nil } } }
+    allow(Smith.config).to receive(:stream_sinks).and_return(reply: ->(_info) { sink.new })
+    Smith.config.batch_queue = queue = batch_queue
+    image_agent("SpecStepModesImageAgent")
+    streamed = run(drawing("SpecStreamedImageWorkflow", stream: :reply))
+    batched = run(drawing("SpecBatchedImageWorkflow", mode: :batch))
+
+    expect([failure(streamed), failure(batched)]).to all(be_a(Smith::WorkflowError))
+    expect(failure(streamed).message).to end_with("answers with an image, which takes no a streamed step")
+    expect(failure(batched).message).to end_with("answers with an image, which takes no a batch")
+    expect([server.requests, queue.items, ledger.calls]).to eq([[], [], []])
+  end
+
+  # The attempt's id is drawn once the agent is taken, so a refused one draws
+  # none (the order 0.16.0 drew in).
+  it "draws no attempt id for an image agent it refuses" do
+    tool = Class.new(Smith::Tool) do
+      def self.name = "SpecRefusedLookup"
+      description "looks"
+      def execute = "x"
+    end
+    refused = image_agent("SpecRefusedImageAgent") { tools tool }
+    workflow = drawing("SpecRefusedImageWorkflow").new(context: {})
+    allow(SecureRandom).to receive(:uuid).and_call_original
+
+    expect { Smith::ImageAttempt.new(workflow, refused).call(nil, nil, attempt_index: 0) }
+      .to raise_error(Smith::WorkflowError, /takes no tools/)
+    expect(SecureRandom).not_to have_received(:uuid)
+  end
+
+  # RubyLLM's providers but OpenAI take no image to paint from.
+  it "takes a model that takes none of its content to the fallback, as any agent" do
+    saved = RubyLLM.config.gemini_api_key
+    RubyLLM.config.gemini_api_key = "test"
+    image_agent("SpecUnsupportedAgent") do
+      model "imagen-test", provider: :gemini, assume_model_exists: true
+      fallback_models "openai/gpt-image-other"
+    end
+    server.reply(json: painted)
+    result = run(drawing("SpecUnsupportedWorkflow"))
+
+    expect(result.state).to eq(:done)
+    expect(server.requests.map { _1.body[/name="model"\r\n\r\n([^\r]+)/, 1] }).to eq(%w[gpt-image-other])
+  ensure
+    RubyLLM.config.gemini_api_key = saved
+  end
+
+  # An image agent is one that declares `image`, Smith's own record of it,
+  # never one with a method of that name for its own reasons.
+  it "takes an agent with an image_request of its own as an ordinary agent, which chats" do
+    {
+      "SpecOwnRequestAgent" => -> { define_singleton_method(:image_request) { { size: "1024x1024", quality: "low" } } },
+      "SpecOwnRequestArgumentAgent" => -> { define_singleton_method(:image_request) { |url| url } },
+      "SpecOwnRequestMemoAgent" => lambda do
+        @image_request = { size: "1024x1024", quality: "low" }
+        define_singleton_method(:image_request) { @image_request ||= {} }
+      end,
+      "SpecOwnInstanceRequestAgent" => -> { define_method(:image_request) { { size: "1024x1024" } } }
+    }.each do |name, body|
+      agent(name, &body)
+      server.reply(json: message("words, no image"))
+      result = asking("#{name}Workflow").new(context: {}).run!
+
+      expect([result.state, result.context[:answer]]).to eq([:done, "words, no image"]), name
+    end
+    expect(server.requests.map(&:path)).to eq(["/v1/messages"] * 4)
+  end
+
+  it "fails an agent with an image_request of its own over to its fallback on a server's error, as any agent" do
+    agent("SpecOwnRequestFallbackAgent") do
+      define_singleton_method(:image_request) { { size: "1024x1024", quality: "low" } }
+      fallback_models "anthropic/claude-haiku-5-5"
+    end
+    server.reply(json: { "type" => "error", "error" => { "type" => "api_error", "message" => "Internal" } },
+                 status: "500 Internal Server Error")
+    server.reply(json: message("from the fallback"))
+    result = asking("SpecOwnRequestFallbackWorkflow").new(context: {}).run!
+
+    expect([result.state, result.context[:answer], server.requests.size]).to eq([:done, "from the fallback", 2])
+  end
+
+  it "paints for an agent that declares image, and its subclass, whatever their own image readers answer" do
+    declared = image_agent("SpecDeclaredAgent") do
+      image size: "1024x1024", quality: "low", output_format: "webp"
+      define_singleton_method(:image_request) { nil }
+      define_singleton_method(:image_media_type) { "text/plain" }
+    end
+    server.reply(json: painted)
+    part = run(drawing("SpecDeclaredWorkflow")).context[:drawn]
+    Smith::Agent::Registry.delete(:spec_image_agent)
+    with_stubbed_class("SpecDeclaredChildAgent", declared) { register_as :spec_image_agent }
+    server.reply(json: painted)
+    inherited = run(drawing("SpecDeclaredChildWorkflow")).context[:drawn]
+    plain = image_agent("SpecPlainDeclaredAgent")
+
+    expect([part, inherited]).to all(include(type: "image", media_type: "image/webp"))
+    expect(server.requests.map(&:path)).to eq(["/v1/images/edits"] * 2)
+    expect(server.requests.map(&:body)).to all(include("name=\"output_format\"\r\n\r\nwebp"))
+    expect([plain.image_request, plain.image_media_type])
+      .to eq([{ size: "1024x1024", quality: "low", background: "opaque", output_format: "png" }, "image/png"])
+  end
+
+  # Smith's own record of the declaration: frozen, so no reader's caller
+  # changes what is sent; read whatever `@image_request` an agent keeps; and
+  # copied to a subclass made after it, never to one made before.
+  it "keeps its declaration frozen, apart from the agent's own @image_request, and copies it to later subclasses" do
+    declared = { size: "1024x1024", quality: "low", background: "opaque", output_format: "png" }
+    own = image_agent("SpecOwnIvarImageAgent") { @image_request = { size: "mine" } }
+    plain = agent("SpecOwnIvarPlainAgent") { @image_request = { size: "mine" } }
+    parent = agent("SpecLateDeclaringAgent")
+    early = Class.new(parent)
+    parent.image size: "1024x1024", quality: "low"
+    late = Class.new(parent)
+
+    expect([own.image_request, plain.image_request]).to eq([declared, nil])
+    expect(own.image_request).to be_frozen
+    expect { own.image_request[:size] = "512x512" }.to raise_error(FrozenError)
+    expect([early.image_request, late.image_request]).to eq([nil, declared.except(:background)])
   end
 
   it "is declared with the provider's words and one of its output formats" do

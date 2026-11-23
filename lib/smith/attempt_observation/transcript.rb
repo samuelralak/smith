@@ -24,8 +24,8 @@ module Smith
     #
     # An image's attempt (`painting`) has no chat to read: its record is its
     # request, one "user" entry with the prompt as it was sent (the
-    # instructions and the input's text, Agent::PaintInput) and the request's
-    # "settings" (Agent::ImageRequest: size, quality, background, output
+    # instructions and the input's text, Smith::PaintInput) and the request's
+    # "settings" (Smith::ImageRequest: size, quality, background, output
     # format), and, when an image came back, one "assistant" entry whose
     # "image" is a reference to it: its "mime_type" (as an attachment's is
     # named), its byte size ("bytes") and its SHA-256 digest ("sha256"). Never
@@ -50,7 +50,7 @@ module Smith
 
         private
 
-        # Decoded as Smith decodes it to keep it (Agent::PaintedAnswer).
+        # Decoded as Smith decodes it to keep it (Smith::PaintedAnswer).
         def image_reference(image, mime_type)
           bytes = image&.data&.unpack1("m")
           return if bytes.nil? || bytes.empty?

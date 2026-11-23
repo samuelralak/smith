@@ -196,7 +196,7 @@ RSpec.describe Smith::AttemptObservation do
     end
   end
 
-  # An image agent's attempt paints (0.16.0's ProviderPaint) and never passes
+  # An image agent's attempt paints (Smith::ImageAttempt) and never passes
   # ProviderCompletion#attempt_model; it is observed where every attempt is
   # recorded, with its one :provider_call trace.
   describe "an image agent's attempt" do
@@ -343,6 +343,23 @@ RSpec.describe Smith::AttemptObservation do
       kept = Marshal.dump(seen.to_h)
       expect([kept.include?("drawn"), kept.include?("guide"), kept.include?([drawn].pack("m0"))])
         .to eq([false, false, false])
+    end
+
+    # The settings and media type are what the agent declared with `image`,
+    # whatever methods of those names it defines.
+    it "records the declared settings and media type, never what the agent's own readers answer" do
+      painting do
+        image size: "1024x1024", quality: "low", output_format: "webp"
+        define_singleton_method(:image_request) { { size: "mine" } }
+        define_singleton_method(:image_media_type) { "text/plain" }
+      end
+      described_class.install(observer)
+      server.reply(json: painted)
+
+      run_in_trial(asking("SpecSeamDeclaredWorkflow", agent: :spec_seam_agent).new(context: {}))
+      user, assistant = observer.seen.sole.messages
+      expect(user["settings"]).to eq("size" => "1024x1024", "quality" => "low", "output_format" => "webp")
+      expect(assistant["image"]["mime_type"]).to eq("image/webp")
     end
 
     it "observes a failure that falls back, its record the request alone, then the fallback's image" do

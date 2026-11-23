@@ -206,8 +206,7 @@ RSpec.describe Smith::PersistenceAdapters::Memory do
   describe "Smith.persistence_adapter test_mode auto-detect" do
     before do
       Smith.config.persistence_adapter = nil
-      Smith.instance_variable_set(:@_persistence_adapter_signature, nil)
-      Smith.instance_variable_set(:@_persistence_adapter, nil)
+      Smith.instance_variable_set(:@_persistence_adapter_current, nil)
     end
     after { Smith.config.test_mode = false }
 

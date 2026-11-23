@@ -12,21 +12,21 @@ module Smith
         # the tool context is; carrying nil deliberately clears stale state
         # on a pooled thread.
         ambient_attribution = Attribution.current
-        unless @split_step_active_execution_authorization
-          return proc do |signal|
-            Attribution.carrying(ambient_attribution) do
-              Tool::ScopedContext.around(tool_context) do
-                __send__(implementation.name, *arguments, signal)
+        authorized = @split_step_active_execution_authorization
+        # A collaborator's branch (a Method, as NestedItems passes) runs as it
+        # is; the workflow's own by its name, as a host's override of it
+        # always has, or as Smith defines it under a split step's authorization.
+        run = if implementation.respond_to?(:call) then implementation
+              elsif authorized then implementation.bind(self)
+              else ->(*given) { __send__(implementation.name, *given) }
               end
-            end
-          end
-        end
-
         proc do |signal|
-          run = proc { implementation.bind_call(self, *arguments, signal) }
           Attribution.carrying(ambient_attribution) do
             Tool::ScopedContext.around(tool_context) do
-              PreparedBranchExecution.instance_method(:within_prepared_branch_execution).bind_call(self, &run)
+              next run.call(*arguments, signal) unless authorized
+
+              PreparedBranchExecution.instance_method(:within_prepared_branch_execution)
+                                     .bind_call(self) { run.call(*arguments, signal) }
             end
           end
         end

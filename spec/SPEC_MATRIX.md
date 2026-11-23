@@ -339,6 +339,7 @@ Documented contracts covered:
   - `trace_tool_calls == true`
   - `trace_token_usage == true`
   - `trace_cost == true`
+- `Smith.persistence_adapter` keeps a configuration with its adapter only once the adapter is built: a configuration whose adapter fails to build raises on every call, never answering the configuration's before it, and threads asking at once at first use share the one adapter built, none getting nil (Unreleased)
 
 Notes:
 
@@ -1894,6 +1895,32 @@ Documented contracts covered:
 - a child keeps its key on every launch from one payload, when a nested workflow step around it is tried again (a launcher idempotent on the key runs it once), and in another process; a nested workflow's and each item's keys are pinned
 - a call's, a map's and a spawn's children at the run's root keep 0.16.0's keys (pinned, with their tokens) under a host launcher that queues, a host's inline launcher and `Smith::Launchers::Inline`
 
+### `spec/smith/workflow/host_helper_names_spec.rb`
+
+Purpose:
+
+- asserts that a host workflow defining a method of each name 0.16.0 gave `Smith::Workflow` for image agents and fan-outs over items (27 private methods) keeps it as its own: `Smith::Workflow` has none of them, nor the two constants 0.16.0 added to it, and Smith calls none of the host's
+
+Documented contracts covered:
+
+- with all 27 defined by the host, an image agent paints and its throttle goes to the fallback, a moderation block is a refusal, an answer with no image is an output failure with its usage, a server's error and a lost connection are never sent again, an image agent's tools are refused, and so is an image agent in a streamed or a batch step, and a fan-out over items runs one nested run an item within its share of the budget, a refused run its item's outcome, and nothing for no items (Unreleased)
+
+### `spec/smith/first_use_spec.rb`
+
+Purpose:
+
+- asserts that a lock Smith shares across a process is made when Smith loads, never on first use: in a fresh process, with the first thread to make such a lock held until a second makes one, threads that first resolve the artifact store or ask for the persistence adapter together build one and each gets it, and threads that first use the agent registry together are held by one lock; an artifact store or persistence adapter whose construction asks Smith for itself fails with a `Smith::Error` saying so, never Ruby's recursive locking (Unreleased)
+
+### `spec/smith/host_constants_spec.rb`
+
+Purpose:
+
+- asserts that a bare constant in a host's Workflow, Agent, Context or Tool subclass (its class body, methods, `def self.` and `class << self`) finds the host's own top-level constant of each name 0.16.0 let it find Smith's (`ImageRequest`, `PaintInput`, `PaintedAnswer`, `ProviderPaint`, `MODERATION_BLOCKED`, `NestedItemsExecution`, the private `Envelope`, `Painted` and `Unkept`, and `MEDIA_TYPES` in an agent's `class << self`), and of the names its fixes gave Smith
+
+Documented contracts covered:
+
+- every constant, public or private, held by a module those four classes include or extend, on the instance side and the class side, and every private constant of the classes themselves, is one 0.15.0 held (private ones looked for by every name Smith's lib defines or marks private) (Unreleased)
+
 ### `spec/smith/artifacts/durable_stores_spec.rb`
 
 Purpose:
@@ -2120,13 +2147,13 @@ Purpose:
 
 Purpose:
 
-- pins the experimental recorder seam: one observer per process; an empty slot read once per provider attempt and nothing called; an installed observer never called outside a trial and handed one frozen attempt per provider attempt inside one, read where it ran; an empty slot read once on a failed attempt too, an image's throttle on its way to the fallback; an image agent's attempt (it paints, never passing `ProviderCompletion#attempt_model`) observed once, as its one `:provider_call` trace, a throttled one and its fallback each once, its record the request's text as sent and its settings and a reference to the image that came back (MIME type, byte size, SHA-256 digest), never the image's bytes, an image that came back and could not be kept described as a kept one is, no `RubyLLM::Image` alive past its attempt (none during `after_completion`), and a moderation block's record the request alone; Smith's failure kinds in order, with fixed words for a refused key, account or model; an observer or logger that raises never changes a step, and the logger gets the error class only; an observation frozen only at its top, its messages holding the chat's own objects; the seam's names never shadowing a host's constants in its agent, workflow or tool classes; `Attribution::Context#trial` last and optional, out of `to_fields`; `AttemptObservation::Transcript` offering `messages` and `painting` alone and reading no attachment's bytes (Unreleased)
+- pins the experimental recorder seam: one observer per process; an empty slot read once per provider attempt and nothing called; an installed observer never called outside a trial and handed one frozen attempt per provider attempt inside one, read where it ran; an empty slot read once on a failed attempt too, an image's throttle on its way to the fallback; an image agent's attempt (it paints, never passing `ProviderCompletion#attempt_model`) observed once, as its one `:provider_call` trace, a throttled one and its fallback each once, its record the request's text as sent and its settings and a reference to the image that came back (MIME type, byte size, SHA-256 digest), never the image's bytes, an image that came back and could not be kept described as a kept one is, no `RubyLLM::Image` alive past its attempt (none during `after_completion`), and a moderation block's record the request alone, its settings and media type those the agent declared with `image`, whatever its own `image_request` and `image_media_type` answer; Smith's failure kinds in order, with fixed words for a refused key, account or model; an observer or logger that raises never changes a step, and the logger gets the error class only; an observation frozen only at its top, its messages holding the chat's own objects; the seam's names never shadowing a host's constants in its agent, workflow or tool classes; `Attribution::Context#trial` last and optional, out of `to_fields`; `AttemptObservation::Transcript` offering `messages` and `painting` alone and reading no attachment's bytes (Unreleased)
 
 ### `spec/smith/core_invisibility_spec.rb`
 
 Purpose:
 
-- the shared "no difference" harness: the twenty-five scenarios of `script/core_invisibility_golden` (an image agent, a fan-out over items, steps that end failed with their failure records, orchestrate over String-keyed replies and restored after a kill among them), every artifact store call recorded, the golden written from a commit or the staged index, never an unstaged edit, in a bundle of its own from its parts extracted by their git ids (the header names `lib`, the gemspec, the harness and the local server by id, and the commit they were built on, and never the golden itself; a folder with a part changed, added to or taken from, code in its Gemfile, an unknown id or commit, or a working tree refused; the golden bundle handed the gems the suite sees, a vendored bundle's included), written again from the ids it names byte for byte under the same `Gemfile.lock` (the golden bundle resolves its versions; skipped with its reason in a shallow clone, or while its source is an uncommitted change; a full repository whose HEAD does not reach every id fails, though the objects are in it, shown in a repository of the example's own so it runs in a shallow clone too; a file written again is compared in every block but the versions), run on the tree in child processes, equal the golden file byte for byte without an observer, with one installed and no trial, and inside a trial (no extra random draw, one observation per `:provider_call` trace), and the observer and trial modes equal the plain mode sink by sink; `--diff` names what differs between two goldens, header part by part and scenario by scenario; a concurrent run of the parallel, fan-out and fan-out over items scenarios matches by counts and branch content; the host surface of Workflow, Agent, Context and Tool (method names, Object and Kernel names they override, constants a host's class body can see) equal to the golden's; against the release baseline (`spec/fixtures/core_invisibility_release.json`, 0.16.0's lib and gemspec with a91fd45's harness, written again from the ids it names byte for byte and named by the commit its release tag names, the tag check skipped with its reason in a clone without the tag and failing when the tag names another commit), which no golden regeneration writes, the host surface and each scenario's random draws, lookups, requests, traces, events and log lines differ only as the spec lists, each with why and its slice, a method a slice adds named `smith_` or a listed DSL macro, nothing removed (Unreleased)
+- the shared "no difference" harness: the thirty-four scenarios of `script/core_invisibility_golden` (an image agent, a fan-out over items, steps that end failed with their failure records, orchestrate over String-keyed replies and restored after a kill among them, and every way a paint can fail, be refused, be held or be retried, image agents by inheritance, and fan-outs over items refused, failing, empty, within a budget, retried, after a wait and painting), every artifact store call recorded, the golden written from a commit or the staged index, never an unstaged edit, in a bundle of its own from its parts extracted by their git ids (the header names `lib`, the gemspec, the harness and the local server by id, and the commit they were built on, and never the golden itself; a folder with a part changed, added to or taken from, code in its Gemfile, an unknown id or commit, or a working tree refused; the golden bundle handed the gems the suite sees, a vendored bundle's included), written again from the ids it names byte for byte under the same `Gemfile.lock` (the golden bundle resolves its versions; skipped with its reason in a shallow clone, or while its source is an uncommitted change; a full repository whose HEAD does not reach every id fails, though the objects are in it, shown in a repository of the example's own so it runs in a shallow clone too; a file written again is compared in every block but the versions), run on the tree in child processes, equal the golden file byte for byte without an observer, with one installed and no trial, and inside a trial (no extra random draw, one observation per `:provider_call` trace), and the observer and trial modes equal the plain mode sink by sink; `--diff` names what differs between two goldens, header part by part and scenario by scenario; a concurrent run of the parallel, fan-out and fan-out over items scenarios matches by counts and branch content; the host surface of Workflow, Agent, Context and Tool (method names, Object and Kernel names they override, constants a host's class body can see) equal to the golden's; against the release baseline (`spec/fixtures/core_invisibility_release.json`, 0.16.0's lib and gemspec with a91fd45's harness, written again from the ids it names byte for byte and named by the commit its release tag names, the tag check skipped with its reason in a clone without the tag and failing when the tag names another commit), which no golden regeneration writes, the host surface and each scenario's random draws, lookups, requests, traces, events and log lines differ only as the spec lists, each with why and its slice, a method a slice adds named `smith_` or a listed DSL macro, nothing removed but the 27 private methods and two constants 0.16.0 added to `Smith::Workflow` and the four constants it added to `Smith::Agent`, each listed with where it went, and no other name allowed to go (Unreleased)
 
 ### `spec/smith/contracts/ruby_llm_spec.rb`
 
@@ -2780,6 +2807,7 @@ Documented contracts covered:
 - successful branch outputs are discarded when the parallel step fails
 - prepared input is reused across parallel branch execution
 - workflow-attached tool guardrails remain visible inside parallel branch threads
+- a host's `run_branch` runs in each branch and restores its context after a failure and a cancellation, its wait bounded so a branch that never calls it fails the example rather than hanging the suite (Unreleased)
 
 Notes:
 
@@ -3799,6 +3827,8 @@ Covered behaviors:
 - fails cleanly when lazy cache-backed adapter resolution raises during backend warning evaluation
 - warns when `:rails_cache` resolves to a process-local memory store
 - warns when `:cache_store` wraps a process-local memory backend
+- each example resolves the persistence adapter afresh: Smith keeps the one it resolved for a configuration and the examples swap `Rails`, so a guard last in file order fails when one an earlier example resolved reaches it
+- fails the adapter check on every run while the configured adapter cannot be built, another configuration's adapter resolved before (Unreleased)
 
 ### `spec/smith/doctor/installer_spec.rb`
 
@@ -3901,6 +3931,7 @@ Covered behaviors:
 - nil resolves to no adapter
 - custom adapter objects are passed through unchanged
 - `:cache_store` resolves with provided store and namespace
+- a `:cache_store` store given as a callable is built once for threads that first use the adapter together, each using that store; a source that failed is asked again on the next call, and one that asks its adapter for the store fails with a `Smith::Error` saying so (Unreleased)
 - `:rails_cache` resolves through `Rails.cache`
 - `:solid_cache` aliases to Rails-cache-backed resolution
 - `:redis` resolves with provided client and namespace

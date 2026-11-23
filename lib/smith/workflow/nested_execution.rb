@@ -9,7 +9,7 @@ module Smith
 
       def execute_nested_workflow(transition)
         check_deadline!
-        return execute_nested_items(transition) if transition.nested_items
+        return NestedItems.new(self, transition).call if transition.nested_items
 
         child = build_child_workflow(transition.workflow_class)
         child_result = run_child_workflow(child)

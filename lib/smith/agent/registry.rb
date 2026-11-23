@@ -13,6 +13,10 @@ module Smith
       extend ExecutionBindingCapture
       extend MutationBoundary
 
+      # Made when Smith loads, so threads registering agents together at
+      # first use share one lock.
+      @registry_monitor = Monitor.new
+
       def self.normalize_key(name)
         name.to_s
       end
@@ -79,9 +83,7 @@ module Smith
         end
       end
 
-      def self.registry_monitor
-        @registry_monitor ||= Monitor.new
-      end
+      def self.registry_monitor = @registry_monitor
 
       def self.validate_agent_class!(klass)
         return if klass.is_a?(Class) && klass <= Smith::Agent

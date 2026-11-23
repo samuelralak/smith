@@ -55,6 +55,10 @@ module Smith
     scoped_artifacts || artifact_backend
   end
 
+  # Made when Smith loads: one made on first use could be made twice by
+  # threads arriving together, each building a store of its own.
+  @_artifact_lock = Mutex.new
+
   # The configured store itself, never a run's scoped view of it.
   # Built once per configuration, under a lock, so threads that resolve it
   # together share one store.
@@ -63,7 +67,8 @@ module Smith
     current = @_artifact_current
     return current.last if current&.first == signature
 
-    (@_artifact_lock ||= Mutex.new).synchronize do
+    refuse_reentry!(@_artifact_lock, "the artifact store")
+    @_artifact_lock.synchronize do
       current = @_artifact_current
       return current.last if current&.first == signature
 

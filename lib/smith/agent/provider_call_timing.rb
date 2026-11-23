@@ -115,7 +115,7 @@ module Smith
 
       # Every provider attempt is recorded here, beside its one :provider_call
       # trace, whichever path made it (a chat's completion, ProviderCompletion;
-      # an image's paint, ProviderPaint), so the observation seam
+      # an image's paint, Smith::ImageAttempt), so the observation seam
       # (AttemptObservation) sits here too: one observation per trace. Each
       # caller passes what an observation is read from, never builds it: the
       # agent class, and a chat with how many of its messages were sent, or an

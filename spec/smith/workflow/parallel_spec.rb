@@ -332,10 +332,11 @@ RSpec.describe "Smith::Workflow parallel execution" do
     end
 
     expect(workflow.run!.state).to eq(:failed)
-    2.times do
-      before, after = observations.pop
-      expect(after).to eq(before)
-    end
+    # Both branches have ended by now. Only the host's run_branch feeds the
+    # queue, so a wait that cannot end fails instead of hanging the suite.
+    observed = Array.new(2) { observations.pop(timeout: 1) }
+    expect(observed).to all(be_an(Array))
+    observed.compact.each { |before, after| expect(after).to eq(before) }
   end
 
   it "rejects non-positive parallel branch counts before executing branches" do

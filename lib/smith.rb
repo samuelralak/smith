@@ -153,18 +153,42 @@ module Smith
   # Logger (§7 — Ruby Logger, not Rails.logger)
   setting :logger, default: nil
 
+  @_persistence_adapter_lock = Mutex.new
+
+  # Built once per configuration, under a lock, and kept with that
+  # configuration only once built: threads asking together share one
+  # adapter, and a configuration that fails to build fails on every call.
   def self.persistence_adapter
     raw_adapter = config.persistence_adapter
     raw_options = config.persistence_options || {}
     signature = persistence_signature(raw_adapter, raw_options, config.test_mode)
+    current = @_persistence_adapter_current
+    return current.last if current&.first == signature
 
-    if defined?(@_persistence_adapter_signature) && @_persistence_adapter_signature == signature
-      return @_persistence_adapter
-    end
-
-    @_persistence_adapter_signature = signature
-    @_persistence_adapter = resolve_persistence_adapter(raw_adapter, raw_options)
+    refuse_reentry!(@_persistence_adapter_lock, "the persistence adapter")
+    @_persistence_adapter_lock.synchronize { built_persistence_adapter(signature, raw_adapter, raw_options) }
   end
+
+  # The thread building `what` under `lock` asked for it again (its
+  # construction asks Smith for itself): say so, where waiting on its own
+  # lock would raise Ruby's "deadlock; recursive locking".
+  def self.refuse_reentry!(lock, what)
+    return unless lock.owned?
+
+    raise Error, "#{what}'s construction asked Smith for #{what}, which it was still building"
+  end
+  private_class_method :refuse_reentry!
+
+  # Under the lock: a thread that waited takes the adapter another built.
+  def self.built_persistence_adapter(signature, raw_adapter, raw_options)
+    current = @_persistence_adapter_current
+    return current.last if current&.first == signature
+
+    adapter = resolve_persistence_adapter(raw_adapter, raw_options)
+    @_persistence_adapter_current = [signature, adapter].freeze
+    adapter
+  end
+  private_class_method :built_persistence_adapter
 
   # Test isolation auto-detect: when no adapter is configured AND
   # test_mode is on, fall back to the in-process Memory adapter so spec
@@ -313,6 +337,7 @@ require_relative "smith/context/session"
 require_relative "smith/agent"
 require_relative "smith/agent/completion"
 require_relative "smith/agent/lifecycle"
+require_relative "smith/image_attempt"
 require_relative "smith/agent/registry_binding"
 require_relative "smith/agent/registry"
 
@@ -352,7 +377,7 @@ require_relative "smith/workflow/artifact_integration"
 require_relative "smith/workflow/data_volume_policy"
 require_relative "smith/workflow/deadline_enforcement"
 require_relative "smith/workflow/nested_execution"
-require_relative "smith/workflow/nested_items_execution"
+require_relative "smith/nested_items"
 require_relative "smith/workflow/evaluator_optimizer"
 require_relative "smith/workflow/orchestrator_worker"
 require_relative "smith/workflow/parallel_execution"

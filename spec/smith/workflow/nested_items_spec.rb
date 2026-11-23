@@ -135,6 +135,55 @@ RSpec.describe "Smith::Workflow fan-out over items" do
     Smith.config.pricing = saved
   end
 
+  it "settles a failing item's share of the run's budget, leaving none of it held" do
+    saved = Smith.config.pricing
+    Smith.config.pricing = { %w[openai gpt-5-mini] => { input_cost_per_token: 0.01, output_cost_per_token: 0.01 } }
+    nested = child("SpecFailingBudgetChild") { |pose| pose == 2 ? raise(Smith::WorkflowError, "pose 2 broke") : pose }
+    budgeted = with_stubbed_class("SpecFailingBudgetParent", workflow_class) do
+      initial_state :idle
+      state :drawn
+      state :failed
+      budget total_cost: 1.0
+
+      transition :draw, from: :idle, to: :drawn do
+        workflow nested, over: ->(_context) { [1, 2] }, item_to: :pose, concurrency: 1, output_to: :frames
+        on_failure :fail
+      end
+    end
+    workflow = budgeted.new(context: {})
+    result = workflow.run!
+    ledger = workflow.instance_variable_get(:@ledger)
+
+    expect(result.state).to eq(:failed)
+    expect(ledger.consumed[:total_cost]).to be_within(1e-9).of(0.08)
+    expect(ledger.remaining(:total_cost)).to be_within(1e-9).of(1.0 - 0.08)
+  ensure
+    Smith.config.pricing = saved
+  end
+
+  # A split step runs its fan-out's branches under its authorization, which
+  # each item's run is built within.
+  it "runs each item under a split step's authorization" do
+    nested = child("SpecSplitItemsChild") { |pose| "drew #{pose}" }
+    split = with_stubbed_class("SpecSplitItemsParent", workflow_class) do
+      idempotency_mode :strict
+      initial_state :idle
+      state :drawn
+      state :failed
+
+      transition :draw, from: :idle, to: :drawn do
+        workflow nested, over: ->(_context) { [1, 2] }, item_to: :pose, output_to: :frames
+        on_failure :fail
+      end
+    end
+    workflow = split.new(context: {})
+    workflow.prepare_persisted_step!("spec:split-items", adapter: Smith::PersistenceAdapters::Memory.new)
+    step = workflow.execute_prepared_step!
+
+    expect(step).to include(transition: :draw, to: :drawn)
+    expect(workflow.to_state[:context][:frames]).to eq([{ output: "drew 1" }, { output: "drew 2" }])
+  end
+
   it "fails the step with a routed failure nothing may ask again for, as itself" do
     nested = child("SpecUncertainChild") { |pose| pose == 2 ? raise(Smith::RequestOutcomeUncertain, "no answer came") : "ok" }
     result = parent("SpecUncertainParent", nested, items: [1, 2]).new(context: {}).run!

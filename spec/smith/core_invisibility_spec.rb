@@ -19,11 +19,34 @@ module CoreInvisibilityHarness
   GOLDEN = File.join(ROOT, "spec/fixtures/core_invisibility_golden.json")
   # A method a slice adds to the four classes is a `smith_` name or one of
   # these public DSL macros. No slice adds a constant a host body can see,
-  # overrides a name Object or Kernel has, or removes a method.
+  # overrides a name Object or Kernel has, or removes a method or constant,
+  # but for the names 0.16.0 added to Smith::Workflow and the constants it
+  # added to Smith::Agent (RETURNED_TO_0_15).
   DSL_MACROS = %w[provider_credentials].freeze
+  # The private methods and constants 0.16.0 added to Smith::Workflow, and
+  # the constants it added to Smith::Agent, each one a host's subclass could
+  # replace or shadow, and where each went, so Workflow's surface is 0.15.0's
+  # again and Agent's constants are. In the surface's order.
+  RETURNED_TO_0_15 = {
+    "Smith::ImageAttempt" => %w[check_image_agent! failed_paint held_paint image_refusals outcome_uncertain
+                                paint_model painted painting_attempt painting_chat],
+    "functions of Smith::PaintedAnswer" => %w[kept moderation_blocked? painted_completion refused_completion],
+    "functions of Smith::Agent::ProviderFailureHandling" => %w[goes_again? step_may_retry? throttled?],
+    "Smith::NestedItems" => %w[ended_refused execute_nested_items item_envelope item_shares items_environment
+                               nested_item_outcome nested_items_of run_item_child run_nested_item
+                               run_nested_item_child settle_item_envelope]
+  }.flat_map { |home, names| names.map { ["- Smith::Workflow instance private #{_1}", home] } }.sort.to_h.merge(
+    "- Smith::Workflow constants MODERATION_BLOCKED" => "Smith::PaintedAnswer, no longer included",
+    "- Smith::Workflow constants NestedItemsExecution" => "Smith::NestedItems",
+    **%w[ImageRequest PaintInput PaintedAnswer ProviderPaint].to_h do |name|
+      ["- Smith::Agent constants #{name}", "Smith::#{name}"]
+    end
+  ).freeze
   # Paths whose every provider attempt a trial must observe.
   OBSERVED_PATHS = %w[parallel_branches fan_out nested_workflow optimize orchestrate image_answer nested_items
-                      image_refusal_fallback repair_exhausted orchestrate_string_keys orchestrate_restored].freeze
+                      image_refusal_fallback repair_exhausted orchestrate_string_keys orchestrate_restored
+                      image_answered_errors image_failures image_agents image_held image_retry_restored
+                      items_painting items_outcomes items_budget items_durable].freeze
 
   @runs = {}
 
@@ -80,9 +103,11 @@ module CoreInvisibilityHarness
     end
 
     # A change the rule allows: an added method named `smith_` or a listed
-    # DSL macro.
+    # DSL macro, or one of the names 0.16.0 added to Smith::Workflow, gone.
     def allowed?(change)
       sign, _klass, table, *, name = change.split
+      return RETURNED_TO_0_15.key?(change) if sign == "-"
+
       sign == "+" && %w[instance singleton].include?(table) &&
         (name.start_with?("smith_") || DSL_MACROS.include?(name))
     end
@@ -143,6 +168,79 @@ module CoreInvisibilityHarness
     # empty.
     SOURCE = { "version" => "0.16.0", "source" => "release", "release" => "9f03162ef274c00fc6dbe67a3c55007185ee9407",
                "harness" => "a91fd457812ecca3e3ed7cec4075b7da9960490c" }.freeze
+    # The scenarios slice 016 added (script/golden/scenarios/paint_failures.rb,
+    # paint_agents.rb and item_paths.rb), each with the facts it measured.
+    module Added
+      SCENARIOS = [
+        { "scenario" => "image_answered_errors",
+          "new" => { "random_draws" => 27, "requests" => 9, "logs" => 0,
+                     "counts" => { "Smith::Agent::Registry.fetch!" => 21, "RubyLLM::Context.new" => 9 },
+                     "traces" => { ":deterministic_step" => 14, ":transition" => 14, ":provider_call" => 9,
+                                   ":token_usage" => 2, ":cost" => 2 },
+                     "events" => { "Smith::Events::StepCompleted" => 9, "Smith::Events::StepFailed" => 5 } },
+          "why" => "added: a paint answered 500, 504, 401, 403, 404, 529 or 400, its fallback waiting",
+          "slice" => "016 findings" },
+        { "scenario" => "image_failures",
+          "new" => { "random_draws" => 19, "requests" => 6, "logs" => 0,
+                     "counts" => { "Smith::Agent::Registry.fetch!" => 15, "RubyLLM::Context.new" => 6 },
+                     "traces" => { ":deterministic_step" => 10, ":transition" => 10, ":provider_call" => 6,
+                                   ":token_usage" => 1, ":cost" => 1, ":output_rejected" => 1 },
+                     "events" => { "Smith::Events::StepCompleted" => 5, "Smith::Events::StepFailed" => 5 } },
+          "why" => "added: a paint throttled twice, lost, refused, answering no image, or kept by no store",
+          "slice" => "016 findings" },
+        { "scenario" => "image_agents",
+          "new" => { "random_draws" => 11, "requests" => 2, "logs" => 0,
+                     "counts" => { "Smith::Agent::Registry.fetch!" => 14, "RubyLLM::Context.new" => 2 },
+                     "traces" => { ":deterministic_step" => 6, ":transition" => 8, ":provider_call" => 2,
+                                   ":token_usage" => 2, ":cost" => 2 },
+                     "events" => { "Smith::Events::StepCompleted" => 5, "Smith::Events::StepFailed" => 3 } },
+          "why" => "added: image agents by inheritance; one with tools, streamed or batched, refused",
+          "slice" => "016 findings" },
+        { "scenario" => "image_held",
+          "new" => { "random_draws" => 14, "requests" => 5, "logs" => 0,
+                     "counts" => { "Smith::Agent::Registry.fetch!" => 15, "RubyLLM::Context.new" => 6 },
+                     "traces" => { ":provider_call" => 6, ":token_usage" => 3, ":cost" => 3, ":transition" => 5,
+                                   ":output_rejected" => 1 },
+                     "events" => { "Smith::Events::StepCompleted" => 2, "Smith::Events::StepFailed" => 3 } },
+          "why" => "added: paints held on the host's ledger: painted, throttled, refused, lost, not admitted",
+          "slice" => "016 findings" },
+        { "scenario" => "image_retry_restored",
+          "new" => { "random_draws" => 6, "requests" => 3, "logs" => 0,
+                     "counts" => { "Smith::Agent::Registry.fetch!" => 9, "RubyLLM::Context.new" => 3 },
+                     "traces" => { ":provider_call" => 3, ":transition" => 4, ":token_usage" => 1, ":cost" => 1 },
+                     "events" => { "Smith::Events::StepCompleted" => 1, "Smith::Events::StepFailed" => 1 } },
+          "why" => "added: a throttled paint's durable retry restored and resumed; a server's error not retried",
+          "slice" => "016 findings" },
+        { "scenario" => "items_painting",
+          "new" => { "random_draws" => 7, "requests" => 2, "logs" => 0,
+                     "counts" => { "Smith::Agent::Registry.fetch!" => 6, "RubyLLM::Context.new" => 2 },
+                     "traces" => { ":provider_call" => 2, ":token_usage" => 2, ":cost" => 2, ":transition" => 3 },
+                     "events" => { "Smith::Events::StepCompleted" => 3 } },
+          "why" => "added: items whose runs paint, within the run's budget", "slice" => "016 findings" },
+        { "scenario" => "items_outcomes",
+          "new" => { "random_draws" => 29, "requests" => 8, "logs" => 0,
+                     "counts" => { "Smith::Agent::Registry.fetch!" => 24 },
+                     "traces" => { ":provider_call" => 8, ":token_usage" => 7, ":cost" => 7, ":transition" => 14,
+                                   ":output_rejected" => 2 },
+                     "events" => { "Smith::Events::StepCompleted" => 8, "Smith::Events::StepFailed" => 6 } },
+          "why" => "added: items refused (routed and raised) and failing; none, not an Array, over the limit",
+          "slice" => "016 findings" },
+        { "scenario" => "items_budget",
+          "new" => { "random_draws" => 14, "requests" => 4, "logs" => 0,
+                     "counts" => { "Smith::Agent::Registry.fetch!" => 12 },
+                     "traces" => { ":provider_call" => 4, ":token_usage" => 4, ":cost" => 4, ":transition" => 6 },
+                     "events" => { "Smith::Events::StepCompleted" => 5, "Smith::Events::StepFailed" => 1 } },
+          "why" => "added: items within the run's budget, and items exceeding it", "slice" => "016 findings" },
+        { "scenario" => "items_durable",
+          "new" => { "random_draws" => 22, "requests" => 7, "logs" => 0,
+                     "counts" => { "Smith::Agent::Registry.fetch!" => 21 },
+                     "traces" => { ":provider_call" => 7, ":token_usage" => 6, ":cost" => 6, ":transition" => 13 },
+                     "events" => { "Smith::Events::StepCompleted" => 9, "Smith::Events::StepFailed" => 1 } },
+          "why" => "added: an items step's durable retry restored and resumed; items after a durable wait",
+          "slice" => "016 findings" }
+      ].freeze
+    end
+
     # Every way the tree differs from the release baseline, reviewed: a host
     # surface change ("+ <class> <table> <name>", which the harness's
     # `allowed?` must take), a scenario's facts ({fact => [release's,
@@ -150,6 +248,11 @@ module CoreInvisibilityHarness
     # that added it measured, so they hold until a release's baseline has it.
     # Each says why and which slice; one the tree no longer shows fails too.
     CHANGES = [
+      *CoreInvisibilityHarness::RETURNED_TO_0_15.map do |change, home|
+        host = change.include?(" Smith::Agent ") ? "agent" : "workflow"
+        { "surface" => change, "why" => "a name 0.16.0 gave every host #{host}, now #{home}",
+          "slice" => "016 findings" }
+      end,
       { "scenario" => "orchestrate", "random_draws" => [11, 9],
         "why" => "an orchestrate worker's execution_id is named by its position, no longer drawn (two workers)",
         "slice" => "memo restore" },
@@ -164,7 +267,8 @@ module CoreInvisibilityHarness
                    "traces" => { ":provider_call" => 9, ":token_usage" => 9, ":cost" => 9, ":transition" => 1 },
                    "events" => { "Smith::Events::StepCompleted" => 1 }, "logs" => 0 },
         "why" => "added: three rounds, killed once round 2's decision is kept, restored; 6 requests, 0.16.0 sent 7",
-        "slice" => "memo restore" }
+        "slice" => "memo restore" },
+      *Added::SCENARIOS
     ].freeze
 
     class << self
@@ -226,7 +330,7 @@ RSpec.describe "Smith core invisibility: an app that does not use the eval seam 
                                     "#{harness.diff(expected, actual)}"
   end
 
-  it "has a golden file from a commit or the staged index, its parts named by git id, over twenty-five scenarios" do
+  it "has a golden file from a commit or the staged index, its parts named by git id, over thirty-four scenarios" do
     # The parts that decide what the harness records, by their git ids, and
     # the commit their tree was built on; the golden file is none of them.
     source = golden["smith"]
@@ -242,7 +346,8 @@ RSpec.describe "Smith core invisibility: an app that does not use the eval seam 
       %w[serial_output_schema tool_loop parallel_branches fan_out route nested_workflow inline_call_child optimize
          orchestrate streamed batch fallback_after_overload output_repair budget_ledger memo_replay budget_pause
          durable_await durable_retry image_answer nested_items image_unkept image_refusal_fallback repair_exhausted
-         orchestrate_string_keys orchestrate_restored]
+         orchestrate_string_keys orchestrate_restored image_answered_errors image_failures image_agents image_held
+         image_retry_restored items_painting items_outcomes items_budget items_durable]
     )
     sinks = %w[random_draws counts requests memo batches states persisted artifacts usage_entries traces events
                stream ledger logs errors results]
@@ -254,7 +359,7 @@ RSpec.describe "Smith core invisibility: an app that does not use the eval seam 
     # Steps that end failed, an image's among them, so the golden holds
     # their persisted failure records.
     failed = golden["scenarios"].select { |_name, scenario| scenario["persisted"].to_s.include?("error_message") }
-    expect(failed.keys).to include("image_unkept", "repair_exhausted")
+    expect(failed.keys).to include("image_unkept", "repair_exhausted", "image_answered_errors", "items_outcomes")
     expect(seen.sum { _1["counts"].values.sum }).to be_positive
     # The errors scenarios mean to raise (the memo replays' kills). Any
     # other is a crash, which a regenerated golden must not hold.
@@ -538,6 +643,23 @@ RSpec.describe "Smith core invisibility: an app that does not use the eval seam 
 
     expect(changes).to eq(listed)
     expect(listed.reject { harness.allowed?(_1) }).to eq([])
+  end
+
+  # Only the names 0.16.0 added to Smith::Workflow may leave it; any other
+  # name gone from any class is refused.
+  it "allows a name to go only where it is one 0.16.0 added to Smith::Workflow, or a constant it added to Agent" do
+    harness = CoreInvisibilityHarness
+    gone = ["- Smith::Workflow instance private execute_step", "- Smith::Workflow instance public run!",
+            "- Smith::Agent singleton public image_request", "- Smith::Agent constants Lifecycle",
+            "- Smith::Workflow constants Execution", "- Smith::Context instance private painted",
+            "- Smith::Tool constants PaintInput"]
+
+    returned = harness::RETURNED_TO_0_15.keys
+    expect([returned.length, returned.count { _1.include?(" instance private ") }]).to eq([33, 27])
+    expect(returned.count { _1.start_with?("- Smith::Agent constants ") }).to eq(4)
+    expect(returned).to all(start_with("- Smith::Workflow ").or(start_with("- Smith::Agent constants ")))
+    expect(returned.select { harness.allowed?(_1) }).to eq(returned)
+    expect(gone.select { harness.allowed?(_1) }).to eq([])
   end
 
   it "differs from the release baseline only as listed: draws, lookups, requests, traces, events and log lines" do

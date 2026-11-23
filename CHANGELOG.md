@@ -35,7 +35,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   Context an earlier Smith marshalled does not load (Smith never marshals or
   saves one; a run persists as JSON).
 - A shared "no difference" harness for core changes:
-  `script/core_invisibility_golden` runs twenty-five scenarios against a
+  `script/core_invisibility_golden` runs thirty-four scenarios against a
   local server answering as Anthropic (and as OpenAI's image edits) and
   records every request, memo key, batch digest, saved state, artifact store
   call, usage entry, trace, event, stream delivery, ledger call, log line,
@@ -187,6 +187,53 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   workflow steps and items above it), the same on every launch and in every
   process. A child launched at the run's root keeps the key 0.16.0 gave it,
   so a host's runs in flight still find their children.
+- A host workflow's own method no longer takes the place of one of Smith's,
+  and its own top-level constants are found again. 0.16.0 gave
+  `Smith::Workflow` 27 private methods for image agents and fan-outs over
+  items (`painted`, `kept`, `throttled?`, `run_nested_item` and others), so a
+  host workflow with a method of one of those names silently replaced
+  Smith's: an image agent's step or an item fan-out ran the host's method.
+  It also let five constants of its own be found by a bare name in a host
+  workflow's class body, methods and `def self.` before the host's own: two
+  public (`MODERATION_BLOCKED`, `NestedItemsExecution`) and three private
+  (`Envelope`, `Painted`, `Unkept`). They now live on collaborators under
+  Smith (`Smith::ImageAttempt`, `Smith::NestedItems`, and functions of the
+  modules that held them), and the methods and constants a host workflow
+  sees are 0.15.0's again.
+- A host agent's class body finds its own top-level `ImageRequest`,
+  `PaintInput`, `PaintedAnswer` or `ProviderPaint` again, and its
+  `class << self` its own `MEDIA_TYPES`. 0.16.0 defined these modules under
+  `Smith::Agent`, and `MEDIA_TYPES` on the module `Smith::Agent` extends, so
+  a bare one of those names in an agent subclass found Smith's before the
+  host's. The modules are now `Smith::ImageRequest`, `Smith::PaintInput`,
+  `Smith::PaintedAnswer` and `Smith::ProviderPaint`, the module Agent
+  extends holds no constant, and the constants a host agent sees are
+  0.15.0's again.
+- Only `image` makes an agent an image agent. 0.16.0 read the agent's
+  `image_request` method, so an agent with a class method of that name for
+  its own reasons was painted for (and one whose method takes an argument
+  failed every attempt with an `ArgumentError`), and an image agent whose own
+  `image_request` answered nil chatted. Smith now reads what `image` declared,
+  which a subclass inherits; `image_request` and `image_media_type` still
+  answer it.
+- `Smith.persistence_adapter` keeps a configuration with its adapter only
+  once the adapter is built. It kept the configuration first, so once an
+  adapter failed to build, every later call with that configuration
+  answered the adapter of the configuration before it, or nil when there
+  was none (a second `smith doctor` in one process passed its round trip on
+  that adapter), and a thread that asked while another was building the
+  first adapter got nil. A configuration that cannot be built now fails on
+  every call, and threads asking together share the one adapter built.
+- Threads that first use Smith together share what it builds once. The
+  artifact store's lock and the agent registry's lock were made on first
+  use, and a `:cache_store` or `:rails_cache` adapter built its store on
+  first use with no lock, so threads arriving together could each make
+  their own: two artifact stores (with an in-process store, what one thread
+  kept the other could not read), two threads inside the agent registry at
+  once, or, from a store given as a callable that builds one each call, two
+  cache stores, a run's state written to one and read from the other. Both
+  locks are now made when Smith loads, and the adapter builds its store
+  once, under a lock of its own.
 
 ### Upgrading
 
@@ -210,6 +257,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - A child `Smith::Launchers::Inline` runs has the same namespace on every
   launch of its `key`; each launch drew a new one. A test that expected a
   namespace of its own each launch changes.
+- Host code that reached one of 0.16.0's private `Smith::Workflow` helpers by
+  name (`send(:paint_model, ...)`), or named
+  `Smith::Workflow::NestedItemsExecution`,
+  `Smith::Workflow::MODERATION_BLOCKED` or `Smith::Agent::ImageRequest`,
+  `PaintInput`, `PaintedAnswer` or `ProviderPaint`, no longer finds it. The
+  four modules are directly under `Smith`, and
+  `Smith::PaintedAnswer::MODERATION_BLOCKED` holds the stop reason, the
+  String `"moderation_blocked"`. `Smith::Agent::ImageRequest::MEDIA_TYPES`
+  has no public successor: `image` lists the output formats it takes when
+  given another.
+- An image agent's answer that held no image fails with an `OutputInvalid`
+  as before, and its cause's class, a private one, is now named
+  `Smith::PaintedAnswer::Unkept` (`Smith::Agent::PaintedAnswer::Unkept` in
+  0.16.0): a host that tells it apart compares `error.cause.class.name`, since
+  naming the constant raises a `NameError`. An image the artifact store could
+  not keep fails with the store's own error, as in 0.16.0.
+- An agent that made itself an image agent by defining `image_request`, rather
+  than declaring `image`, is an ordinary agent: declare `image size:,
+  quality:`. The declaration is kept on the agent class as
+  `@smith_image_request`, no longer `@image_request`.
+- An image agent's own `image_request` or `image_media_type` no longer
+  changes what is sent or how the image is kept: Smith reads what `image`
+  declared. An agent that declared `image size: "1024x1024", quality: "low"`
+  and defined `def self.image_request = super.merge(size: "512x512", quality:
+  "high", output_format: "webp")` sent 512x512, high and webp in 0.16.0 and
+  kept the image as `image/webp`; it now sends 1024x1024, low and png, and
+  keeps `image/png`. Declare the settings with `image` instead, in a subclass
+  of its own where they differ (`image size: "512x512", quality: "high",
+  output_format: "webp"`).
+- A persistence adapter whose construction asks `Smith.persistence_adapter`
+  for the adapter now fails with a `Smith::Error` saying so; 0.16.0 answered
+  it nil. An artifact store whose construction asks Smith for the store, and
+  a `:cache_store` source that asks its own adapter for the store, fail the
+  same way (0.16.0 raised `ThreadError` and overflowed the stack). Build what
+  such a constructor needs without asking Smith for the thing being built.
 
 ## [0.16.0] - 2026-11-22
 
@@ -273,6 +355,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   itself.
 - `Smith::EXECUTION_SEMANTICS_VERSION` stays `"7"`: a run stored by 0.15.0
   holds no item fan-out and no image usage, and restores as it is.
+- `Smith::Pricing.validate_catalog!` checks three image keys a catalog entry
+  may carry, so a catalog 0.15.0 accepted may now raise
+  `Smith::PricingConfigurationError`, and `smith doctor` fails its
+  `config.pricing` check: `image_input_cost_per_token` and
+  `image_output_cost_per_token`, on an entry or a tier, must be a non-negative
+  Integer or a finite Float, and `image_output_tokens`, on the entry, must map
+  each size to its qualities' positive Integer token counts
+  (`{ "1024x1024" => { "low" => 823 } }`, each size and quality a non-empty
+  String or Symbol). Either spelling of a key is checked, Symbol or String,
+  and a nil value is skipped. 0.15.0 ignored these keys. A catalog that uses
+  one of these names for something of its own renames it, or gives it that
+  shape. Pricing a call never raises over them: an image rate that is not a
+  number is not read, and the plain rate prices those tokens.
+- A reply whose stop reason is `moderation_blocked` is a refused response,
+  from any agent (OpenAI's Images API answers a moderation block so, and a
+  proxy or a `Smith::Testing` stub may report it for a chat): the step takes
+  the agent's `on_refusal` fallback once, else fails with
+  `Smith::OutputRefused` (`stop_reason` `"moderation_blocked"`); the reply is
+  billed and set aside, with an `:output_rejected` trace. 0.15.0 took its
+  text as the output. A host that meets it handles the refusal (`on_refusal
+  fallback:`, the step's `on_failure`, or rescuing `Smith::OutputRefused`);
+  a stub that means an ordinary reply gives another stop reason
+  (`"end_turn"`, the default).
 
 ## [0.15.0] - 2026-11-22
 

@@ -18,6 +18,7 @@ module Smith
       def initialize(store:, namespace: "smith")
         @store_source = store
         @namespace = namespace.nil? ? nil : namespace.to_s.dup.freeze
+        @backend_mutex = Mutex.new
       end
 
       def store(key, payload, ttl: Smith.config.persistence_ttl)
@@ -55,12 +56,25 @@ module Smith
 
       private
 
-      def backend
-        @backend ||= begin
-          store = @store_source.respond_to?(:call) ? @store_source.call : @store_source
-          raise ArgumentError, "cache store is required" unless store
+      # Built once, under a lock, so threads that first use the adapter
+      # together share one store; a source that fails is asked again.
+      def backend = @backend || built_backend
 
-          store
+      # A source that asks this adapter for its store would wait on its own
+      # lock; it is refused by name instead.
+      def built_backend
+        if @backend_mutex.owned?
+          raise Smith::Error,
+                "the cache store's source asked its adapter for the cache store, which it was still building"
+        end
+
+        @backend_mutex.synchronize do
+          @backend ||= begin
+            store = @store_source.respond_to?(:call) ? @store_source.call : @store_source
+            raise ArgumentError, "cache store is required" unless store
+
+            store
+          end
         end
       end
 
