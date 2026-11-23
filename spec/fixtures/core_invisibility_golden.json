@@ -3,12 +3,12 @@
   "smith": {
     "version": "0.16.0",
     "source": "index",
-    "built_on": "8781714ad15c20f7945d06ff82dd7645cbc74ea0",
+    "built_on": "1f9584605b6366ac1ffc013d4f33b52fb412ec90",
     "parts": {
       "lib": "179b0d3d737f617aacc3c89dba36cb7343b0c87c",
       "smith-agents.gemspec": "c53afa043a29d0108246de68b76d808a268e1ec6",
       "script/core_invisibility_golden": "5180d12c15431cbdbe0cfa534b347973f0d89119",
-      "script/golden": "a717534e9458cfa555daeb805be303adeaf50f18",
+      "script/golden": "3199c73519c4fbc2eae647145a416ad693555a66",
       "spec/support/sse_server.rb": "4941e3ea43940f40dae927586e75bb999856d198"
     }
   },
@@ -31402,6 +31402,4082 @@
               ":transition": ":describe",
               ":from": ":ready",
               ":to": ":described"
+            }
+          ],
+          ":last_error": null
+        },
+        {
+          ":unused_replies": 0
+        }
+      ]
+    },
+    "uncapped": {
+      "random_draws": 3,
+      "counts": {
+        "Smith::Agent::Registry.fetch!": 3,
+        "Smith::Agent::Registry.capture_bindings!": 0,
+        "RubyLLM.context": 0,
+        "RubyLLM::Context.new": 0
+      },
+      "requests": [
+        [
+          "POST",
+          "/v1/messages",
+          {
+            "x-api-key": "test",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "200"
+          },
+          "{\"model\":\"claude-sonnet-5-5\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Is the clinic open?\"}]}],\"stream\":false,\"max_tokens\":4096,\"system\":[{\"type\":\"text\",\"text\":\"Answer briefly.\"}]}"
+        ]
+      ],
+      "memo": [],
+      "batches": [],
+      "states": [
+        {
+          ":class": "GoldenUncappedWorkflow",
+          ":state": ":done",
+          ":persistence_key": "run-uncapped",
+          ":context": {
+            ":answer": "Open at 8."
+          },
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": {},
+          ":active_seconds": "s",
+          ":active_step_started_at": "2026-01-01T00:00:00.000000Z",
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": ":user",
+              ":content": "Is the clinic open?"
+            }
+          ],
+          ":total_cost": 0.0006000000000000001,
+          ":total_tokens": 120,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000003",
+              ":agent_name": ":golden_uncapped",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000002",
+              ":workflow": "GoldenUncappedWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_u"
+            }
+          ],
+          ":last_output": "Open at 8.",
+          ":last_agent_execution": {
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          },
+          ":last_failed_step": null,
+          ":persistence_version": 1,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": [
+            ":answer"
+          ]
+        },
+        {
+          ":class": "GoldenUncappedWorkflow",
+          ":state": ":done",
+          ":persistence_key": "run-uncapped",
+          ":context": {
+            ":answer": "Open at 8."
+          },
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": {},
+          ":active_seconds": "s",
+          ":active_step_started_at": null,
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": ":user",
+              ":content": "Is the clinic open?"
+            }
+          ],
+          ":total_cost": 0.0006000000000000001,
+          ":total_tokens": 120,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000003",
+              ":agent_name": ":golden_uncapped",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000002",
+              ":workflow": "GoldenUncappedWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_u"
+            }
+          ],
+          ":last_output": "Open at 8.",
+          ":last_agent_execution": {
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          },
+          ":last_failed_step": null,
+          ":persistence_version": 2,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": [
+            ":answer"
+          ]
+        }
+      ],
+      "persisted": [
+        [
+          "store_versioned",
+          "run-uncapped",
+          {
+            ":expected_version": 0
+          },
+          "{\"class\":\"GoldenUncappedWorkflow\",\"state\":\"idle\",\"persistence_key\":\"run-uncapped\",\"context\":{},\"budget_consumed\":{},\"step_count\":0,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":{},\"active_seconds\":\"s\",\"active_step_started_at\":\"2026-01-01T00:00:00.000000Z\",\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.0,\"total_tokens\":0,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[],\"last_output\":null,\"last_agent_execution\":null,\"last_failed_step\":null,\"persistence_version\":1,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[]}"
+        ],
+        [
+          "heartbeat",
+          "run-uncapped",
+          {}
+        ],
+        [
+          "store_versioned",
+          "run-uncapped",
+          {
+            ":expected_version": 1
+          },
+          "{\"class\":\"GoldenUncappedWorkflow\",\"state\":\"done\",\"persistence_key\":\"run-uncapped\",\"context\":{\"answer\":\"Open at 8.\"},\"budget_consumed\":{},\"step_count\":1,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":{},\"active_seconds\":\"s\",\"active_step_started_at\":null,\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.0006000000000000001,\"total_tokens\":120,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[{\"usage_id\":\"00000000-0000-4000-8000-000000000003\",\"agent_name\":\"golden_uncapped\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":100,\"output_tokens\":20,\"cost\":0.0006000000000000001,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"ask\",\"attempt_id\":\"00000000-0000-4000-8000-000000000002\",\"workflow\":\"GoldenUncappedWorkflow\",\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_u\"}],\"last_output\":\"Open at 8.\",\"last_agent_execution\":{\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\"},\"last_failed_step\":null,\"persistence_version\":2,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[\"answer\"]}"
+        ],
+        [
+          "heartbeat",
+          "run-uncapped",
+          {}
+        ]
+      ],
+      "artifacts": [],
+      "usage_entries": [
+        [
+          {
+            ":usage_id": "00000000-0000-4000-8000-000000000003",
+            ":agent_name": ":golden_uncapped",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":cost": 0.0006000000000000001,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":ask",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":workflow": "GoldenUncappedWorkflow",
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_u"
+          }
+        ]
+      ],
+      "traces": [
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-uncapped",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenUncappedWorkflow",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":attempt_index": 0,
+            ":outcome": ":success",
+            ":agent_name": ":golden_uncapped",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_u"
+          }
+        },
+        {
+          ":type": ":token_usage",
+          ":data": {
+            ":execution_key": "run-uncapped",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenUncappedWorkflow",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          }
+        },
+        {
+          ":type": ":cost",
+          ":data": {
+            ":execution_key": "run-uncapped",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenUncappedWorkflow",
+            ":cost": 0.0006000000000000001,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20
+          }
+        },
+        {
+          ":type": ":transition",
+          ":data": {
+            ":execution_key": "run-uncapped",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenUncappedWorkflow"
+          }
+        }
+      ],
+      "events": [
+        [
+          "Smith::Events::StepCompleted",
+          {
+            ":execution_id": "run-uncapped",
+            ":trace_id": "run-uncapped",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenUncappedWorkflow"
+          }
+        ]
+      ],
+      "stream": [],
+      "ledger": [
+        [
+          "reserve",
+          "00000000-0000-4000-8000-000000000002:1",
+          {
+            ":input_tokens": 28,
+            ":output_tokens": 4096,
+            ":cost": 0.061524,
+            "class": "Smith::Budget::Amount"
+          },
+          "2026-01-01T01:00:00.000000Z"
+        ],
+        [
+          "reconcile",
+          "00000000-0000-4000-8000-000000000002:1",
+          {
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":cost": 0.0006000000000000001,
+            "class": "Smith::Budget::Amount"
+          }
+        ]
+      ],
+      "logs": [
+        {
+          ":smith": [],
+          ":ruby_llm": []
+        }
+      ],
+      "errors": [],
+      "results": [
+        {
+          ":state": ":done",
+          ":output": "Open at 8.",
+          ":steps": [
+            {
+              ":transition": ":ask",
+              ":from": ":idle",
+              ":to": ":done"
+            }
+          ],
+          ":last_error": null
+        },
+        {
+          ":unused_replies": 0
+        }
+      ]
+    },
+    "cached_instructions": {
+      "random_draws": 3,
+      "counts": {
+        "Smith::Agent::Registry.fetch!": 3,
+        "Smith::Agent::Registry.capture_bindings!": 0,
+        "RubyLLM.context": 0,
+        "RubyLLM::Context.new": 0
+      },
+      "requests": [
+        [
+          "POST",
+          "/v1/messages",
+          {
+            "x-api-key": "test",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "350"
+          },
+          "{\"model\":\"claude-sonnet-5-5\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Is the clinic open?\"}]}],\"stream\":false,\"max_tokens\":500,\"system\":[{\"type\":\"text\",\"text\":\"House style: one line.\",\"cache_control\":{\"type\":\"ephemeral\"}},{\"type\":\"text\",\"text\":\"Clinic facts: open 8 to 6, Monday to Friday.\",\"cache_control\":{\"type\":\"ephemeral\"}}]}"
+        ]
+      ],
+      "memo": [],
+      "batches": [],
+      "states": [
+        {
+          ":class": "GoldenCachedWorkflow",
+          ":state": ":done",
+          ":persistence_key": "run-cached",
+          ":context": {
+            ":answer": "Open 8 to 6."
+          },
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": {},
+          ":active_seconds": "s",
+          ":active_step_started_at": "2026-01-01T00:00:00.000000Z",
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              "role": "system",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Clinic facts: open 8 to 6, Monday to Friday.",
+                  "cache": true
+                }
+              ],
+              "parts": true
+            },
+            {
+              ":role": ":user",
+              ":content": "Is the clinic open?"
+            }
+          ],
+          ":total_cost": 0.004845,
+          ":total_tokens": 1549,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000003",
+              ":agent_name": ":golden_cached",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 40,
+              ":output_tokens": 9,
+              ":cost": 0.004845,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000002",
+              ":workflow": "GoldenCachedWorkflow",
+              ":cache_read_tokens": 300,
+              ":cache_write_tokens": 1200,
+              ":thinking_tokens": 4,
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_c"
+            }
+          ],
+          ":last_output": "Open 8 to 6.",
+          ":last_agent_execution": {
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          },
+          ":last_failed_step": null,
+          ":persistence_version": 1,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "e38cf962ac1aeef9d1ec2ff194e5d73cfe6842b1d5de3c27cb1a578cc9420444",
+          ":seed_message_count": 2,
+          ":step_in_progress": false,
+          ":persisted_keys": [
+            ":answer"
+          ]
+        },
+        {
+          ":class": "GoldenCachedWorkflow",
+          ":state": ":done",
+          ":persistence_key": "run-cached",
+          ":context": {
+            ":answer": "Open 8 to 6."
+          },
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": {},
+          ":active_seconds": "s",
+          ":active_step_started_at": null,
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              "role": "system",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Clinic facts: open 8 to 6, Monday to Friday.",
+                  "cache": true
+                }
+              ],
+              "parts": true
+            },
+            {
+              ":role": ":user",
+              ":content": "Is the clinic open?"
+            }
+          ],
+          ":total_cost": 0.004845,
+          ":total_tokens": 1549,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000003",
+              ":agent_name": ":golden_cached",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 40,
+              ":output_tokens": 9,
+              ":cost": 0.004845,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000002",
+              ":workflow": "GoldenCachedWorkflow",
+              ":cache_read_tokens": 300,
+              ":cache_write_tokens": 1200,
+              ":thinking_tokens": 4,
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_c"
+            }
+          ],
+          ":last_output": "Open 8 to 6.",
+          ":last_agent_execution": {
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          },
+          ":last_failed_step": null,
+          ":persistence_version": 2,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "e38cf962ac1aeef9d1ec2ff194e5d73cfe6842b1d5de3c27cb1a578cc9420444",
+          ":seed_message_count": 2,
+          ":step_in_progress": false,
+          ":persisted_keys": [
+            ":answer"
+          ]
+        }
+      ],
+      "persisted": [
+        [
+          "store_versioned",
+          "run-cached",
+          {
+            ":expected_version": 0
+          },
+          "{\"class\":\"GoldenCachedWorkflow\",\"state\":\"idle\",\"persistence_key\":\"run-cached\",\"context\":{},\"budget_consumed\":{},\"step_count\":0,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":{},\"active_seconds\":\"s\",\"active_step_started_at\":\"2026-01-01T00:00:00.000000Z\",\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"system\",\"content\":[{\"type\":\"text\",\"text\":\"Clinic facts: open 8 to 6, Monday to Friday.\",\"cache\":true}],\"parts\":true},{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.0,\"total_tokens\":0,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[],\"last_output\":null,\"last_agent_execution\":null,\"last_failed_step\":null,\"persistence_version\":1,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"e38cf962ac1aeef9d1ec2ff194e5d73cfe6842b1d5de3c27cb1a578cc9420444\",\"seed_message_count\":2,\"step_in_progress\":false,\"persisted_keys\":[]}"
+        ],
+        [
+          "heartbeat",
+          "run-cached",
+          {}
+        ],
+        [
+          "store_versioned",
+          "run-cached",
+          {
+            ":expected_version": 1
+          },
+          "{\"class\":\"GoldenCachedWorkflow\",\"state\":\"done\",\"persistence_key\":\"run-cached\",\"context\":{\"answer\":\"Open 8 to 6.\"},\"budget_consumed\":{},\"step_count\":1,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":{},\"active_seconds\":\"s\",\"active_step_started_at\":null,\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"system\",\"content\":[{\"type\":\"text\",\"text\":\"Clinic facts: open 8 to 6, Monday to Friday.\",\"cache\":true}],\"parts\":true},{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.004845,\"total_tokens\":1549,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[{\"usage_id\":\"00000000-0000-4000-8000-000000000003\",\"agent_name\":\"golden_cached\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":40,\"output_tokens\":9,\"cost\":0.004845,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"ask\",\"attempt_id\":\"00000000-0000-4000-8000-000000000002\",\"workflow\":\"GoldenCachedWorkflow\",\"cache_read_tokens\":300,\"cache_write_tokens\":1200,\"thinking_tokens\":4,\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_c\"}],\"last_output\":\"Open 8 to 6.\",\"last_agent_execution\":{\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\"},\"last_failed_step\":null,\"persistence_version\":2,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"e38cf962ac1aeef9d1ec2ff194e5d73cfe6842b1d5de3c27cb1a578cc9420444\",\"seed_message_count\":2,\"step_in_progress\":false,\"persisted_keys\":[\"answer\"]}"
+        ],
+        [
+          "heartbeat",
+          "run-cached",
+          {}
+        ]
+      ],
+      "artifacts": [],
+      "usage_entries": [
+        [
+          {
+            ":usage_id": "00000000-0000-4000-8000-000000000003",
+            ":agent_name": ":golden_cached",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 40,
+            ":output_tokens": 9,
+            ":cost": 0.004845,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":ask",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":workflow": "GoldenCachedWorkflow",
+            ":cache_read_tokens": 300,
+            ":cache_write_tokens": 1200,
+            ":thinking_tokens": 4,
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_c"
+          }
+        ]
+      ],
+      "traces": [
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-cached",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenCachedWorkflow",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":attempt_index": 0,
+            ":outcome": ":success",
+            ":agent_name": ":golden_cached",
+            ":input_tokens": 40,
+            ":output_tokens": 9,
+            ":cache_read_tokens": 300,
+            ":cache_write_tokens": 1200,
+            ":thinking_tokens": 4,
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_c"
+          }
+        },
+        {
+          ":type": ":token_usage",
+          ":data": {
+            ":execution_key": "run-cached",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenCachedWorkflow",
+            ":input_tokens": 40,
+            ":output_tokens": 9,
+            ":cache_read_tokens": 300,
+            ":cache_write_tokens": 1200,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          }
+        },
+        {
+          ":type": ":cost",
+          ":data": {
+            ":execution_key": "run-cached",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenCachedWorkflow",
+            ":cost": 0.004845,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 40,
+            ":output_tokens": 9,
+            ":cache_read_tokens": 300,
+            ":cache_write_tokens": 1200
+          }
+        },
+        {
+          ":type": ":transition",
+          ":data": {
+            ":execution_key": "run-cached",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenCachedWorkflow"
+          }
+        }
+      ],
+      "events": [
+        [
+          "Smith::Events::StepCompleted",
+          {
+            ":execution_id": "run-cached",
+            ":trace_id": "run-cached",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenCachedWorkflow"
+          }
+        ]
+      ],
+      "stream": [],
+      "ledger": [
+        [
+          "reserve",
+          "00000000-0000-4000-8000-000000000002:1",
+          {
+            ":input_tokens": 78,
+            ":output_tokens": 500,
+            ":cost": 0.007792500000000001,
+            "class": "Smith::Budget::Amount"
+          },
+          "2026-01-01T01:00:00.000000Z"
+        ],
+        [
+          "reconcile",
+          "00000000-0000-4000-8000-000000000002:1",
+          {
+            ":input_tokens": 1540,
+            ":output_tokens": 9,
+            ":cost": 0.004845,
+            "class": "Smith::Budget::Amount"
+          }
+        ]
+      ],
+      "logs": [
+        {
+          ":smith": [],
+          ":ruby_llm": []
+        }
+      ],
+      "errors": [],
+      "results": [
+        {
+          ":state": ":done",
+          ":output": "Open 8 to 6.",
+          ":steps": [
+            {
+              ":transition": ":ask",
+              ":from": ":idle",
+              ":to": ":done"
+            }
+          ],
+          ":last_error": null
+        },
+        {
+          ":unused_replies": 0
+        }
+      ]
+    },
+    "automatic_cache": {
+      "random_draws": 4,
+      "counts": {
+        "Smith::Agent::Registry.fetch!": 3,
+        "Smith::Agent::Registry.capture_bindings!": 0,
+        "RubyLLM.context": 0,
+        "RubyLLM::Context.new": 0
+      },
+      "requests": [
+        [
+          "POST",
+          "/v1/messages",
+          {
+            "x-api-key": "test",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "443"
+          },
+          "{\"model\":\"claude-sonnet-5-5\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Is the clinic open?\"}]}],\"stream\":false,\"max_tokens\":500,\"tools\":[{\"name\":\"golden_lookup\",\"description\":\"Looks a place up.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\"}},\"required\":[\"query\"],\"additionalProperties\":false,\"strict\":true}}],\"system\":[{\"type\":\"text\",\"text\":\"Find the hours.\"}],\"cache_control\":{\"type\":\"ephemeral\"}}"
+        ],
+        [
+          "POST",
+          "/v1/messages",
+          {
+            "x-api-key": "test",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "704"
+          },
+          "{\"model\":\"claude-sonnet-5-5\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Is the clinic open?\"}]},{\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"golden_lookup\",\"input\":{\"query\":\"clinic\"}}]},{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_1\",\"content\":[{\"type\":\"text\",\"text\":\"{found: \\\"clinic opens at 8\\\"}\"}]}]}],\"stream\":false,\"max_tokens\":500,\"tools\":[{\"name\":\"golden_lookup\",\"description\":\"Looks a place up.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\"}},\"required\":[\"query\"],\"additionalProperties\":false,\"strict\":true}}],\"system\":[{\"type\":\"text\",\"text\":\"Find the hours.\"}],\"cache_control\":{\"type\":\"ephemeral\"}}"
+        ]
+      ],
+      "memo": [],
+      "batches": [],
+      "states": [
+        {
+          ":class": "GoldenAutoCacheWorkflow",
+          ":state": ":done",
+          ":persistence_key": "run-auto-cache",
+          ":context": {
+            ":answer": "Open at 8."
+          },
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": {},
+          ":active_seconds": "s",
+          ":active_step_started_at": "2026-01-01T00:00:00.000000Z",
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": ":user",
+              ":content": "Is the clinic open?"
+            }
+          ],
+          ":total_cost": 0.0038459999999999996,
+          ":total_tokens": 1831,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000003",
+              ":agent_name": ":golden_auto_cache",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 10,
+              ":output_tokens": 4,
+              ":cost": 0.0034649999999999998,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000002",
+              ":workflow": "GoldenAutoCacheWorkflow",
+              ":cache_write_tokens": 900,
+              ":stop_reason": "tool_use",
+              ":provider_message_id": "msg_a"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000004",
+              ":agent_name": ":golden_auto_cache",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 12,
+              ":output_tokens": 5,
+              ":cost": 0.00038100000000000005,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000002",
+              ":workflow": "GoldenAutoCacheWorkflow",
+              ":cache_read_tokens": 900,
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_b"
+            }
+          ],
+          ":last_output": "Open at 8.",
+          ":last_agent_execution": {
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          },
+          ":last_failed_step": null,
+          ":persistence_version": 1,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": [
+            ":answer"
+          ]
+        },
+        {
+          ":class": "GoldenAutoCacheWorkflow",
+          ":state": ":done",
+          ":persistence_key": "run-auto-cache",
+          ":context": {
+            ":answer": "Open at 8."
+          },
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": {},
+          ":active_seconds": "s",
+          ":active_step_started_at": null,
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": ":user",
+              ":content": "Is the clinic open?"
+            }
+          ],
+          ":total_cost": 0.0038459999999999996,
+          ":total_tokens": 1831,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000003",
+              ":agent_name": ":golden_auto_cache",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 10,
+              ":output_tokens": 4,
+              ":cost": 0.0034649999999999998,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000002",
+              ":workflow": "GoldenAutoCacheWorkflow",
+              ":cache_write_tokens": 900,
+              ":stop_reason": "tool_use",
+              ":provider_message_id": "msg_a"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000004",
+              ":agent_name": ":golden_auto_cache",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 12,
+              ":output_tokens": 5,
+              ":cost": 0.00038100000000000005,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000002",
+              ":workflow": "GoldenAutoCacheWorkflow",
+              ":cache_read_tokens": 900,
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_b"
+            }
+          ],
+          ":last_output": "Open at 8.",
+          ":last_agent_execution": {
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          },
+          ":last_failed_step": null,
+          ":persistence_version": 2,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": [
+            ":answer"
+          ]
+        }
+      ],
+      "persisted": [
+        [
+          "store_versioned",
+          "run-auto-cache",
+          {
+            ":expected_version": 0
+          },
+          "{\"class\":\"GoldenAutoCacheWorkflow\",\"state\":\"idle\",\"persistence_key\":\"run-auto-cache\",\"context\":{},\"budget_consumed\":{},\"step_count\":0,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":{},\"active_seconds\":\"s\",\"active_step_started_at\":\"2026-01-01T00:00:00.000000Z\",\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.0,\"total_tokens\":0,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[],\"last_output\":null,\"last_agent_execution\":null,\"last_failed_step\":null,\"persistence_version\":1,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[]}"
+        ],
+        [
+          "heartbeat",
+          "run-auto-cache",
+          {}
+        ],
+        [
+          "store_versioned",
+          "run-auto-cache",
+          {
+            ":expected_version": 1
+          },
+          "{\"class\":\"GoldenAutoCacheWorkflow\",\"state\":\"done\",\"persistence_key\":\"run-auto-cache\",\"context\":{\"answer\":\"Open at 8.\"},\"budget_consumed\":{},\"step_count\":1,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":{},\"active_seconds\":\"s\",\"active_step_started_at\":null,\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.0038459999999999996,\"total_tokens\":1831,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[{\"usage_id\":\"00000000-0000-4000-8000-000000000003\",\"agent_name\":\"golden_auto_cache\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":10,\"output_tokens\":4,\"cost\":0.0034649999999999998,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"ask\",\"attempt_id\":\"00000000-0000-4000-8000-000000000002\",\"workflow\":\"GoldenAutoCacheWorkflow\",\"cache_write_tokens\":900,\"stop_reason\":\"tool_use\",\"provider_message_id\":\"msg_a\"},{\"usage_id\":\"00000000-0000-4000-8000-000000000004\",\"agent_name\":\"golden_auto_cache\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":12,\"output_tokens\":5,\"cost\":0.00038100000000000005,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"ask\",\"attempt_id\":\"00000000-0000-4000-8000-000000000002\",\"workflow\":\"GoldenAutoCacheWorkflow\",\"cache_read_tokens\":900,\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_b\"}],\"last_output\":\"Open at 8.\",\"last_agent_execution\":{\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\"},\"last_failed_step\":null,\"persistence_version\":2,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[\"answer\"]}"
+        ],
+        [
+          "heartbeat",
+          "run-auto-cache",
+          {}
+        ]
+      ],
+      "artifacts": [],
+      "usage_entries": [
+        [
+          {
+            ":usage_id": "00000000-0000-4000-8000-000000000003",
+            ":agent_name": ":golden_auto_cache",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 10,
+            ":output_tokens": 4,
+            ":cost": 0.0034649999999999998,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":ask",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":workflow": "GoldenAutoCacheWorkflow",
+            ":cache_write_tokens": 900,
+            ":stop_reason": "tool_use",
+            ":provider_message_id": "msg_a"
+          },
+          {
+            ":usage_id": "00000000-0000-4000-8000-000000000004",
+            ":agent_name": ":golden_auto_cache",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 12,
+            ":output_tokens": 5,
+            ":cost": 0.00038100000000000005,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":ask",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":workflow": "GoldenAutoCacheWorkflow",
+            ":cache_read_tokens": 900,
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_b"
+          }
+        ]
+      ],
+      "traces": [
+        {
+          ":type": ":tool_call",
+          ":data": {
+            ":execution_key": "run-auto-cache",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenAutoCacheWorkflow",
+            ":tool": "golden_lookup",
+            ":args": {
+              ":query": "clinic"
+            },
+            ":result": {
+              ":found": "clinic opens at 8"
+            },
+            ":duration": "s",
+            ":tool_call_id": "toolu_1"
+          }
+        },
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-auto-cache",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenAutoCacheWorkflow",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":attempt_index": 0,
+            ":outcome": ":success",
+            ":agent_name": ":golden_auto_cache",
+            ":input_tokens": 22,
+            ":output_tokens": 9,
+            ":cache_read_tokens": 900,
+            ":cache_write_tokens": 900,
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_b"
+          }
+        },
+        {
+          ":type": ":token_usage",
+          ":data": {
+            ":execution_key": "run-auto-cache",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenAutoCacheWorkflow",
+            ":input_tokens": 22,
+            ":output_tokens": 9,
+            ":cache_read_tokens": 900,
+            ":cache_write_tokens": 900,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          }
+        },
+        {
+          ":type": ":cost",
+          ":data": {
+            ":execution_key": "run-auto-cache",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenAutoCacheWorkflow",
+            ":cost": 0.0038459999999999996,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 22,
+            ":output_tokens": 9,
+            ":cache_read_tokens": 900,
+            ":cache_write_tokens": 900
+          }
+        },
+        {
+          ":type": ":transition",
+          ":data": {
+            ":execution_key": "run-auto-cache",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenAutoCacheWorkflow"
+          }
+        }
+      ],
+      "events": [
+        [
+          "Smith::Events::StepCompleted",
+          {
+            ":execution_id": "run-auto-cache",
+            ":trace_id": "run-auto-cache",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenAutoCacheWorkflow"
+          }
+        ]
+      ],
+      "stream": [],
+      "ledger": [
+        [
+          "reserve",
+          "00000000-0000-4000-8000-000000000002:1",
+          {
+            ":input_tokens": 78,
+            ":output_tokens": 500,
+            ":cost": 0.007792500000000001,
+            "class": "Smith::Budget::Amount"
+          },
+          "2026-01-01T01:00:00.000000Z"
+        ],
+        [
+          "reconcile",
+          "00000000-0000-4000-8000-000000000002:1",
+          {
+            ":input_tokens": 910,
+            ":output_tokens": 4,
+            ":cost": 0.0034649999999999998,
+            "class": "Smith::Budget::Amount"
+          }
+        ],
+        [
+          "reserve",
+          "00000000-0000-4000-8000-000000000002:2",
+          {
+            ":input_tokens": 127,
+            ":output_tokens": 500,
+            ":cost": 0.00797625,
+            "class": "Smith::Budget::Amount"
+          },
+          "2026-01-01T01:00:00.000000Z"
+        ],
+        [
+          "reconcile",
+          "00000000-0000-4000-8000-000000000002:2",
+          {
+            ":input_tokens": 912,
+            ":output_tokens": 5,
+            ":cost": 0.00038100000000000005,
+            "class": "Smith::Budget::Amount"
+          }
+        ]
+      ],
+      "logs": [
+        {
+          ":smith": [],
+          ":ruby_llm": []
+        }
+      ],
+      "errors": [],
+      "results": [
+        {
+          ":state": ":done",
+          ":output": "Open at 8.",
+          ":steps": [
+            {
+              ":transition": ":ask",
+              ":from": ":idle",
+              ":to": ":done"
+            }
+          ],
+          ":last_error": null
+        },
+        {
+          ":unused_replies": 0
+        }
+      ]
+    },
+    "truncation_retry": {
+      "random_draws": 5,
+      "counts": {
+        "Smith::Agent::Registry.fetch!": 3,
+        "Smith::Agent::Registry.capture_bindings!": 0,
+        "RubyLLM.context": 0,
+        "RubyLLM::Context.new": 0
+      },
+      "requests": [
+        [
+          "POST",
+          "/v1/messages",
+          {
+            "x-api-key": "test",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "199"
+          },
+          "{\"model\":\"claude-sonnet-5-5\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Is the clinic open?\"}]}],\"stream\":false,\"max_tokens\":500,\"system\":[{\"type\":\"text\",\"text\":\"Answer briefly.\"}]}"
+        ],
+        [
+          "POST",
+          "/v1/messages",
+          {
+            "x-api-key": "test",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "200"
+          },
+          "{\"model\":\"claude-sonnet-5-5\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Is the clinic open?\"}]}],\"stream\":false,\"max_tokens\":2000,\"system\":[{\"type\":\"text\",\"text\":\"Answer briefly.\"}]}"
+        ]
+      ],
+      "memo": [],
+      "batches": [],
+      "states": [
+        {
+          ":class": "GoldenTruncatedWorkflow",
+          ":state": ":done",
+          ":persistence_key": "run-truncated",
+          ":context": {
+            ":answer": "Open at 8."
+          },
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": null,
+          ":active_seconds": "s",
+          ":active_step_started_at": "2026-01-01T00:00:00.000000Z",
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": ":user",
+              ":content": "Is the clinic open?"
+            }
+          ],
+          ":total_cost": 0.007710000000000001,
+          ":total_tokens": 546,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000003",
+              ":agent_name": ":golden_truncated",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 20,
+              ":output_tokens": 500,
+              ":cost": 0.007560000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000002",
+              ":workflow": "GoldenTruncatedWorkflow",
+              ":stop_reason": "max_tokens",
+              ":provider_message_id": "msg_a"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000005",
+              ":agent_name": ":golden_truncated",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 20,
+              ":output_tokens": 6,
+              ":cost": 0.00015000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000004",
+              ":workflow": "GoldenTruncatedWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_b"
+            }
+          ],
+          ":last_output": "Open at 8.",
+          ":last_agent_execution": {
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          },
+          ":last_failed_step": null,
+          ":persistence_version": 1,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": [
+            ":answer"
+          ]
+        },
+        {
+          ":class": "GoldenTruncatedWorkflow",
+          ":state": ":done",
+          ":persistence_key": "run-truncated",
+          ":context": {
+            ":answer": "Open at 8."
+          },
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": null,
+          ":active_seconds": "s",
+          ":active_step_started_at": null,
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": ":user",
+              ":content": "Is the clinic open?"
+            }
+          ],
+          ":total_cost": 0.007710000000000001,
+          ":total_tokens": 546,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000003",
+              ":agent_name": ":golden_truncated",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 20,
+              ":output_tokens": 500,
+              ":cost": 0.007560000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000002",
+              ":workflow": "GoldenTruncatedWorkflow",
+              ":stop_reason": "max_tokens",
+              ":provider_message_id": "msg_a"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000005",
+              ":agent_name": ":golden_truncated",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 20,
+              ":output_tokens": 6,
+              ":cost": 0.00015000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000004",
+              ":workflow": "GoldenTruncatedWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_b"
+            }
+          ],
+          ":last_output": "Open at 8.",
+          ":last_agent_execution": {
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          },
+          ":last_failed_step": null,
+          ":persistence_version": 2,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": [
+            ":answer"
+          ]
+        }
+      ],
+      "persisted": [
+        [
+          "store_versioned",
+          "run-truncated",
+          {
+            ":expected_version": 0
+          },
+          "{\"class\":\"GoldenTruncatedWorkflow\",\"state\":\"idle\",\"persistence_key\":\"run-truncated\",\"context\":{},\"budget_consumed\":{},\"step_count\":0,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":null,\"active_seconds\":\"s\",\"active_step_started_at\":\"2026-01-01T00:00:00.000000Z\",\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.0,\"total_tokens\":0,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[],\"last_output\":null,\"last_agent_execution\":null,\"last_failed_step\":null,\"persistence_version\":1,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[]}"
+        ],
+        [
+          "heartbeat",
+          "run-truncated",
+          {}
+        ],
+        [
+          "store_versioned",
+          "run-truncated",
+          {
+            ":expected_version": 1
+          },
+          "{\"class\":\"GoldenTruncatedWorkflow\",\"state\":\"done\",\"persistence_key\":\"run-truncated\",\"context\":{\"answer\":\"Open at 8.\"},\"budget_consumed\":{},\"step_count\":1,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":null,\"active_seconds\":\"s\",\"active_step_started_at\":null,\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.007710000000000001,\"total_tokens\":546,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[{\"usage_id\":\"00000000-0000-4000-8000-000000000003\",\"agent_name\":\"golden_truncated\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":20,\"output_tokens\":500,\"cost\":0.007560000000000001,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"ask\",\"attempt_id\":\"00000000-0000-4000-8000-000000000002\",\"workflow\":\"GoldenTruncatedWorkflow\",\"stop_reason\":\"max_tokens\",\"provider_message_id\":\"msg_a\"},{\"usage_id\":\"00000000-0000-4000-8000-000000000005\",\"agent_name\":\"golden_truncated\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":20,\"output_tokens\":6,\"cost\":0.00015000000000000001,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"ask\",\"attempt_id\":\"00000000-0000-4000-8000-000000000004\",\"workflow\":\"GoldenTruncatedWorkflow\",\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_b\"}],\"last_output\":\"Open at 8.\",\"last_agent_execution\":{\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\"},\"last_failed_step\":null,\"persistence_version\":2,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[\"answer\"]}"
+        ],
+        [
+          "heartbeat",
+          "run-truncated",
+          {}
+        ]
+      ],
+      "artifacts": [],
+      "usage_entries": [
+        [
+          {
+            ":usage_id": "00000000-0000-4000-8000-000000000003",
+            ":agent_name": ":golden_truncated",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 20,
+            ":output_tokens": 500,
+            ":cost": 0.007560000000000001,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":ask",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":workflow": "GoldenTruncatedWorkflow",
+            ":stop_reason": "max_tokens",
+            ":provider_message_id": "msg_a"
+          },
+          {
+            ":usage_id": "00000000-0000-4000-8000-000000000005",
+            ":agent_name": ":golden_truncated",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 20,
+            ":output_tokens": 6,
+            ":cost": 0.00015000000000000001,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":ask",
+            ":attempt_id": "00000000-0000-4000-8000-000000000004",
+            ":workflow": "GoldenTruncatedWorkflow",
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_b"
+          }
+        ]
+      ],
+      "traces": [
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-truncated",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenTruncatedWorkflow",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":attempt_index": 0,
+            ":outcome": ":success",
+            ":agent_name": ":golden_truncated",
+            ":input_tokens": 20,
+            ":output_tokens": 500,
+            ":stop_reason": "max_tokens",
+            ":provider_message_id": "msg_a"
+          }
+        },
+        {
+          ":type": ":token_usage",
+          ":data": {
+            ":execution_key": "run-truncated",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenTruncatedWorkflow",
+            ":input_tokens": 20,
+            ":output_tokens": 500,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          }
+        },
+        {
+          ":type": ":cost",
+          ":data": {
+            ":execution_key": "run-truncated",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenTruncatedWorkflow",
+            ":cost": 0.007560000000000001,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 20,
+            ":output_tokens": 500
+          }
+        },
+        {
+          ":type": ":output_rejected",
+          ":data": {
+            ":execution_key": "run-truncated",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenTruncatedWorkflow",
+            ":agent": ":golden_truncated",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":error_class": "Smith::OutputTruncated",
+            ":stop_reason": "max_tokens",
+            ":problem_count": 0,
+            ":follow_up": ":retry"
+          }
+        },
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-truncated",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenTruncatedWorkflow",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-000000000004",
+            ":attempt_index": 1,
+            ":outcome": ":success",
+            ":agent_name": ":golden_truncated",
+            ":input_tokens": 20,
+            ":output_tokens": 6,
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_b"
+          }
+        },
+        {
+          ":type": ":token_usage",
+          ":data": {
+            ":execution_key": "run-truncated",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenTruncatedWorkflow",
+            ":input_tokens": 20,
+            ":output_tokens": 6,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          }
+        },
+        {
+          ":type": ":cost",
+          ":data": {
+            ":execution_key": "run-truncated",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenTruncatedWorkflow",
+            ":cost": 0.00015000000000000001,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 20,
+            ":output_tokens": 6
+          }
+        },
+        {
+          ":type": ":transition",
+          ":data": {
+            ":execution_key": "run-truncated",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenTruncatedWorkflow"
+          }
+        }
+      ],
+      "events": [
+        [
+          "Smith::Events::StepCompleted",
+          {
+            ":execution_id": "run-truncated",
+            ":trace_id": "run-truncated",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenTruncatedWorkflow"
+          }
+        ]
+      ],
+      "stream": [],
+      "ledger": [],
+      "logs": [
+        {
+          ":smith": [],
+          ":ruby_llm": []
+        }
+      ],
+      "errors": [],
+      "results": [
+        {
+          ":state": ":done",
+          ":output": "Open at 8.",
+          ":steps": [
+            {
+              ":transition": ":ask",
+              ":from": ":idle",
+              ":to": ":done"
+            }
+          ],
+          ":last_error": null
+        },
+        {
+          ":unused_replies": 0
+        }
+      ]
+    },
+    "reasoning_cap": {
+      "random_draws": 3,
+      "counts": {
+        "Smith::Agent::Registry.fetch!": 3,
+        "Smith::Agent::Registry.capture_bindings!": 0,
+        "RubyLLM.context": 0,
+        "RubyLLM::Context.new": 0
+      },
+      "requests": [
+        [
+          "POST",
+          "/v1/chat/completions",
+          {
+            "authorization": "Bearer test",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "170"
+          },
+          "{\"model\":\"gpt-5\",\"messages\":[{\"role\":\"developer\",\"content\":\"Answer briefly.\"},{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"stream\":false,\"max_completion_tokens\":500}"
+        ]
+      ],
+      "memo": [],
+      "batches": [],
+      "states": [
+        {
+          ":class": "GoldenReasoningWorkflow",
+          ":state": ":done",
+          ":persistence_key": "run-reasoning",
+          ":context": {
+            ":answer": "Open at 8."
+          },
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": null,
+          ":active_seconds": "s",
+          ":active_step_started_at": "2026-01-01T00:00:00.000000Z",
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": ":user",
+              ":content": "Is the clinic open?"
+            }
+          ],
+          ":total_cost": 0.000105,
+          ":total_tokens": 21,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000003",
+              ":agent_name": ":golden_reasoning",
+              ":model": "gpt-5",
+              ":provider": ":openai",
+              ":input_tokens": 12,
+              ":output_tokens": 9,
+              ":cost": 0.000105,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000002",
+              ":workflow": "GoldenReasoningWorkflow",
+              ":cache_write_tokens": 0,
+              ":thinking_tokens": 6,
+              ":stop_reason": "stop",
+              ":provider_message_id": "chatcmpl_r"
+            }
+          ],
+          ":last_output": "Open at 8.",
+          ":last_agent_execution": {
+            ":model": "gpt-5",
+            ":provider": ":openai"
+          },
+          ":last_failed_step": null,
+          ":persistence_version": 1,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": [
+            ":answer"
+          ]
+        },
+        {
+          ":class": "GoldenReasoningWorkflow",
+          ":state": ":done",
+          ":persistence_key": "run-reasoning",
+          ":context": {
+            ":answer": "Open at 8."
+          },
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": null,
+          ":active_seconds": "s",
+          ":active_step_started_at": null,
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": ":user",
+              ":content": "Is the clinic open?"
+            }
+          ],
+          ":total_cost": 0.000105,
+          ":total_tokens": 21,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000003",
+              ":agent_name": ":golden_reasoning",
+              ":model": "gpt-5",
+              ":provider": ":openai",
+              ":input_tokens": 12,
+              ":output_tokens": 9,
+              ":cost": 0.000105,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000002",
+              ":workflow": "GoldenReasoningWorkflow",
+              ":cache_write_tokens": 0,
+              ":thinking_tokens": 6,
+              ":stop_reason": "stop",
+              ":provider_message_id": "chatcmpl_r"
+            }
+          ],
+          ":last_output": "Open at 8.",
+          ":last_agent_execution": {
+            ":model": "gpt-5",
+            ":provider": ":openai"
+          },
+          ":last_failed_step": null,
+          ":persistence_version": 2,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": [
+            ":answer"
+          ]
+        }
+      ],
+      "persisted": [
+        [
+          "store_versioned",
+          "run-reasoning",
+          {
+            ":expected_version": 0
+          },
+          "{\"class\":\"GoldenReasoningWorkflow\",\"state\":\"idle\",\"persistence_key\":\"run-reasoning\",\"context\":{},\"budget_consumed\":{},\"step_count\":0,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":null,\"active_seconds\":\"s\",\"active_step_started_at\":\"2026-01-01T00:00:00.000000Z\",\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.0,\"total_tokens\":0,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[],\"last_output\":null,\"last_agent_execution\":null,\"last_failed_step\":null,\"persistence_version\":1,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[]}"
+        ],
+        [
+          "heartbeat",
+          "run-reasoning",
+          {}
+        ],
+        [
+          "store_versioned",
+          "run-reasoning",
+          {
+            ":expected_version": 1
+          },
+          "{\"class\":\"GoldenReasoningWorkflow\",\"state\":\"done\",\"persistence_key\":\"run-reasoning\",\"context\":{\"answer\":\"Open at 8.\"},\"budget_consumed\":{},\"step_count\":1,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":null,\"active_seconds\":\"s\",\"active_step_started_at\":null,\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.000105,\"total_tokens\":21,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[{\"usage_id\":\"00000000-0000-4000-8000-000000000003\",\"agent_name\":\"golden_reasoning\",\"model\":\"gpt-5\",\"provider\":\"openai\",\"input_tokens\":12,\"output_tokens\":9,\"cost\":0.000105,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"ask\",\"attempt_id\":\"00000000-0000-4000-8000-000000000002\",\"workflow\":\"GoldenReasoningWorkflow\",\"cache_write_tokens\":0,\"thinking_tokens\":6,\"stop_reason\":\"stop\",\"provider_message_id\":\"chatcmpl_r\"}],\"last_output\":\"Open at 8.\",\"last_agent_execution\":{\"model\":\"gpt-5\",\"provider\":\"openai\"},\"last_failed_step\":null,\"persistence_version\":2,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[\"answer\"]}"
+        ],
+        [
+          "heartbeat",
+          "run-reasoning",
+          {}
+        ]
+      ],
+      "artifacts": [],
+      "usage_entries": [
+        [
+          {
+            ":usage_id": "00000000-0000-4000-8000-000000000003",
+            ":agent_name": ":golden_reasoning",
+            ":model": "gpt-5",
+            ":provider": ":openai",
+            ":input_tokens": 12,
+            ":output_tokens": 9,
+            ":cost": 0.000105,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":ask",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":workflow": "GoldenReasoningWorkflow",
+            ":cache_write_tokens": 0,
+            ":thinking_tokens": 6,
+            ":stop_reason": "stop",
+            ":provider_message_id": "chatcmpl_r"
+          }
+        ]
+      ],
+      "traces": [
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-reasoning",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenReasoningWorkflow",
+            ":model": "gpt-5",
+            ":provider": ":openai",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":attempt_index": 0,
+            ":outcome": ":success",
+            ":agent_name": ":golden_reasoning",
+            ":input_tokens": 12,
+            ":output_tokens": 9,
+            ":cache_write_tokens": 0,
+            ":thinking_tokens": 6,
+            ":stop_reason": "stop",
+            ":provider_message_id": "chatcmpl_r"
+          }
+        },
+        {
+          ":type": ":token_usage",
+          ":data": {
+            ":execution_key": "run-reasoning",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenReasoningWorkflow",
+            ":input_tokens": 12,
+            ":output_tokens": 9,
+            ":cache_write_tokens": 0,
+            ":model": "gpt-5",
+            ":provider": ":openai"
+          }
+        },
+        {
+          ":type": ":cost",
+          ":data": {
+            ":execution_key": "run-reasoning",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenReasoningWorkflow",
+            ":cost": 0.000105,
+            ":model": "gpt-5",
+            ":provider": ":openai",
+            ":input_tokens": 12,
+            ":output_tokens": 9,
+            ":cache_write_tokens": 0
+          }
+        },
+        {
+          ":type": ":transition",
+          ":data": {
+            ":execution_key": "run-reasoning",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenReasoningWorkflow"
+          }
+        }
+      ],
+      "events": [
+        [
+          "Smith::Events::StepCompleted",
+          {
+            ":execution_id": "run-reasoning",
+            ":trace_id": "run-reasoning",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenReasoningWorkflow"
+          }
+        ]
+      ],
+      "stream": [],
+      "ledger": [],
+      "logs": [
+        {
+          ":smith": [],
+          ":ruby_llm": []
+        }
+      ],
+      "errors": [],
+      "results": [
+        {
+          ":state": ":done",
+          ":output": "Open at 8.",
+          ":steps": [
+            {
+              ":transition": ":ask",
+              ":from": ":idle",
+              ":to": ":done"
+            }
+          ],
+          ":last_error": null
+        },
+        {
+          ":unused_replies": 0
+        }
+      ]
+    },
+    "streamed_limit_reached": {
+      "random_draws": 3,
+      "counts": {
+        "Smith::Agent::Registry.fetch!": 3,
+        "Smith::Agent::Registry.capture_bindings!": 0,
+        "RubyLLM.context": 0,
+        "RubyLLM::Context.new": 1
+      },
+      "requests": [
+        [
+          "POST",
+          "/v1/messages",
+          {
+            "x-api-key": "test",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "198"
+          },
+          "{\"model\":\"claude-sonnet-5-5\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Is the clinic open?\"}]}],\"stream\":true,\"max_tokens\":500,\"system\":[{\"type\":\"text\",\"text\":\"Answer briefly.\"}]}"
+        ]
+      ],
+      "memo": [],
+      "batches": [],
+      "states": [
+        {
+          ":class": "GoldenStreamCapWorkflow",
+          ":state": ":failed",
+          ":persistence_key": "run-stream-cap",
+          ":context": {},
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": null,
+          ":active_seconds": "s",
+          ":active_step_started_at": "2026-01-01T00:00:00.000000Z",
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": ":user",
+              ":content": "Is the clinic open?"
+            }
+          ],
+          ":total_cost": 0.00759,
+          ":total_tokens": 530,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000003",
+              ":agent_name": ":golden_stream_cap",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 30,
+              ":output_tokens": 500,
+              ":cost": 0.00759,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000002",
+              ":workflow": "GoldenStreamCapWorkflow",
+              ":stop_reason": "output_limit_reached",
+              ":provider_message_id": "msg_s",
+              ":mode": ":stream"
+            }
+          ],
+          ":last_output": null,
+          ":last_agent_execution": null,
+          ":last_failed_step": {
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":error_class": "Smith::OutputTruncated",
+            ":error_family": "output_failure",
+            ":error_message": "agent :golden_stream_cap response from model claude-sonnet-5-5 was cut off at its output limit (stop reason output_limit_reached)",
+            ":error_retryable": null,
+            ":error_retry_forbidden": false,
+            ":error_kind": null,
+            ":error_details": {
+              "agent_name": "golden_stream_cap",
+              "model_used": "claude-sonnet-5-5",
+              "problems": [],
+              "stop_reason": "output_limit_reached"
+            },
+            ":error_cause_class": null,
+            ":error_cause_family": null,
+            ":error_cause_message": null
+          },
+          ":persistence_version": 1,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": []
+        },
+        {
+          ":class": "GoldenStreamCapWorkflow",
+          ":state": ":failed",
+          ":persistence_key": "run-stream-cap",
+          ":context": {},
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": null,
+          ":active_seconds": "s",
+          ":active_step_started_at": null,
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": ":user",
+              ":content": "Is the clinic open?"
+            }
+          ],
+          ":total_cost": 0.00759,
+          ":total_tokens": 530,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000003",
+              ":agent_name": ":golden_stream_cap",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 30,
+              ":output_tokens": 500,
+              ":cost": 0.00759,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000002",
+              ":workflow": "GoldenStreamCapWorkflow",
+              ":stop_reason": "output_limit_reached",
+              ":provider_message_id": "msg_s",
+              ":mode": ":stream"
+            }
+          ],
+          ":last_output": null,
+          ":last_agent_execution": null,
+          ":last_failed_step": {
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":error_class": "Smith::OutputTruncated",
+            ":error_family": "output_failure",
+            ":error_message": "agent :golden_stream_cap response from model claude-sonnet-5-5 was cut off at its output limit (stop reason output_limit_reached)",
+            ":error_retryable": null,
+            ":error_retry_forbidden": false,
+            ":error_kind": null,
+            ":error_details": {
+              "agent_name": "golden_stream_cap",
+              "model_used": "claude-sonnet-5-5",
+              "problems": [],
+              "stop_reason": "output_limit_reached"
+            },
+            ":error_cause_class": null,
+            ":error_cause_family": null,
+            ":error_cause_message": null
+          },
+          ":persistence_version": 2,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": []
+        }
+      ],
+      "persisted": [
+        [
+          "store_versioned",
+          "run-stream-cap",
+          {
+            ":expected_version": 0
+          },
+          "{\"class\":\"GoldenStreamCapWorkflow\",\"state\":\"idle\",\"persistence_key\":\"run-stream-cap\",\"context\":{},\"budget_consumed\":{},\"step_count\":0,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":null,\"active_seconds\":\"s\",\"active_step_started_at\":\"2026-01-01T00:00:00.000000Z\",\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.0,\"total_tokens\":0,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[],\"last_output\":null,\"last_agent_execution\":null,\"last_failed_step\":null,\"persistence_version\":1,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[]}"
+        ],
+        [
+          "heartbeat",
+          "run-stream-cap",
+          {}
+        ],
+        [
+          "store_versioned",
+          "run-stream-cap",
+          {
+            ":expected_version": 1
+          },
+          "{\"class\":\"GoldenStreamCapWorkflow\",\"state\":\"failed\",\"persistence_key\":\"run-stream-cap\",\"context\":{},\"budget_consumed\":{},\"step_count\":1,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":null,\"active_seconds\":\"s\",\"active_step_started_at\":null,\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.00759,\"total_tokens\":530,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[{\"usage_id\":\"00000000-0000-4000-8000-000000000003\",\"agent_name\":\"golden_stream_cap\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":30,\"output_tokens\":500,\"cost\":0.00759,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"ask\",\"attempt_id\":\"00000000-0000-4000-8000-000000000002\",\"workflow\":\"GoldenStreamCapWorkflow\",\"stop_reason\":\"output_limit_reached\",\"provider_message_id\":\"msg_s\",\"mode\":\"stream\"}],\"last_output\":null,\"last_agent_execution\":null,\"last_failed_step\":{\"transition\":\"ask\",\"from\":\"idle\",\"to\":\"done\",\"error_class\":\"Smith::OutputTruncated\",\"error_family\":\"output_failure\",\"error_message\":\"agent :golden_stream_cap response from model claude-sonnet-5-5 was cut off at its output limit (stop reason output_limit_reached)\",\"error_retryable\":null,\"error_retry_forbidden\":false,\"error_kind\":null,\"error_details\":{\"agent_name\":\"golden_stream_cap\",\"model_used\":\"claude-sonnet-5-5\",\"problems\":[],\"stop_reason\":\"output_limit_reached\"},\"error_cause_class\":null,\"error_cause_family\":null,\"error_cause_message\":null},\"persistence_version\":2,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[]}"
+        ],
+        [
+          "heartbeat",
+          "run-stream-cap",
+          {}
+        ]
+      ],
+      "artifacts": [],
+      "usage_entries": [
+        [
+          {
+            ":usage_id": "00000000-0000-4000-8000-000000000003",
+            ":agent_name": ":golden_stream_cap",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 30,
+            ":output_tokens": 500,
+            ":cost": 0.00759,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":ask",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":workflow": "GoldenStreamCapWorkflow",
+            ":stop_reason": "output_limit_reached",
+            ":provider_message_id": "msg_s",
+            ":mode": ":stream"
+          }
+        ]
+      ],
+      "traces": [
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-stream-cap",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenStreamCapWorkflow",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":attempt_index": 0,
+            ":outcome": ":success",
+            ":agent_name": ":golden_stream_cap",
+            ":input_tokens": 30,
+            ":output_tokens": 500,
+            ":stop_reason": "output_limit_reached",
+            ":provider_message_id": "msg_s",
+            ":mode": ":stream"
+          }
+        },
+        {
+          ":type": ":token_usage",
+          ":data": {
+            ":execution_key": "run-stream-cap",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenStreamCapWorkflow",
+            ":input_tokens": 30,
+            ":output_tokens": 500,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          }
+        },
+        {
+          ":type": ":cost",
+          ":data": {
+            ":execution_key": "run-stream-cap",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenStreamCapWorkflow",
+            ":cost": 0.00759,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 30,
+            ":output_tokens": 500
+          }
+        },
+        {
+          ":type": ":output_rejected",
+          ":data": {
+            ":execution_key": "run-stream-cap",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenStreamCapWorkflow",
+            ":agent": ":golden_stream_cap",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":error_class": "Smith::OutputTruncated",
+            ":stop_reason": "output_limit_reached",
+            ":problem_count": 0,
+            ":follow_up": ":none"
+          }
+        },
+        {
+          ":type": ":transition",
+          ":data": {
+            ":execution_key": "run-stream-cap",
+            ":workflow": "GoldenStreamCapWorkflow",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":outcome": ":failed",
+            ":error_class": "Smith::OutputTruncated",
+            ":error_family": "output_failure"
+          }
+        }
+      ],
+      "events": [
+        [
+          "Smith::Events::StepFailed",
+          {
+            ":execution_id": "run-stream-cap",
+            ":trace_id": "run-stream-cap",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":error_class": "Smith::OutputTruncated",
+            ":error_family": "output_failure",
+            ":retryable": null,
+            ":workflow": "GoldenStreamCapWorkflow"
+          }
+        ]
+      ],
+      "stream": [
+        [
+          "open",
+          {
+            ":stream": ":reply",
+            ":execution_key": "run-stream-cap",
+            ":transition": ":ask"
+          }
+        ],
+        [
+          "start",
+          {
+            ":stream": ":reply",
+            ":execution_key": "run-stream-cap",
+            ":transition": ":ask",
+            ":attempt": 1,
+            ":model": "claude-sonnet-5-5",
+            ":provider": "anthropic"
+          }
+        ],
+        [
+          "delta",
+          "Open "
+        ],
+        [
+          "delta",
+          "at"
+        ],
+        [
+          "fail",
+          "Smith::OutputTruncated"
+        ]
+      ],
+      "ledger": [],
+      "logs": [
+        {
+          ":smith": [],
+          ":ruby_llm": []
+        }
+      ],
+      "errors": [],
+      "results": [
+        {
+          ":state": ":failed",
+          ":output": null,
+          ":steps": [
+            {
+              ":transition": ":ask",
+              ":from": ":idle",
+              ":to": ":done"
+            }
+          ],
+          ":last_error": {
+            "class": "Smith::OutputTruncated",
+            "message": "agent :golden_stream_cap response from model claude-sonnet-5-5 was cut off at its output limit (stop reason output_limit_reached)",
+            "causes": []
+          }
+        },
+        {
+          ":unused_replies": 0
+        }
+      ]
+    },
+    "paused_thinking": {
+      "random_draws": 5,
+      "counts": {
+        "Smith::Agent::Registry.fetch!": 6,
+        "Smith::Agent::Registry.capture_bindings!": 0,
+        "RubyLLM.context": 0,
+        "RubyLLM::Context.new": 0
+      },
+      "requests": [
+        [
+          "POST",
+          "/v1/messages",
+          {
+            "x-api-key": "test",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "467"
+          },
+          "{\"model\":\"claude-sonnet-4-5-20250929\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Is the clinic open?\"}]}],\"stream\":false,\"max_tokens\":2000,\"thinking\":{\"type\":\"enabled\",\"budget_tokens\":1024},\"tools\":[{\"name\":\"golden_lookup\",\"description\":\"Looks a place up.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\"}},\"required\":[\"query\"],\"additionalProperties\":false,\"strict\":true}}],\"system\":[{\"type\":\"text\",\"text\":\"Find the hours.\"}]}"
+        ],
+        [
+          "POST",
+          "/v1/messages",
+          {
+            "x-api-key": "test",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "801"
+          },
+          "{\"model\":\"claude-sonnet-4-5-20250929\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Is the clinic open?\"}]},{\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"Look the clinic up.\",\"signature\":\"sig-1\"},{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"golden_lookup\",\"input\":{\"query\":\"clinic\"}}]},{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_1\",\"content\":[{\"type\":\"text\",\"text\":\"{found: \\\"clinic opens at 8\\\"}\"}]}]}],\"stream\":false,\"max_tokens\":2000,\"thinking\":{\"type\":\"enabled\",\"budget_tokens\":1024},\"tools\":[{\"name\":\"golden_lookup\",\"description\":\"Looks a place up.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\"}},\"required\":[\"query\"],\"additionalProperties\":false,\"strict\":true}}],\"system\":[{\"type\":\"text\",\"text\":\"Find the hours.\"}]}"
+        ]
+      ],
+      "memo": [],
+      "batches": [],
+      "states": [
+        {
+          ":class": "GoldenThinkingWorkflow",
+          ":state": ":idle",
+          ":persistence_key": "run-thinking",
+          ":context": {},
+          ":budget_consumed": {},
+          ":step_count": 0,
+          ":awaiting": {
+            "token": "52057c01eaf05c853f2f18841f972060e58bff32db00a1825f7bfcc4ecc2ca4b",
+            "transition": "ask",
+            "entered_at": "2026-01-01T00:00:00.000000Z",
+            "deadline_at": "2026-01-01T00:01:00.000000Z",
+            "kind": "retry",
+            "event": null,
+            "into": null,
+            "children": null
+          },
+          ":pending_retry": {
+            "transition": "ask",
+            "attempt": 2,
+            "key_generation": 0,
+            "error": "Smith::BudgetUnavailable",
+            "continuation": [
+              {
+                "role": "assistant",
+                "content": "",
+                "model_id": "claude-sonnet-4-5",
+                "tool_calls": [
+                  {
+                    "id": "toolu_1",
+                    "name": "golden_lookup",
+                    "arguments": {
+                      "query": "clinic"
+                    }
+                  }
+                ],
+                "thinking": {
+                  "text": "Look the clinic up.",
+                  "signature": "sig-1"
+                }
+              },
+              {
+                "role": "tool",
+                "content": "{found: \"clinic opens at 8\"}",
+                "tool_call_id": "toolu_1"
+              }
+            ]
+          },
+          ":pending_batch": null,
+          ":budget_ledger_scope": {},
+          ":active_seconds": "s",
+          ":active_step_started_at": "2026-01-01T00:00:00.000000Z",
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": ":user",
+              ":content": "Is the clinic open?"
+            }
+          ],
+          ":total_cost": 0.00009,
+          ":total_tokens": 14,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000003",
+              ":agent_name": ":golden_thinking",
+              ":model": "claude-sonnet-4-5-20250929",
+              ":provider": ":anthropic",
+              ":input_tokens": 10,
+              ":output_tokens": 4,
+              ":cost": 0.00009,
+              ":attempt_kind": ":partial_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000002",
+              ":workflow": "GoldenThinkingWorkflow",
+              ":stop_reason": "tool_use",
+              ":provider_message_id": "msg_a"
+            }
+          ],
+          ":last_output": null,
+          ":last_agent_execution": null,
+          ":last_failed_step": null,
+          ":persistence_version": 1,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": []
+        },
+        {
+          ":class": "GoldenThinkingWorkflow",
+          ":state": ":idle",
+          ":persistence_key": "run-thinking",
+          ":context": {},
+          ":budget_consumed": {},
+          ":step_count": 0,
+          ":awaiting": {
+            "token": "52057c01eaf05c853f2f18841f972060e58bff32db00a1825f7bfcc4ecc2ca4b",
+            "transition": "ask",
+            "entered_at": "2026-01-01T00:00:00.000000Z",
+            "deadline_at": "2026-01-01T00:01:00.000000Z",
+            "kind": "retry",
+            "event": null,
+            "into": null,
+            "children": null
+          },
+          ":pending_retry": {
+            "transition": "ask",
+            "attempt": 2,
+            "key_generation": 0,
+            "error": "Smith::BudgetUnavailable",
+            "continuation": [
+              {
+                "role": "assistant",
+                "content": "",
+                "model_id": "claude-sonnet-4-5",
+                "tool_calls": [
+                  {
+                    "id": "toolu_1",
+                    "name": "golden_lookup",
+                    "arguments": {
+                      "query": "clinic"
+                    }
+                  }
+                ],
+                "thinking": {
+                  "text": "Look the clinic up.",
+                  "signature": "sig-1"
+                }
+              },
+              {
+                "role": "tool",
+                "content": "{found: \"clinic opens at 8\"}",
+                "tool_call_id": "toolu_1"
+              }
+            ]
+          },
+          ":pending_batch": null,
+          ":budget_ledger_scope": {},
+          ":active_seconds": "s",
+          ":active_step_started_at": null,
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": ":user",
+              ":content": "Is the clinic open?"
+            }
+          ],
+          ":total_cost": 0.00009,
+          ":total_tokens": 14,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000003",
+              ":agent_name": ":golden_thinking",
+              ":model": "claude-sonnet-4-5-20250929",
+              ":provider": ":anthropic",
+              ":input_tokens": 10,
+              ":output_tokens": 4,
+              ":cost": 0.00009,
+              ":attempt_kind": ":partial_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000002",
+              ":workflow": "GoldenThinkingWorkflow",
+              ":stop_reason": "tool_use",
+              ":provider_message_id": "msg_a"
+            }
+          ],
+          ":last_output": null,
+          ":last_agent_execution": null,
+          ":last_failed_step": null,
+          ":persistence_version": 2,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": []
+        },
+        {
+          ":class": "GoldenThinkingWorkflow",
+          ":state": ":done",
+          ":persistence_key": "run-thinking",
+          ":context": {
+            ":answer": "Open 8 to 6."
+          },
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": {},
+          ":active_seconds": "s",
+          ":active_step_started_at": "2026-01-01T00:01:00.000000Z",
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:01:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": "user",
+              ":content": "Is the clinic open?"
+            }
+          ],
+          ":total_cost": 0.00030000000000000003,
+          ":total_tokens": 60,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000003",
+              ":agent_name": ":golden_thinking",
+              ":model": "claude-sonnet-4-5-20250929",
+              ":provider": ":anthropic",
+              ":input_tokens": 10,
+              ":output_tokens": 4,
+              ":cost": 0.00009,
+              ":attempt_kind": ":partial_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000002",
+              ":workflow": "GoldenThinkingWorkflow",
+              ":stop_reason": "tool_use",
+              ":provider_message_id": "msg_a"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000005",
+              ":agent_name": ":golden_thinking",
+              ":model": "claude-sonnet-4-5-20250929",
+              ":provider": ":anthropic",
+              ":input_tokens": 40,
+              ":output_tokens": 6,
+              ":cost": 0.00021,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:01:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000004",
+              ":workflow": "GoldenThinkingWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_b"
+            }
+          ],
+          ":last_output": "Open 8 to 6.",
+          ":last_agent_execution": {
+            ":model": "claude-sonnet-4-5-20250929",
+            ":provider": ":anthropic"
+          },
+          ":last_failed_step": null,
+          ":persistence_version": 4,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": [
+            ":answer"
+          ]
+        },
+        {
+          ":class": "GoldenThinkingWorkflow",
+          ":state": ":done",
+          ":persistence_key": "run-thinking",
+          ":context": {
+            ":answer": "Open 8 to 6."
+          },
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": {},
+          ":active_seconds": "s",
+          ":active_step_started_at": null,
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:01:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": "user",
+              ":content": "Is the clinic open?"
+            }
+          ],
+          ":total_cost": 0.00030000000000000003,
+          ":total_tokens": 60,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000003",
+              ":agent_name": ":golden_thinking",
+              ":model": "claude-sonnet-4-5-20250929",
+              ":provider": ":anthropic",
+              ":input_tokens": 10,
+              ":output_tokens": 4,
+              ":cost": 0.00009,
+              ":attempt_kind": ":partial_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000002",
+              ":workflow": "GoldenThinkingWorkflow",
+              ":stop_reason": "tool_use",
+              ":provider_message_id": "msg_a"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000005",
+              ":agent_name": ":golden_thinking",
+              ":model": "claude-sonnet-4-5-20250929",
+              ":provider": ":anthropic",
+              ":input_tokens": 40,
+              ":output_tokens": 6,
+              ":cost": 0.00021,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:01:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000004",
+              ":workflow": "GoldenThinkingWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_b"
+            }
+          ],
+          ":last_output": "Open 8 to 6.",
+          ":last_agent_execution": {
+            ":model": "claude-sonnet-4-5-20250929",
+            ":provider": ":anthropic"
+          },
+          ":last_failed_step": null,
+          ":persistence_version": 5,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": [
+            ":answer"
+          ]
+        }
+      ],
+      "persisted": [
+        [
+          "store_versioned",
+          "run-thinking",
+          {
+            ":expected_version": 0
+          },
+          "{\"class\":\"GoldenThinkingWorkflow\",\"state\":\"idle\",\"persistence_key\":\"run-thinking\",\"context\":{},\"budget_consumed\":{},\"step_count\":0,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":{},\"active_seconds\":\"s\",\"active_step_started_at\":\"2026-01-01T00:00:00.000000Z\",\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.0,\"total_tokens\":0,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[],\"last_output\":null,\"last_agent_execution\":null,\"last_failed_step\":null,\"persistence_version\":1,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[]}"
+        ],
+        [
+          "heartbeat",
+          "run-thinking",
+          {}
+        ],
+        [
+          "store_versioned",
+          "run-thinking",
+          {
+            ":expected_version": 1
+          },
+          "{\"class\":\"GoldenThinkingWorkflow\",\"state\":\"idle\",\"persistence_key\":\"run-thinking\",\"context\":{},\"budget_consumed\":{},\"step_count\":0,\"awaiting\":{\"token\":\"52057c01eaf05c853f2f18841f972060e58bff32db00a1825f7bfcc4ecc2ca4b\",\"transition\":\"ask\",\"entered_at\":\"2026-01-01T00:00:00.000000Z\",\"deadline_at\":\"2026-01-01T00:01:00.000000Z\",\"kind\":\"retry\",\"event\":null,\"into\":null,\"children\":null},\"pending_retry\":{\"transition\":\"ask\",\"attempt\":2,\"key_generation\":0,\"error\":\"Smith::BudgetUnavailable\",\"continuation\":[{\"role\":\"assistant\",\"content\":\"\",\"model_id\":\"claude-sonnet-4-5\",\"tool_calls\":[{\"id\":\"toolu_1\",\"name\":\"golden_lookup\",\"arguments\":{\"query\":\"clinic\"}}],\"thinking\":{\"text\":\"Look the clinic up.\",\"signature\":\"sig-1\"}},{\"role\":\"tool\",\"content\":\"{found: \\\"clinic opens at 8\\\"}\",\"tool_call_id\":\"toolu_1\"}]},\"pending_batch\":null,\"budget_ledger_scope\":{},\"active_seconds\":\"s\",\"active_step_started_at\":null,\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.00009,\"total_tokens\":14,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[{\"usage_id\":\"00000000-0000-4000-8000-000000000003\",\"agent_name\":\"golden_thinking\",\"model\":\"claude-sonnet-4-5-20250929\",\"provider\":\"anthropic\",\"input_tokens\":10,\"output_tokens\":4,\"cost\":0.00009,\"attempt_kind\":\"partial_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"ask\",\"attempt_id\":\"00000000-0000-4000-8000-000000000002\",\"workflow\":\"GoldenThinkingWorkflow\",\"stop_reason\":\"tool_use\",\"provider_message_id\":\"msg_a\"}],\"last_output\":null,\"last_agent_execution\":null,\"last_failed_step\":null,\"persistence_version\":2,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[]}"
+        ],
+        [
+          "heartbeat",
+          "run-thinking",
+          {}
+        ],
+        [
+          "store_versioned",
+          "run-thinking",
+          {
+            ":expected_version": 2
+          },
+          "{\"class\":\"GoldenThinkingWorkflow\",\"state\":\"idle\",\"persistence_key\":\"run-thinking\",\"context\":{},\"budget_consumed\":{},\"step_count\":0,\"awaiting\":null,\"pending_retry\":{\"transition\":\"ask\",\"attempt\":2,\"key_generation\":0,\"error\":\"Smith::BudgetUnavailable\",\"continuation\":[{\"role\":\"assistant\",\"content\":\"\",\"model_id\":\"claude-sonnet-4-5\",\"tool_calls\":[{\"id\":\"toolu_1\",\"name\":\"golden_lookup\",\"arguments\":{\"query\":\"clinic\"}}],\"thinking\":{\"text\":\"Look the clinic up.\",\"signature\":\"sig-1\"}},{\"role\":\"tool\",\"content\":\"{found: \\\"clinic opens at 8\\\"}\",\"tool_call_id\":\"toolu_1\"}]},\"pending_batch\":null,\"budget_ledger_scope\":{},\"active_seconds\":\"s\",\"active_step_started_at\":null,\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:01:00.000000Z\",\"next_transition_name\":\"ask\",\"session_messages\":[{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.00009,\"total_tokens\":14,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[{\"usage_id\":\"00000000-0000-4000-8000-000000000003\",\"agent_name\":\"golden_thinking\",\"model\":\"claude-sonnet-4-5-20250929\",\"provider\":\"anthropic\",\"input_tokens\":10,\"output_tokens\":4,\"cost\":0.00009,\"attempt_kind\":\"partial_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"ask\",\"attempt_id\":\"00000000-0000-4000-8000-000000000002\",\"workflow\":\"GoldenThinkingWorkflow\",\"stop_reason\":\"tool_use\",\"provider_message_id\":\"msg_a\"}],\"last_output\":null,\"last_agent_execution\":null,\"last_failed_step\":null,\"persistence_version\":3,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[]}"
+        ],
+        [
+          "heartbeat",
+          "run-thinking",
+          {}
+        ],
+        [
+          "store_versioned",
+          "run-thinking",
+          {
+            ":expected_version": 3
+          },
+          "{\"class\":\"GoldenThinkingWorkflow\",\"state\":\"idle\",\"persistence_key\":\"run-thinking\",\"context\":{},\"budget_consumed\":{},\"step_count\":0,\"awaiting\":null,\"pending_retry\":{\"transition\":\"ask\",\"attempt\":2,\"key_generation\":0,\"error\":\"Smith::BudgetUnavailable\",\"continuation\":[{\"role\":\"assistant\",\"content\":\"\",\"model_id\":\"claude-sonnet-4-5\",\"tool_calls\":[{\"id\":\"toolu_1\",\"name\":\"golden_lookup\",\"arguments\":{\"query\":\"clinic\"}}],\"thinking\":{\"text\":\"Look the clinic up.\",\"signature\":\"sig-1\"}},{\"role\":\"tool\",\"content\":\"{found: \\\"clinic opens at 8\\\"}\",\"tool_call_id\":\"toolu_1\"}]},\"pending_batch\":null,\"budget_ledger_scope\":{},\"active_seconds\":\"s\",\"active_step_started_at\":\"2026-01-01T00:01:00.000000Z\",\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:01:00.000000Z\",\"next_transition_name\":\"ask\",\"session_messages\":[{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.00009,\"total_tokens\":14,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[{\"usage_id\":\"00000000-0000-4000-8000-000000000003\",\"agent_name\":\"golden_thinking\",\"model\":\"claude-sonnet-4-5-20250929\",\"provider\":\"anthropic\",\"input_tokens\":10,\"output_tokens\":4,\"cost\":0.00009,\"attempt_kind\":\"partial_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"ask\",\"attempt_id\":\"00000000-0000-4000-8000-000000000002\",\"workflow\":\"GoldenThinkingWorkflow\",\"stop_reason\":\"tool_use\",\"provider_message_id\":\"msg_a\"}],\"last_output\":null,\"last_agent_execution\":null,\"last_failed_step\":null,\"persistence_version\":4,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[]}"
+        ],
+        [
+          "heartbeat",
+          "run-thinking",
+          {}
+        ],
+        [
+          "store_versioned",
+          "run-thinking",
+          {
+            ":expected_version": 4
+          },
+          "{\"class\":\"GoldenThinkingWorkflow\",\"state\":\"done\",\"persistence_key\":\"run-thinking\",\"context\":{\"answer\":\"Open 8 to 6.\"},\"budget_consumed\":{},\"step_count\":1,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":{},\"active_seconds\":\"s\",\"active_step_started_at\":null,\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:01:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.00030000000000000003,\"total_tokens\":60,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[{\"usage_id\":\"00000000-0000-4000-8000-000000000003\",\"agent_name\":\"golden_thinking\",\"model\":\"claude-sonnet-4-5-20250929\",\"provider\":\"anthropic\",\"input_tokens\":10,\"output_tokens\":4,\"cost\":0.00009,\"attempt_kind\":\"partial_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"ask\",\"attempt_id\":\"00000000-0000-4000-8000-000000000002\",\"workflow\":\"GoldenThinkingWorkflow\",\"stop_reason\":\"tool_use\",\"provider_message_id\":\"msg_a\"},{\"usage_id\":\"00000000-0000-4000-8000-000000000005\",\"agent_name\":\"golden_thinking\",\"model\":\"claude-sonnet-4-5-20250929\",\"provider\":\"anthropic\",\"input_tokens\":40,\"output_tokens\":6,\"cost\":0.00021,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:01:00.000000Z\",\"transition\":\"ask\",\"attempt_id\":\"00000000-0000-4000-8000-000000000004\",\"workflow\":\"GoldenThinkingWorkflow\",\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_b\"}],\"last_output\":\"Open 8 to 6.\",\"last_agent_execution\":{\"model\":\"claude-sonnet-4-5-20250929\",\"provider\":\"anthropic\"},\"last_failed_step\":null,\"persistence_version\":5,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[\"answer\"]}"
+        ],
+        [
+          "heartbeat",
+          "run-thinking",
+          {}
+        ]
+      ],
+      "artifacts": [],
+      "usage_entries": [
+        [
+          {
+            ":usage_id": "00000000-0000-4000-8000-000000000003",
+            ":agent_name": ":golden_thinking",
+            ":model": "claude-sonnet-4-5-20250929",
+            ":provider": ":anthropic",
+            ":input_tokens": 10,
+            ":output_tokens": 4,
+            ":cost": 0.00009,
+            ":attempt_kind": ":partial_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":ask",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":workflow": "GoldenThinkingWorkflow",
+            ":stop_reason": "tool_use",
+            ":provider_message_id": "msg_a"
+          }
+        ],
+        [
+          {
+            ":usage_id": "00000000-0000-4000-8000-000000000003",
+            ":agent_name": ":golden_thinking",
+            ":model": "claude-sonnet-4-5-20250929",
+            ":provider": ":anthropic",
+            ":input_tokens": 10,
+            ":output_tokens": 4,
+            ":cost": 0.00009,
+            ":attempt_kind": ":partial_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":ask",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":workflow": "GoldenThinkingWorkflow",
+            ":stop_reason": "tool_use",
+            ":provider_message_id": "msg_a"
+          },
+          {
+            ":usage_id": "00000000-0000-4000-8000-000000000005",
+            ":agent_name": ":golden_thinking",
+            ":model": "claude-sonnet-4-5-20250929",
+            ":provider": ":anthropic",
+            ":input_tokens": 40,
+            ":output_tokens": 6,
+            ":cost": 0.00021,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:01:00.000000Z",
+            ":transition": ":ask",
+            ":attempt_id": "00000000-0000-4000-8000-000000000004",
+            ":workflow": "GoldenThinkingWorkflow",
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_b"
+          }
+        ]
+      ],
+      "traces": [
+        {
+          ":type": ":tool_call",
+          ":data": {
+            ":execution_key": "run-thinking",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenThinkingWorkflow",
+            ":tool": "golden_lookup",
+            ":args": {
+              ":query": "clinic"
+            },
+            ":result": {
+              ":found": "clinic opens at 8"
+            },
+            ":duration": "s",
+            ":tool_call_id": "toolu_1"
+          }
+        },
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-thinking",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenThinkingWorkflow",
+            ":model": "claude-sonnet-4-5-20250929",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":attempt_index": 0,
+            ":outcome": ":aborted",
+            ":error_class": "Smith::BudgetUnavailable",
+            ":error_cause_class": "Smith::BudgetUnavailable",
+            ":agent_name": ":golden_thinking",
+            ":input_tokens": 10,
+            ":output_tokens": 4,
+            ":stop_reason": "tool_use",
+            ":provider_message_id": "msg_a"
+          }
+        },
+        {
+          ":type": ":transition",
+          ":data": {
+            ":execution_key": "run-thinking",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenThinkingWorkflow",
+            ":outcome": ":retrying",
+            ":attempt": 2,
+            ":error": "Smith::BudgetUnavailable",
+            ":deadline_at": "2026-01-01T00:01:00.000000Z"
+          }
+        },
+        {
+          ":type": ":transition",
+          ":data": {
+            ":execution_key": "run-thinking",
+            ":workflow": "GoldenThinkingWorkflow",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":outcome": ":retry_due",
+            ":attempt": 2
+          }
+        },
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-thinking",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenThinkingWorkflow",
+            ":model": "claude-sonnet-4-5-20250929",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-000000000004",
+            ":attempt_index": 0,
+            ":outcome": ":success",
+            ":agent_name": ":golden_thinking",
+            ":input_tokens": 40,
+            ":output_tokens": 6,
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_b"
+          }
+        },
+        {
+          ":type": ":token_usage",
+          ":data": {
+            ":execution_key": "run-thinking",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenThinkingWorkflow",
+            ":input_tokens": 40,
+            ":output_tokens": 6,
+            ":model": "claude-sonnet-4-5-20250929",
+            ":provider": ":anthropic"
+          }
+        },
+        {
+          ":type": ":cost",
+          ":data": {
+            ":execution_key": "run-thinking",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenThinkingWorkflow",
+            ":cost": 0.00021,
+            ":model": "claude-sonnet-4-5-20250929",
+            ":provider": ":anthropic",
+            ":input_tokens": 40,
+            ":output_tokens": 6
+          }
+        },
+        {
+          ":type": ":transition",
+          ":data": {
+            ":execution_key": "run-thinking",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenThinkingWorkflow"
+          }
+        }
+      ],
+      "events": [
+        [
+          "Smith::Events::StepCompleted",
+          {
+            ":execution_id": "run-thinking",
+            ":trace_id": "run-thinking",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenThinkingWorkflow"
+          }
+        ]
+      ],
+      "stream": [],
+      "ledger": [
+        [
+          "reserve",
+          "00000000-0000-4000-8000-000000000002:1",
+          {
+            ":input_tokens": 78,
+            ":output_tokens": 2000,
+            ":cost": 0.030234000000000004,
+            "class": "Smith::Budget::Amount"
+          },
+          "2026-01-01T01:00:00.000000Z"
+        ],
+        [
+          "reconcile",
+          "00000000-0000-4000-8000-000000000002:1",
+          {
+            ":input_tokens": 10,
+            ":output_tokens": 4,
+            ":cost": 0.00009,
+            "class": "Smith::Budget::Amount"
+          }
+        ],
+        [
+          "reserve",
+          "00000000-0000-4000-8000-000000000002:2",
+          {
+            ":input_tokens": 133,
+            ":output_tokens": 2000,
+            ":cost": 0.030399000000000002,
+            "class": "Smith::Budget::Amount"
+          },
+          "2026-01-01T01:00:00.000000Z"
+        ],
+        [
+          "reserve",
+          "00000000-0000-4000-8000-000000000004:1",
+          {
+            ":input_tokens": 133,
+            ":output_tokens": 2000,
+            ":cost": 0.030399000000000002,
+            "class": "Smith::Budget::Amount"
+          },
+          "2026-01-01T01:01:00.000000Z"
+        ],
+        [
+          "reconcile",
+          "00000000-0000-4000-8000-000000000004:1",
+          {
+            ":input_tokens": 40,
+            ":output_tokens": 6,
+            ":cost": 0.00021,
+            "class": "Smith::Budget::Amount"
+          }
+        ]
+      ],
+      "logs": [
+        {
+          ":smith": [],
+          ":ruby_llm": []
+        }
+      ],
+      "errors": [],
+      "results": [
+        {
+          ":state": ":idle",
+          ":output": null,
+          ":steps": [],
+          ":last_error": null
+        },
+        [
+          ":expired",
+          ":expired"
+        ],
+        {
+          ":state": ":done",
+          ":output": "Open 8 to 6.",
+          ":steps": [
+            {
+              ":transition": ":ask",
+              ":from": ":idle",
+              ":to": ":done"
+            }
+          ],
+          ":last_error": null
+        },
+        {
+          ":unused_replies": 0
+        }
+      ]
+    },
+    "spend_limit_refusal": {
+      "random_draws": 2,
+      "counts": {
+        "Smith::Agent::Registry.fetch!": 3,
+        "Smith::Agent::Registry.capture_bindings!": 0,
+        "RubyLLM.context": 0,
+        "RubyLLM::Context.new": 0
+      },
+      "requests": [
+        [
+          "POST",
+          "/v1/messages",
+          {
+            "x-api-key": "test",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "199"
+          },
+          "{\"model\":\"claude-sonnet-5-5\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Is the clinic open?\"}]}],\"stream\":false,\"max_tokens\":500,\"system\":[{\"type\":\"text\",\"text\":\"Answer briefly.\"}]}"
+        ]
+      ],
+      "memo": [],
+      "batches": [],
+      "states": [
+        {
+          ":class": "GoldenSpendWorkflow",
+          ":state": ":failed",
+          ":persistence_key": "run-spend",
+          ":context": {},
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": null,
+          ":active_seconds": "s",
+          ":active_step_started_at": "2026-01-01T00:00:00.000000Z",
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": ":user",
+              ":content": "Is the clinic open?"
+            }
+          ],
+          ":total_cost": 0.0,
+          ":total_tokens": 0,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [],
+          ":last_output": null,
+          ":last_agent_execution": null,
+          ":last_failed_step": {
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":error_class": "Smith::ProviderPermanentFailure",
+            ":error_family": "provider_permanent_failure",
+            ":error_message": "You have reached your API usage limits: your organization has crossed its monthly API usage threshold.",
+            ":error_retryable": null,
+            ":error_retry_forbidden": false,
+            ":error_kind": null,
+            ":error_details": {
+              "model_id": "claude-sonnet-5-5",
+              "provider": "anthropic",
+              "source_error_class": "RubyLLM::PaymentRequiredError"
+            },
+            ":error_cause_class": null,
+            ":error_cause_family": null,
+            ":error_cause_message": null
+          },
+          ":persistence_version": 1,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": []
+        },
+        {
+          ":class": "GoldenSpendWorkflow",
+          ":state": ":failed",
+          ":persistence_key": "run-spend",
+          ":context": {},
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": null,
+          ":active_seconds": "s",
+          ":active_step_started_at": null,
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": ":user",
+              ":content": "Is the clinic open?"
+            }
+          ],
+          ":total_cost": 0.0,
+          ":total_tokens": 0,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [],
+          ":last_output": null,
+          ":last_agent_execution": null,
+          ":last_failed_step": {
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":error_class": "Smith::ProviderPermanentFailure",
+            ":error_family": "provider_permanent_failure",
+            ":error_message": "You have reached your API usage limits: your organization has crossed its monthly API usage threshold.",
+            ":error_retryable": null,
+            ":error_retry_forbidden": false,
+            ":error_kind": null,
+            ":error_details": {
+              "model_id": "claude-sonnet-5-5",
+              "provider": "anthropic",
+              "source_error_class": "RubyLLM::PaymentRequiredError"
+            },
+            ":error_cause_class": null,
+            ":error_cause_family": null,
+            ":error_cause_message": null
+          },
+          ":persistence_version": 2,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": []
+        }
+      ],
+      "persisted": [
+        [
+          "store_versioned",
+          "run-spend",
+          {
+            ":expected_version": 0
+          },
+          "{\"class\":\"GoldenSpendWorkflow\",\"state\":\"idle\",\"persistence_key\":\"run-spend\",\"context\":{},\"budget_consumed\":{},\"step_count\":0,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":null,\"active_seconds\":\"s\",\"active_step_started_at\":\"2026-01-01T00:00:00.000000Z\",\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.0,\"total_tokens\":0,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[],\"last_output\":null,\"last_agent_execution\":null,\"last_failed_step\":null,\"persistence_version\":1,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[]}"
+        ],
+        [
+          "heartbeat",
+          "run-spend",
+          {}
+        ],
+        [
+          "store_versioned",
+          "run-spend",
+          {
+            ":expected_version": 1
+          },
+          "{\"class\":\"GoldenSpendWorkflow\",\"state\":\"failed\",\"persistence_key\":\"run-spend\",\"context\":{},\"budget_consumed\":{},\"step_count\":1,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":null,\"active_seconds\":\"s\",\"active_step_started_at\":null,\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.0,\"total_tokens\":0,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[],\"last_output\":null,\"last_agent_execution\":null,\"last_failed_step\":{\"transition\":\"ask\",\"from\":\"idle\",\"to\":\"done\",\"error_class\":\"Smith::ProviderPermanentFailure\",\"error_family\":\"provider_permanent_failure\",\"error_message\":\"You have reached your API usage limits: your organization has crossed its monthly API usage threshold.\",\"error_retryable\":null,\"error_retry_forbidden\":false,\"error_kind\":null,\"error_details\":{\"model_id\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"source_error_class\":\"RubyLLM::PaymentRequiredError\"},\"error_cause_class\":null,\"error_cause_family\":null,\"error_cause_message\":null},\"persistence_version\":2,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[]}"
+        ],
+        [
+          "heartbeat",
+          "run-spend",
+          {}
+        ]
+      ],
+      "artifacts": [],
+      "usage_entries": [
+        []
+      ],
+      "traces": [
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-spend",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenSpendWorkflow",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":attempt_index": 0,
+            ":outcome": ":failure",
+            ":error_class": "RubyLLM::PaymentRequiredError",
+            ":error_cause_class": "RubyLLM::RateLimitError",
+            ":agent_name": ":golden_spend"
+          }
+        },
+        {
+          ":type": ":transition",
+          ":data": {
+            ":execution_key": "run-spend",
+            ":workflow": "GoldenSpendWorkflow",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":outcome": ":failed",
+            ":error_class": "Smith::ProviderPermanentFailure",
+            ":error_family": "provider_permanent_failure"
+          }
+        }
+      ],
+      "events": [
+        [
+          "Smith::Events::StepFailed",
+          {
+            ":execution_id": "run-spend",
+            ":trace_id": "run-spend",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":error_class": "Smith::ProviderPermanentFailure",
+            ":error_family": "provider_permanent_failure",
+            ":retryable": null,
+            ":workflow": "GoldenSpendWorkflow"
+          }
+        ]
+      ],
+      "stream": [],
+      "ledger": [],
+      "logs": [
+        {
+          ":smith": [],
+          ":ruby_llm": []
+        }
+      ],
+      "errors": [],
+      "results": [
+        {
+          ":state": ":failed",
+          ":output": null,
+          ":steps": [
+            {
+              ":transition": ":ask",
+              ":from": ":idle",
+              ":to": ":done"
+            }
+          ],
+          ":last_error": {
+            "class": "Smith::ProviderPermanentFailure",
+            "message": "You have reached your API usage limits: your organization has crossed its monthly API usage threshold.",
+            "causes": [
+              {
+                "class": "RubyLLM::PaymentRequiredError",
+                "message": "You have reached your API usage limits: your organization has crossed its monthly API usage threshold."
+              },
+              {
+                "class": "RubyLLM::RateLimitError",
+                "message": "You have reached your API usage limits: your organization has crossed its monthly API usage threshold."
+              }
+            ]
+          }
+        },
+        {
+          ":unused_replies": 0
+        }
+      ]
+    },
+    "dropped_fallback": {
+      "random_draws": 4,
+      "counts": {
+        "Smith::Agent::Registry.fetch!": 3,
+        "Smith::Agent::Registry.capture_bindings!": 0,
+        "RubyLLM.context": 0,
+        "RubyLLM::Context.new": 0
+      },
+      "requests": [
+        [
+          "POST",
+          "/v1/messages",
+          {
+            "x-api-key": "test",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "199"
+          },
+          "{\"model\":\"claude-sonnet-5-5\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Is the clinic open?\"}]}],\"stream\":false,\"max_tokens\":500,\"system\":[{\"type\":\"text\",\"text\":\"Answer briefly.\"}]}"
+        ],
+        [
+          "POST",
+          "/v1/messages",
+          {
+            "x-api-key": "test",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "198"
+          },
+          "{\"model\":\"claude-haiku-5-5\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Is the clinic open?\"}]}],\"stream\":false,\"max_tokens\":500,\"system\":[{\"type\":\"text\",\"text\":\"Answer briefly.\"}]}"
+        ]
+      ],
+      "memo": [],
+      "batches": [],
+      "states": [
+        {
+          ":class": "GoldenDroppedWorkflow",
+          ":state": ":done",
+          ":persistence_key": "run-dropped",
+          ":context": {
+            ":answer": "Open at 8."
+          },
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": null,
+          ":active_seconds": "s",
+          ":active_step_started_at": "2026-01-01T00:00:00.000000Z",
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": ":user",
+              ":content": "Is the clinic open?"
+            }
+          ],
+          ":total_cost": 0.0006000000000000001,
+          ":total_tokens": 120,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000004",
+              ":agent_name": ":golden_dropped",
+              ":model": "claude-haiku-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000003",
+              ":workflow": "GoldenDroppedWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_h"
+            }
+          ],
+          ":last_output": "Open at 8.",
+          ":last_agent_execution": {
+            ":model": "claude-haiku-5-5",
+            ":provider": ":anthropic"
+          },
+          ":last_failed_step": null,
+          ":persistence_version": 1,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": [
+            ":answer"
+          ]
+        },
+        {
+          ":class": "GoldenDroppedWorkflow",
+          ":state": ":done",
+          ":persistence_key": "run-dropped",
+          ":context": {
+            ":answer": "Open at 8."
+          },
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": null,
+          ":active_seconds": "s",
+          ":active_step_started_at": null,
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": ":user",
+              ":content": "Is the clinic open?"
+            }
+          ],
+          ":total_cost": 0.0006000000000000001,
+          ":total_tokens": 120,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000004",
+              ":agent_name": ":golden_dropped",
+              ":model": "claude-haiku-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000003",
+              ":workflow": "GoldenDroppedWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_h"
+            }
+          ],
+          ":last_output": "Open at 8.",
+          ":last_agent_execution": {
+            ":model": "claude-haiku-5-5",
+            ":provider": ":anthropic"
+          },
+          ":last_failed_step": null,
+          ":persistence_version": 2,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": [
+            ":answer"
+          ]
+        }
+      ],
+      "persisted": [
+        [
+          "store_versioned",
+          "run-dropped",
+          {
+            ":expected_version": 0
+          },
+          "{\"class\":\"GoldenDroppedWorkflow\",\"state\":\"idle\",\"persistence_key\":\"run-dropped\",\"context\":{},\"budget_consumed\":{},\"step_count\":0,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":null,\"active_seconds\":\"s\",\"active_step_started_at\":\"2026-01-01T00:00:00.000000Z\",\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.0,\"total_tokens\":0,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[],\"last_output\":null,\"last_agent_execution\":null,\"last_failed_step\":null,\"persistence_version\":1,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[]}"
+        ],
+        [
+          "heartbeat",
+          "run-dropped",
+          {}
+        ],
+        [
+          "store_versioned",
+          "run-dropped",
+          {
+            ":expected_version": 1
+          },
+          "{\"class\":\"GoldenDroppedWorkflow\",\"state\":\"done\",\"persistence_key\":\"run-dropped\",\"context\":{\"answer\":\"Open at 8.\"},\"budget_consumed\":{},\"step_count\":1,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":null,\"active_seconds\":\"s\",\"active_step_started_at\":null,\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.0006000000000000001,\"total_tokens\":120,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[{\"usage_id\":\"00000000-0000-4000-8000-000000000004\",\"agent_name\":\"golden_dropped\",\"model\":\"claude-haiku-5-5\",\"provider\":\"anthropic\",\"input_tokens\":100,\"output_tokens\":20,\"cost\":0.0006000000000000001,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"ask\",\"attempt_id\":\"00000000-0000-4000-8000-000000000003\",\"workflow\":\"GoldenDroppedWorkflow\",\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_h\"}],\"last_output\":\"Open at 8.\",\"last_agent_execution\":{\"model\":\"claude-haiku-5-5\",\"provider\":\"anthropic\"},\"last_failed_step\":null,\"persistence_version\":2,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[\"answer\"]}"
+        ],
+        [
+          "heartbeat",
+          "run-dropped",
+          {}
+        ]
+      ],
+      "artifacts": [],
+      "usage_entries": [
+        [
+          {
+            ":usage_id": "00000000-0000-4000-8000-000000000004",
+            ":agent_name": ":golden_dropped",
+            ":model": "claude-haiku-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":cost": 0.0006000000000000001,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":ask",
+            ":attempt_id": "00000000-0000-4000-8000-000000000003",
+            ":workflow": "GoldenDroppedWorkflow",
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_h"
+          }
+        ]
+      ],
+      "traces": [
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-dropped",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenDroppedWorkflow",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":attempt_index": 0,
+            ":outcome": ":failure",
+            ":error_class": "Faraday::ConnectionFailed",
+            ":error_cause_class": "EOFError",
+            ":agent_name": ":golden_dropped"
+          }
+        },
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-dropped",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenDroppedWorkflow",
+            ":model": "claude-haiku-5-5",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-000000000003",
+            ":attempt_index": 1,
+            ":outcome": ":success",
+            ":agent_name": ":golden_dropped",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_h"
+          }
+        },
+        {
+          ":type": ":token_usage",
+          ":data": {
+            ":execution_key": "run-dropped",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenDroppedWorkflow",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":model": "claude-haiku-5-5",
+            ":provider": ":anthropic"
+          }
+        },
+        {
+          ":type": ":cost",
+          ":data": {
+            ":execution_key": "run-dropped",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenDroppedWorkflow",
+            ":cost": 0.0006000000000000001,
+            ":model": "claude-haiku-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20
+          }
+        },
+        {
+          ":type": ":transition",
+          ":data": {
+            ":execution_key": "run-dropped",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenDroppedWorkflow"
+          }
+        }
+      ],
+      "events": [
+        [
+          "Smith::Events::StepCompleted",
+          {
+            ":execution_id": "run-dropped",
+            ":trace_id": "run-dropped",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenDroppedWorkflow"
+          }
+        ]
+      ],
+      "stream": [],
+      "ledger": [],
+      "logs": [
+        {
+          ":smith": [],
+          ":ruby_llm": []
+        }
+      ],
+      "errors": [],
+      "results": [
+        {
+          ":state": ":done",
+          ":output": "Open at 8.",
+          ":steps": [
+            {
+              ":transition": ":ask",
+              ":from": ":idle",
+              ":to": ":done"
+            }
+          ],
+          ":last_error": null
+        },
+        {
+          ":unused_replies": 0
+        }
+      ]
+    },
+    "memo_cached_replay": {
+      "random_draws": 4,
+      "counts": {
+        "Smith::Agent::Registry.fetch!": 6,
+        "Smith::Agent::Registry.capture_bindings!": 0,
+        "RubyLLM.context": 0,
+        "RubyLLM::Context.new": 0
+      },
+      "requests": [
+        [
+          "POST",
+          "/v1/messages",
+          {
+            "x-api-key": "test",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "199"
+          },
+          "{\"model\":\"claude-sonnet-5-5\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Is the clinic open?\"}]}],\"stream\":false,\"max_tokens\":500,\"system\":[{\"type\":\"text\",\"text\":\"Answer briefly.\"}]}"
+        ]
+      ],
+      "memo": [
+        [
+          "fetch",
+          "126cdb45b13468f8d0a41c11442e0f66b53d5bbc39c884d2b943e9d69da3f686"
+        ],
+        [
+          "store",
+          "126cdb45b13468f8d0a41c11442e0f66b53d5bbc39c884d2b943e9d69da3f686",
+          {
+            "version": 1,
+            "messages": [
+              {
+                "role": "assistant",
+                "content": "Kept answer.",
+                "model_id": "claude-sonnet-5-5",
+                "usage": {
+                  "tokens": {
+                    "input_tokens": 40,
+                    "output_tokens": 9,
+                    "cached_tokens": 300,
+                    "cache_creation_tokens": 1200
+                  },
+                  "stop_reason": "end_turn",
+                  "id": "msg_1"
+                }
+              }
+            ],
+            "complete": true
+          }
+        ],
+        [
+          "fetch",
+          "126cdb45b13468f8d0a41c11442e0f66b53d5bbc39c884d2b943e9d69da3f686"
+        ]
+      ],
+      "batches": [],
+      "states": [
+        {
+          ":class": "GoldenMemoCacheWorkflow",
+          ":state": ":idle",
+          ":persistence_key": "run-memo-cache",
+          ":context": {},
+          ":budget_consumed": {},
+          ":step_count": 0,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": null,
+          ":active_seconds": "s",
+          ":active_step_started_at": "2026-01-01T00:00:00.000000Z",
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": ":user",
+              ":content": "Is the clinic open?"
+            }
+          ],
+          ":total_cost": 0.0,
+          ":total_tokens": 0,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [],
+          ":last_output": null,
+          ":last_agent_execution": null,
+          ":last_failed_step": null,
+          ":persistence_version": 1,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": []
+        },
+        {
+          ":class": "GoldenMemoCacheWorkflow",
+          ":state": ":done",
+          ":persistence_key": "run-memo-cache",
+          ":context": {
+            ":answer": "Kept answer."
+          },
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": null,
+          ":active_seconds": "s",
+          ":active_step_started_at": "2026-01-01T00:00:00.000000Z",
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": "user",
+              ":content": "Is the clinic open?"
+            }
+          ],
+          ":total_cost": 0.004845,
+          ":total_tokens": 1549,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000004",
+              ":agent_name": ":golden_memo_cache",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 40,
+              ":output_tokens": 9,
+              ":cost": 0.004845,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000003",
+              ":workflow": "GoldenMemoCacheWorkflow",
+              ":cache_read_tokens": 300,
+              ":cache_write_tokens": 1200,
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_1"
+            }
+          ],
+          ":last_output": "Kept answer.",
+          ":last_agent_execution": {
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          },
+          ":last_failed_step": null,
+          ":persistence_version": 2,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": [
+            ":answer"
+          ]
+        },
+        {
+          ":class": "GoldenMemoCacheWorkflow",
+          ":state": ":done",
+          ":persistence_key": "run-memo-cache",
+          ":context": {
+            ":answer": "Kept answer."
+          },
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": null,
+          ":active_seconds": "s",
+          ":active_step_started_at": null,
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": "user",
+              ":content": "Is the clinic open?"
+            }
+          ],
+          ":total_cost": 0.004845,
+          ":total_tokens": 1549,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000004",
+              ":agent_name": ":golden_memo_cache",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 40,
+              ":output_tokens": 9,
+              ":cost": 0.004845,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":ask",
+              ":attempt_id": "00000000-0000-4000-8000-000000000003",
+              ":workflow": "GoldenMemoCacheWorkflow",
+              ":cache_read_tokens": 300,
+              ":cache_write_tokens": 1200,
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_1"
+            }
+          ],
+          ":last_output": "Kept answer.",
+          ":last_agent_execution": {
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          },
+          ":last_failed_step": null,
+          ":persistence_version": 3,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": [
+            ":answer"
+          ]
+        }
+      ],
+      "persisted": [
+        [
+          "store_versioned",
+          "run-memo-cache",
+          {
+            ":expected_version": 0
+          },
+          "{\"class\":\"GoldenMemoCacheWorkflow\",\"state\":\"idle\",\"persistence_key\":\"run-memo-cache\",\"context\":{},\"budget_consumed\":{},\"step_count\":0,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":null,\"active_seconds\":\"s\",\"active_step_started_at\":\"2026-01-01T00:00:00.000000Z\",\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.0,\"total_tokens\":0,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[],\"last_output\":null,\"last_agent_execution\":null,\"last_failed_step\":null,\"persistence_version\":1,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[]}"
+        ],
+        [
+          "heartbeat",
+          "run-memo-cache",
+          {}
+        ],
+        [
+          "store_versioned",
+          "run-memo-cache",
+          {
+            ":expected_version": 1
+          },
+          "{\"class\":\"GoldenMemoCacheWorkflow\",\"state\":\"idle\",\"persistence_key\":\"run-memo-cache\",\"context\":{},\"budget_consumed\":{},\"step_count\":0,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":null,\"active_seconds\":\"s\",\"active_step_started_at\":\"2026-01-01T00:00:00.000000Z\",\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.0,\"total_tokens\":0,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[],\"last_output\":null,\"last_agent_execution\":null,\"last_failed_step\":null,\"persistence_version\":2,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[]}"
+        ],
+        [
+          "heartbeat",
+          "run-memo-cache",
+          {}
+        ],
+        [
+          "store_versioned",
+          "run-memo-cache",
+          {
+            ":expected_version": 2
+          },
+          "{\"class\":\"GoldenMemoCacheWorkflow\",\"state\":\"done\",\"persistence_key\":\"run-memo-cache\",\"context\":{\"answer\":\"Kept answer.\"},\"budget_consumed\":{},\"step_count\":1,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":null,\"active_seconds\":\"s\",\"active_step_started_at\":null,\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Is the clinic open?\"}],\"total_cost\":0.004845,\"total_tokens\":1549,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[{\"usage_id\":\"00000000-0000-4000-8000-000000000004\",\"agent_name\":\"golden_memo_cache\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":40,\"output_tokens\":9,\"cost\":0.004845,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"ask\",\"attempt_id\":\"00000000-0000-4000-8000-000000000003\",\"workflow\":\"GoldenMemoCacheWorkflow\",\"cache_read_tokens\":300,\"cache_write_tokens\":1200,\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_1\"}],\"last_output\":\"Kept answer.\",\"last_agent_execution\":{\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\"},\"last_failed_step\":null,\"persistence_version\":3,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"eab43ccffa4ec6b3e8365f3bde9a0bce9a874480e452523d2aabb88014c629c4\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[\"answer\"]}"
+        ],
+        [
+          "heartbeat",
+          "run-memo-cache",
+          {}
+        ]
+      ],
+      "artifacts": [],
+      "usage_entries": [
+        [],
+        [
+          {
+            ":usage_id": "00000000-0000-4000-8000-000000000004",
+            ":agent_name": ":golden_memo_cache",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 40,
+            ":output_tokens": 9,
+            ":cost": 0.004845,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":ask",
+            ":attempt_id": "00000000-0000-4000-8000-000000000003",
+            ":workflow": "GoldenMemoCacheWorkflow",
+            ":cache_read_tokens": 300,
+            ":cache_write_tokens": 1200,
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_1"
+          }
+        ]
+      ],
+      "traces": [
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-memo-cache",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenMemoCacheWorkflow",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-000000000003",
+            ":attempt_index": 0,
+            ":outcome": ":success",
+            ":agent_name": ":golden_memo_cache",
+            ":memo": true,
+            ":input_tokens": 40,
+            ":output_tokens": 9,
+            ":cache_read_tokens": 300,
+            ":cache_write_tokens": 1200,
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_1"
+          }
+        },
+        {
+          ":type": ":token_usage",
+          ":data": {
+            ":execution_key": "run-memo-cache",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenMemoCacheWorkflow",
+            ":input_tokens": 40,
+            ":output_tokens": 9,
+            ":cache_read_tokens": 300,
+            ":cache_write_tokens": 1200,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          }
+        },
+        {
+          ":type": ":cost",
+          ":data": {
+            ":execution_key": "run-memo-cache",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenMemoCacheWorkflow",
+            ":cost": 0.004845,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 40,
+            ":output_tokens": 9,
+            ":cache_read_tokens": 300,
+            ":cache_write_tokens": 1200
+          }
+        },
+        {
+          ":type": ":transition",
+          ":data": {
+            ":execution_key": "run-memo-cache",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenMemoCacheWorkflow"
+          }
+        }
+      ],
+      "events": [
+        [
+          "Smith::Events::StepCompleted",
+          {
+            ":execution_id": "run-memo-cache",
+            ":trace_id": "run-memo-cache",
+            ":transition": ":ask",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenMemoCacheWorkflow"
+          }
+        ]
+      ],
+      "stream": [],
+      "ledger": [],
+      "logs": [
+        {
+          ":smith": [],
+          ":ruby_llm": []
+        }
+      ],
+      "errors": [
+        {
+          "class": "CoreInvisibility::Hosts::Killed",
+          "message": "the process died after the memo stored",
+          "causes": []
+        }
+      ],
+      "results": [
+        {
+          ":state": ":done",
+          ":output": "Kept answer.",
+          ":steps": [
+            {
+              ":transition": ":ask",
+              ":from": ":idle",
+              ":to": ":done"
             }
           ],
           ":last_error": null

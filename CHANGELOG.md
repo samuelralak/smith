@@ -35,7 +35,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   Context an earlier Smith marshalled does not load (Smith never marshals or
   saves one; a run persists as JSON).
 - A shared "no difference" harness for core changes:
-  `script/core_invisibility_golden` runs thirty-four scenarios against a
+  `script/core_invisibility_golden` runs forty-four scenarios against a
   local server answering as Anthropic (and as OpenAI's image edits) and
   records every request, memo key, batch digest, saved state, artifact store
   call, usage entry, trace, event, stream delivery, ledger call, log line,
@@ -103,6 +103,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   `[:keyrest, :kwargs]`), and `ExecutionFrame.run` takes the host's block
   as `&` (`[:block, :&]`; it listed no block before). New specs pin
   nineteen behaviours the cleanup's planted mistakes showed were loose.
+- Specs pin what Smith does on RubyLLM 1.16 where moving to RubyLLM 2.x
+  would change it without an error (`spec/smith/ruby_llm_pins_spec.rb`,
+  each through RubyLLM's own provider code), and the harness gains ten
+  scenarios for the same changes (a request with no output cap, cached
+  instructions, the automatic cache, a truncation retry, an OpenAI model
+  that reasons, a streamed reply cut at its cap, a paused tool loop that
+  thinks, a refusal past a spending limit, a connection dropped once the
+  request was sent, a memo replay of a reply that read and wrote the
+  cache). No behaviour change.
 - The harness's golden bundle installs with a gem home and settings of
   its own, so it never waits on, or reports, the lock another bundle
   install on the machine holds, and a store-rules spec writes only in its

@@ -241,6 +241,64 @@ module CoreInvisibilityHarness
       ].freeze
     end
 
+    # The scenarios the RubyLLM 2.x move's first slice added (script/golden/
+    # scenarios/ruby_llm_requests.rb and ruby_llm_replies.rb): what the move
+    # changes without an error, each with the facts it measured.
+    module Pinned
+      ONE_CALL = { "random_draws" => 3, "counts" => { "Smith::Agent::Registry.fetch!" => 3 }, "requests" => 1,
+                   "traces" => { ":provider_call" => 1, ":token_usage" => 1, ":cost" => 1, ":transition" => 1 },
+                   "events" => { "Smith::Events::StepCompleted" => 1 }, "logs" => 0 }.freeze
+      SCENARIOS = [
+        { "scenario" => "uncapped", "new" => ONE_CALL,
+          "why" => "added: a step whose agent sets no output cap, held on the ledger at the cap it sends" },
+        { "scenario" => "cached_instructions", "new" => ONE_CALL,
+          "why" => "added: cached instructions and seed part, held as a cache write, settled with cache and thinking" },
+        { "scenario" => "automatic_cache",
+          "new" => { "random_draws" => 4, "counts" => { "Smith::Agent::Registry.fetch!" => 3 }, "requests" => 2,
+                     "traces" => { ":tool_call" => 1, ":provider_call" => 1, ":token_usage" => 1, ":cost" => 1,
+                                   ":transition" => 1 },
+                     "events" => { "Smith::Events::StepCompleted" => 1 }, "logs" => 0 },
+          "why" => "added: a tool loop asking for Anthropic's automatic cache, each round held on the ledger" },
+        { "scenario" => "truncation_retry",
+          "new" => { "random_draws" => 5, "counts" => { "Smith::Agent::Registry.fetch!" => 3 }, "requests" => 2,
+                     "traces" => { ":provider_call" => 2, ":token_usage" => 2, ":cost" => 2, ":output_rejected" => 1,
+                                   ":transition" => 1 },
+                     "events" => { "Smith::Events::StepCompleted" => 1 }, "logs" => 0 },
+          "why" => "added: a reply cut off at its cap, asked again with the larger one" },
+        { "scenario" => "reasoning_cap", "new" => ONE_CALL,
+          "why" => "added: an OpenAI model that reasons, its cap sent as max_completion_tokens" },
+        { "scenario" => "streamed_limit_reached",
+          "new" => { "random_draws" => 3,
+                     "counts" => { "Smith::Agent::Registry.fetch!" => 3, "RubyLLM::Context.new" => 1 },
+                     "requests" => 1,
+                     "traces" => { ":provider_call" => 1, ":token_usage" => 1, ":cost" => 1, ":output_rejected" => 1,
+                                   ":transition" => 1 },
+                     "events" => { "Smith::Events::StepFailed" => 1 }, "logs" => 0 },
+          "why" => "added: a streamed reply ending at its cap without a stop reason, read as limit reached" },
+        { "scenario" => "paused_thinking",
+          "new" => { "random_draws" => 5, "counts" => { "Smith::Agent::Registry.fetch!" => 6 }, "requests" => 2,
+                     "traces" => { ":tool_call" => 1, ":provider_call" => 2, ":transition" => 3, ":token_usage" => 1,
+                                   ":cost" => 1 },
+                     "events" => { "Smith::Events::StepCompleted" => 1 }, "logs" => 0 },
+          "why" => "added: a thinking tool loop paused for budget, continued with its thinking and tool call id" },
+        { "scenario" => "spend_limit_refusal",
+          "new" => { "random_draws" => 2, "counts" => { "Smith::Agent::Registry.fetch!" => 3 }, "requests" => 1,
+                     "traces" => { ":provider_call" => 1, ":transition" => 1 },
+                     "events" => { "Smith::Events::StepFailed" => 1 }, "logs" => 0 },
+          "why" => "added: a spend cap sent as a rate limit, the step failing on RubyLLM's payment-required error" },
+        { "scenario" => "dropped_fallback",
+          "new" => { "random_draws" => 4, "counts" => { "Smith::Agent::Registry.fetch!" => 3 }, "requests" => 2,
+                     "traces" => { ":provider_call" => 2, ":token_usage" => 1, ":cost" => 1, ":transition" => 1 },
+                     "events" => { "Smith::Events::StepCompleted" => 1 }, "logs" => 0 },
+          "why" => "added: a connection dropped once the request was sent, the fallback model answering" },
+        { "scenario" => "memo_cached_replay",
+          "new" => { "random_draws" => 4, "counts" => { "Smith::Agent::Registry.fetch!" => 6 }, "requests" => 1,
+                     "traces" => { ":provider_call" => 1, ":token_usage" => 1, ":cost" => 1, ":transition" => 1 },
+                     "events" => { "Smith::Events::StepCompleted" => 1 }, "logs" => 0 },
+          "why" => "added: a memo replaying a kept reply that read and wrote the cache, nothing sent again" }
+      ].map { _1.merge("slice" => "RubyLLM 2.x pins") }.freeze
+    end
+
     # Every way the tree differs from the release baseline, reviewed: a host
     # surface change ("+ <class> <table> <name>", which the harness's
     # `allowed?` must take), a scenario's facts ({fact => [release's,
@@ -268,7 +326,8 @@ module CoreInvisibilityHarness
                    "events" => { "Smith::Events::StepCompleted" => 1 }, "logs" => 0 },
         "why" => "added: three rounds, killed once round 2's decision is kept, restored; 6 requests, 0.16.0 sent 7",
         "slice" => "memo restore" },
-      *Added::SCENARIOS
+      *Added::SCENARIOS,
+      *Pinned::SCENARIOS
     ].freeze
 
     class << self
@@ -330,7 +389,7 @@ RSpec.describe "Smith core invisibility: an app that does not use the eval seam 
                                     "#{harness.diff(expected, actual)}"
   end
 
-  it "has a golden file from a commit or the staged index, its parts named by git id, over thirty-four scenarios" do
+  it "has a golden file from a commit or the staged index, its parts named by git id, over forty-four scenarios" do
     # The parts that decide what the harness records, by their git ids, and
     # the commit their tree was built on; the golden file is none of them.
     source = golden["smith"]
@@ -347,7 +406,9 @@ RSpec.describe "Smith core invisibility: an app that does not use the eval seam 
          orchestrate streamed batch fallback_after_overload output_repair budget_ledger memo_replay budget_pause
          durable_await durable_retry image_answer nested_items image_unkept image_refusal_fallback repair_exhausted
          orchestrate_string_keys orchestrate_restored image_answered_errors image_failures image_agents image_held
-         image_retry_restored items_painting items_outcomes items_budget items_durable]
+         image_retry_restored items_painting items_outcomes items_budget items_durable uncapped cached_instructions
+         automatic_cache truncation_retry reasoning_cap streamed_limit_reached paused_thinking spend_limit_refusal
+         dropped_fallback memo_cached_replay]
     )
     sinks = %w[random_draws counts requests memo batches states persisted artifacts usage_entries traces events
                stream ledger logs errors results]
@@ -366,7 +427,8 @@ RSpec.describe "Smith core invisibility: an app that does not use the eval seam 
     errored = golden["scenarios"].reject { |_name, scenario| scenario["errors"].empty? }
     expect(errored.transform_values { |scenario| scenario["errors"].map { _1["class"] } })
       .to eq("memo_replay" => ["CoreInvisibility::Hosts::Killed"],
-             "orchestrate_restored" => ["CoreInvisibility::Hosts::Killed"])
+             "orchestrate_restored" => ["CoreInvisibility::Hosts::Killed"],
+             "memo_cached_replay" => ["CoreInvisibility::Hosts::Killed"])
   end
 
   it "has a release baseline from Smith 0.16.0, its parts named by git id, holding what a leak would show" do

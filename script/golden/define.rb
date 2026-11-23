@@ -8,12 +8,15 @@ module CoreInvisibility
   module Define
     module_function
 
-    def agent(name, register, model_id: "claude-sonnet-5-5", provider: :anthropic, prompt: nil, &body)
+    # `cap`: its output cap, none when nil; `listed`: its model looked up in
+    # RubyLLM's list rather than assumed to exist.
+    def agent(name, register, model_id: "claude-sonnet-5-5", provider: :anthropic, prompt: nil, cap: 500,
+              listed: false, &body)
       klass = Object.const_set(name, Class.new(Smith::Agent))
       klass.class_exec do
         register_as register
-        model model_id, provider:, assume_model_exists: true
-        params max_tokens: 500
+        model model_id, provider:, assume_model_exists: !listed
+        params max_tokens: cap if cap
         instructions { |_context| prompt } if prompt
       end
       klass.class_exec(&body) if body
