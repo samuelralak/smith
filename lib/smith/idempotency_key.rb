@@ -110,9 +110,21 @@ module Smith
       # restore of it gets the same one, and shaped as the version 4 UUID
       # `new` assigns.
       def legacy_namespace(*facts)
-        hex = Digest::SHA256.hexdigest(JSON.generate([VERSION, "namespace", *facts.map(&:to_s)]))
+        uuid(Digest::SHA256.hexdigest(JSON.generate([VERSION, "namespace", *facts.map(&:to_s)])), 4)
+      end
+
+      # The namespace of a child run an in-process launcher runs: named by
+      # its key, which no other child has, never drawn, so a child launched
+      # again is the same run. Shaped as the version 4 UUID `new` assigns,
+      # as a stored namespace must be.
+      def child_namespace(key)
+        uuid(Digest::SHA256.hexdigest(JSON.generate([VERSION, "inline_child", key])), 4)
+      end
+
+      # A digest shaped as a UUID of `version`, with RFC 9562's variant.
+      def uuid(hex, version)
         variant = ((hex[16].to_i(16) & 0x3) | 0x8).to_s(16)
-        "#{hex[0, 8]}-#{hex[8, 4]}-4#{hex[13, 3]}-#{variant}#{hex[17, 3]}-#{hex[20, 12]}"
+        "#{hex[0, 8]}-#{hex[8, 4]}-#{version}#{hex[13, 3]}-#{variant}#{hex[17, 3]}-#{hex[20, 12]}"
       end
 
       # A position segment: a label and Strings, Symbols or Integers, held

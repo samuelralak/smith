@@ -25,7 +25,7 @@ module Smith
         kind = transition.children_config.fetch(:kind)
         raise WorkflowError, "#{kind} needs Smith.config.run_launcher" unless launcher
 
-        children = child_runs(transition, token).freeze
+        children = child_runs(transition, token)
         unless @persistence_key || inline_launcher?(launcher)
           raise WorkflowError, "#{kind} starts runs of their own, so it needs a persisted run " \
                                "(run_persisted! or advance_persisted!)"
@@ -34,7 +34,10 @@ module Smith
         @launched_children = children.length
         return [] if children.empty?
 
-        results = launcher.launch(children:, parent_key: @persistence_key, await_token: token)
+        # A child run in process takes the step's attempts (ResponseMemo).
+        results = ResponseMemo.__send__(:launching, @memo_attempts, @step_attempt) do
+          launcher.launch(children:, parent_key: @persistence_key, await_token: token)
+        end
         return unless inline_launcher?(launcher)
         return results if results.is_a?(Array)
 
@@ -51,11 +54,14 @@ module Smith
           input = child_input(config, item, context)
           bytes = check_launch_size!(bytes + JSON.generate(input).bytesize, config[:kind])
           child_run(config, token, index, input)
-        end
+        end.freeze
       end
 
+      # The positions above the step's own in the run (nested workflow
+      # steps and fan-out items; none at its root) name its children too.
       def child_run(config, token, ref, input)
-        ChildRun.new(ref:, key: ChildRun.key_for(token, ref), workflow: config.fetch(:workflow), input:,
+        place = IdempotencyKey.__send__(:current_scope!).path[0...-1]
+        ChildRun.new(ref:, key: ChildRun.key_for(token, ref, place), workflow: config.fetch(:workflow), input:,
                      untrusted_keys: (untrusted_context_keys & input.keys).freeze,
                      artifact_namespaces: child_artifact_namespaces)
       end

@@ -1,15 +1,19 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "json"
 require "open3"
+require "tempfile"
 require "tmpdir"
-require_relative "../../script/golden/commit_source"
+require_relative "../../script/golden/git_source"
+require_relative "../../script/golden/release_baseline"
 
 # The shared "no difference" harness (slice-1a design, section 3.5): every
 # scenario of script/core_invisibility_golden, run on this tree in a child
-# process, against the golden file generated from the released gem in its
-# own bundle (script/golden/Gemfile). A core change that an app not using it
-# could notice fails here.
+# process in each mode, against the golden file and against the plain mode
+# on the same tree. The golden names the git ids of the source it was
+# written from (script/core_invisibility_golden says how), so a core change
+# that changes no record passes as it is, and one that does fails here.
 module CoreInvisibilityHarness
   ROOT = File.expand_path("../..", __dir__)
   GOLDEN = File.join(ROOT, "spec/fixtures/core_invisibility_golden.json")
@@ -17,12 +21,9 @@ module CoreInvisibilityHarness
   # these public DSL macros. No slice adds a constant a host body can see,
   # overrides a name Object or Kernel has, or removes a method.
   DSL_MACROS = %w[provider_credentials].freeze
-  # Each change a slice makes to the host surface, "+ <class> <table> <name>";
-  # slice 0 makes none.
-  SURFACE_CHANGES = [].freeze
   # Paths whose every provider attempt a trial must observe.
   OBSERVED_PATHS = %w[parallel_branches fan_out nested_workflow optimize orchestrate image_answer nested_items
-                      image_refusal_fallback repair_exhausted].freeze
+                      image_refusal_fallback repair_exhausted orchestrate_string_keys orchestrate_restored].freeze
 
   @runs = {}
 
@@ -91,6 +92,121 @@ module CoreInvisibilityHarness
 
       tree.flat_map { |key, value| leaves(value, [*path, key]) }
     end
+
+    # A file written again from the ids it names, as compared with the one
+    # committed: everything but the versions block, which another machine's
+    # gems may change.
+    def again_comparable(again, written) = again.merge("environment" => written["environment"])
+
+    def git(*, repo: ROOT) = Open3.capture3("git", "-C", repo, *)
+
+    def git_history? = git("rev-parse", "-q", "--verify", "HEAD").last.success?
+
+    # Why the source a fixture names (the golden, or the release baseline)
+    # cannot be read here, or nil when commits HEAD reaches hold every part.
+    # Committed, its ids are in history; a full clone where HEAD does not
+    # reach them is a fault (a part changed after the file was written, so
+    # the file came from a tree never committed), not a reason to skip.
+    def recorded_source_missing(document = golden, fixture = GOLDEN, repo: ROOT, label: "the golden")
+      missing = unreachable(document["smith"].fetch("parts").values, repo:)
+      return if missing.empty?
+      return "a shallow clone lacks the history #{label}'s source is in" if shallow?(repo)
+      if changed?(fixture, repo)
+        return "#{label}'s source is this tree's uncommitted change; its ids are in history once committed"
+      end
+
+      raise "#{label} names parts this repository's history does not hold: #{missing.join(", ")}"
+    end
+
+    # The ids no commit HEAD reaches holds: an object `git write-tree` or
+    # `git add` left behind is in the repository, not in its history.
+    def unreachable(ids, repo: ROOT)
+      ids - git("rev-list", "--objects", "HEAD", repo:).first.lines.map { _1.split.first }
+    end
+
+    def shallow?(repo = ROOT) = git("rev-parse", "--is-shallow-repository", repo:).first.strip == "true"
+
+    def changed?(fixture = GOLDEN, repo = ROOT)
+      paths = [*CoreInvisibility::GitSource::PARTS, fixture.delete_prefix("#{ROOT}/")]
+      !git("status", "--porcelain", "--", *paths, repo:).first.empty?
+    end
+  end
+
+  # The golden moves with every change that alters a record; the release
+  # baseline does not (script/golden/release_baseline.rb), and holds the tree
+  # to the last release on what a leak would show.
+  module Release
+    PATH = CoreInvisibility::ReleaseBaseline::PATH
+    # The release the baseline comes from, and the commit its harness does
+    # (0.16.0 predates the harness). Changed only at a release, when the
+    # baseline is written again from the release's commit and CHANGES starts
+    # empty.
+    SOURCE = { "version" => "0.16.0", "source" => "release", "release" => "9f03162ef274c00fc6dbe67a3c55007185ee9407",
+               "harness" => "a91fd457812ecca3e3ed7cec4075b7da9960490c" }.freeze
+    # Every way the tree differs from the release baseline, reviewed: a host
+    # surface change ("+ <class> <table> <name>", which the harness's
+    # `allowed?` must take), a scenario's facts ({fact => [release's,
+    # tree's]}), or a scenario the baseline lacks, with the facts the slice
+    # that added it measured, so they hold until a release's baseline has it.
+    # Each says why and which slice; one the tree no longer shows fails too.
+    CHANGES = [
+      { "scenario" => "orchestrate", "random_draws" => [11, 9],
+        "why" => "an orchestrate worker's execution_id is named by its position, no longer drawn (two workers)",
+        "slice" => "memo restore" },
+      { "scenario" => "orchestrate_string_keys",
+        "new" => { "random_draws" => 9, "counts" => { "Smith::Agent::Registry.fetch!" => 2 }, "requests" => 4,
+                   "traces" => { ":provider_call" => 4, ":token_usage" => 4, ":cost" => 4, ":transition" => 1 },
+                   "events" => { "Smith::Events::StepCompleted" => 1 }, "logs" => 0 },
+        "why" => "added: orchestrate with String keys throughout and no after_completion",
+        "slice" => "memo restore" },
+      { "scenario" => "orchestrate_restored",
+        "new" => { "random_draws" => 20, "counts" => { "Smith::Agent::Registry.fetch!" => 4 }, "requests" => 6,
+                   "traces" => { ":provider_call" => 9, ":token_usage" => 9, ":cost" => 9, ":transition" => 1 },
+                   "events" => { "Smith::Events::StepCompleted" => 1 }, "logs" => 0 },
+        "why" => "added: three rounds, killed once round 2's decision is kept, restored; 6 requests, 0.16.0 sent 7",
+        "slice" => "memo restore" }
+    ].freeze
+
+    class << self
+      def baseline = @baseline ||= JSON.parse(File.read(PATH))
+
+      # How a plain run differs from the baseline, as CHANGES lists it: each
+      # host surface change, each scenario whose facts differ, each the
+      # baseline lacks, and each the run lacks.
+      def differences(baseline, run)
+        was = baseline["scenarios"]
+        scenarios = run["scenarios"].filter_map { |name, records| scenario(name, records, was[name]) }
+        surface(baseline, run) + scenarios + (was.keys - run["scenarios"].keys).map { gone(_1) }
+      end
+
+      def surface(baseline, run)
+        changes = CoreInvisibilityHarness.surface_changes(baseline["host_surface"], run["host_surface"])
+        changes.map { { "surface" => _1 } }
+      end
+
+      def scenario(name, records, was)
+        now = CoreInvisibility::ReleaseBaseline.facts(records)
+        return { "scenario" => name, "new" => now } unless was
+
+        changed = (now.keys | was.keys).reject { now[_1] == was[_1] }.to_h { [_1, [was[_1], now[_1]]] }
+        { "scenario" => name, **changed } unless changed.empty?
+      end
+
+      def gone(name) = { "scenario" => name, "gone" => true }
+
+      # Why the release tag cannot be checked here (a clone without tags),
+      # or nil when it names the baseline's release; raises when it names
+      # another commit.
+      def tag_unchecked(baseline, repo: ROOT)
+        version, release = baseline["smith"].values_at("version", "release")
+        tag = CoreInvisibilityHarness.git("rev-parse", "-q", "--verify", "refs/tags/v#{version}^{commit}", repo:)
+                                     .first.strip
+        return "the v#{version} tag is not in this clone (git fetch --tags), so its commit is not checked" if tag.empty?
+        return if tag == release
+
+        raise "v#{version} names #{tag}, but the release baseline was written from #{release}"
+      end
+    end
   end
 end
 
@@ -110,16 +226,23 @@ RSpec.describe "Smith core invisibility: an app that does not use the eval seam 
                                     "#{harness.diff(expected, actual)}"
   end
 
-  it "has a golden file generated from the commit the slice is built on, over twenty-three scenarios, every sink" do
-    # 6bd0609, the orchestrate and usage fixes on 0.16.0
-    # (script/core_invisibility_golden says where a golden comes from).
-    expect(golden["smith"]).to eq("version" => "0.16.0", "source" => "commit",
-                                  "commit" => "6bd060932a6e73b3a50244eaa1909d254eef36e9")
-    expect(golden["process"]["attempt_observation"]).to be(false)
+  it "has a golden file from a commit or the staged index, its parts named by git id, over twenty-five scenarios" do
+    # The parts that decide what the harness records, by their git ids, and
+    # the commit their tree was built on; the golden file is none of them.
+    source = golden["smith"]
+    parts = CoreInvisibility::GitSource::PARTS
+    expect(source.keys).to eq(%w[version source built_on parts])
+    expect(source.values.first(3)).to match(["0.16.0", /\A(index|commit)\z/, /\A\h{40}\z/])
+    expect(source["parts"].keys).to eq(parts)
+    expect(source["parts"].values).to all(match(/\A\h{40}\z/))
+    fixture = CoreInvisibilityHarness::GOLDEN.delete_prefix("#{CoreInvisibilityHarness::ROOT}/")
+    expect(parts.select { fixture == _1 || fixture.start_with?("#{_1}/") }).to eq([])
+    expect(golden["process"]["observer_installed"]).to be(false)
     expect(golden["scenarios"].keys).to eq(
       %w[serial_output_schema tool_loop parallel_branches fan_out route nested_workflow inline_call_child optimize
          orchestrate streamed batch fallback_after_overload output_repair budget_ledger memo_replay budget_pause
-         durable_await durable_retry image_answer nested_items image_unkept image_refusal_fallback repair_exhausted]
+         durable_await durable_retry image_answer nested_items image_unkept image_refusal_fallback repair_exhausted
+         orchestrate_string_keys orchestrate_restored]
     )
     sinks = %w[random_draws counts requests memo batches states persisted artifacts usage_entries traces events
                stream ledger logs errors results]
@@ -133,21 +256,39 @@ RSpec.describe "Smith core invisibility: an app that does not use the eval seam 
     failed = golden["scenarios"].select { |_name, scenario| scenario["persisted"].to_s.include?("error_message") }
     expect(failed.keys).to include("image_unkept", "repair_exhausted")
     expect(seen.sum { _1["counts"].values.sum }).to be_positive
-    # The one error a scenario means to raise (the memo replay's kill). Any
+    # The errors scenarios mean to raise (the memo replays' kills). Any
     # other is a crash, which a regenerated golden must not hold.
     errored = golden["scenarios"].reject { |_name, scenario| scenario["errors"].empty? }
     expect(errored.transform_values { |scenario| scenario["errors"].map { _1["class"] } })
-      .to eq("memo_replay" => ["CoreInvisibility::Hosts::Killed"])
+      .to eq("memo_replay" => ["CoreInvisibility::Hosts::Killed"],
+             "orchestrate_restored" => ["CoreInvisibility::Hosts::Killed"])
   end
 
-  describe "a golden file written from a named commit" do
-    let(:source) { CoreInvisibility::CommitSource }
+  it "has a release baseline from Smith 0.16.0, its parts named by git id, holding what a leak would show" do
+    baseline = CoreInvisibilityHarness::Release.baseline
+    smith = baseline["smith"]
+    expect(baseline.keys).to eq(%w[format smith environment process host_surface scenarios])
+    expect(baseline["format"]).to eq(CoreInvisibility::ReleaseBaseline::FORMAT)
+    expect(smith.except("parts")).to eq(CoreInvisibilityHarness::Release::SOURCE)
+    expect(smith["parts"].keys).to eq(CoreInvisibility::GitSource::PARTS)
+    expect(smith["parts"].values).to all(match(/\A\h{40}\z/))
+    # 0.16.0 has no eval seam.
+    expect(baseline["process"]).to eq("evals_defined" => false, "attempt_observation" => false,
+                                      "observer_installed" => false, "empty_attribution_fields" => {})
+    expect(baseline["host_surface"].keys).to eq(%w[Smith::Workflow Smith::Agent Smith::Context Smith::Tool])
+    expect(baseline["scenarios"].values.map(&:keys).uniq).to eq([CoreInvisibility::ReleaseBaseline::FACTS])
+    # Scenarios are only added, at the end.
+    expect(golden["scenarios"].keys.first(baseline["scenarios"].length)).to eq(baseline["scenarios"].keys)
+    CoreInvisibilityHarness::Release::CHANGES.each do |change|
+      expect([change["why"], change["slice"]]).to all(match(/\S/)), change.inspect
+    end
+  end
+
+  describe "a golden file written from git" do
+    let(:source) { CoreInvisibility::GitSource }
     let(:script) { File.join(CoreInvisibilityHarness::ROOT, "script/core_invisibility_golden") }
 
-    before do
-      skip "needs this repository's git history" unless
-        system("git", "-C", CoreInvisibilityHarness::ROOT, "rev-parse", "-q", "--verify", "HEAD", out: File::NULL)
-    end
+    before { skip "needs this repository's git history" unless CoreInvisibilityHarness.git_history? }
 
     def unbundled(*command) = Bundler.with_unbundled_env { Open3.capture3(*command) }
 
@@ -155,52 +296,226 @@ RSpec.describe "Smith core invisibility: an app that does not use the eval seam 
     # not; it hands its golden bundle the gems it sees.
     def scripted(*arguments) = Open3.capture3(RbConfig.ruby, script, *arguments)
 
-    # HEAD is the commit a slice is built on while it is being built, and the
-    # slice's own commit once committed, which promises the same scenarios.
-    it "comes from a git archive of the commit in its own bundle, names the commit, and gives the golden's scenarios" do
-      head = `git -C #{CoreInvisibilityHarness::ROOT} rev-parse HEAD`.strip
-      version = `git -C #{CoreInvisibilityHarness::ROOT} show HEAD:lib/smith/version.rb`[/VERSION = "([^"]+)"/, 1]
-      Dir.mktmpdir do |dir|
-        path = File.join(dir, "golden.json")
-        _out, err, status = scripted("--write", path, "--commit", "HEAD")
-        expect([status.success?, err]).to eq([true, ""])
-        written = JSON.parse(File.read(path))
+    def git(*args) = CoreInvisibilityHarness.git(*args).first.strip
 
-        expect(written["smith"]).to eq("version" => version, "source" => "commit", "commit" => head)
+    # Anyone can extract the parts by their ids and write the golden again.
+    # Another machine's gems may differ (the versions block); nothing else.
+    it "comes from the parts it names: extracted by their git ids, they write the same golden again" do
+      reason = CoreInvisibilityHarness.recorded_source_missing
+      skip reason if reason
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "again.json")
+        _out, err, status = scripted("--write", path, "--source-of", CoreInvisibilityHarness::GOLDEN)
+        expect([status.success?, err]).to eq([true, ""])
+        written = File.read(path)
+        again = JSON.parse(written)
+
         harness = CoreInvisibilityHarness
-        expect(harness.text(written["scenarios"])).to eq(harness.text(golden["scenarios"]))
+        expect(harness.text(harness.again_comparable(again, golden))).to eq(harness.text(golden))
+        expect(written).to eq(File.read(harness::GOLDEN)) if again["environment"] == golden["environment"]
       end
     end
 
-    it "refuses an archive with a file changed, added or gone or code in its Gemfile, an unknown commit, a tree" do
-      Dir.mktmpdir do |dir|
-        source.extract("HEAD", dir)
-        source.bundle!(dir)
-        version = File.join(dir, "lib/smith/version.rb")
-        kept = File.read(version)
-        File.write(version, "#{kept}# changed\n")
-        changed = unbundled(*source.writer(dir, File.join(dir, "changed.json")))
-        File.write(version, kept)
-        File.write(File.join(dir, "lib/smith/extra.rb"), "# added\n")
-        added = unbundled(*source.writer(dir, File.join(dir, "added.json")))
-        File.delete(File.join(dir, "lib/smith/extra.rb"))
-        readme = File.read(File.join(dir, "README.md"))
-        File.delete(File.join(dir, "README.md"))
-        gone = unbundled(*source.writer(dir, File.join(dir, "gone.json")))
-        File.write(File.join(dir, "README.md"), readme)
-        File.write(File.join(dir, source::GEMFILE), "#{source::GEMFILE_TEXT}ENV[\"SMITH_GOLDEN_PLANTED\"] = \"1\"\n")
-        planted = unbundled(*source.writer(dir, File.join(dir, "planted.json")))
-
-        [changed, added, gone, planted].each do |(_out, err, status)|
-          expect([status.success?, err]).to match([false, /not other/])
-        end
-        expect(Dir.children(dir)).not_to include("changed.json", "added.json", "gone.json", "planted.json")
+    it "compares a file written again in every block but the versions" do
+      harness = CoreInvisibilityHarness
+      same = ->(again) { harness.text(harness.again_comparable(again, golden)) == harness.text(golden) }
+      changed = %w[format smith process host_surface scenarios].to_h do |block|
+        [block, same.call(golden.merge(block => { "changed" => true }))]
       end
+
+      expect(changed).to eq(%w[format smith process host_surface scenarios].to_h { [_1, false] })
+      expect(same.call(golden.merge("environment" => { "ruby" => "0" }))).to be(true)
+    end
+
+    # Written from the release's commit, only at a release; anyone can
+    # write it again from the ids it names, and no golden regeneration does.
+    it "comes from the release's commit, and its parts write the same release baseline again" do
+      harness = CoreInvisibilityHarness
+      baseline = CoreInvisibilityHarness::Release.baseline
+      reason = harness.recorded_source_missing(baseline, CoreInvisibilityHarness::Release::PATH,
+                                               label: "the release baseline")
+      skip reason if reason
+      smith = baseline["smith"]
+      expect(CoreInvisibility::ReleaseBaseline.from_commit(smith["release"], harness: smith["harness"])).to eq(smith)
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "again.json")
+        _out, err, status = scripted("--write-release", path, "--source-of", CoreInvisibilityHarness::Release::PATH)
+        expect([status.success?, err]).to eq([true, ""])
+        written = File.read(path)
+        again = JSON.parse(written)
+
+        expect(harness.text(harness.again_comparable(again, baseline))).to eq(harness.text(baseline))
+        same_gems = again["environment"] == baseline["environment"]
+        expect(written).to eq(File.read(CoreInvisibilityHarness::Release::PATH)) if same_gems
+      end
+    end
+
+    it "names the commit its release tag names, or says why the tag cannot be checked" do
+      reason = CoreInvisibilityHarness::Release.tag_unchecked(CoreInvisibilityHarness::Release.baseline)
+      skip reason if reason
+    end
+
+    it "takes a commit's parts, or the staged index's and never an unstaged edit, by their git ids" do
+      head = git("rev-parse", "HEAD")
+      named = source::PARTS.to_h { [_1, git("rev-parse", "HEAD:#{_1}")] }
+      expect(source.from_commit("HEAD")).to eq("source" => "commit", "built_on" => head, "parts" => named)
+      Dir.mktmpdir do |dir|
+        clone = cloned(dir)
+        File.write(File.join(clone, "lib/smith/staged_part.rb"), "# staged\n")
+        system("git", "-C", clone, "add", "lib/smith/staged_part.rb", exception: true)
+        File.write(File.join(clone, "lib/smith/version.rb"), "# not staged\n", mode: "a")
+
+        index = source.from_index(repo: clone)
+        lib = index["parts"]["lib"]
+        listed = Open3.capture3("git", "-C", clone, "ls-tree", "-r", lib).first
+        expect([index["source"], index["built_on"]]).to eq(["index", head])
+        expect(index["parts"].except("lib")).to eq(named.except("lib"))
+        unstaged = "blob #{git("rev-parse", "HEAD:lib/smith/version.rb")}\tsmith/version.rb\n"
+        expect(listed).to include("\tsmith/staged_part.rb\n", unstaged)
+      end
+    end
+
+    # A clone of HEAD sharing this repository's objects; what it stores
+    # stays in it.
+    def cloned(dir)
+      File.join(dir, "clone").tap do |clone|
+        quiet = %w[-c advice.detachedHead=false]
+        system("git", *quiet, "clone", "-q", "--shared", CoreInvisibilityHarness::ROOT, clone, exception: true)
+      end
+    end
+
+    # A clone with this tree's parts staged, so the harness as it is now
+    # writes and refuses without a write to this repository's objects.
+    def staged_clone(dir)
+      root = CoreInvisibilityHarness::ROOT
+      clone = cloned(dir)
+      source::PARTS.each do |part|
+        FileUtils.rm_r(File.join(clone, part))
+        FileUtils.cp_r(File.join(root, part), File.join(clone, part))
+      end
+      system("git", "-C", clone, "add", "-A", "--", *source::PARTS, exception: true)
+      clone
+    end
+
+    it "writes from this tree's harness, and refuses a part changed, added to or taken from, or code in its Gemfile" do
+      Dir.mktmpdir do |dir|
+        clone = staged_clone(dir)
+        staged = source.from_index(repo: clone)
+        folder = File.join(dir, "folder").tap { Dir.mkdir(_1) }
+        source.extract(staged, folder, repo: clone)
+        source.bundle!(folder, repo: clone)
+        tried = lambda do |name, file = nil, text = nil|
+          kept = file && File.exist?(file) && File.binread(file)
+          text ? File.write(file, text) : file && File.delete(file)
+          unbundled(*source.writer(folder, File.join(dir, "#{name}.json"), repo: clone)).tap do
+            kept ? File.binwrite(file, kept) : file && File.delete(file)
+          end
+        end
+        version = File.join(folder, "lib/smith/version.rb")
+        gemspec = File.join(folder, "smith-agents.gemspec")
+        written = tried.call("written")
+        outcomes = [
+          tried.call("changed", version, "#{File.read(version)}# changed\n"),
+          tried.call("gemspec", gemspec, "#{File.read(gemspec)}# changed\n"),
+          tried.call("added", File.join(folder, "lib/smith/extra.rb"), "# added\n"),
+          tried.call("gone", File.join(folder, "lib/smith/canonical_json.rb")),
+          tried.call("planted", File.join(folder, source::GEMFILE), "#{source::GEMFILE_TEXT}ENV[\"PLANTED\"] = \"1\"\n")
+        ]
+
+        expect([written[2].success?, written[1]]).to eq([true, ""])
+        # The golden bundle resolves the versions the suite's Gemfile.lock holds.
+        if File.file?(File.join(CoreInvisibilityHarness::ROOT, "Gemfile.lock"))
+          locked = File.read(File.join(folder, "#{source::GEMFILE}.lock"))
+          %w[faraday json].each { expect(locked).to include("\n    #{_1} (#{Gem.loaded_specs[_1].version})") }
+        end
+        expect(JSON.parse(File.read(File.join(dir, "written.json")))["smith"].except("version")).to eq(staged)
+        outcomes.each { |(_out, err, status)| expect([status.success?, err]).to match([false, /not other/]) }
+        expect(Dir.children(dir).grep(/\.json\z/)).to eq(["written.json"])
+      end
+    end
+
+    it "refuses an unknown id, an unknown commit and a working tree" do
+      recorded = source.from_commit("HEAD")
+      unknown = Tempfile.create(%w[unknown .json]) do |file|
+        parts = recorded["parts"].merge("lib" => "0" * 40)
+        file.write(JSON.generate("smith" => { "version" => "0.16.0", **recorded, "parts" => parts }))
+        file.flush
+        scripted("--write", File::NULL, "--source-of", file.path)
+      end
+      expect([unknown[2].success?, unknown[1]]).to match([false, /git cat-file/])
       _out, err, status = scripted("--write", File::NULL, "--commit", "no-such-commit")
       expect([status.success?, err]).to match([false, /git rev-parse/])
       _out, err, status = Open3.capture3(RbConfig.ruby, "-I", File.join(CoreInvisibilityHarness::ROOT, "lib"), script,
                                          "--write", File::NULL)
       expect([status.success?, err]).to match([false, /not tree/])
+    end
+  end
+
+  # A repository of its own holding this tree's parts and golden in one
+  # commit, so the examples below need neither this repository's history
+  # nor a full clone of it.
+  def committed_repo(dir)
+    root = CoreInvisibilityHarness::ROOT
+    repo = File.join(dir, "repo")
+    [*CoreInvisibility::GitSource::PARTS, CoreInvisibilityHarness::GOLDEN.delete_prefix("#{root}/")].each do |part|
+      FileUtils.mkdir_p(File.dirname(File.join(repo, part)))
+      FileUtils.cp_r(File.join(root, part), File.join(repo, part))
+    end
+    system("git", "-c", "init.defaultBranch=main", "init", "-q", repo, exception: true)
+    committing(repo, "add", "-A")
+    committing(repo, "commit", "-qm", "parts")
+    repo
+  end
+
+  def committing(repo, *args)
+    system("git", "-C", repo, "-c", "user.name=spec", "-c", "user.email=spec@example.invalid", "-c",
+           "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", *args, exception: true)
+  end
+
+  # A golden written from the index and a part edited before the commit:
+  # the ids are objects in the author's repository, but no commit holds
+  # them, and a fresh clone has none. The author's run must fail as that
+  # clone's does.
+  it "holds every id it names in HEAD's history, and fails a full repository whose HEAD does not reach them" do
+    source = CoreInvisibility::GitSource
+    harness = CoreInvisibilityHarness
+    Dir.mktmpdir do |dir|
+      repo = committed_repo(dir)
+      part = File.join(repo, "lib/smith/version.rb")
+      fixture = File.join(repo, harness::GOLDEN.delete_prefix("#{harness::ROOT}/"))
+      File.write(part, "#{File.read(part)}# staged\n")
+      committing(repo, "add", "-A")
+      staged = golden.merge("smith" => golden["smith"].merge(source.from_index(repo:)))
+      File.write(fixture, JSON.generate(staged))
+      lib = staged["smith"]["parts"]["lib"]
+      missing = -> { harness.recorded_source_missing(staged, fixture, repo:) }
+
+      expect(missing.call).to match(/uncommitted change/)
+      File.write(part, "#{File.read(part)}# edited again\n")
+      committing(repo, "commit", "-qam", "stale")
+      expect(Open3.capture3("git", "-C", repo, "cat-file", "-e", lib).last.success?).to be(true)
+      expect { missing.call }.to raise_error(/history does not hold: #{lib}/)
+      held = golden.merge("smith" => golden["smith"].merge(source.from_commit("HEAD", repo:)))
+      expect(harness.recorded_source_missing(held, fixture, repo:)).to be_nil
+    end
+  end
+
+  # The release tag is checked when the clone has it: absent, the example
+  # says so; naming another commit, it fails.
+  it "checks the release tag where it is, says why where it is not, and fails where it names another commit" do
+    release = CoreInvisibilityHarness::Release
+    Dir.mktmpdir do |dir|
+      repo = committed_repo(dir)
+      head = CoreInvisibilityHarness.git("rev-parse", "HEAD", repo:).first.strip
+      baseline = { "smith" => { "version" => "0.16.0", "release" => head } }
+
+      expect(release.tag_unchecked(baseline, repo:)).to eq(
+        "the v0.16.0 tag is not in this clone (git fetch --tags), so its commit is not checked"
+      )
+      committing(repo, "tag", "-a", "v0.16.0", "-m", "release")
+      expect(release.tag_unchecked(baseline, repo:)).to be_nil
+      other = baseline.merge("smith" => baseline["smith"].merge("release" => "0" * 40))
+      expect { release.tag_unchecked(other, repo:) }.to raise_error(/v0.16.0 names #{head}/)
     end
   end
 
@@ -210,15 +525,94 @@ RSpec.describe "Smith core invisibility: an app that does not use the eval seam 
     expect(plain["smith"]["source"]).to eq("tree")
     expect(plain["process"]).to eq("evals_defined" => false, "attempt_observation" => true,
                                    "observer_installed" => false, "empty_attribution_fields" => {})
+    expect(plain["host_surface"]).to eq(golden["host_surface"])
     expect_golden_scenarios(plain)
   end
 
+  # Against the release baseline, which no golden regeneration writes.
   it "adds no name a host's Workflow, Agent, Context or Tool subclass could collide with, and removes none" do
-    changes = CoreInvisibilityHarness.surface_changes(golden["host_surface"],
-                                                      CoreInvisibilityHarness.run("plain")["host_surface"])
+    harness = CoreInvisibilityHarness
+    changes = harness.surface_changes(CoreInvisibilityHarness::Release.baseline["host_surface"],
+                                      harness.run("plain")["host_surface"])
+    listed = CoreInvisibilityHarness::Release::CHANGES.filter_map { _1["surface"] }
 
-    expect(changes).to eq(CoreInvisibilityHarness::SURFACE_CHANGES)
-    expect(CoreInvisibilityHarness::SURFACE_CHANGES.reject { CoreInvisibilityHarness.allowed?(_1) }).to eq([])
+    expect(changes).to eq(listed)
+    expect(listed.reject { harness.allowed?(_1) }).to eq([])
+  end
+
+  it "differs from the release baseline only as listed: draws, lookups, requests, traces, events and log lines" do
+    release = CoreInvisibilityHarness::Release
+    differences = release.differences(release.baseline, CoreInvisibilityHarness.run("plain"))
+
+    expect(differences).to eq(release::CHANGES.map { _1.except("why", "slice") })
+  end
+
+  it "names each fact of a scenario that differs from the release baseline, a name added, and a scenario gone" do
+    release = CoreInvisibilityHarness::Release
+    run = CoreInvisibilityHarness.run("plain")
+    tools = run["scenarios"]["tool_loop"]
+    leaked = tools.merge("random_draws" => tools["random_draws"] + 1,
+                         "counts" => tools["counts"].merge("Smith::Agent::Registry.capture_bindings!" => 1),
+                         "requests" => [*tools["requests"], tools["requests"].last],
+                         "traces" => [*tools["traces"], tools["traces"].last],
+                         "events" => [*tools["events"], ["Smith::Events::Planted", {}]],
+                         "logs" => tools["logs"].map { |lines| lines.merge(":smith" => [*lines[":smith"], "planted"]) })
+    surface = JSON.parse(JSON.generate(run["host_surface"]))
+    surface["Smith::Workflow"]["constants"] << "PLANTED"
+    planted = run.merge("host_surface" => surface,
+                        "scenarios" => run["scenarios"].merge("tool_loop" => leaked).except("batch"))
+    differences = release.differences(release.baseline, planted) - release.differences(release.baseline, run)
+
+    facts = %w[random_draws counts requests traces events logs]
+    expect(differences.map { _1.except("scenario").keys }).to eq([%w[surface], facts, %w[gone]])
+    expect(differences.first).to eq("surface" => "+ Smith::Workflow constants PLANTED")
+    expect(differences.last).to eq("scenario" => "batch", "gone" => true)
+  end
+
+  # The seam's invisibility was proven once against a Smith without it
+  # (eb14417 against 6bd0609); on this tree it is the plain mode's records.
+  it "keeps the seam invisible on this tree: observer and trial modes give the plain mode's records, sink by sink" do
+    harness = CoreInvisibilityHarness
+    plain = harness.run("plain")
+    %w[observer trial].each do |mode|
+      run = harness.run(mode)
+      expect(run["scenarios"].keys).to eq(plain["scenarios"].keys)
+      expect(run["host_surface"]).to eq(plain["host_surface"]), mode
+      plain["scenarios"].each do |name, records|
+        records.each do |sink, value|
+          expect(harness.text(run["scenarios"][name][sink])).to eq(harness.text(value)), "#{mode} #{name} #{sink}"
+        end
+      end
+    end
+  end
+
+  it "reports how two golden files differ, scenario by scenario" do
+    scenarios = golden["scenarios"]
+    # A namespace changed for another of the same length, as a fix that
+    # names one rather than drawing it changes a golden.
+    child = scenarios["inline_call_child"]
+    key = ":execution_namespace"
+    renamed = child["states"].map { |state| state.merge(key => state[key].reverse) }
+    changed = golden.merge("process" => golden["process"].merge("attempt_observation" => "changed"),
+                           "scenarios" => scenarios.except("batch").merge(
+                             "streamed" => scenarios["streamed"].merge("requests" => [], "usage_entries" => []),
+                             "inline_call_child" => child.merge("states" => renamed), "extra" => scenarios["batch"]
+                           ))
+    Dir.mktmpdir do |dir|
+      paths = [golden, changed].each_with_index.map do |doc, at|
+        File.join(dir, "#{at}.json").tap { File.write(_1, JSON.generate(doc)) }
+      end
+      script = File.join(CoreInvisibilityHarness::ROOT, "script/core_invisibility_golden")
+      out, err, status = Open3.capture3(RbConfig.ruby, script, "--diff", *paths)
+
+      expect([status.success?, err]).to eq([true, ""])
+      lines = out.lines(chomp: true)
+      expect(lines.first(5)).to eq(["smith: same", "environment: same", "process: attempt_observation",
+                                    "host_surface: same", "serial_output_schema: same"])
+      expect(lines).to include("streamed: requests, usage_entries", "inline_call_child: states",
+                               "batch: only in the first", "extra: only in the second")
+      expect(lines.length).to eq(4 + scenarios.length + 1)
+    end
   end
 
   it "never calls an installed observer outside a trial, and changes nothing" do

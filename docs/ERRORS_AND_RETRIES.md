@@ -190,7 +190,8 @@ Smith.config.response_memo = ResponseMemo.new
 Each agent call (its tool loop included) is kept under a key of its position
 (the run, the step, any branch or nested position, the key generation), the
 attempts it runs under (its step's, and each enclosing run's for a nested
-workflow, so a retry never takes the attempt before's answer), its attempt
+workflow or a child run `Smith::Launchers::Inline` runs, so a retry never takes
+the attempt before's answer), its attempt
 index (its model in the fallback chain, or a follow-up's place), its place
 among the attempt's calls, and a digest of its request (model, messages,
 tools with their descriptions and parameters, schema, params), Anthropic's
@@ -198,7 +199,12 @@ prompt-cache markers aside: whether a part is cached never changes what the
 call asks, so a host may decide it call by call, keeping the part's form (the
 same text block, with or without its marker). A replay reaches the same key; a
 call whose request changed since (a deployed prompt or tool, another model, a
-date in the prompt) misses and is sent again, as a miss always may be.
+date in the prompt) misses and is sent again, as a miss always may be. A child
+run `Smith::Launchers::Inline` launches again runs its finished steps again,
+so a value one of them draws anew (a file, S3 or Active Record artifact
+store's ref) that reaches a later prompt is such a change: store the document
+in the parent before the launching step and pass its ref in the child's
+`input:` ([PERSISTENCE.md](PERSISTENCE.md), Child Runs).
 
 Its record (`{"version" => 1 | 2, "messages" => [...], "complete" => true |
 false}`, JSON) holds the messages the call added: the model's replies

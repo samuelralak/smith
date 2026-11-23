@@ -1203,6 +1203,23 @@ Documented contracts covered:
 - `Smith::Testing` stubs, whose Hash outputs reach the step as JSON, drive an orchestrate step
 - a persisted run cut after its first round's worker reply restores, replays those kept String-keyed calls from the response memo, and finishes
 
+### `spec/smith/workflow/orchestrator_worker_restore_spec.rb`
+
+Purpose:
+
+- asserts that a persisted orchestrate run restored after its process died asks its orchestrator what it asked before, so every call the response memo kept replays
+
+Architecture basis:
+
+- Section 5, Persistence and Resume; Section 5.2, Workflow Execution (Orchestrator-worker helper)
+
+Documented contracts covered:
+
+- a three-round run cut once the memo has kept any of its seven calls (each round's decision, each worker's reply, the final) restores and finishes with exactly the requests, holds, settlements and usage entries of an uncut run, the same output and saved context, and every kept call found in the memo
+- a worker's `execution_id` in the round message is a UUID named by its run, step, round, task content and copy: no two workers of a run share one (a task repeated in a later round, or twice in one round, included), and two runs never do; under a known namespace it is the version 8 UUID its definition gives, computed in the spec with Digest and JSON alone
+- it gives away no idempotency key host code gets where the worker runs
+- it is the same in a restored run, whatever order its orchestrator lists the tasks in, and in another process, which replays every call the first one kept
+
 ### `spec/smith/workflow/serialization_spec.rb`
 
 Purpose:
@@ -1842,6 +1859,41 @@ Documented contracts covered:
 - review fixes: each child's `key` (token and ref) differs across two child-run steps of one run; a spawn taken as a failure route launches; results are checked against the count the step launched (`Wait#children`), not items derived again, and an unpersisted items key is refused; only an `inline?` launcher's return value is taken, and it must be an Array; a strict run that crashed mid-launch launches again; a map or call that fails on a failed child needs `on_failure`, and no map, call or spawn takes `retry_on`; outputs a map does not collect are dropped before the 4 MiB bound, live and inline; a map over no items completes at once; an `await :children` keeps the wait bound; child untrusted key names are checked and symbolized at build; inline children run under the parent's deadline but apart from its tool evidence and attribution, and a waiting, raising or self-handled failing child is reported failed with its error; a spawn launches under a token of its own, from items given a copy of the context, and not past the deadline; a stored wait's children count is checked; readiness flags an in-process nested workflow that maps, lets a durable map recurse, and warns (not errors) of a child agent reading a parent's untrusted key; child inputs are bounded at 16 MiB together as they are built; split-step persistence refuses child-run steps; `ChildRunsFailed` details must add up
 - these contracts are mutation-verified against the full suite
 
+### `spec/smith/workflow/inline_child_restore_spec.rb`
+
+Purpose:
+
+- asserts that a child a `call`, `map` or `spawn` step runs through `Smith::Launchers::Inline` is the same run when it is launched again, so a restored parent pays nothing again for what the response memo kept
+
+Architecture basis:
+
+- Section 5, Persistence and Resume
+
+Documented contracts covered:
+
+- a persisted run (its own calls, a call child, a map over two children of the same content, a spawn) cut once the memo has kept any of its six calls restores and finishes with exactly the requests, holds, settlements and usage (its own and its children's) of an uncut run, the same saved context, and every kept call of the steps it runs again found in the memo
+- a child's namespace is a version 4 UUID a restore accepts, no two children share one (a call, two map children of the same content, a spawn, an in-process nested workflow's child, the children of a fan-out over two items of the same content, a grandchild), it is the same on every launch from one payload, and another run's are other
+- a relaunched child's tools repeat their idempotency keys (a kept reply whose tool had not finished runs it again under its key, a sibling of the same content keeps its own); it reads, lists and deletes what its earlier launch stored as its own; a nested workflow step tried again relaunches the same child (the same namespace), whose call is asked again; launched outside any step, one key names one child
+- a nested workflow step tried again by `retry_on` asks its inline child's call again, as it asks the nested workflow's own, so a retry meant to get the child a new answer gets one and a run with a memo ends as one without; a run restored after any of the retried step's four calls was kept takes the step again from its first attempt, replays every kept call through the retry, and sends and ends as an uncut run
+- a host launcher's children keep their keys (pinned) and inputs, and each build of one gets a namespace of its own; under a known namespace an inline child's namespace is the version 4 UUID its definition gives from its key, computed in the spec with Digest and JSON alone; an inline child's namespace is no key a step gets (the step's own, its token, its children's keys, or the step's key for a child's key or ref); in another process the relaunched child replays the call the first one kept
+
+### `spec/smith/workflow/child_run_keys_spec.rb`
+
+Purpose:
+
+- asserts that no two children of a run share a `child.key`, wherever their steps run, so a launcher idempotent on the key launches every child, and that a child launched at the run's root keeps the key 0.16.0 gave it
+
+Architecture basis:
+
+- Section 5, Persistence and Resume
+
+Documented contracts covered:
+
+- under a host's own inline launcher idempotent on the key and under `Smith::Launchers::Inline`, the children of a call, a map of two of the same content and a spawn, launched at the run's root and from the same steps in every place an in-process workflow runs (nested twice, each of two items, nested in a nested workflow, nested in each of two items, each of two items of a nested workflow), all have keys of their own and all run; two runs share none
+- a host launcher that queues is handed only the run's root children: a nested workflow's or an item's map, call or spawn is refused before launching
+- a child keeps its key on every launch from one payload, when a nested workflow step around it is tried again (a launcher idempotent on the key runs it once), and in another process; a nested workflow's and each item's keys are pinned
+- a call's, a map's and a spawn's children at the run's root keep 0.16.0's keys (pinned, with their tokens) under a host launcher that queues, a host's inline launcher and `Smith::Launchers::Inline`
+
 ### `spec/smith/artifacts/durable_stores_spec.rb`
 
 Purpose:
@@ -1966,7 +2018,8 @@ Documented contracts covered:
 - a tool loop kept part way continues from its tool results: the tool runs once, the resumed request carries its result, and every round's usage is counted once
 - a step cut while its tools run keeps the reply that called them (version 2, before they run, with its stop reason and message id): replayed, that reply is not asked for again, its tools run again under the same idempotency key, the next request carries their results and is a later round on the budget ledger (reconciled, not held, as the step cannot pause), and each round's usage is counted once; a streamed step keeps that reply's stream facts and streams only the live rounds
 - a streamed step replaying a kept reply gives its sink the text in one delta and sends nothing
-- a memo whose `fetch` or `store` raises is logged by class and the request goes on; a record not of the shape Smith keeps is ignored; a memo without `fetch` and `store` is refused when set
+- a streamed answer kept whole (its record holding an empty list of tool calls, as 0.16.0 kept it) is replayed after a restore: nothing is sent, the sink gets the kept text in one delta, and its usage is recorded once
+- a memo whose `fetch` or `store` raises is logged by class and the request goes on; a record not of the shape Smith keeps is ignored (a record kept whole that ends on a reply calling tools, a tool result, or a user turn is refused, and the call sent); a memo without `fetch` and `store` is refused when set
 - a call's key names its attempt, model candidate and place among the attempt's calls; a batch request is not memoized
 - these contracts are mutation-verified against the full suite
 
@@ -2073,7 +2126,7 @@ Purpose:
 
 Purpose:
 
-- the shared "no difference" harness: the twenty-three scenarios of `script/core_invisibility_golden` (an image agent, a fan-out over items, and steps that end failed with their failure records among them), every artifact store call recorded, the golden written in its own bundle from the released gem (its sha256 in the header) or from a `git archive` of a named commit (its id in the header; an archive with a file changed, added or gone or code in its Gemfile, an unknown commit, or a working tree refused; the golden bundle handed the gems the suite sees, a vendored bundle's included), run on the tree in child processes, equal the golden file generated from the released gem byte for byte without an observer, with one installed and no trial, and inside a trial (no extra random draw, one observation per `:provider_call` trace); a concurrent run of the parallel, fan-out and fan-out over items scenarios matches by counts and branch content; the host surface of Workflow, Agent, Context and Tool (method names, Object and Kernel names they override, constants a host's class body can see) unchanged, a method a later slice adds named `smith_` or a listed DSL macro, nothing removed (Unreleased)
+- the shared "no difference" harness: the twenty-five scenarios of `script/core_invisibility_golden` (an image agent, a fan-out over items, steps that end failed with their failure records, orchestrate over String-keyed replies and restored after a kill among them), every artifact store call recorded, the golden written from a commit or the staged index, never an unstaged edit, in a bundle of its own from its parts extracted by their git ids (the header names `lib`, the gemspec, the harness and the local server by id, and the commit they were built on, and never the golden itself; a folder with a part changed, added to or taken from, code in its Gemfile, an unknown id or commit, or a working tree refused; the golden bundle handed the gems the suite sees, a vendored bundle's included), written again from the ids it names byte for byte under the same `Gemfile.lock` (the golden bundle resolves its versions; skipped with its reason in a shallow clone, or while its source is an uncommitted change; a full repository whose HEAD does not reach every id fails, though the objects are in it, shown in a repository of the example's own so it runs in a shallow clone too; a file written again is compared in every block but the versions), run on the tree in child processes, equal the golden file byte for byte without an observer, with one installed and no trial, and inside a trial (no extra random draw, one observation per `:provider_call` trace), and the observer and trial modes equal the plain mode sink by sink; `--diff` names what differs between two goldens, header part by part and scenario by scenario; a concurrent run of the parallel, fan-out and fan-out over items scenarios matches by counts and branch content; the host surface of Workflow, Agent, Context and Tool (method names, Object and Kernel names they override, constants a host's class body can see) equal to the golden's; against the release baseline (`spec/fixtures/core_invisibility_release.json`, 0.16.0's lib and gemspec with a91fd45's harness, written again from the ids it names byte for byte and named by the commit its release tag names, the tag check skipped with its reason in a clone without the tag and failing when the tag names another commit), which no golden regeneration writes, the host surface and each scenario's random draws, lookups, requests, traces, events and log lines differ only as the spec lists, each with why and its slice, a method a slice adds named `smith_` or a listed DSL macro, nothing removed (Unreleased)
 
 ### `spec/smith/contracts/ruby_llm_spec.rb`
 

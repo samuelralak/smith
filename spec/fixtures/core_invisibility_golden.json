@@ -2,18 +2,25 @@
   "format": "smith.core_invisibility/1",
   "smith": {
     "version": "0.16.0",
-    "source": "commit",
-    "commit": "6bd060932a6e73b3a50244eaa1909d254eef36e9"
+    "source": "index",
+    "built_on": "a91fd457812ecca3e3ed7cec4075b7da9960490c",
+    "parts": {
+      "lib": "93dd3634a2d5ad95eb738a0465128e136eb76de0",
+      "smith-agents.gemspec": "c53afa043a29d0108246de68b76d808a268e1ec6",
+      "script/core_invisibility_golden": "5180d12c15431cbdbe0cfa534b347973f0d89119",
+      "script/golden": "de17f63476b3a3b13026d981b80980d98c79e676",
+      "spec/support/sse_server.rb": "4941e3ea43940f40dae927586e75bb999856d198"
+    }
   },
   "environment": {
     "ruby": "4.0.6",
     "ruby_llm": "1.16.0",
-    "faraday": "2.15.1",
-    "json": "3.1.0"
+    "faraday": "2.14.3",
+    "json": "2.20.0"
   },
   "process": {
     "evals_defined": false,
-    "attempt_observation": false,
+    "attempt_observation": true,
     "observer_installed": false,
     "empty_attribution_fields": {}
   },
@@ -4759,7 +4766,7 @@
           ":budget_ledger_scope": null,
           ":active_seconds": "s",
           ":active_step_started_at": null,
-          ":execution_namespace": "00000000-0000-4000-8000-000000000002",
+          ":execution_namespace": "d8e51c86-b9f8-4977-9e0c-c04d5783f1e4",
           ":inherited_untrusted_keys": [],
           ":inherited_artifact_namespaces": [
             "00000000-0000-4000-8000-000000000001"
@@ -5917,7 +5924,7 @@
       ]
     },
     "orchestrate": {
-      "random_draws": 11,
+      "random_draws": 9,
       "counts": {
         "Smith::Agent::Registry.fetch!": 2,
         "Smith::Agent::Registry.capture_bindings!": 0,
@@ -5979,7 +5986,7 @@
             "host": "127.0.0.1:PORT",
             "content-length": "1057"
           },
-          "{\"model\":\"claude-sonnet-5-5\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Research the clinic.\"}]},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"[smith:orchestration-round] 2\\n[smith:worker-results]\\n[{\\\"execution_id\\\":\\\"00000000-0000-4000-8000-000000000004\\\",\\\"task\\\":{\\\"task_id\\\":\\\"t1\\\",\\\"input\\\":\\\"hours\\\"},\\\"output\\\":{\\\"finding\\\":\\\"Opens at 8.\\\"}},{\\\"execution_id\\\":\\\"00000000-0000-4000-8000-000000000007\\\",\\\"task\\\":{\\\"task_id\\\":\\\"t2\\\",\\\"input\\\":\\\"address\\\"},\\\"output\\\":{\\\"finding\\\":\\\"On Main Street.\\\"}}]\"}]}],\"stream\":false,\"max_tokens\":500,\"system\":[{\"type\":\"text\",\"text\":\"Plan the research.\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"required\":[],\"properties\":{\"tasks\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"required\":[\"task_id\",\"input\"],\"properties\":{\"task_id\":{\"type\":\"string\"},\"input\":{\"type\":\"string\"}},\"additionalProperties\":false}},\"final\":{\"type\":\"object\",\"required\":[\"summary\"],\"properties\":{\"summary\":{\"type\":\"string\"}},\"additionalProperties\":false}},\"additionalProperties\":false}}}}"
+          "{\"model\":\"claude-sonnet-5-5\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Research the clinic.\"}]},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"[smith:orchestration-round] 2\\n[smith:worker-results]\\n[{\\\"execution_id\\\":\\\"0ed7c634-5c56-85b4-8ee2-74d15771ac40\\\",\\\"task\\\":{\\\"task_id\\\":\\\"t1\\\",\\\"input\\\":\\\"hours\\\"},\\\"output\\\":{\\\"finding\\\":\\\"Opens at 8.\\\"}},{\\\"execution_id\\\":\\\"b3024be2-3974-80ea-ac91-66d90d620123\\\",\\\"task\\\":{\\\"task_id\\\":\\\"t2\\\",\\\"input\\\":\\\"address\\\"},\\\"output\\\":{\\\"finding\\\":\\\"On Main Street.\\\"}}]\"}]}],\"stream\":false,\"max_tokens\":500,\"system\":[{\"type\":\"text\",\"text\":\"Plan the research.\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"required\":[],\"properties\":{\"tasks\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"required\":[\"task_id\",\"input\"],\"properties\":{\"task_id\":{\"type\":\"string\"},\"input\":{\"type\":\"string\"}},\"additionalProperties\":false}},\"final\":{\"type\":\"object\",\"required\":[\"summary\"],\"properties\":{\"summary\":{\"type\":\"string\"}},\"additionalProperties\":false}},\"additionalProperties\":false}}}}"
         ]
       ],
       "memo": [],
@@ -6038,7 +6045,7 @@
               ":provider_message_id": "msg_a"
             },
             {
-              ":usage_id": "00000000-0000-4000-8000-000000000006",
+              ":usage_id": "00000000-0000-4000-8000-000000000005",
               ":agent_name": ":golden_worker",
               ":model": "claude-sonnet-5-5",
               ":provider": ":anthropic",
@@ -6048,13 +6055,13 @@
               ":attempt_kind": ":completed_attempt",
               ":recorded_at": "2026-01-01T00:00:00.000000Z",
               ":transition": ":research",
-              ":attempt_id": "00000000-0000-4000-8000-000000000005",
+              ":attempt_id": "00000000-0000-4000-8000-000000000004",
               ":workflow": "GoldenOrchestrateWorkflow",
               ":stop_reason": "end_turn",
               ":provider_message_id": "msg_b"
             },
             {
-              ":usage_id": "00000000-0000-4000-8000-000000000009",
+              ":usage_id": "00000000-0000-4000-8000-000000000007",
               ":agent_name": ":golden_worker",
               ":model": "claude-sonnet-5-5",
               ":provider": ":anthropic",
@@ -6064,13 +6071,13 @@
               ":attempt_kind": ":completed_attempt",
               ":recorded_at": "2026-01-01T00:00:00.000000Z",
               ":transition": ":research",
-              ":attempt_id": "00000000-0000-4000-8000-000000000008",
+              ":attempt_id": "00000000-0000-4000-8000-000000000006",
               ":workflow": "GoldenOrchestrateWorkflow",
               ":stop_reason": "end_turn",
               ":provider_message_id": "msg_c"
             },
             {
-              ":usage_id": "00000000-0000-4000-8000-00000000000b",
+              ":usage_id": "00000000-0000-4000-8000-000000000009",
               ":agent_name": ":golden_planner",
               ":model": "claude-sonnet-5-5",
               ":provider": ":anthropic",
@@ -6080,7 +6087,7 @@
               ":attempt_kind": ":completed_attempt",
               ":recorded_at": "2026-01-01T00:00:00.000000Z",
               ":transition": ":research",
-              ":attempt_id": "00000000-0000-4000-8000-00000000000a",
+              ":attempt_id": "00000000-0000-4000-8000-000000000008",
               ":workflow": "GoldenOrchestrateWorkflow",
               ":stop_reason": "end_turn",
               ":provider_message_id": "msg_d"
@@ -6152,7 +6159,7 @@
               ":provider_message_id": "msg_a"
             },
             {
-              ":usage_id": "00000000-0000-4000-8000-000000000006",
+              ":usage_id": "00000000-0000-4000-8000-000000000005",
               ":agent_name": ":golden_worker",
               ":model": "claude-sonnet-5-5",
               ":provider": ":anthropic",
@@ -6162,13 +6169,13 @@
               ":attempt_kind": ":completed_attempt",
               ":recorded_at": "2026-01-01T00:00:00.000000Z",
               ":transition": ":research",
-              ":attempt_id": "00000000-0000-4000-8000-000000000005",
+              ":attempt_id": "00000000-0000-4000-8000-000000000004",
               ":workflow": "GoldenOrchestrateWorkflow",
               ":stop_reason": "end_turn",
               ":provider_message_id": "msg_b"
             },
             {
-              ":usage_id": "00000000-0000-4000-8000-000000000009",
+              ":usage_id": "00000000-0000-4000-8000-000000000007",
               ":agent_name": ":golden_worker",
               ":model": "claude-sonnet-5-5",
               ":provider": ":anthropic",
@@ -6178,13 +6185,13 @@
               ":attempt_kind": ":completed_attempt",
               ":recorded_at": "2026-01-01T00:00:00.000000Z",
               ":transition": ":research",
-              ":attempt_id": "00000000-0000-4000-8000-000000000008",
+              ":attempt_id": "00000000-0000-4000-8000-000000000006",
               ":workflow": "GoldenOrchestrateWorkflow",
               ":stop_reason": "end_turn",
               ":provider_message_id": "msg_c"
             },
             {
-              ":usage_id": "00000000-0000-4000-8000-00000000000b",
+              ":usage_id": "00000000-0000-4000-8000-000000000009",
               ":agent_name": ":golden_planner",
               ":model": "claude-sonnet-5-5",
               ":provider": ":anthropic",
@@ -6194,7 +6201,7 @@
               ":attempt_kind": ":completed_attempt",
               ":recorded_at": "2026-01-01T00:00:00.000000Z",
               ":transition": ":research",
-              ":attempt_id": "00000000-0000-4000-8000-00000000000a",
+              ":attempt_id": "00000000-0000-4000-8000-000000000008",
               ":workflow": "GoldenOrchestrateWorkflow",
               ":stop_reason": "end_turn",
               ":provider_message_id": "msg_d"
@@ -6234,7 +6241,7 @@
           {
             ":expected_version": 1
           },
-          "{\"class\":\"GoldenOrchestrateWorkflow\",\"state\":\"done\",\"persistence_key\":\"run-orchestrate\",\"context\":{},\"budget_consumed\":{},\"step_count\":1,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":null,\"active_seconds\":\"s\",\"active_step_started_at\":null,\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Research the clinic.\"},{\"role\":\"assistant\",\"content\":{\"summary\":\"Opens at 8 on Main Street.\"}}],\"total_cost\":0.0024000000000000002,\"total_tokens\":480,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[{\"usage_id\":\"00000000-0000-4000-8000-000000000003\",\"agent_name\":\"golden_planner\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":100,\"output_tokens\":20,\"cost\":0.0006000000000000001,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"research\",\"attempt_id\":\"00000000-0000-4000-8000-000000000002\",\"workflow\":\"GoldenOrchestrateWorkflow\",\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_a\"},{\"usage_id\":\"00000000-0000-4000-8000-000000000006\",\"agent_name\":\"golden_worker\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":100,\"output_tokens\":20,\"cost\":0.0006000000000000001,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"research\",\"attempt_id\":\"00000000-0000-4000-8000-000000000005\",\"workflow\":\"GoldenOrchestrateWorkflow\",\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_b\"},{\"usage_id\":\"00000000-0000-4000-8000-000000000009\",\"agent_name\":\"golden_worker\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":100,\"output_tokens\":20,\"cost\":0.0006000000000000001,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"research\",\"attempt_id\":\"00000000-0000-4000-8000-000000000008\",\"workflow\":\"GoldenOrchestrateWorkflow\",\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_c\"},{\"usage_id\":\"00000000-0000-4000-8000-00000000000b\",\"agent_name\":\"golden_planner\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":100,\"output_tokens\":20,\"cost\":0.0006000000000000001,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"research\",\"attempt_id\":\"00000000-0000-4000-8000-00000000000a\",\"workflow\":\"GoldenOrchestrateWorkflow\",\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_d\"}],\"last_output\":{\"summary\":\"Opens at 8 on Main Street.\"},\"last_agent_execution\":null,\"last_failed_step\":null,\"persistence_version\":2,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"b0a1c4f1074843976dcb5999e92b97ab91084ae426534fe4403db21848f60057\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[]}"
+          "{\"class\":\"GoldenOrchestrateWorkflow\",\"state\":\"done\",\"persistence_key\":\"run-orchestrate\",\"context\":{},\"budget_consumed\":{},\"step_count\":1,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":null,\"active_seconds\":\"s\",\"active_step_started_at\":null,\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Research the clinic.\"},{\"role\":\"assistant\",\"content\":{\"summary\":\"Opens at 8 on Main Street.\"}}],\"total_cost\":0.0024000000000000002,\"total_tokens\":480,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[{\"usage_id\":\"00000000-0000-4000-8000-000000000003\",\"agent_name\":\"golden_planner\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":100,\"output_tokens\":20,\"cost\":0.0006000000000000001,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"research\",\"attempt_id\":\"00000000-0000-4000-8000-000000000002\",\"workflow\":\"GoldenOrchestrateWorkflow\",\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_a\"},{\"usage_id\":\"00000000-0000-4000-8000-000000000005\",\"agent_name\":\"golden_worker\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":100,\"output_tokens\":20,\"cost\":0.0006000000000000001,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"research\",\"attempt_id\":\"00000000-0000-4000-8000-000000000004\",\"workflow\":\"GoldenOrchestrateWorkflow\",\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_b\"},{\"usage_id\":\"00000000-0000-4000-8000-000000000007\",\"agent_name\":\"golden_worker\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":100,\"output_tokens\":20,\"cost\":0.0006000000000000001,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"research\",\"attempt_id\":\"00000000-0000-4000-8000-000000000006\",\"workflow\":\"GoldenOrchestrateWorkflow\",\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_c\"},{\"usage_id\":\"00000000-0000-4000-8000-000000000009\",\"agent_name\":\"golden_planner\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":100,\"output_tokens\":20,\"cost\":0.0006000000000000001,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"research\",\"attempt_id\":\"00000000-0000-4000-8000-000000000008\",\"workflow\":\"GoldenOrchestrateWorkflow\",\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_d\"}],\"last_output\":{\"summary\":\"Opens at 8 on Main Street.\"},\"last_agent_execution\":null,\"last_failed_step\":null,\"persistence_version\":2,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"b0a1c4f1074843976dcb5999e92b97ab91084ae426534fe4403db21848f60057\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[]}"
         ],
         [
           "heartbeat",
@@ -6262,7 +6269,7 @@
             ":provider_message_id": "msg_a"
           },
           {
-            ":usage_id": "00000000-0000-4000-8000-000000000006",
+            ":usage_id": "00000000-0000-4000-8000-000000000005",
             ":agent_name": ":golden_worker",
             ":model": "claude-sonnet-5-5",
             ":provider": ":anthropic",
@@ -6272,13 +6279,13 @@
             ":attempt_kind": ":completed_attempt",
             ":recorded_at": "2026-01-01T00:00:00.000000Z",
             ":transition": ":research",
-            ":attempt_id": "00000000-0000-4000-8000-000000000005",
+            ":attempt_id": "00000000-0000-4000-8000-000000000004",
             ":workflow": "GoldenOrchestrateWorkflow",
             ":stop_reason": "end_turn",
             ":provider_message_id": "msg_b"
           },
           {
-            ":usage_id": "00000000-0000-4000-8000-000000000009",
+            ":usage_id": "00000000-0000-4000-8000-000000000007",
             ":agent_name": ":golden_worker",
             ":model": "claude-sonnet-5-5",
             ":provider": ":anthropic",
@@ -6288,13 +6295,13 @@
             ":attempt_kind": ":completed_attempt",
             ":recorded_at": "2026-01-01T00:00:00.000000Z",
             ":transition": ":research",
-            ":attempt_id": "00000000-0000-4000-8000-000000000008",
+            ":attempt_id": "00000000-0000-4000-8000-000000000006",
             ":workflow": "GoldenOrchestrateWorkflow",
             ":stop_reason": "end_turn",
             ":provider_message_id": "msg_c"
           },
           {
-            ":usage_id": "00000000-0000-4000-8000-00000000000b",
+            ":usage_id": "00000000-0000-4000-8000-000000000009",
             ":agent_name": ":golden_planner",
             ":model": "claude-sonnet-5-5",
             ":provider": ":anthropic",
@@ -6304,7 +6311,7 @@
             ":attempt_kind": ":completed_attempt",
             ":recorded_at": "2026-01-01T00:00:00.000000Z",
             ":transition": ":research",
-            ":attempt_id": "00000000-0000-4000-8000-00000000000a",
+            ":attempt_id": "00000000-0000-4000-8000-000000000008",
             ":workflow": "GoldenOrchestrateWorkflow",
             ":stop_reason": "end_turn",
             ":provider_message_id": "msg_d"
@@ -6373,7 +6380,7 @@
             ":model": "claude-sonnet-5-5",
             ":provider": ":anthropic",
             ":duration_ms": "ms",
-            ":attempt_id": "00000000-0000-4000-8000-000000000005",
+            ":attempt_id": "00000000-0000-4000-8000-000000000004",
             ":attempt_index": 0,
             ":outcome": ":success",
             ":agent_name": ":golden_worker",
@@ -6423,7 +6430,7 @@
             ":model": "claude-sonnet-5-5",
             ":provider": ":anthropic",
             ":duration_ms": "ms",
-            ":attempt_id": "00000000-0000-4000-8000-000000000008",
+            ":attempt_id": "00000000-0000-4000-8000-000000000006",
             ":attempt_index": 0,
             ":outcome": ":success",
             ":agent_name": ":golden_worker",
@@ -6473,7 +6480,7 @@
             ":model": "claude-sonnet-5-5",
             ":provider": ":anthropic",
             ":duration_ms": "ms",
-            ":attempt_id": "00000000-0000-4000-8000-00000000000a",
+            ":attempt_id": "00000000-0000-4000-8000-000000000008",
             ":attempt_index": 0,
             ":outcome": ":success",
             ":agent_name": ":golden_planner",
@@ -13925,6 +13932,2060 @@
             "message": "agent :golden_repair response from model claude-sonnet-5-5 is invalid (stop reason end_turn): /: is not a JSON object",
             "causes": []
           }
+        },
+        {
+          ":unused_replies": 0
+        }
+      ]
+    },
+    "orchestrate_string_keys": {
+      "random_draws": 9,
+      "counts": {
+        "Smith::Agent::Registry.fetch!": 2,
+        "Smith::Agent::Registry.capture_bindings!": 0,
+        "RubyLLM.context": 0,
+        "RubyLLM::Context.new": 0
+      },
+      "requests": [
+        [
+          "POST",
+          "/v1/messages",
+          {
+            "x-api-key": "test",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "639"
+          },
+          "{\"model\":\"claude-sonnet-5-5\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Research the clinic.\"}]}],\"stream\":false,\"max_tokens\":500,\"system\":[{\"type\":\"text\",\"text\":\"Plan the research.\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"required\":[],\"properties\":{\"tasks\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"required\":[\"task_id\",\"input\"],\"properties\":{\"task_id\":{\"type\":\"string\"},\"input\":{\"type\":\"string\"}},\"additionalProperties\":false}},\"final\":{\"type\":\"object\",\"required\":[\"summary\"],\"properties\":{\"summary\":{\"type\":\"string\"}},\"additionalProperties\":false}},\"additionalProperties\":false}}}}"
+        ],
+        [
+          "POST",
+          "/v1/messages",
+          {
+            "x-api-key": "test",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "389"
+          },
+          "{\"model\":\"claude-sonnet-5-5\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"task_id\\\":\\\"t1\\\",\\\"input\\\":\\\"hours\\\"}\"}]}],\"stream\":false,\"max_tokens\":500,\"system\":[{\"type\":\"text\",\"text\":\"Do one task.\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"required\":[\"finding\"],\"properties\":{\"finding\":{\"type\":\"string\"}},\"additionalProperties\":false}}}}"
+        ],
+        [
+          "POST",
+          "/v1/messages",
+          {
+            "x-api-key": "test",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "391"
+          },
+          "{\"model\":\"claude-sonnet-5-5\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"task_id\\\":\\\"t2\\\",\\\"input\\\":\\\"address\\\"}\"}]}],\"stream\":false,\"max_tokens\":500,\"system\":[{\"type\":\"text\",\"text\":\"Do one task.\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"required\":[\"finding\"],\"properties\":{\"finding\":{\"type\":\"string\"}},\"additionalProperties\":false}}}}"
+        ],
+        [
+          "POST",
+          "/v1/messages",
+          {
+            "x-api-key": "test",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "1057"
+          },
+          "{\"model\":\"claude-sonnet-5-5\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Research the clinic.\"}]},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"[smith:orchestration-round] 2\\n[smith:worker-results]\\n[{\\\"execution_id\\\":\\\"0ed7c634-5c56-85b4-8ee2-74d15771ac40\\\",\\\"task\\\":{\\\"task_id\\\":\\\"t1\\\",\\\"input\\\":\\\"hours\\\"},\\\"output\\\":{\\\"finding\\\":\\\"Opens at 8.\\\"}},{\\\"execution_id\\\":\\\"b3024be2-3974-80ea-ac91-66d90d620123\\\",\\\"task\\\":{\\\"task_id\\\":\\\"t2\\\",\\\"input\\\":\\\"address\\\"},\\\"output\\\":{\\\"finding\\\":\\\"On Main Street.\\\"}}]\"}]}],\"stream\":false,\"max_tokens\":500,\"system\":[{\"type\":\"text\",\"text\":\"Plan the research.\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"required\":[],\"properties\":{\"tasks\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"required\":[\"task_id\",\"input\"],\"properties\":{\"task_id\":{\"type\":\"string\"},\"input\":{\"type\":\"string\"}},\"additionalProperties\":false}},\"final\":{\"type\":\"object\",\"required\":[\"summary\"],\"properties\":{\"summary\":{\"type\":\"string\"}},\"additionalProperties\":false}},\"additionalProperties\":false}}}}"
+        ]
+      ],
+      "memo": [],
+      "batches": [],
+      "states": [
+        {
+          ":class": "GoldenStringOrchestrateWorkflow",
+          ":state": ":done",
+          ":persistence_key": "run-orchestrate-strings",
+          ":context": {},
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": null,
+          ":active_seconds": "s",
+          ":active_step_started_at": "2026-01-01T00:00:00.000000Z",
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": ":user",
+              ":content": "Research the clinic."
+            },
+            {
+              ":role": ":assistant",
+              ":content": {
+                "summary": "Opens at 8 on Main Street."
+              }
+            }
+          ],
+          ":total_cost": 0.0024000000000000002,
+          ":total_tokens": 480,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000003",
+              ":agent_name": ":golden_string_planner",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":research",
+              ":attempt_id": "00000000-0000-4000-8000-000000000002",
+              ":workflow": "GoldenStringOrchestrateWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_a"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000005",
+              ":agent_name": ":golden_worker",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":research",
+              ":attempt_id": "00000000-0000-4000-8000-000000000004",
+              ":workflow": "GoldenStringOrchestrateWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_b"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000007",
+              ":agent_name": ":golden_worker",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":research",
+              ":attempt_id": "00000000-0000-4000-8000-000000000006",
+              ":workflow": "GoldenStringOrchestrateWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_c"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000009",
+              ":agent_name": ":golden_string_planner",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":research",
+              ":attempt_id": "00000000-0000-4000-8000-000000000008",
+              ":workflow": "GoldenStringOrchestrateWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_d"
+            }
+          ],
+          ":last_output": {
+            "summary": "Opens at 8 on Main Street."
+          },
+          ":last_agent_execution": null,
+          ":last_failed_step": null,
+          ":persistence_version": 1,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "b0a1c4f1074843976dcb5999e92b97ab91084ae426534fe4403db21848f60057",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": []
+        },
+        {
+          ":class": "GoldenStringOrchestrateWorkflow",
+          ":state": ":done",
+          ":persistence_key": "run-orchestrate-strings",
+          ":context": {},
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": null,
+          ":active_seconds": "s",
+          ":active_step_started_at": null,
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": ":user",
+              ":content": "Research the clinic."
+            },
+            {
+              ":role": ":assistant",
+              ":content": {
+                "summary": "Opens at 8 on Main Street."
+              }
+            }
+          ],
+          ":total_cost": 0.0024000000000000002,
+          ":total_tokens": 480,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000003",
+              ":agent_name": ":golden_string_planner",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":research",
+              ":attempt_id": "00000000-0000-4000-8000-000000000002",
+              ":workflow": "GoldenStringOrchestrateWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_a"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000005",
+              ":agent_name": ":golden_worker",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":research",
+              ":attempt_id": "00000000-0000-4000-8000-000000000004",
+              ":workflow": "GoldenStringOrchestrateWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_b"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000007",
+              ":agent_name": ":golden_worker",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":research",
+              ":attempt_id": "00000000-0000-4000-8000-000000000006",
+              ":workflow": "GoldenStringOrchestrateWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_c"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000009",
+              ":agent_name": ":golden_string_planner",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":research",
+              ":attempt_id": "00000000-0000-4000-8000-000000000008",
+              ":workflow": "GoldenStringOrchestrateWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_d"
+            }
+          ],
+          ":last_output": {
+            "summary": "Opens at 8 on Main Street."
+          },
+          ":last_agent_execution": null,
+          ":last_failed_step": null,
+          ":persistence_version": 2,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "b0a1c4f1074843976dcb5999e92b97ab91084ae426534fe4403db21848f60057",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": []
+        }
+      ],
+      "persisted": [
+        [
+          "store_versioned",
+          "run-orchestrate-strings",
+          {
+            ":expected_version": 0
+          },
+          "{\"class\":\"GoldenStringOrchestrateWorkflow\",\"state\":\"idle\",\"persistence_key\":\"run-orchestrate-strings\",\"context\":{},\"budget_consumed\":{},\"step_count\":0,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":null,\"active_seconds\":\"s\",\"active_step_started_at\":\"2026-01-01T00:00:00.000000Z\",\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Research the clinic.\"}],\"total_cost\":0.0,\"total_tokens\":0,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[],\"last_output\":null,\"last_agent_execution\":null,\"last_failed_step\":null,\"persistence_version\":1,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"b0a1c4f1074843976dcb5999e92b97ab91084ae426534fe4403db21848f60057\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[]}"
+        ],
+        [
+          "heartbeat",
+          "run-orchestrate-strings",
+          {}
+        ],
+        [
+          "store_versioned",
+          "run-orchestrate-strings",
+          {
+            ":expected_version": 1
+          },
+          "{\"class\":\"GoldenStringOrchestrateWorkflow\",\"state\":\"done\",\"persistence_key\":\"run-orchestrate-strings\",\"context\":{},\"budget_consumed\":{},\"step_count\":1,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":null,\"active_seconds\":\"s\",\"active_step_started_at\":null,\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Research the clinic.\"},{\"role\":\"assistant\",\"content\":{\"summary\":\"Opens at 8 on Main Street.\"}}],\"total_cost\":0.0024000000000000002,\"total_tokens\":480,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[{\"usage_id\":\"00000000-0000-4000-8000-000000000003\",\"agent_name\":\"golden_string_planner\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":100,\"output_tokens\":20,\"cost\":0.0006000000000000001,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"research\",\"attempt_id\":\"00000000-0000-4000-8000-000000000002\",\"workflow\":\"GoldenStringOrchestrateWorkflow\",\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_a\"},{\"usage_id\":\"00000000-0000-4000-8000-000000000005\",\"agent_name\":\"golden_worker\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":100,\"output_tokens\":20,\"cost\":0.0006000000000000001,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"research\",\"attempt_id\":\"00000000-0000-4000-8000-000000000004\",\"workflow\":\"GoldenStringOrchestrateWorkflow\",\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_b\"},{\"usage_id\":\"00000000-0000-4000-8000-000000000007\",\"agent_name\":\"golden_worker\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":100,\"output_tokens\":20,\"cost\":0.0006000000000000001,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"research\",\"attempt_id\":\"00000000-0000-4000-8000-000000000006\",\"workflow\":\"GoldenStringOrchestrateWorkflow\",\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_c\"},{\"usage_id\":\"00000000-0000-4000-8000-000000000009\",\"agent_name\":\"golden_string_planner\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":100,\"output_tokens\":20,\"cost\":0.0006000000000000001,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"research\",\"attempt_id\":\"00000000-0000-4000-8000-000000000008\",\"workflow\":\"GoldenStringOrchestrateWorkflow\",\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_d\"}],\"last_output\":{\"summary\":\"Opens at 8 on Main Street.\"},\"last_agent_execution\":null,\"last_failed_step\":null,\"persistence_version\":2,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"b0a1c4f1074843976dcb5999e92b97ab91084ae426534fe4403db21848f60057\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[]}"
+        ],
+        [
+          "heartbeat",
+          "run-orchestrate-strings",
+          {}
+        ]
+      ],
+      "artifacts": [],
+      "usage_entries": [
+        [
+          {
+            ":usage_id": "00000000-0000-4000-8000-000000000003",
+            ":agent_name": ":golden_string_planner",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":cost": 0.0006000000000000001,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":research",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":workflow": "GoldenStringOrchestrateWorkflow",
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_a"
+          },
+          {
+            ":usage_id": "00000000-0000-4000-8000-000000000005",
+            ":agent_name": ":golden_worker",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":cost": 0.0006000000000000001,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":research",
+            ":attempt_id": "00000000-0000-4000-8000-000000000004",
+            ":workflow": "GoldenStringOrchestrateWorkflow",
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_b"
+          },
+          {
+            ":usage_id": "00000000-0000-4000-8000-000000000007",
+            ":agent_name": ":golden_worker",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":cost": 0.0006000000000000001,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":research",
+            ":attempt_id": "00000000-0000-4000-8000-000000000006",
+            ":workflow": "GoldenStringOrchestrateWorkflow",
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_c"
+          },
+          {
+            ":usage_id": "00000000-0000-4000-8000-000000000009",
+            ":agent_name": ":golden_string_planner",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":cost": 0.0006000000000000001,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":research",
+            ":attempt_id": "00000000-0000-4000-8000-000000000008",
+            ":workflow": "GoldenStringOrchestrateWorkflow",
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_d"
+          }
+        ]
+      ],
+      "traces": [
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-orchestrate-strings",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenStringOrchestrateWorkflow",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":attempt_index": 0,
+            ":outcome": ":success",
+            ":agent_name": ":golden_string_planner",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_a"
+          }
+        },
+        {
+          ":type": ":token_usage",
+          ":data": {
+            ":execution_key": "run-orchestrate-strings",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenStringOrchestrateWorkflow",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          }
+        },
+        {
+          ":type": ":cost",
+          ":data": {
+            ":execution_key": "run-orchestrate-strings",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenStringOrchestrateWorkflow",
+            ":cost": 0.0006000000000000001,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20
+          }
+        },
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-orchestrate-strings",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenStringOrchestrateWorkflow",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-000000000004",
+            ":attempt_index": 0,
+            ":outcome": ":success",
+            ":agent_name": ":golden_worker",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_b"
+          }
+        },
+        {
+          ":type": ":token_usage",
+          ":data": {
+            ":execution_key": "run-orchestrate-strings",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenStringOrchestrateWorkflow",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          }
+        },
+        {
+          ":type": ":cost",
+          ":data": {
+            ":execution_key": "run-orchestrate-strings",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenStringOrchestrateWorkflow",
+            ":cost": 0.0006000000000000001,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20
+          }
+        },
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-orchestrate-strings",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenStringOrchestrateWorkflow",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-000000000006",
+            ":attempt_index": 0,
+            ":outcome": ":success",
+            ":agent_name": ":golden_worker",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_c"
+          }
+        },
+        {
+          ":type": ":token_usage",
+          ":data": {
+            ":execution_key": "run-orchestrate-strings",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenStringOrchestrateWorkflow",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          }
+        },
+        {
+          ":type": ":cost",
+          ":data": {
+            ":execution_key": "run-orchestrate-strings",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenStringOrchestrateWorkflow",
+            ":cost": 0.0006000000000000001,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20
+          }
+        },
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-orchestrate-strings",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenStringOrchestrateWorkflow",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-000000000008",
+            ":attempt_index": 0,
+            ":outcome": ":success",
+            ":agent_name": ":golden_string_planner",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_d"
+          }
+        },
+        {
+          ":type": ":token_usage",
+          ":data": {
+            ":execution_key": "run-orchestrate-strings",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenStringOrchestrateWorkflow",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          }
+        },
+        {
+          ":type": ":cost",
+          ":data": {
+            ":execution_key": "run-orchestrate-strings",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenStringOrchestrateWorkflow",
+            ":cost": 0.0006000000000000001,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20
+          }
+        },
+        {
+          ":type": ":transition",
+          ":data": {
+            ":execution_key": "run-orchestrate-strings",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenStringOrchestrateWorkflow"
+          }
+        }
+      ],
+      "events": [
+        [
+          "Smith::Events::StepCompleted",
+          {
+            ":execution_id": "run-orchestrate-strings",
+            ":trace_id": "run-orchestrate-strings",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenStringOrchestrateWorkflow"
+          }
+        ]
+      ],
+      "stream": [],
+      "ledger": [],
+      "logs": [
+        {
+          ":smith": [],
+          ":ruby_llm": []
+        }
+      ],
+      "errors": [],
+      "results": [
+        {
+          ":state": ":done",
+          ":output": {
+            "summary": "Opens at 8 on Main Street."
+          },
+          ":steps": [
+            {
+              ":transition": ":research",
+              ":from": ":idle",
+              ":to": ":done"
+            }
+          ],
+          ":last_error": null
+        },
+        {
+          ":unused_replies": 0
+        }
+      ]
+    },
+    "orchestrate_restored": {
+      "random_draws": 20,
+      "counts": {
+        "Smith::Agent::Registry.fetch!": 4,
+        "Smith::Agent::Registry.capture_bindings!": 0,
+        "RubyLLM.context": 0,
+        "RubyLLM::Context.new": 0
+      },
+      "requests": [
+        [
+          "POST",
+          "/v1/messages",
+          {
+            "x-api-key": "test",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "639"
+          },
+          "{\"model\":\"claude-sonnet-5-5\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Research the clinic.\"}]}],\"stream\":false,\"max_tokens\":500,\"system\":[{\"type\":\"text\",\"text\":\"Plan the research.\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"required\":[],\"properties\":{\"tasks\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"required\":[\"task_id\",\"input\"],\"properties\":{\"task_id\":{\"type\":\"string\"},\"input\":{\"type\":\"string\"}},\"additionalProperties\":false}},\"final\":{\"type\":\"object\",\"required\":[\"summary\"],\"properties\":{\"summary\":{\"type\":\"string\"}},\"additionalProperties\":false}},\"additionalProperties\":false}}}}"
+        ],
+        [
+          "POST",
+          "/v1/messages",
+          {
+            "x-api-key": "test",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "389"
+          },
+          "{\"model\":\"claude-sonnet-5-5\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"task_id\\\":\\\"t1\\\",\\\"input\\\":\\\"hours\\\"}\"}]}],\"stream\":false,\"max_tokens\":500,\"system\":[{\"type\":\"text\",\"text\":\"Do one task.\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"required\":[\"finding\"],\"properties\":{\"finding\":{\"type\":\"string\"}},\"additionalProperties\":false}}}}"
+        ],
+        [
+          "POST",
+          "/v1/messages",
+          {
+            "x-api-key": "test",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "391"
+          },
+          "{\"model\":\"claude-sonnet-5-5\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"task_id\\\":\\\"t2\\\",\\\"input\\\":\\\"address\\\"}\"}]}],\"stream\":false,\"max_tokens\":500,\"system\":[{\"type\":\"text\",\"text\":\"Do one task.\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"required\":[\"finding\"],\"properties\":{\"finding\":{\"type\":\"string\"}},\"additionalProperties\":false}}}}"
+        ],
+        [
+          "POST",
+          "/v1/messages",
+          {
+            "x-api-key": "test",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "1065"
+          },
+          "{\"model\":\"claude-sonnet-5-5\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Research the clinic.\"}]},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"[smith:orchestration-round] 2\\n[smith:worker-results]\\n[{\\\"execution_id\\\":\\\"0ed7c634-5c56-85b4-8ee2-74d15771ac40\\\",\\\"task\\\":{\\\"task_id\\\":\\\"t1\\\",\\\"input\\\":\\\"hours\\\"},\\\"output\\\":{\\\"finding\\\":\\\"Found the hours.\\\"}},{\\\"execution_id\\\":\\\"b3024be2-3974-80ea-ac91-66d90d620123\\\",\\\"task\\\":{\\\"task_id\\\":\\\"t2\\\",\\\"input\\\":\\\"address\\\"},\\\"output\\\":{\\\"finding\\\":\\\"Found the address.\\\"}}]\"}]}],\"stream\":false,\"max_tokens\":500,\"system\":[{\"type\":\"text\",\"text\":\"Plan the research.\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"required\":[],\"properties\":{\"tasks\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"required\":[\"task_id\",\"input\"],\"properties\":{\"task_id\":{\"type\":\"string\"},\"input\":{\"type\":\"string\"}},\"additionalProperties\":false}},\"final\":{\"type\":\"object\",\"required\":[\"summary\"],\"properties\":{\"summary\":{\"type\":\"string\"}},\"additionalProperties\":false}},\"additionalProperties\":false}}}}"
+        ],
+        [
+          "POST",
+          "/v1/messages",
+          {
+            "x-api-key": "test",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "389"
+          },
+          "{\"model\":\"claude-sonnet-5-5\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"task_id\\\":\\\"t1\\\",\\\"input\\\":\\\"hours\\\"}\"}]}],\"stream\":false,\"max_tokens\":500,\"system\":[{\"type\":\"text\",\"text\":\"Do one task.\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"required\":[\"finding\"],\"properties\":{\"finding\":{\"type\":\"string\"}},\"additionalProperties\":false}}}}"
+        ],
+        [
+          "POST",
+          "/v1/messages",
+          {
+            "x-api-key": "test",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "accept": "*/*",
+            "host": "127.0.0.1:PORT",
+            "content-length": "905"
+          },
+          "{\"model\":\"claude-sonnet-5-5\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Research the clinic.\"}]},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"[smith:orchestration-round] 3\\n[smith:worker-results]\\n[{\\\"execution_id\\\":\\\"1a10ea9c-9046-8323-a6ad-7deb49347e65\\\",\\\"task\\\":{\\\"task_id\\\":\\\"t1\\\",\\\"input\\\":\\\"hours\\\"},\\\"output\\\":{\\\"finding\\\":\\\"Found the hours.\\\"}}]\"}]}],\"stream\":false,\"max_tokens\":500,\"system\":[{\"type\":\"text\",\"text\":\"Plan the research.\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"required\":[],\"properties\":{\"tasks\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"required\":[\"task_id\",\"input\"],\"properties\":{\"task_id\":{\"type\":\"string\"},\"input\":{\"type\":\"string\"}},\"additionalProperties\":false}},\"final\":{\"type\":\"object\",\"required\":[\"summary\"],\"properties\":{\"summary\":{\"type\":\"string\"}},\"additionalProperties\":false}},\"additionalProperties\":false}}}}"
+        ]
+      ],
+      "memo": [
+        [
+          "fetch",
+          "0a8b6fa42ca2e9a95c965ee65cb63c4d7d2666d93175b51f7e8bfea1722c7f0a"
+        ],
+        [
+          "store",
+          "0a8b6fa42ca2e9a95c965ee65cb63c4d7d2666d93175b51f7e8bfea1722c7f0a",
+          {
+            "version": 1,
+            "messages": [
+              {
+                "role": "assistant",
+                "content": {
+                  "json": {
+                    "tasks": [
+                      {
+                        "task_id": "t1",
+                        "input": "hours"
+                      },
+                      {
+                        "task_id": "t2",
+                        "input": "address"
+                      }
+                    ]
+                  }
+                },
+                "model_id": "claude-sonnet-5-5",
+                "usage": {
+                  "tokens": {
+                    "input_tokens": 100,
+                    "output_tokens": 20
+                  },
+                  "stop_reason": "end_turn",
+                  "id": "msg_r1"
+                }
+              }
+            ],
+            "complete": true
+          }
+        ],
+        [
+          "fetch",
+          "cd8c59bcbc44831dde6d1c7c94a3b65549731e929a3ef13a1d40d0a4a7a3e66f"
+        ],
+        [
+          "store",
+          "cd8c59bcbc44831dde6d1c7c94a3b65549731e929a3ef13a1d40d0a4a7a3e66f",
+          {
+            "version": 1,
+            "messages": [
+              {
+                "role": "assistant",
+                "content": {
+                  "json": {
+                    "finding": "Found the hours."
+                  }
+                },
+                "model_id": "claude-sonnet-5-5",
+                "usage": {
+                  "tokens": {
+                    "input_tokens": 100,
+                    "output_tokens": 20
+                  },
+                  "stop_reason": "end_turn",
+                  "id": "msg_w"
+                }
+              }
+            ],
+            "complete": true
+          }
+        ],
+        [
+          "fetch",
+          "1c7516089526b726316cb0924401a32941b3eeda9929f7e9fa2844d3dd0550e9"
+        ],
+        [
+          "store",
+          "1c7516089526b726316cb0924401a32941b3eeda9929f7e9fa2844d3dd0550e9",
+          {
+            "version": 1,
+            "messages": [
+              {
+                "role": "assistant",
+                "content": {
+                  "json": {
+                    "finding": "Found the address."
+                  }
+                },
+                "model_id": "claude-sonnet-5-5",
+                "usage": {
+                  "tokens": {
+                    "input_tokens": 100,
+                    "output_tokens": 20
+                  },
+                  "stop_reason": "end_turn",
+                  "id": "msg_w"
+                }
+              }
+            ],
+            "complete": true
+          }
+        ],
+        [
+          "fetch",
+          "bbd64fdc51e27c56876ca07ed65462d908b8216fb290d02061bd97545aaff450"
+        ],
+        [
+          "store",
+          "bbd64fdc51e27c56876ca07ed65462d908b8216fb290d02061bd97545aaff450",
+          {
+            "version": 1,
+            "messages": [
+              {
+                "role": "assistant",
+                "content": {
+                  "json": {
+                    "tasks": [
+                      {
+                        "task_id": "t1",
+                        "input": "hours"
+                      }
+                    ]
+                  }
+                },
+                "model_id": "claude-sonnet-5-5",
+                "usage": {
+                  "tokens": {
+                    "input_tokens": 100,
+                    "output_tokens": 20
+                  },
+                  "stop_reason": "end_turn",
+                  "id": "msg_r2"
+                }
+              }
+            ],
+            "complete": true
+          }
+        ],
+        [
+          "fetch",
+          "0a8b6fa42ca2e9a95c965ee65cb63c4d7d2666d93175b51f7e8bfea1722c7f0a"
+        ],
+        [
+          "fetch",
+          "cd8c59bcbc44831dde6d1c7c94a3b65549731e929a3ef13a1d40d0a4a7a3e66f"
+        ],
+        [
+          "fetch",
+          "1c7516089526b726316cb0924401a32941b3eeda9929f7e9fa2844d3dd0550e9"
+        ],
+        [
+          "fetch",
+          "bbd64fdc51e27c56876ca07ed65462d908b8216fb290d02061bd97545aaff450"
+        ],
+        [
+          "fetch",
+          "09081febe4b8d9617cb383628e668a1f2298280372049ec6708936447c7db9b9"
+        ],
+        [
+          "store",
+          "09081febe4b8d9617cb383628e668a1f2298280372049ec6708936447c7db9b9",
+          {
+            "version": 1,
+            "messages": [
+              {
+                "role": "assistant",
+                "content": {
+                  "json": {
+                    "finding": "Found the hours."
+                  }
+                },
+                "model_id": "claude-sonnet-5-5",
+                "usage": {
+                  "tokens": {
+                    "input_tokens": 100,
+                    "output_tokens": 20
+                  },
+                  "stop_reason": "end_turn",
+                  "id": "msg_w"
+                }
+              }
+            ],
+            "complete": true
+          }
+        ],
+        [
+          "fetch",
+          "18dc08999bcce21bd65aebc813a126fd13e6cef11810dbc97b212987f6b74ba9"
+        ],
+        [
+          "store",
+          "18dc08999bcce21bd65aebc813a126fd13e6cef11810dbc97b212987f6b74ba9",
+          {
+            "version": 1,
+            "messages": [
+              {
+                "role": "assistant",
+                "content": {
+                  "json": {
+                    "final": {
+                      "summary": "Opens at 8 on Main Street."
+                    }
+                  }
+                },
+                "model_id": "claude-sonnet-5-5",
+                "usage": {
+                  "tokens": {
+                    "input_tokens": 100,
+                    "output_tokens": 20
+                  },
+                  "stop_reason": "end_turn",
+                  "id": "msg_r3"
+                }
+              }
+            ],
+            "complete": true
+          }
+        ]
+      ],
+      "batches": [],
+      "states": [
+        {
+          ":class": "GoldenRoundsWorkflow",
+          ":state": ":idle",
+          ":persistence_key": "run-rounds",
+          ":context": {},
+          ":budget_consumed": {},
+          ":step_count": 0,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": null,
+          ":active_seconds": "s",
+          ":active_step_started_at": "2026-01-01T00:00:00.000000Z",
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": ":user",
+              ":content": "Research the clinic."
+            }
+          ],
+          ":total_cost": 0.0018000000000000002,
+          ":total_tokens": 360,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000003",
+              ":agent_name": ":golden_string_planner",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":research",
+              ":attempt_id": "00000000-0000-4000-8000-000000000002",
+              ":workflow": "GoldenRoundsWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_r1"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000005",
+              ":agent_name": ":golden_worker",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":research",
+              ":attempt_id": "00000000-0000-4000-8000-000000000004",
+              ":workflow": "GoldenRoundsWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_w"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000007",
+              ":agent_name": ":golden_worker",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":research",
+              ":attempt_id": "00000000-0000-4000-8000-000000000006",
+              ":workflow": "GoldenRoundsWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_w"
+            }
+          ],
+          ":last_output": null,
+          ":last_agent_execution": null,
+          ":last_failed_step": null,
+          ":persistence_version": 1,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "b0a1c4f1074843976dcb5999e92b97ab91084ae426534fe4403db21848f60057",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": []
+        },
+        {
+          ":class": "GoldenRoundsWorkflow",
+          ":state": ":done",
+          ":persistence_key": "run-rounds",
+          ":context": {},
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": null,
+          ":active_seconds": "s",
+          ":active_step_started_at": "2026-01-01T00:00:00.000000Z",
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": "user",
+              ":content": "Research the clinic."
+            },
+            {
+              ":role": ":assistant",
+              ":content": {
+                "summary": "Opens at 8 on Main Street."
+              }
+            }
+          ],
+          ":total_cost": 0.0036,
+          ":total_tokens": 720,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-00000000000a",
+              ":agent_name": ":golden_string_planner",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":research",
+              ":attempt_id": "00000000-0000-4000-8000-000000000009",
+              ":workflow": "GoldenRoundsWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_r1"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-00000000000c",
+              ":agent_name": ":golden_worker",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":research",
+              ":attempt_id": "00000000-0000-4000-8000-00000000000b",
+              ":workflow": "GoldenRoundsWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_w"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-00000000000e",
+              ":agent_name": ":golden_worker",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":research",
+              ":attempt_id": "00000000-0000-4000-8000-00000000000d",
+              ":workflow": "GoldenRoundsWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_w"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000010",
+              ":agent_name": ":golden_string_planner",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":research",
+              ":attempt_id": "00000000-0000-4000-8000-00000000000f",
+              ":workflow": "GoldenRoundsWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_r2"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000012",
+              ":agent_name": ":golden_worker",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":research",
+              ":attempt_id": "00000000-0000-4000-8000-000000000011",
+              ":workflow": "GoldenRoundsWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_w"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000014",
+              ":agent_name": ":golden_string_planner",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":research",
+              ":attempt_id": "00000000-0000-4000-8000-000000000013",
+              ":workflow": "GoldenRoundsWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_r3"
+            }
+          ],
+          ":last_output": {
+            "summary": "Opens at 8 on Main Street."
+          },
+          ":last_agent_execution": null,
+          ":last_failed_step": null,
+          ":persistence_version": 2,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "b0a1c4f1074843976dcb5999e92b97ab91084ae426534fe4403db21848f60057",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": []
+        },
+        {
+          ":class": "GoldenRoundsWorkflow",
+          ":state": ":done",
+          ":persistence_key": "run-rounds",
+          ":context": {},
+          ":budget_consumed": {},
+          ":step_count": 1,
+          ":awaiting": null,
+          ":pending_retry": null,
+          ":pending_batch": null,
+          ":budget_ledger_scope": null,
+          ":active_seconds": "s",
+          ":active_step_started_at": null,
+          ":execution_namespace": "00000000-0000-4000-8000-000000000001",
+          ":inherited_untrusted_keys": [],
+          ":inherited_artifact_namespaces": [],
+          ":created_at": "2026-01-01T00:00:00.000000Z",
+          ":updated_at": "2026-01-01T00:00:00.000000Z",
+          ":next_transition_name": null,
+          ":session_messages": [
+            {
+              ":role": "user",
+              ":content": "Research the clinic."
+            },
+            {
+              ":role": ":assistant",
+              ":content": {
+                "summary": "Opens at 8 on Main Street."
+              }
+            }
+          ],
+          ":total_cost": 0.0036,
+          ":total_tokens": 720,
+          ":tool_results": [],
+          ":outcome": null,
+          ":usage_entries": [
+            {
+              ":usage_id": "00000000-0000-4000-8000-00000000000a",
+              ":agent_name": ":golden_string_planner",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":research",
+              ":attempt_id": "00000000-0000-4000-8000-000000000009",
+              ":workflow": "GoldenRoundsWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_r1"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-00000000000c",
+              ":agent_name": ":golden_worker",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":research",
+              ":attempt_id": "00000000-0000-4000-8000-00000000000b",
+              ":workflow": "GoldenRoundsWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_w"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-00000000000e",
+              ":agent_name": ":golden_worker",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":research",
+              ":attempt_id": "00000000-0000-4000-8000-00000000000d",
+              ":workflow": "GoldenRoundsWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_w"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000010",
+              ":agent_name": ":golden_string_planner",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":research",
+              ":attempt_id": "00000000-0000-4000-8000-00000000000f",
+              ":workflow": "GoldenRoundsWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_r2"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000012",
+              ":agent_name": ":golden_worker",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":research",
+              ":attempt_id": "00000000-0000-4000-8000-000000000011",
+              ":workflow": "GoldenRoundsWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_w"
+            },
+            {
+              ":usage_id": "00000000-0000-4000-8000-000000000014",
+              ":agent_name": ":golden_string_planner",
+              ":model": "claude-sonnet-5-5",
+              ":provider": ":anthropic",
+              ":input_tokens": 100,
+              ":output_tokens": 20,
+              ":cost": 0.0006000000000000001,
+              ":attempt_kind": ":completed_attempt",
+              ":recorded_at": "2026-01-01T00:00:00.000000Z",
+              ":transition": ":research",
+              ":attempt_id": "00000000-0000-4000-8000-000000000013",
+              ":workflow": "GoldenRoundsWorkflow",
+              ":stop_reason": "end_turn",
+              ":provider_message_id": "msg_r3"
+            }
+          ],
+          ":last_output": {
+            "summary": "Opens at 8 on Main Street."
+          },
+          ":last_agent_execution": null,
+          ":last_failed_step": null,
+          ":persistence_version": 3,
+          ":schema_version": 1,
+          ":definition_digest": null,
+          ":seed_digest": "b0a1c4f1074843976dcb5999e92b97ab91084ae426534fe4403db21848f60057",
+          ":seed_message_count": 1,
+          ":step_in_progress": false,
+          ":persisted_keys": []
+        }
+      ],
+      "persisted": [
+        [
+          "store_versioned",
+          "run-rounds",
+          {
+            ":expected_version": 0
+          },
+          "{\"class\":\"GoldenRoundsWorkflow\",\"state\":\"idle\",\"persistence_key\":\"run-rounds\",\"context\":{},\"budget_consumed\":{},\"step_count\":0,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":null,\"active_seconds\":\"s\",\"active_step_started_at\":\"2026-01-01T00:00:00.000000Z\",\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Research the clinic.\"}],\"total_cost\":0.0,\"total_tokens\":0,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[],\"last_output\":null,\"last_agent_execution\":null,\"last_failed_step\":null,\"persistence_version\":1,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"b0a1c4f1074843976dcb5999e92b97ab91084ae426534fe4403db21848f60057\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[]}"
+        ],
+        [
+          "heartbeat",
+          "run-rounds",
+          {}
+        ],
+        [
+          "store_versioned",
+          "run-rounds",
+          {
+            ":expected_version": 1
+          },
+          "{\"class\":\"GoldenRoundsWorkflow\",\"state\":\"idle\",\"persistence_key\":\"run-rounds\",\"context\":{},\"budget_consumed\":{},\"step_count\":0,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":null,\"active_seconds\":\"s\",\"active_step_started_at\":\"2026-01-01T00:00:00.000000Z\",\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Research the clinic.\"}],\"total_cost\":0.0,\"total_tokens\":0,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[],\"last_output\":null,\"last_agent_execution\":null,\"last_failed_step\":null,\"persistence_version\":2,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"b0a1c4f1074843976dcb5999e92b97ab91084ae426534fe4403db21848f60057\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[]}"
+        ],
+        [
+          "heartbeat",
+          "run-rounds",
+          {}
+        ],
+        [
+          "store_versioned",
+          "run-rounds",
+          {
+            ":expected_version": 2
+          },
+          "{\"class\":\"GoldenRoundsWorkflow\",\"state\":\"done\",\"persistence_key\":\"run-rounds\",\"context\":{},\"budget_consumed\":{},\"step_count\":1,\"awaiting\":null,\"pending_retry\":null,\"pending_batch\":null,\"budget_ledger_scope\":null,\"active_seconds\":\"s\",\"active_step_started_at\":null,\"execution_namespace\":\"00000000-0000-4000-8000-000000000001\",\"inherited_untrusted_keys\":[],\"inherited_artifact_namespaces\":[],\"created_at\":\"2026-01-01T00:00:00.000000Z\",\"updated_at\":\"2026-01-01T00:00:00.000000Z\",\"next_transition_name\":null,\"session_messages\":[{\"role\":\"user\",\"content\":\"Research the clinic.\"},{\"role\":\"assistant\",\"content\":{\"summary\":\"Opens at 8 on Main Street.\"}}],\"total_cost\":0.0036,\"total_tokens\":720,\"tool_results\":[],\"outcome\":null,\"usage_entries\":[{\"usage_id\":\"00000000-0000-4000-8000-00000000000a\",\"agent_name\":\"golden_string_planner\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":100,\"output_tokens\":20,\"cost\":0.0006000000000000001,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"research\",\"attempt_id\":\"00000000-0000-4000-8000-000000000009\",\"workflow\":\"GoldenRoundsWorkflow\",\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_r1\"},{\"usage_id\":\"00000000-0000-4000-8000-00000000000c\",\"agent_name\":\"golden_worker\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":100,\"output_tokens\":20,\"cost\":0.0006000000000000001,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"research\",\"attempt_id\":\"00000000-0000-4000-8000-00000000000b\",\"workflow\":\"GoldenRoundsWorkflow\",\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_w\"},{\"usage_id\":\"00000000-0000-4000-8000-00000000000e\",\"agent_name\":\"golden_worker\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":100,\"output_tokens\":20,\"cost\":0.0006000000000000001,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"research\",\"attempt_id\":\"00000000-0000-4000-8000-00000000000d\",\"workflow\":\"GoldenRoundsWorkflow\",\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_w\"},{\"usage_id\":\"00000000-0000-4000-8000-000000000010\",\"agent_name\":\"golden_string_planner\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":100,\"output_tokens\":20,\"cost\":0.0006000000000000001,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"research\",\"attempt_id\":\"00000000-0000-4000-8000-00000000000f\",\"workflow\":\"GoldenRoundsWorkflow\",\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_r2\"},{\"usage_id\":\"00000000-0000-4000-8000-000000000012\",\"agent_name\":\"golden_worker\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":100,\"output_tokens\":20,\"cost\":0.0006000000000000001,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"research\",\"attempt_id\":\"00000000-0000-4000-8000-000000000011\",\"workflow\":\"GoldenRoundsWorkflow\",\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_w\"},{\"usage_id\":\"00000000-0000-4000-8000-000000000014\",\"agent_name\":\"golden_string_planner\",\"model\":\"claude-sonnet-5-5\",\"provider\":\"anthropic\",\"input_tokens\":100,\"output_tokens\":20,\"cost\":0.0006000000000000001,\"attempt_kind\":\"completed_attempt\",\"recorded_at\":\"2026-01-01T00:00:00.000000Z\",\"transition\":\"research\",\"attempt_id\":\"00000000-0000-4000-8000-000000000013\",\"workflow\":\"GoldenRoundsWorkflow\",\"stop_reason\":\"end_turn\",\"provider_message_id\":\"msg_r3\"}],\"last_output\":{\"summary\":\"Opens at 8 on Main Street.\"},\"last_agent_execution\":null,\"last_failed_step\":null,\"persistence_version\":3,\"schema_version\":1,\"definition_digest\":null,\"seed_digest\":\"b0a1c4f1074843976dcb5999e92b97ab91084ae426534fe4403db21848f60057\",\"seed_message_count\":1,\"step_in_progress\":false,\"persisted_keys\":[]}"
+        ],
+        [
+          "heartbeat",
+          "run-rounds",
+          {}
+        ]
+      ],
+      "artifacts": [],
+      "usage_entries": [
+        [
+          {
+            ":usage_id": "00000000-0000-4000-8000-000000000003",
+            ":agent_name": ":golden_string_planner",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":cost": 0.0006000000000000001,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":research",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_r1"
+          },
+          {
+            ":usage_id": "00000000-0000-4000-8000-000000000005",
+            ":agent_name": ":golden_worker",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":cost": 0.0006000000000000001,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":research",
+            ":attempt_id": "00000000-0000-4000-8000-000000000004",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_w"
+          },
+          {
+            ":usage_id": "00000000-0000-4000-8000-000000000007",
+            ":agent_name": ":golden_worker",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":cost": 0.0006000000000000001,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":research",
+            ":attempt_id": "00000000-0000-4000-8000-000000000006",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_w"
+          }
+        ],
+        [
+          {
+            ":usage_id": "00000000-0000-4000-8000-00000000000a",
+            ":agent_name": ":golden_string_planner",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":cost": 0.0006000000000000001,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":research",
+            ":attempt_id": "00000000-0000-4000-8000-000000000009",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_r1"
+          },
+          {
+            ":usage_id": "00000000-0000-4000-8000-00000000000c",
+            ":agent_name": ":golden_worker",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":cost": 0.0006000000000000001,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":research",
+            ":attempt_id": "00000000-0000-4000-8000-00000000000b",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_w"
+          },
+          {
+            ":usage_id": "00000000-0000-4000-8000-00000000000e",
+            ":agent_name": ":golden_worker",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":cost": 0.0006000000000000001,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":research",
+            ":attempt_id": "00000000-0000-4000-8000-00000000000d",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_w"
+          },
+          {
+            ":usage_id": "00000000-0000-4000-8000-000000000010",
+            ":agent_name": ":golden_string_planner",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":cost": 0.0006000000000000001,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":research",
+            ":attempt_id": "00000000-0000-4000-8000-00000000000f",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_r2"
+          },
+          {
+            ":usage_id": "00000000-0000-4000-8000-000000000012",
+            ":agent_name": ":golden_worker",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":cost": 0.0006000000000000001,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":research",
+            ":attempt_id": "00000000-0000-4000-8000-000000000011",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_w"
+          },
+          {
+            ":usage_id": "00000000-0000-4000-8000-000000000014",
+            ":agent_name": ":golden_string_planner",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":cost": 0.0006000000000000001,
+            ":attempt_kind": ":completed_attempt",
+            ":recorded_at": "2026-01-01T00:00:00.000000Z",
+            ":transition": ":research",
+            ":attempt_id": "00000000-0000-4000-8000-000000000013",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_r3"
+          }
+        ]
+      ],
+      "traces": [
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-000000000002",
+            ":attempt_index": 0,
+            ":outcome": ":success",
+            ":agent_name": ":golden_string_planner",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_r1"
+          }
+        },
+        {
+          ":type": ":token_usage",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          }
+        },
+        {
+          ":type": ":cost",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":cost": 0.0006000000000000001,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20
+          }
+        },
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-000000000004",
+            ":attempt_index": 0,
+            ":outcome": ":success",
+            ":agent_name": ":golden_worker",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_w"
+          }
+        },
+        {
+          ":type": ":token_usage",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          }
+        },
+        {
+          ":type": ":cost",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":cost": 0.0006000000000000001,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20
+          }
+        },
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-000000000006",
+            ":attempt_index": 0,
+            ":outcome": ":success",
+            ":agent_name": ":golden_worker",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_w"
+          }
+        },
+        {
+          ":type": ":token_usage",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          }
+        },
+        {
+          ":type": ":cost",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":cost": 0.0006000000000000001,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20
+          }
+        },
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-000000000009",
+            ":attempt_index": 0,
+            ":outcome": ":success",
+            ":agent_name": ":golden_string_planner",
+            ":memo": true,
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_r1"
+          }
+        },
+        {
+          ":type": ":token_usage",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          }
+        },
+        {
+          ":type": ":cost",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":cost": 0.0006000000000000001,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20
+          }
+        },
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-00000000000b",
+            ":attempt_index": 0,
+            ":outcome": ":success",
+            ":agent_name": ":golden_worker",
+            ":memo": true,
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_w"
+          }
+        },
+        {
+          ":type": ":token_usage",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          }
+        },
+        {
+          ":type": ":cost",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":cost": 0.0006000000000000001,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20
+          }
+        },
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-00000000000d",
+            ":attempt_index": 0,
+            ":outcome": ":success",
+            ":agent_name": ":golden_worker",
+            ":memo": true,
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_w"
+          }
+        },
+        {
+          ":type": ":token_usage",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          }
+        },
+        {
+          ":type": ":cost",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":cost": 0.0006000000000000001,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20
+          }
+        },
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-00000000000f",
+            ":attempt_index": 0,
+            ":outcome": ":success",
+            ":agent_name": ":golden_string_planner",
+            ":memo": true,
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_r2"
+          }
+        },
+        {
+          ":type": ":token_usage",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          }
+        },
+        {
+          ":type": ":cost",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":cost": 0.0006000000000000001,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20
+          }
+        },
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-000000000011",
+            ":attempt_index": 0,
+            ":outcome": ":success",
+            ":agent_name": ":golden_worker",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_w"
+          }
+        },
+        {
+          ":type": ":token_usage",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          }
+        },
+        {
+          ":type": ":cost",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":cost": 0.0006000000000000001,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20
+          }
+        },
+        {
+          ":type": ":provider_call",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":duration_ms": "ms",
+            ":attempt_id": "00000000-0000-4000-8000-000000000013",
+            ":attempt_index": 0,
+            ":outcome": ":success",
+            ":agent_name": ":golden_string_planner",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":stop_reason": "end_turn",
+            ":provider_message_id": "msg_r3"
+          }
+        },
+        {
+          ":type": ":token_usage",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":input_tokens": 100,
+            ":output_tokens": 20,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic"
+          }
+        },
+        {
+          ":type": ":cost",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow",
+            ":cost": 0.0006000000000000001,
+            ":model": "claude-sonnet-5-5",
+            ":provider": ":anthropic",
+            ":input_tokens": 100,
+            ":output_tokens": 20
+          }
+        },
+        {
+          ":type": ":transition",
+          ":data": {
+            ":execution_key": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow"
+          }
+        }
+      ],
+      "events": [
+        [
+          "Smith::Events::StepCompleted",
+          {
+            ":execution_id": "run-rounds",
+            ":trace_id": "run-rounds",
+            ":transition": ":research",
+            ":from": ":idle",
+            ":to": ":done",
+            ":workflow": "GoldenRoundsWorkflow"
+          }
+        ]
+      ],
+      "stream": [],
+      "ledger": [],
+      "logs": [
+        {
+          ":smith": [],
+          ":ruby_llm": []
+        }
+      ],
+      "errors": [
+        {
+          "class": "CoreInvisibility::Hosts::Killed",
+          "message": "the process died after the memo stored",
+          "causes": []
+        }
+      ],
+      "results": [
+        {
+          ":state": ":done",
+          ":output": {
+            "summary": "Opens at 8 on Main Street."
+          },
+          ":steps": [
+            {
+              ":transition": ":research",
+              ":from": ":idle",
+              ":to": ":done"
+            }
+          ],
+          ":last_error": null
         },
         {
           ":unused_replies": 0

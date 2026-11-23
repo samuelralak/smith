@@ -35,19 +35,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   Context an earlier Smith marshalled does not load (Smith never marshals or
   saves one; a run persists as JSON).
 - A shared "no difference" harness for core changes:
-  `script/core_invisibility_golden` runs twenty-three scenarios against a
+  `script/core_invisibility_golden` runs twenty-five scenarios against a
   local server answering as Anthropic (and as OpenAI's image edits) and
   records every request, memo key, batch digest, saved state, artifact store
   call, usage entry, trace, event, stream delivery, ledger call, log line,
   raised error and random draw, and the names a host's workflow, agent,
   context or tool class can collide with (methods, Object and Kernel
   overrides, constants). `spec/smith/core_invisibility_spec.rb` compares
-  this tree with a golden file generated in a bundle of its own from the
-  released gem (`script/golden/Gemfile`), or from a `git archive` of a named
-  commit (`--commit`): a release's golden from the gem, a slice's from the
-  commit it is built on; the file's header names the gem's sha256 or the
-  commit's id, and never a working tree. `script/core_invisibility_benchmark`
-  times a 1,000-step stubbed run. None of it goes into the gem.
+  this tree, in each mode, with a golden file, and the observer and trial
+  modes with the plain mode on the same tree. The golden is written from a
+  commit or the staged index, never a working tree, and names its source
+  by the git ids of the parts that decide what it records (Smith's `lib`
+  and gemspec, the harness, the local server) and the commit they were
+  built on, so it can be written again from history byte for byte;
+  `--diff` reports how two goldens differ, scenario by scenario.
+  `script/core_invisibility_benchmark` times a 1,000-step stubbed run. None
+  of it goes into the gem.
 - `Smith::Evals::Statistics`, loaded alone by
   `require "smith/evals/statistics"` (no workflow code, no observer):
   `estimate`, `rate`, `detectable`, `required_samples` and `judge_check`
@@ -79,6 +82,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   byte form for hashed JSON, and the one tenant scope type, a frozen Hash of
   at most 8 String pairs with a digest. Neither is loaded by
   `require "smith"`.
+
+### Changed
+
+- The harness's golden file no longer has to come from a Smith without the
+  eval seam: the seam's invisibility was proven once, at `eb14417` against
+  `6bd0609`, and is now proven on the same tree (observer and trial modes
+  give the plain mode's records, sink by sink). A golden is written from a
+  commit (`--write --commit REF`) or the staged index (`--write --index`),
+  and names the git ids of its source's parts rather than a commit, so a
+  change that alters a record needs no made-up commit, and the ids are in
+  public history once the change is committed (`--source-of` writes it
+  again from them); a golden naming ids HEAD's history does not hold (a part
+  edited after it was written) fails. A change that alters no record passes
+  against the golden as it is. The golden moves with every change that
+  alters a record, so the spec also holds the tree to a release baseline
+  that no regeneration writes (`spec/fixtures/core_invisibility_release.json`):
+  the last release's host surface and each scenario's random draws, lookups,
+  requests, traces, events and log lines, written from the release's commit
+  (`--write-release`, 0.16.0's with a91fd45's harness) and rewritten only at
+  a release. Every difference from it is listed in the spec with why and the
+  slice that made it, and a scenario it lacks with the facts its slice
+  measured. A golden's bundle resolves the versions the repository's
+  `Gemfile.lock` holds, the newest installed gems without one. The released
+  gem's bundle (`script/golden/Gemfile`) now serves comparisons and the
+  benchmark only.
 
 ### Fixed
 
@@ -118,6 +146,47 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   each image count, twice an `amount`. What Smith records, holds and charges
   for its own calls is unchanged. `docs/BUDGETS.md` now documents `amount`:
   what a host passes, what it returns and when to call it.
+- A restored `orchestrate` run no longer pays again for an orchestrator call
+  the response memo kept. Each round after the first tells the orchestrator
+  its workers' results under an `execution_id` that was a random UUID, so a
+  run restored after its process died asked round 2 and later rounds with
+  new ids, missed the memo, and sent and charged those calls again, ending
+  on the reply it got the second time. The id is now named by the worker's
+  position (its run, step, round, task content and copy), still a UUID
+  (version 8), and the same on every replay of the step.
+- A streamed answer the response memo kept whole is replayed. Its record
+  holds an empty list of tool calls, which Smith refused as a record it does
+  not keep, so a restored streamed step (an `optimize` step's streamed
+  drafts too) sent its call again and paid for it again. Records 0.16.0
+  kept this way replay too.
+- A child a `call`, `map` or `spawn` step runs through
+  `Smith::Launchers::Inline` is the same run when it is launched again (its
+  parent restored after its process died, or a step around it tried
+  again). Each launch drew it a new random namespace, so a relaunched child
+  missed every call the response memo kept and sent and charged them again.
+  Its namespace is now named by the child's `key`, so its tools repeat their
+  idempotency keys (an outside system sees the same call) and it owns the
+  artifacts its earlier launch stored, and its calls are kept under the
+  launching step's attempts, as a nested workflow's are: a restored parent's
+  relaunch replays them, and a retry of the step around it asks them again,
+  as it asks every call of the step. A relaunched child runs its finished
+  steps again, so a call whose prompt names a value one of them draws anew
+  (a file, S3 or Active Record artifact ref) misses the memo and is paid
+  again; store such a document in the parent before the launching step and
+  pass its ref in the child's `input:`. A host's own launcher builds each
+  child as before.
+- No two children of a run share a `child.key`. A `call`, `map` or `spawn`
+  step in an in-process nested workflow or a fan-out item (only a launcher
+  whose `inline?` is true launches from there) took its children's keys
+  from the run's token for its step number and name, so they were the keys
+  of the children of every step of that number and name elsewhere in the
+  run: in other nested workflows, in the other items, and at the run's root.
+  A launcher idempotent on `child.key`, as the docs ask, ran the first of
+  them and handed its result to every other, which never ran, with no
+  error. Such a step's children's keys now also name its place (the nested
+  workflow steps and items above it), the same on every launch and in every
+  process. A child launched at the run's root keeps the key 0.16.0 gave it,
+  so a host's runs in flight still find their children.
 
 ### Upgrading
 
@@ -129,6 +198,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   of :tasks, :final, or :stop" rather than the error its value gave.
 - A schema whose `required_keys` are Strings now accepts Symbol-keyed data,
   which it refused.
+- A child launched in an in-process nested workflow or a fan-out item has a
+  new `key`, so a run restored in the middle of such a step after upgrading
+  launches its children under their new keys. A child launched at the run's
+  root keeps its key.
+- An `orchestrate` worker's `execution_id` is a version 8 UUID derived from
+  its position (its run, step, round, task content and copy), no longer a
+  random version 4 one: a host that checked for version 4, or took the id
+  as random, sees the change, and runs restored from copies of one payload
+  give their workers the same ids.
+- A child `Smith::Launchers::Inline` runs has the same namespace on every
+  launch of its `key`; each launch drew a new one. A test that expected a
+  namespace of its own each launch changes.
 
 ## [0.16.0] - 2026-11-22
 

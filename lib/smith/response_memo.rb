@@ -12,13 +12,14 @@ module Smith
   # A call (one agent call, its tool loop included) is kept under a key of
   # its position (IdempotencyKey: the run, the step, any branch or nested
   # position, the key generation), the attempts it runs under (the step's,
-  # and each enclosing run's for a nested workflow), its attempt index (its
-  # model in the fallback chain, or a follow-up's place), its place among
-  # the attempt's calls, and a digest of its request (model, messages, tools
-  # with their descriptions and parameters, schema, params). A replay
-  # reaches the same key; a call whose request changed since (a deployed
-  # prompt or tool, another model, a date in the prompt) misses and is
-  # sent, as a miss always may be.
+  # and each enclosing run's for a nested workflow or a child run
+  # Launchers::Inline runs), its attempt index (its model in the fallback
+  # chain, or a follow-up's place), its place among the attempt's calls,
+  # and a digest of its request (model, messages, tools with their
+  # descriptions and parameters, schema, params). A replay reaches the same
+  # key; a call whose request changed since (a deployed prompt or tool,
+  # another model, a date in the prompt) misses and is sent, as a miss
+  # always may be.
   #
   # Its record, `{"version" => 1 | 2, "messages" => [...], "complete" =>
   # bool}`, holds the messages the call added (Budget::Continuation, with
@@ -42,7 +43,8 @@ module Smith
     VERSION = 2
     PROGRESS = :smith_response_memo
     INHERITED = :smith_inherited_memo_attempts
-    private_constant :PROGRESS, :INHERITED
+    LAUNCHING = :smith_launching_memo_attempts
+    private_constant :PROGRESS, :INHERITED, :LAUNCHING
 
     # A provider call being recorded (`recording`): its messages from
     # `start` are stored as its progress when a reply calling the tools its
@@ -129,7 +131,8 @@ module Smith
         last["role"] == "tool" ? open.empty? : last["role"] == "assistant" && !open.empty?
       end
 
-      def reply?(entry) = entry["role"] == "assistant" && entry["tool_calls"].nil?
+      # A streamed reply keeps an empty list of tool calls; it calls nothing.
+      def reply?(entry) = entry["role"] == "assistant" && Array(entry["tool_calls"]).empty?
 
       def version(entries, complete)
         last = entries.last
@@ -238,9 +241,9 @@ module Smith
       tools.respond_to?(:empty?) && !tools.empty?
     end
 
-    # A nested workflow built in the block runs its calls under `attempts`
-    # too (the enclosing runs' attempts), so a retry of its parent's step is
-    # never answered from the attempt before.
+    # A nested workflow (or an inline child run) built in the block runs its
+    # calls under `attempts` too (the enclosing runs' attempts), so a retry
+    # of its parent's step is never answered from the attempt before.
     def inheriting(attempts)
       outer = Thread.current[INHERITED]
       Thread.current[INHERITED] = attempts
@@ -254,5 +257,20 @@ module Smith
       Thread.current[INHERITED] = nil
       attempts || []
     end
+
+    # While a step hands its children to the launcher, the attempts it runs
+    # under (those it inherited, then its own), which a child run in process
+    # (Launchers::Inline) inherits as a nested workflow does: a retry of the
+    # step asks the child's calls again, a restore replays them.
+    def launching(attempts, step_attempt)
+      outer = Thread.current[LAUNCHING]
+      Thread.current[LAUNCHING] = [*attempts, step_attempt.to_i]
+      yield
+    ensure
+      Thread.current[LAUNCHING] = outer
+    end
+
+    def launching_attempts = Thread.current[LAUNCHING] || []
+    private_class_method :launching, :launching_attempts
   end
 end

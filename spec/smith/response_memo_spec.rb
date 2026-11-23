@@ -177,6 +177,60 @@ RSpec.describe "Smith response memo" do
     expect(calls.select { _1.first == :delta }).to eq([[:delta, "Streamed before."]])
   end
 
+  # A streamed reply keeps an empty list of tool calls; 0.16.0 refused the
+  # record it kept, and sent the call again.
+  it "replays a streamed answer it kept whole, sending nothing, and gives its sink the kept text at once" do
+    agent("SpecMemoStreamedAgent")
+    calls = []
+    sink = Class.new do
+      define_method(:initialize) { |log| @log = log }
+      %i[start delta reset finish fail withdraw].each { |name| define_method(name) { |*args| @log << [name, *args] } }
+    end
+    allow(Smith.config).to receive(:stream_sinks).and_return(reply: ->(_info) { sink.new(calls) })
+    server.reply(events: streamed_text(["It opens", " at 8."], id: "msg_s"))
+    klass = asking("SpecMemoStreamedWorkflow", stream: :reply)
+    memo.crash_on = [true, crash]
+
+    expect { klass.new(context: {}).run_persisted!("run-streamed", adapter:) }.to raise_error(crash)
+    expect(memo.records.values.map { _1["messages"].last["tool_calls"] }).to eq([[]])
+    calls.clear
+    done = klass.restore("run-streamed", adapter:).run_persisted!("run-streamed", adapter:)
+
+    expect([done.state, done.context[:answer], server.requests.length]).to eq([:done, "It opens at 8.", 1])
+    expect(calls.select { _1.first == :delta }).to eq([[:delta, "It opens at 8."]])
+    expect(done.usage_entries.map { [_1.input_tokens, _1.output_tokens, _1.provider_message_id] })
+      .to eq([[30, 5, "msg_s"]])
+    expect(log.string).not_to include("memo fetch error")
+  end
+
+  # A record kept whole ends on the model's reply calling nothing; one
+  # ending anywhere else is refused, and the call is sent. `unfinished`:
+  # whether the same messages kept unfinished are a record Smith keeps.
+  calling = { "role" => "assistant", "content" => "",
+              "tool_calls" => [{ "id" => "toolu_1", "name" => "lookup", "arguments" => {} }] }
+  answered = { "role" => "tool", "content" => "ok", "tool_call_id" => "toolu_1" }
+  user = { "role" => "user", "content" => "Is it open?" }
+  {
+    "a reply that calls tools" => [[calling], true],
+    "a tool result, every call answered" => [[calling, answered], true],
+    "a user turn" => [[user], false],
+    "a user turn after a reply that called nothing" => [[{ "role" => "assistant", "content" => "Yes.",
+                                                           "tool_calls" => [] }, user], false]
+  }.each do |last, (messages, unfinished)|
+    it "still refuses a record kept whole that ends on #{last}, and sends the call" do
+      agent("SpecMemoCallingAgent")
+      expect(Smith::ResponseMemo::Record.valid?({ "version" => 1, "messages" => messages, "complete" => false }))
+        .to be(unfinished)
+      allow(memo).to receive(:fetch).and_return({ "version" => 1, "messages" => messages, "complete" => true })
+      server.reply(json: message("Sent anyway."))
+
+      result = asking("SpecMemoCallingWorkflow").new(context: {}).run!
+
+      expect([result.output, server.requests.length]).to eq(["Sent anyway.", 1])
+      expect(log.string).to include("Smith response memo fetch error: ArgumentError")
+    end
+  end
+
   it "never fails a step over its memo: a broken fetch or store, or a record it does not keep, is logged" do
     agent("SpecMemoBrokenAgent")
     broken = Class.new do

@@ -76,11 +76,14 @@ module CoreInvisibility
 
     # A response memo, keyed as Smith keys it. With `crash_on` set to a
     # record's `complete` value, the process "dies" (a non-StandardError)
-    # right after it stores that record.
+    # right after it stores that record, or the `crash_after`th such one.
     class Memo
-      attr_accessor :crash_on
+      attr_accessor :crash_on, :crash_after
 
-      def initialize = @records = {}
+      def initialize
+        @records = {}
+        @matched = 0
+      end
 
       def fetch(key)
         CoreInvisibility.record.add(:memo, ["fetch", key])
@@ -91,6 +94,9 @@ module CoreInvisibility
         CoreInvisibility.record.add(:memo, ["store", key, record])
         @records[key] = record
         return unless crash_on && record["complete"] == crash_on
+
+        @matched += 1
+        return if @matched < (crash_after || 1)
 
         self.crash_on = nil
         raise Killed, "the process died after the memo stored"

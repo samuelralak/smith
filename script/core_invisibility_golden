@@ -6,21 +6,51 @@
 # Anthropic (and as OpenAI's image edits) and prints, as one JSON document,
 # everything Smith sent, saved, traced, emitted, streamed, logged and raised.
 #
-# Where the golden file comes from. A release's golden comes from the
-# released gem, the default; a slice's golden comes from the commit the slice
-# is built on, which is the release's own code until master holds a change
-# that alters a scenario's output for a good reason. The file's header names
-# which: the gem's sha256, or the commit's id. Neither is ever a working tree.
-# Either names where Smith's code came from; the harness (these scripts and
-# scenarios) is always this tree's.
+# Where the golden file comes from. Its header names its source by content:
+# the git ids of the parts of a tree that decide what the harness records
+# (Smith's lib and gemspec, this harness, the local server it answers
+# through: GitSource::PARTS), taken from a commit or from the staged index,
+# never from unstaged edits, and the commit that tree was built on, for
+# reference. Its process block says what that Smith is (with or without the
+# eval seam). Each part is extracted by its id into a folder of its own, and
+# that folder's harness runs on that folder's lib, in a bundle of its own
+# built from installed gems at the versions the repository's Gemfile.lock
+# holds (the newest installed without one; script/golden/git_source.rb).
+# Never a working tree, and never a released gem (BUNDLE_GEMFILE=
+# script/golden/Gemfile runs the harness on the release for comparison,
+# writing nothing).
 #
-# From the released gem, in its own bundle (the one network use):
-#   BUNDLE_GEMFILE=script/golden/Gemfile bundle install
-#   BUNDLE_GEMFILE=script/golden/Gemfile bundle exec ruby script/core_invisibility_golden --write
+# The seam's invisibility was proven once, at eb14417 against 6bd0609, a
+# Smith without it. Since then spec/smith/core_invisibility_spec.rb compares
+# every mode with the golden, and the observer and trial modes with the
+# plain mode on the same tree, sink by sink. A change that keeps every
+# record passes against the golden as it is: the golden stays tied to the
+# source that wrote it, and the plain mode's comparison is the regression
+# check.
 #
-# From a commit: a `git archive` of it, in a bundle of its own built from
-# installed gems (script/golden/commit_source.rb):
-#   ruby script/core_invisibility_golden --write --commit <commit the slice is built on>
+# The golden moves with every change that alters a record, so the spec also
+# holds the tree to the release baseline (spec/fixtures/
+# core_invisibility_release.json, script/golden/release_baseline.rb), which
+# no regeneration writes: the host surface and each scenario's random draws,
+# lookups, requests, traces, events and log lines, every difference listed
+# in the spec with why and the slice. It is rewritten only at a release:
+#   ruby script/core_invisibility_golden --write-release --commit v<version>
+#
+# After an intended change, stage it, write the golden from the index, and
+# report its difference from the previous golden, scenario by scenario, with
+# the change (every line that is not "same" explained):
+#   git add -A
+#   ruby script/core_invisibility_golden --write --index
+#   git show HEAD:spec/fixtures/core_invisibility_golden.json > /tmp/previous_golden.json
+#   ruby script/core_invisibility_golden --diff /tmp/previous_golden.json
+# Commit the golden with the change, exactly as staged: the spec fails when
+# HEAD does not hold every id it names (a part edited after it was written).
+# Anyone can then write it again, byte for byte under the same Gemfile.lock
+# (the spec does):
+#   ruby script/core_invisibility_golden --write /tmp/again.json --source-of
+#
+# From a commit (one that holds the harness):
+#   ruby script/core_invisibility_golden --write --commit <ref>
 #
 # The working tree (spec/smith/core_invisibility_spec.rb runs these):
 #   ruby -Ilib script/core_invisibility_golden --mode plain|observer|trial|concurrent
@@ -31,22 +61,60 @@
 
 require "json"
 require "optparse"
-require_relative "golden/commit_source"
+require_relative "golden/git_source"
+require_relative "golden/release_baseline"
 
 golden = File.expand_path("../spec/fixtures/core_invisibility_golden.json", __dir__)
-options = { mode: "plain", write: nil, commit: nil }
+options = { mode: "plain", write: nil, sources: [], diff: false, release: nil, harness: nil }
 OptionParser.new do |parser|
   parser.on("--mode MODE", %w[plain observer trial concurrent]) { options[:mode] = _1 }
   parser.on("--write [PATH]") { options[:write] = _1 || golden }
-  parser.on("--commit REF") { options[:commit] = _1 }
+  parser.on("--write-release [PATH]") { options[:release] = _1 || CoreInvisibility::ReleaseBaseline::PATH }
+  parser.on("--commit REF") { options[:sources] << [:from_commit, _1] }
+  parser.on("--harness REF") { options[:harness] = _1 }
+  parser.on("--index") { options[:sources] << [:from_index] }
+  parser.on("--source-of [FILE]") { options[:sources] << [:from_golden, _1] }
+  parser.on("--diff") { options[:diff] = true }
 end.parse!
+# --source-of names the file being written again: the golden, or the
+# release baseline.
+written = options[:release] ? CoreInvisibility::ReleaseBaseline::PATH : golden
+options[:sources].map! { |kind, value| kind == :from_golden ? [kind, value || written] : [kind, value].compact }
 
-if options[:commit]
-  abort "--commit names where a golden file comes from: give --write too" unless options[:write]
+if options[:release]
+  kind, value = options[:sources].first
+  abort "--write-release takes one of --commit or --source-of" unless options[:sources].one? && kind != :from_index
+  abort "--write-release takes no --write" if options[:write]
+  baseline = CoreInvisibility::ReleaseBaseline
+  begin
+    source = if kind == :from_commit
+               baseline.from_commit(value, harness: options[:harness] || value)
+             else
+               baseline.from_baseline(value)
+             end
+    baseline.write(source, options[:release])
+    exit
+  rescue CoreInvisibility::GitSource::Refused => e
+    abort e.message
+  end
+end
+abort "--harness goes with --write-release" if options[:harness]
+
+if options[:diff]
+  require_relative "golden/compare"
+  files = [ARGV.fetch(0) { abort "--diff takes the earlier golden file, then the later" }, ARGV[1] || golden]
+  puts CoreInvisibility::Compare.lines(*files.map { JSON.parse(File.read(_1)) })
+  exit
+end
+
+unless options[:sources].empty?
+  abort "--commit, --index and --source-of name where a golden file comes from: give --write too" unless options[:write]
+  abort "give one of --commit, --index or --source-of" unless options[:sources].one?
   abort "--write takes the plain mode" unless options[:mode] == "plain"
   begin
-    exit CoreInvisibility::CommitSource.write_golden(options[:commit], options[:write]) ? 0 : 1
-  rescue CoreInvisibility::CommitSource::Refused => e
+    source = CoreInvisibility::GitSource.public_send(*options[:sources].first)
+    exit CoreInvisibility::GitSource.write_golden(source, options[:write]) ? 0 : 1
+  rescue CoreInvisibility::GitSource::Refused => e
     abort e.message
   end
 end
@@ -54,7 +122,7 @@ end
 require "smith"
 require "ruby_llm"
 require_relative "../spec/support/sse_server"
-%w[determinism normal record hooks support host_surface hosts define replies runner].each do |file|
+%w[source_folder determinism normal record hooks support host_surface hosts define replies runner].each do |file|
   require_relative "golden/#{file}"
 end
 
@@ -63,8 +131,8 @@ require_relative "golden/scenarios"
 
 if options[:write]
   source = CoreInvisibility::Environment.smith["source"]
-  unless %w[release commit].include?(source)
-    abort "the golden file comes from the released gem (script/golden/Gemfile) or a commit (--commit), not #{source}"
+  unless %w[index commit].include?(source)
+    abort "the golden file comes from a commit (--commit) or the staged index (--index), not #{source}"
   end
   abort "--write takes the plain mode" unless options[:mode] == "plain"
 end

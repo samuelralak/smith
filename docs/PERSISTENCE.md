@@ -1102,18 +1102,24 @@ Smith.config.run_launcher = QueueLauncher.new
 ```
 
 - A child's `ref` is the index of its item, and its `key` is the step's token
-  and the ref together, unique across every child-run step of every run. Items
-  come from the context (a persisted key holding an Array, or a callable of the
-  context, which must give the same list on a replay), so a replayed step
-  launches the same children under the same keys: the launcher must be
-  idempotent on `child.key`. Only a launcher whose `inline?` is true has its
-  return value taken as results (it must return them, as an Array); anything
-  another launcher returns is ignored. The job side rebuilds a
-  `Smith::ChildRun` from its arguments (input keys as Symbols) and calls
-  `#build`, which checks the untrusted key names it gets back as Strings and
-  the artifact namespaces the child may read (its parent's and the parent's
-  nearest ancestors', at most 16; a job that omits them gives the child none,
-  and its reads of the parent's documents fail).
+  and the ref together. A step in an in-process nested workflow or a fan-out
+  item (only a launcher whose `inline?` is true launches from there) shares the
+  run's tokens with the steps of its number elsewhere in the run, so its
+  children's keys also name its place: the nested workflow steps and items
+  above it. No two children of a run share a key, whatever their inputs, and
+  runs built with `new` never do (runs restored from copies of one payload do,
+  as with idempotency keys). A child launched at the run's root keeps the key
+  0.16.0 gave it. Items come from the context (a persisted key holding an
+  Array, or a callable of the context, which must give the same list on a
+  replay), so a replayed step launches the same children under the same keys:
+  the launcher must be idempotent on `child.key`. Only a launcher whose
+  `inline?` is true has its return value taken as results (it must return
+  them, as an Array); anything another launcher returns is ignored. The job
+  side rebuilds a `Smith::ChildRun` from its arguments (input keys as
+  Symbols) and calls `#build`, which checks the untrusted key names it gets
+  back as Strings and the artifact namespaces the child may read (its
+  parent's and the parent's nearest ancestors', at most 16; a job that omits
+  them gives the child none, and its reads of the parent's documents fail).
 - A child gets only the context `input:` returns (JSON-shaped, bounded at 1 MiB
   each and 16 MiB for a step's children together) and no session. A key the
   parent treats as untrusted that `input:` passes under the same name stays
@@ -1149,7 +1155,22 @@ Smith.config.run_launcher = QueueLauncher.new
   child is a run with its own budget; the parent's budget does not cover it.
 - `Smith::Launchers::Inline` runs each child to its end under the parent's
   deadline, apart from the parent's tool evidence and attribution, and reports
-  a child left waiting, or one that raised, as failed with its error.
+  a child left waiting, or one that raised, as failed with its error. A child
+  it launches again (the parent restored after its process died, or a step
+  around it tried again) is the same run: its namespace is named by its `key`,
+  never drawn, so its tools repeat their idempotency keys and it owns the
+  artifacts it stored before. Its provider calls are kept under the launching
+  step's attempts too, as a nested workflow's are: a restored parent's
+  relaunch replays the calls the response memo kept, and a retry of the step
+  around it asks them again (a retry never takes the attempt before's
+  answer). A relaunched child runs its finished steps again, so a call whose
+  prompt names a value one of them draws anew misses the memo and is paid
+  again: a file, S3 or Active Record artifact store draws a new ref on every
+  `store`. Store such a document in the parent, in a step before the
+  launching one, and pass its ref in the child's `input:` (the parent's
+  finished steps do not run again), or launch the child through a host
+  launcher that keeps it as a run of its own. A host launcher builds each
+  child as before, with a namespace of its own.
 - A `spawn` launches and completes its step; nothing comes back.
 - Graph inspection shows the kind (`:map`, `:call`, `:spawn`) and the child
   workflow, bound, items, collect and failure modes. Runtime readiness walks

@@ -55,18 +55,19 @@ module CoreInvisibility
   module Environment
     module_function
 
-    # Where Smith came from, and which: a release's package by its sha256, a
-    # commit by its id.
+    # Where Smith came from, and which: a git source by its parts' ids and
+    # the commit they were built on, a release's package by its sha256.
     def smith
       source, provenance = origin
       { "version" => Smith::VERSION, "source" => source, **provenance }
     end
 
-    # "tree" when smith.rb came from this repository's lib; "release" when
-    # from an installed smith-agents a rubygems source gave the bundle;
-    # "commit" when from a git archive of a commit, in the bundle built from
-    # it (CommitSource), holding exactly that commit's files; and "other"
-    # otherwise (another checkout, a working tree, a path or git gem).
+    # "index" or "commit" when smith.rb came from a folder of a source's
+    # parts, in the bundle built there (GitSource), holding exactly those
+    # parts; "tree" when from the lib beside this harness; "release" when
+    # from an installed smith-agents a rubygems source gave the bundle; and
+    # "other" otherwise (another checkout, a working tree, a path or git
+    # gem).
     def origin
       @origin ||= begin
         loaded = $LOADED_FEATURES.find { _1.end_with?("/lib/smith.rb") }
@@ -76,13 +77,16 @@ module CoreInvisibility
 
     def source = origin.first
 
+    # A folder of a source's parts holds this harness too, so it is
+    # checked before the lib beside the harness is taken for the tree.
     def origin_of(path, spec)
+      root = File.dirname(path, 2)
+      folder = spec && File.realpath(spec.full_gem_path) == root && SourceFolder.of(root)
+      return folder if folder
       return ["tree", {}] if path == File.realpath(File.expand_path("../../lib/smith.rb", __dir__))
       return ["release", { "sha256" => Digest::SHA256.file(spec.cache_file).hexdigest }] if released?(spec, path)
 
-      root = File.dirname(path, 2)
-      commit = spec && File.realpath(spec.full_gem_path) == root && CommitSource.verified(root)
-      commit ? ["commit", { "commit" => commit }] : ["other", {}]
+      ["other", {}]
     end
 
     def released?(spec, path)
