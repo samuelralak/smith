@@ -185,6 +185,69 @@ module Smith
     def initialize(message = "the budget ledger failed") = super
   end
 
+  # Run credentials (a workflow's `provider_credentials`, Smith::RunCredentials).
+  # Every message is Smith's own text: none holds a credential value or a
+  # provider's words.
+
+  # No credential for a provider request: the run's block returned none, its
+  # credentials cover none of an agent's models, or
+  # Smith.config.require_run_credentials refused an attempt made with no run
+  # credentials. Nothing was sent and no budget ledger was asked.
+  class ProviderCredentialsMissing < ProviderPermanentFailure
+    def initialize(message = "no run credentials for this provider request", provider: nil, model_id: "",
+                   source_error_class: "")
+      super
+    end
+
+    def kind = :credentials_missing
+  end
+
+  # A provider refused the run's key: kind :key_refused (HTTP 401, the key)
+  # or :permission (HTTP 403, this model).
+  class ProviderCredentialsRefused < ProviderPermanentFailure
+    STATUSES = { key_refused: 401, permission: 403 }.freeze
+    private_constant :STATUSES
+
+    attr_reader :kind, :status
+
+    def self.from_details(details, kind:)
+      new(kind: kind.to_sym, **normalize_details(details))
+    end
+
+    def initialize(kind:, provider:, model_id:, source_error_class:)
+      @kind = kind
+      @status = STATUSES.fetch(kind) { raise ArgumentError, "a refusal's kind is key_refused or permission" }
+      named = provider || "the provider"
+      text = kind == :key_refused ? "refused the run's key" : "refused the run's key access to this model"
+      super("#{named} #{text} (HTTP #{@status})", provider:, model_id:, source_error_class:)
+    end
+  end
+
+  # The run's provider_credentials block raised, or returned something other
+  # than a Smith::ProviderCredentials or nil. Names only the class: nothing
+  # the block's error said travels (it is raised with no cause).
+  class ProviderCredentialsError < Error
+    def initialize(message = "the provider_credentials block failed") = super
+  end
+
+  # An error raised in a credentialed run's provider attempt whose message,
+  # or one in its cause chain, held part of the run's credentials: raised in
+  # its place with that text scrubbed and no cause. `original_class` names
+  # the error's class.
+  class ScrubbedError < Error
+    attr_reader :original_class
+
+    def initialize(message = nil, original_class:)
+      @original_class = original_class.to_s.dup.freeze
+      super(message || "#{@original_class} held part of the run's credentials")
+    end
+  end
+
+  # Credentials refuse to be serialized or printed with their values.
+  class SecretSerializationError < Error
+    def initialize(message = "credentials are never serialized") = super
+  end
+
   class DeterministicStepFailure < WorkflowError
     attr_reader :retryable, :kind, :details, :new_idempotency_key, :idempotency_scope
 

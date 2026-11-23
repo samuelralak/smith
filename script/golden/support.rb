@@ -4,6 +4,7 @@ require "digest"
 
 module CoreInvisibility
   FORMAT = "smith.core_invisibility/1"
+  RUN_KEY = "sk-golden-run-key-0123456789abcdef"
   PRICES = %w[claude-sonnet-5-5 claude-haiku-5-5].to_h do |model|
     [["anthropic", model], { input_cost_per_token: 0.000003, output_cost_per_token: 0.000015, batch_discount: 0.5 }]
   end.freeze
@@ -11,7 +12,22 @@ module CoreInvisibility
   Scenario = Struct.new(:name, :concurrent, :drive)
 
   class << self
-    attr_accessor :record
+    # The mode the scenarios are declared for, and, in the credentialed
+    # mode, the credentials every run's block answers with.
+    attr_accessor :record, :mode, :run_credentials
+
+    # The credentialed mode: every run's block answers with RUN_KEY, which
+    # its requests carry in place of the plain mode's "test", while RubyLLM's
+    # global configuration holds no key, so a request that fell through to
+    # it could not be sent.
+    def credentialed!(url)
+      self.run_credentials = Smith::ProviderCredentials.new(anthropic: { api_key: RUN_KEY, api_base: url },
+                                                            openai: { api_key: RUN_KEY, api_base: "#{url}/v1" })
+      RubyLLM.configure do |config|
+        config.anthropic_api_key = nil
+        config.openai_api_key = nil
+      end
+    end
 
     def scenarios = @scenarios ||= []
 

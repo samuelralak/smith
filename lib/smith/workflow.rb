@@ -139,6 +139,10 @@ module Smith
       # The attempts of the runs a nested workflow runs inside (ResponseMemo).
       @memo_attempts = ResponseMemo.take_inherited
       @budget_ledger_scope = capture_budget_ledger_scope
+      # Only a class that declares provider_credentials holds them (RunCredentials).
+      return unless self.class.provider_credentials
+
+      @smith_run_credentials = RunCredentials::Scoping.capture(self.class, trusted_context_view, untrusted_context_keys)
     end
 
     def persisted_keys

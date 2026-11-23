@@ -28,7 +28,13 @@ module Smith
   # call's arguments in its messages are the chat's own objects, which the
   # step goes on to use as its output, context and session. An observer must
   # not change what it is handed; it copies what it keeps before changing it.
-  module AttemptObservation
+  #
+  # A candidate that a run's credentials pass over before its chat exists is
+  # observed too (`skipped`, outcome :skipped), so an eval record never shows
+  # a fallback's answer under the skipped model's name. So there is one
+  # observation per :provider_call trace, plus one per skipped candidate,
+  # which has no trace.
+  module AttemptObservation # rubocop:disable Metrics/ModuleLength -- the seam is one module, its skip included
     Attempt = Data.define(:trial, :agent, :components, :attempt_id, :attempt_index, :outcome, :failure, :model,
                           :provider, :mode, :memo, :duration_ms, :tokens, :stop_reason, :messages, :sent_count,
                           :tool_call_names, :position)
@@ -36,6 +42,7 @@ module Smith
     # Smith's own words for a refused key, account or model, so a provider's
     # body never reaches a record through them.
     FIXED_MESSAGES = {
+      credentials_missing: "The run's credentials have no key for this provider.",
       key_refused: "The provider refused the API key.",
       out_of_credit: "The provider account is out of credit.",
       permission: "The provider refused access to this model."
@@ -62,6 +69,7 @@ module Smith
         end
 
         def kind(error)
+          return :credentials_missing if error.is_a?(Smith::ProviderCredentialsMissing)
           return :aborted unless provider_failure?(error) || unsupported_content?(error)
 
           KINDS.find { |_kind, predicate| send(predicate, error) }&.first || :rejected
@@ -116,7 +124,32 @@ module Smith
         report(e)
       end
 
+      # A candidate of an agent's model chain that the run's credentials do
+      # not cover, passed over before its chat was built: nothing was sent.
+      # The same guard as `observe`, and it never raises into the step.
+      def skipped(agent_class, model_reference, attempt_index, attempt_id:, provider:)
+        trial = Attribution.current&.trial
+        return unless trial
+
+        observer = @observer
+        return unless observer
+
+        facts = { attempt_id:, attempt_index:, model: model_reference.model_id, provider: }
+        observer.attempt_finished(passed_over(trial, agent_class, facts))
+      rescue StandardError => e
+        report(e)
+      end
+
       private
+
+      def passed_over(trial, agent_class, facts)
+        failure = { kind: :credentials_missing, error_class: "Smith::ProviderCredentialsMissing",
+                    message: FIXED_MESSAGES.fetch(:credentials_missing) }.freeze
+        Attempt.new(trial:, agent: (agent_class.register_as || agent_class.name)&.to_s,
+                    components: components(agent_class), **facts, outcome: :skipped, failure:, mode: :sync,
+                    memo: false, duration_ms: nil, tokens: nil, stop_reason: nil, messages: [].freeze, sent_count: 0,
+                    tool_call_names: [].freeze, position:)
+      end
 
       def report(error)
         Smith.config.logger&.error("Smith attempt observer error: #{DiagnosticText.error_class_name(error)}")

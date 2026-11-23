@@ -12,7 +12,15 @@ module Smith
       # results and cancel it. Smith calls none of these: the host schedules
       # them, then resumes each run with the results of its wait.
       #
-      #   batches = Smith::Providers::Anthropic::Batches.new
+      # A run with credentials of its own (`provider_credentials`) queues
+      # its requests with `credentials_scope:`; the host submits each scope's
+      # on that scope's credentials (`credentials:`, a
+      # Smith::ProviderCredentials, every other key cleared, as for the
+      # run). Under Smith.config.require_run_credentials there is no global
+      # key to fall back to: without `credentials:` or `config:`, it raises
+      # ProviderCredentialsMissing.
+      #
+      #   batches = Smith::Providers::Anthropic::Batches.new(credentials: HostedRun.provider_credentials.call(scope))
       #   batch_id = batches.submit(queued)   # [{ custom_id:, request: }, ...], as enqueued
       #   batches.status(batch_id)            # => { status: "in_progress" | "canceling" | "ended", counts: {...} }
       #   batches.results(batch_id) { |custom_id, result| ... }
@@ -28,8 +36,10 @@ module Smith
         MAX_BYTES = 256 * 1024 * 1024
         BATCH_ID = /\A[A-Za-z0-9_-]{1,128}\z/
 
-        def initialize(config: RubyLLM.config)
-          config = config.dup
+        def initialize(config: nil, credentials: nil)
+          raise ArgumentError, "Batches.new takes config: or credentials:, not both" if config && credentials
+
+          config = (config || submitting(credentials)).dup
           config.max_retries = 0
           @connection = RubyLLM::Providers::Anthropic.new(config).connection
         end
@@ -65,7 +75,37 @@ module Smith
           @connection.post("#{PATH}/#{id!(batch_id)}/cancel", {}).body.fetch("processing_status")
         end
 
+        # Printed without its connection, whose configuration prints its key
+        # on Ruby 4.
+        def inspect = "#<#{self.class.name}>"
+        alias to_s inspect
+
+        def pretty_print(printer) = printer.text(inspect)
+
         private
+
+        # The configuration to submit on: the credentials' alone, or RubyLLM's
+        # global one where the fail-closed mode allows it.
+        def submitting(credentials)
+          return run_config(credentials) if credentials
+
+          if Smith.config.require_run_credentials
+            raise ProviderCredentialsMissing, "Smith.config.require_run_credentials refuses RubyLLM's global key: " \
+                                              "give Batches.new the run's credentials:"
+          end
+
+          RubyLLM.config
+        end
+
+        def run_config(credentials)
+          unless credentials.is_a?(ProviderCredentials) && credentials.covers?(:anthropic)
+            raise ProviderCredentialsMissing, "the credentials given Batches.new hold no anthropic key"
+          end
+
+          require_relative "../../provider_options"
+          keep = Smith.config.run_credentials_instrumenter == :keep && !Smith.config.require_run_credentials
+          ProviderOptions.context(credentials.ruby_llm_settings, instrumenter: keep).config
+        end
 
         def create(body, headers)
           @connection.post(PATH, body) { |request| add_headers(request.headers, headers) }.body.fetch("id")

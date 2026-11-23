@@ -14,6 +14,7 @@ require_relative "doctor/checks/durability"
 require_relative "doctor/checks/live"
 require_relative "doctor/checks/models_registry"
 require_relative "doctor/checks/openai_api_mode"
+require_relative "doctor/checks/run_credentials_mode"
 require_relative "doctor/checks/persistence_capabilities"
 require_relative "doctor/checks/artifacts"
 require_relative "doctor/checks/state_model"
@@ -45,6 +46,7 @@ module Smith
       Checks::StateModel.run(report)
       Checks::ModelsRegistry.run(report)
       Checks::OpenaiApiMode.run(report)
+      Checks::RunCredentialsMode.run(report)
     end
 
     def self.detect_rails?

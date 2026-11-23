@@ -115,11 +115,19 @@ module Smith
       # of at most SCOPE_STRING_BYTES bytes), kept with the run so that what
       # a step writes later never chooses another ledger.
       def scope!(keys, context, untrusted)
-        keys.to_h do |key|
-          raise WorkflowError, "budget_ledger scope key #{key.inspect} is untrusted" if untrusted.include?(key)
+        trusted_scope(keys, context, untrusted, "budget_ledger") { |key, value| scope_value!(key, value) }.freeze
+      end
 
-          [key, scope_value!(key, context.is_a?(Hash) ? context[key] : nil)]
-        end.freeze
+      # A run's scope for `label` (budget_ledger, provider_credentials): what
+      # each of `keys` holds in its context, as the block takes it, a key the
+      # context marks untrusted refused, so no untrusted value chooses whose
+      # budget or keys a run uses.
+      def trusted_scope(keys, context, untrusted, label)
+        keys.to_h do |key|
+          raise WorkflowError, "#{label} scope key #{key.inspect} is untrusted" if untrusted.include?(key)
+
+          [key, yield(key, context.is_a?(Hash) ? context[key] : nil)]
+        end
       end
 
       # A stored scope, if it names the declared keys; nil (capture it

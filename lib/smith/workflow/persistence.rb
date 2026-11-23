@@ -20,6 +20,9 @@ module Smith
           pending_batch: @pending_batch&.dup,
           # The scope the run's budget_ledger is built from.
           budget_ledger_scope: @budget_ledger_scope&.transform_keys(&:to_s),
+          # The scope the run's provider_credentials are asked with, kept only
+          # by a class that declares them; never a key.
+          **(self.class.provider_credentials ? { provider_credentials_scope: @smith_run_credentials&.scope.dup } : {}),
           active_seconds: @active_seconds || 0.0,
           active_step_started_at: @active_step_started_at,
           execution_namespace: @execution_namespace,
@@ -155,6 +158,10 @@ module Smith
         initialize_budget_ledger
         @memo_attempts = []
         @budget_ledger_scope = restored_budget_ledger_scope(normalized[:budget_ledger_scope])
+        return unless self.class.provider_credentials
+
+        @smith_run_credentials = RunCredentials::Scoping.restored(self.class, normalized[:provider_credentials_scope],
+                                                                  trusted_context_view, untrusted_context_keys)
       end
 
       # The stored scope, or, for a run stored before its class declared

@@ -18,8 +18,16 @@ module Smith
       # knows keeps its limits), before any hold attaches to its provider. A
       # request OpenAI's Responses route sends answers whole, unstreamed,
       # and keeps the retries.
+      # A credentialed run's chat is built on its own RubyLLM context
+      # (Smith::RunCredentials), from the start, so its provider is built with
+      # the run's key and no other.
       def attempt_chat(agent_class, model_reference)
-        chat = agent_class.chat(**model_reference.chat_options, **bridge_workflow_inputs(agent_class))
+        chat = if @smith_run_credentials
+                 agent_class.chat(**model_reference.chat_options, **@smith_run_credentials.chat_options,
+                                  **bridge_workflow_inputs(agent_class))
+               else
+                 agent_class.chat(**model_reference.chat_options, **bridge_workflow_inputs(agent_class))
+               end
         return chat unless @step_stream && streams_over_the_wire?(chat)
 
         sent_once(chat, agent_class)
@@ -27,7 +35,7 @@ module Smith
 
       def sent_once(chat, agent_class)
         model = chat.model
-        config = (agent_class.context&.config || RubyLLM.config).dup
+        config = (@smith_run_credentials&.ruby_llm_config || agent_class.context&.config || RubyLLM.config).dup
         config.max_retries = 0
         chat.with_context(RubyLLM::Context.new(config))
         chat.with_model(model.id, provider: model.provider,

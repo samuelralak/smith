@@ -59,7 +59,7 @@ module CoreInvisibility
 
     def initialize(mode)
       @mode = mode
-      @observer = Observer.new if %w[observer trial concurrent].include?(mode)
+      @observer = Observer.new if %w[observer trial concurrent credentialed].include?(mode)
       @observations = {}
       @server = SseServer.new
     end
@@ -79,7 +79,7 @@ module CoreInvisibility
     def run(scenario)
       prepare
       run = Run.new(@server)
-      trial = %w[trial concurrent].include?(@mode) ? "trial-#{scenario.name}" : nil
+      trial = %w[trial concurrent credentialed].include?(@mode) ? "trial-#{scenario.name}" : nil
       within_trial(trial) { drive(scenario, run) }
       collect(scenario)
     end
@@ -106,6 +106,8 @@ module CoreInvisibility
       @server.answer
       configure(Smith.config)
       RubyLLM.configure { point_providers(_1) }
+      CoreInvisibility.credentialed!(@server.url) if @mode == "credentialed"
+      Smith.config.require_run_credentials = true if @mode == "fail_closed"
     end
 
     # Anthropic's and OpenAI's requests go to the local server.

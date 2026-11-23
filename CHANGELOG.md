@@ -123,6 +123,97 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   in any process, Ruby, json version, locale or time zone. The dataset,
   sample and suite manifest schemas and their examples are published in
   `docs/evals/`.
+- Run credentials: each run can use its own provider keys. A workflow class
+  (in practice a host's base class) declares
+  `provider_credentials(:project_id) { |scope| ... }`; when a run is created
+  Smith captures those keys' values from its trusted context as a
+  `Smith::Scope` and saves them as `provider_credentials_scope` (only for a
+  class that declares them; never a key). At the run's first provider
+  request in each process the block is asked once, with that
+  `Smith::Scope` (`scope["project_id"]`), and returns a
+  `Smith::ProviderCredentials` or nil. Credentials hold each provider's own
+  secret and endpoint options, checked, printed by provider name only, and
+  refuse JSON, YAML and Marshal. They must name the credential each provider
+  sends, so RubyLLM never finds one of its own: Vertex AI needs its
+  `service_account_key` (without one RubyLLM would ask Google's application
+  default credentials, the worker's own identity), Azure an `api_key` or
+  `ai_auth_token`, Bedrock its `api_key` and `secret_key`, every other
+  remote provider its `api_key`; only a local Ollama or GPUStack takes none.
+  Each secret is at least 16 bytes (a shorter one could not be told apart
+  from ordinary text), so a host's test fixtures need fake secrets of 16
+  bytes or more. A service account key must be one: type `service_account`,
+  a PEM `private_key`, a `client_email` and a `project_id` (without one,
+  googleauth runs the worker's own `gcloud` for a project at every
+  attempt). A block whose credentials Smith's check refuses fails with
+  `ProviderCredentialsError` saying why (it names options and fields, never
+  values). Every attempt
+  of the run (its fallbacks, repairs, retries, streams, paints, parallel
+  branches, nested workflows without their own declaration, batch captures)
+  is built on one RubyLLM context holding only those credentials: every
+  provider's secret and endpoint options cleared, other settings such as
+  `openai_use_system_role` kept, and no instrumenter, so no subscriber sees
+  a raw request. A model whose provider the credentials do not cover is
+  skipped before anything is sent, and observed as skipped by the eval
+  seam. Errors are scrubbed before Smith reads them, and anything raised
+  while Smith handles one has the scrubbed error as its cause: a provider's
+  error becomes a copy of its class with any 12-character run of a secret
+  removed (as written, JSON-escaped or URL-encoded; a base64 form is not
+  looked for), or Smith's fixed text for a refused key, credit or model; any
+  other error holding part of a secret becomes `Smith::ScrubbedError`, as
+  does an error the scrub itself fails on (its class named alone). A
+  service account key is scrubbed by its secret parts (the private key's
+  body and its id), never as a whole document, whose ordinary text (an
+  address, the project) would otherwise turn unrelated errors into
+  `ScrubbedError`. New errors: `ProviderCredentialsMissing` (kind
+  `credentials_missing`), `ProviderCredentialsRefused` (`key_refused` for a
+  401, which also asks the block again at the next attempt, or `permission`
+  for a 403), `ProviderCredentialsError` (the block raised; only its class
+  is named), `ScrubbedError` and `SecretSerializationError`; a 402 keeps its
+  class path with Smith's fixed text. A nested workflow fanned out over
+  items cannot take its own credentials' scope from the key its items are
+  given (`item_to`): item data, a model's answer perhaps, never chooses
+  whose keys a run uses. A class without `provider_credentials` runs exactly
+  as before, and nothing of this loads until a class declares them
+  (`Smith::ProviderCredentials` is autoloaded). Every RubyLLM touch point of
+  run credentials is listed in `Smith::ProviderOptions` (most are in it),
+  each with a contract spec, among them one that plants fake credentials
+  wherever a provider library finds its own (the environment, cloud SDK
+  files, RubyLLM's global configuration, Google's application default
+  credentials) and checks that every provider sends only what a run names.
+- Batch steps under run credentials: a credentialed run's requests reach
+  `batch_queue.enqueue` with `credentials_scope:` (its scope; the keyword
+  is not passed otherwise), so the host submits each scope's requests on
+  that scope's key: `Smith::Providers::Anthropic::Batches.new(credentials:)`
+  takes a `Smith::ProviderCredentials` and submits on it alone. Under the
+  fail-closed mode, `Batches.new` without `credentials:` or `config:`
+  raises `ProviderCredentialsMissing` rather than use RubyLLM's global key.
+  A batch result's usage is read without any key, so a worker that keeps
+  none in RubyLLM's global configuration reads it.
+- `Smith.config.require_run_credentials`, a fail-closed mode for a worker
+  serving many accounts' keys: a provider attempt made in no run with run
+  credentials (a class without them, a workflow started by hand inside a
+  step, a child run's class without them) raises
+  `ProviderCredentialsMissing` before anything is sent or any budget ledger
+  is asked. `Smith.config.run_credentials_instrumenter` (`:off` by default)
+  keeps RubyLLM's instrumenter in credentialed runs when `:keep`, which the
+  fail-closed mode refuses. Runtime readiness reports, for a credentialed
+  class or under the mode, a class that asks an agent (itself, or through a
+  nested workflow on its credentials) without the declaration; a class that
+  asks none, an abstract base or a compute-only workflow, needs none, and
+  a class is never judged by its nested or child classes, each judged on
+  its own. It also reports RubyLLM
+  writing response bodies (its logger at DEBUG, whether `config.logger`, a
+  Rails logger, `log_level` as an Integer, Symbol or String, or the logger
+  it already uses; or `log_stream_debug`), with the reason, a kept
+  instrumenter, a key left in RubyLLM's global configuration, cloud
+  credentials a cloud SDK would find in the environment or on the machine
+  (by name only, gcloud's own login among them; no run sends them), an
+  agent that sets its own RubyLLM context or an input named `context`, and a
+  nested class scoped by its items' key. `smith doctor`, under the mode,
+  checks RubyLLM's logging (with the reason), global keys, cloud
+  credentials on the machine, and names each loaded workflow class that asks
+  an agent and declares no `provider_credentials` (one only a credentialed
+  class nests aside).
 
 ### Changed
 
@@ -182,6 +273,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Fixed
 
+- A batch step no longer keeps its captured request's provider on the run
+  once the capture is over, failed or not: its configuration, keys
+  included, showed in `workflow.inspect` (on Ruby 4 every RubyLLM object
+  holding a configuration prints its keys).
 - `orchestrate` reads String-keyed structured replies. RubyLLM parses a
   structured reply as JSON, with String keys, and the step looked up the
   orchestrator's decision (`tasks`, `final`, `stop`) and each schema's

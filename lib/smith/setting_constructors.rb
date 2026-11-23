@@ -48,6 +48,41 @@ module Smith
       end
     end
 
+    # The fail-closed mode for run credentials (`provider_credentials`): true
+    # or false, and never true while a credentialed run's RubyLLM context
+    # keeps its instrumenter.
+    def require_run_credentials
+      lambda do |value|
+        unless [true, false].include?(value)
+          raise ArgumentError, "Smith.config.require_run_credentials must be true or false, got #{value.inspect}"
+        end
+
+        if value && Smith.config.run_credentials_instrumenter == :keep
+          raise ArgumentError, "Smith.config.require_run_credentials refuses run_credentials_instrumenter :keep"
+        end
+
+        value
+      end
+    end
+
+    # Whether a credentialed run's RubyLLM context keeps RubyLLM's
+    # instrumenter: :off (none, so no subscriber sees a raw request) or
+    # :keep, which the fail-closed mode refuses.
+    def run_credentials_instrumenter
+      lambda do |value|
+        unless %i[off keep].include?(value)
+          raise ArgumentError, "Smith.config.run_credentials_instrumenter must be :off or :keep, got #{value.inspect}"
+        end
+
+        if value == :keep && Smith.config.require_run_credentials
+          raise ArgumentError, "Smith.config.run_credentials_instrumenter :keep is refused while " \
+                               "require_run_credentials is on"
+        end
+
+        value
+      end
+    end
+
     # A host adapter: nil, or an object that answers `calls` (each named
     # with its arguments, as the message says).
     def adapter(name, calls)

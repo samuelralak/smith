@@ -35,12 +35,19 @@ module Smith
         ContentBytes.with(prepared_input) { attempt_candidates(agent_class, prepared_input, chain, shape, set_aside) }
       end
 
+      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity
+      # A candidate the run's credentials do not cover is passed over before
+      # its chat exists, so before any hold (ProviderCandidateSequence.of). The
+      # skip sits in the chain's loop, after the deadline and stream checks a
+      # failed candidate meets; a helper would add a name to every workflow.
       def attempt_candidates(agent_class, prepared_input, chain, shape, set_aside)
-        candidates = ProviderCandidateSequence.new(chain)
+        candidates = ProviderCandidateSequence.of(chain, @smith_run_credentials, agent_class)
         interrupted = nil
         candidates.each do |model_reference, index|
           check_deadline! if index.positive?
           withdraw_streamed(index.positive? ? :fallback : :retry)
+          next if candidates.passed_over?(agent_class, model_reference, index)
+
           attempt = attempt_model(agent_class, prepared_input, model_reference, shape:, attempt_index: index)
           return attempt if attempt.success?
 
@@ -52,9 +59,11 @@ module Smith
         # Fail closed: an empty candidate chain (agent without a model)
         # or any exhausted sequence must surface a typed diagnostic, not
         # the sequence itself destructured into nils.
+        candidates.none_covered!
         raise Smith::WorkflowError,
               "no executable model candidate for #{agent_class}; declare a model or fallback_models"
       end
+      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity
 
       # Returns when another candidate is left to try, the failed attempt's
       # captures set aside. A candidate that met an interrupting error (an
@@ -118,25 +127,37 @@ module Smith
         raise Smith::AgentError, "invalid model block result for #{agent_class}: #{e.message}"
       end
 
-      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one provider
-      # attempt is a single cohesive lifecycle (identity, prepared chat,
-      # observed model, timed completion, prefix accounting on failure);
+      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
+      # One provider attempt is a single cohesive lifecycle (identity, prepared
+      # chat, observed model, timed completion, prefix accounting on failure);
       # splitting it would scatter the rescue-path accounting away from what it
-      # accounts for. Both recordings pass what the attempt's observation
-      # reads (ProviderCallTiming); a helper would add a name to every workflow.
+      # accounts for. Both recordings pass what the attempt's observation reads
+      # (ProviderCallTiming); a helper would add a name to every workflow. A
+      # credentialed run's error is scrubbed first and raised again in its
+      # place (RunCredentials), so the outer rescue handles the scrubbed one:
+      # Ruby makes it, never the original, the cause of anything raised there.
       def attempt_model(agent_class, prepared_input, model_reference, shape:, attempt_index:)
         facts = { attempt_id: SecureRandom.uuid, attempt_index:, agent_name: agent_class.register_as }
-        chat = prepared_attempt_chat(agent_class, prepared_input, model_reference, shape)
-        message_count = chat_message_count(chat)
-        observed_reference = observed_model_reference(chat, fallback: model_reference)
-        timer = ProviderCallTiming::Timer.start
-        response, stream, mode, call_facts = captured_completion(chat, observed_reference, collected = [], facts)
-        timer.stop
-        completion = Completion.from_messages(response:, messages: new_chat_messages(chat, message_count), stream:,
-                                              mode:)
+        begin
+          chat = prepared_attempt_chat(agent_class, prepared_input, model_reference, shape)
+          message_count = chat_message_count(chat)
+          observed_reference = observed_model_reference(chat, fallback: model_reference)
+          timer = ProviderCallTiming::Timer.start
+          response, stream, mode, call_facts = captured_completion(chat, observed_reference, collected = [], facts)
+          timer.stop
+          completion = Completion.from_messages(response:, messages: new_chat_messages(chat, message_count), stream:,
+                                                mode:)
 
-        completed_provider_attempt(completion, observed_reference, timer, facts.merge(call_facts.to_h),
-                                   agent_class:, chat:, sent_count: message_count)
+          completed_provider_attempt(completion, observed_reference, timer, facts.merge(call_facts.to_h),
+                                     agent_class:, chat:, sent_count: message_count)
+        rescue StandardError => e
+          raise unless @smith_run_credentials
+
+          scrubbed = @smith_run_credentials.scrubbed(e)
+          raise if scrubbed.equal?(e)
+
+          raise scrubbed, cause: nil
+        end
       rescue StandardError => e
         timer&.stop
         observed_reference ||= observed_model_reference(chat, fallback: model_reference)
@@ -150,7 +171,7 @@ module Smith
 
         attempt
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
+      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
       def prepared_attempt_chat(agent_class, prepared_input, model_reference, shape)
         chat = attempt_chat(agent_class, model_reference)

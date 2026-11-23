@@ -43,6 +43,14 @@ module Smith
         "Smith::PersistedStateTooLarge" => lambda { |record|
           Smith::PersistedStateTooLarge.from_details(record.fetch(:error_details), message: record[:error_message])
         },
+        # Run credentials' failures keep their class and kind, as a host or an
+        # eval run reads them by class.
+        "Smith::ProviderCredentialsMissing" => lambda { |record|
+          Smith::ProviderCredentialsMissing.from_details(record.fetch(:error_details), message: record[:error_message])
+        },
+        "Smith::ProviderCredentialsRefused" => lambda { |record|
+          Smith::ProviderCredentialsRefused.from_details(record.fetch(:error_details), kind: record.fetch(:error_kind))
+        },
         **Smith::OutputFailure.restorers.transform_values do |restore|
           ->(record) { restore.call(record.fetch(:error_details), record[:error_message]) }
         end

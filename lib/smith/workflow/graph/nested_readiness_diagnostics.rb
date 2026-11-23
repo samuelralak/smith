@@ -26,9 +26,19 @@ module Smith
         private
 
         def diagnostics_for(entry)
-          entry.fetch(:report).diagnostics.map do |diagnostic|
-            nested_diagnostic(entry.fetch(:transition), entry.fetch(:workflow_class), diagnostic)
+          transition = entry.fetch(:transition)
+          entry.fetch(:report).diagnostics.filter_map do |diagnostic|
+            next if parent_credentials?(transition, diagnostic)
+
+            nested_diagnostic(transition, entry.fetch(:workflow_class), diagnostic)
           end
+        end
+
+        # A class lacking run credentials is judged on its own, never its
+        # parent by it (ruled 2026-11-23): a nested workflow runs in process
+        # on its parent's credentials, and a child run is a run of its own.
+        def parent_credentials?(_transition, diagnostic)
+          diagnostic.code == :run_credentials_required
         end
 
         def cycle_diagnostics

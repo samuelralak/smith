@@ -95,6 +95,10 @@ module Smith
           return Smith::ContentUnavailable.new("#{model_reference} takes none of this content: #{error.message}")
         end
 
+        # A refused key, credit or model in a credentialed run reads as Smith's own words.
+        refused = @smith_run_credentials&.refusal(error, model_reference)
+        return refused if refused
+
         Smith::ProviderPermanentFailure.new(
           error.message,
           provider: model_reference.provider,

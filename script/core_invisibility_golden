@@ -58,6 +58,10 @@
 # plain: nothing installed. observer: a test observer installed, no trial.
 # trial: the observer installed and every scenario inside a trial scope.
 # concurrent: as trial, only the concurrent scenarios, branches in parallel.
+# credentialed: as trial, every workflow declaring provider_credentials that
+# answer with the local server's keys, and none left in RubyLLM's global
+# configuration (slice 1c). fail_closed: nothing declared, and
+# Smith.config.require_run_credentials on. Both run on this tree only.
 
 require "json"
 require "optparse"
@@ -67,7 +71,7 @@ require_relative "golden/release_baseline"
 golden = File.expand_path("../spec/fixtures/core_invisibility_golden.json", __dir__)
 options = { mode: "plain", write: nil, sources: [], diff: false, release: nil, harness: nil }
 OptionParser.new do |parser|
-  parser.on("--mode MODE", %w[plain observer trial concurrent]) { options[:mode] = _1 }
+  parser.on("--mode MODE", %w[plain observer trial concurrent credentialed fail_closed]) { options[:mode] = _1 }
   parser.on("--write [PATH]") { options[:write] = _1 || golden }
   parser.on("--write-release [PATH]") { options[:release] = _1 || CoreInvisibility::ReleaseBaseline::PATH }
   parser.on("--commit REF") { options[:sources] << [:from_commit, _1] }
@@ -127,6 +131,7 @@ require_relative "../spec/support/sse_server"
 end
 
 CoreInvisibility::Hooks.install!
+CoreInvisibility.mode = options[:mode]
 require_relative "golden/scenarios"
 
 if options[:write]

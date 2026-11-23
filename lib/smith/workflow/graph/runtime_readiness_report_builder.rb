@@ -29,9 +29,21 @@ module Smith
         private
 
         def runtime_diagnostics(bindings, nested)
-          [*bindings.to_a, *RunLauncherDiagnostic.new(graph).to_a, *DurableRetryDiagnostic.new(graph).to_a,
-           *StreamDiagnostic.new(graph).to_a, *BatchDiagnostic.new(graph).to_a,
-           *BudgetLedgerDiagnostic.new(graph).to_a, *nested.to_a]
+          checks = [RunLauncherDiagnostic, DurableRetryDiagnostic, StreamDiagnostic, BatchDiagnostic,
+                    BudgetLedgerDiagnostic]
+          [*bindings.to_a, *checks.flat_map { _1.new(graph).to_a }, *run_credentials_diagnostics, *nested.to_a]
+        end
+
+        # Only for a class that declares provider_credentials, or under the
+        # fail-closed mode, and loaded only then: any other class reads as
+        # before.
+        def run_credentials_diagnostics
+          klass = graph.workflow_class
+          declared = klass.respond_to?(:provider_credentials) && !klass.provider_credentials.nil?
+          return [] unless declared || Smith.config.require_run_credentials
+
+          require_relative "../../run_credentials_readiness"
+          RunCredentialsReadiness.new(graph).to_a
         end
 
         def metrics(topology_report, diagnostics, bindings, nested)

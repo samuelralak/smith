@@ -53,7 +53,11 @@ module Smith
       # and spends within its own budget when it is given one.
       def new_nested_workflow(child_class, item: nil, ledger: @ledger)
         context = @context.dup
-        context[item.first] = item.last if item
+        if item
+          # An item is data, a model's answer perhaps: never whose keys a run uses.
+          RunCredentials::Scoping.not_item!(child_class, item.first) if child_class.provider_credentials
+          context[item.first] = item.last
+        end
         StepIO.with_inherited_untrusted_keys(untrusted_context_keys) do
           Budget::HostLedger.inheriting(method(:run_budget_ledger)) do
             ResponseMemo.inheriting([*@memo_attempts, @step_attempt.to_i]) do
@@ -74,6 +78,10 @@ module Smith
         child.instance_variable_set(:@execution_namespace, @execution_namespace)
         child.instance_variable_set(:@inherited_deadline, wall_clock_deadline)
         child.instance_variable_set(:@inherited_scoped_artifacts, Smith.scoped_artifacts)
+        # A nested workflow without provider_credentials of its own sends on the run's.
+        if @smith_run_credentials && !child_class.provider_credentials
+          child.instance_variable_set(:@smith_run_credentials, @smith_run_credentials)
+        end
         child.instance_variable_set(
           :@split_step_active_execution_authorization,
           @split_step_active_execution_authorization

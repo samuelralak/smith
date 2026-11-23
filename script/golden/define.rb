@@ -23,10 +23,13 @@ module CoreInvisibility
       klass
     end
 
+    # In the credentialed mode each workflow runs on its own credentials
+    # (slice 1c), declared after its body, with no scope keys.
     def workflow(name, &)
       klass = Object.const_set(name, Class.new(Smith::Workflow))
       klass.include(Hosts::Stepped)
       klass.class_exec(&)
+      klass.provider_credentials { CoreInvisibility.run_credentials } if CoreInvisibility.mode == "credentialed"
       klass
     end
 

@@ -43,6 +43,9 @@ module Smith
 
     def workflow(name, ...) = @workflow.__send__(name, ...)
 
+    # The run's credentials (Smith::RunCredentials), when it has them.
+    def run_credentials = @workflow.instance_variable_get(:@smith_run_credentials)
+
     def check_image_agent!
       refused = image_refusals.select { |_, given| given }.keys
       return if refused.empty?
@@ -65,17 +68,36 @@ module Smith
     # The image the provider answered reaches the record through a local
     # that ends with this attempt, kept or not, so nothing holds it longer
     # than 0.16.0 does (its completion holds the kept image's ref alone).
+    # A credentialed run's error is scrubbed first and raised again in its
+    # place (RunCredentials), so failed_paint handles the scrubbed one: Ruby
+    # makes it, never the original, the cause of anything raised there.
     def painting_attempt(prepared_input, model_reference)
-      chat = painting_chat(prepared_input, model_reference)
-      observed = workflow(:observed_model_reference, chat, fallback: model_reference)
-      timer = Agent::ProviderCallTiming::Timer.start
-      sent = PaintInput.of(chat.messages)
-      image = nil
-      completion = painted(chat, sent, observed) { image = _1 }
-      workflow(:completed_provider_attempt, completion, observed, timer.stop, @facts,
-               agent_class: @agent_class, request: sent, image:)
+      begin
+        chat = painting_chat(prepared_input, model_reference)
+        observed = workflow(:observed_model_reference, chat, fallback: model_reference)
+        timer = Agent::ProviderCallTiming::Timer.start
+        sent = PaintInput.of(chat.messages)
+        image = nil
+        completion = painted(chat, sent, observed) { image = _1 }
+        workflow(:completed_provider_attempt, completion, observed, timer.stop, @facts,
+                 agent_class: @agent_class, request: sent, image:)
+      rescue StandardError => e
+        scrubbed!(e)
+      end
     rescue StandardError => e
       failed_paint(e, observed || model_reference, timer&.stop, sent, image)
+    end
+
+    # Raises the error again: as it is, or, in a credentialed run, scrubbed
+    # in its place with no cause (an unkept image's reason scrubbed, its
+    # usage kept).
+    def scrubbed!(error)
+      raise unless run_credentials
+
+      scrubbed = PaintedAnswer.scrubbed(error) { run_credentials.scrubbed(_1) }
+      raise if scrubbed.equal?(error)
+
+      raise scrubbed, cause: nil
     end
 
     # A paint's failure traced as any attempt's: one whose outcome is
@@ -83,7 +105,9 @@ module Smith
     # transport's error; an image that was drawn and billed but could not be
     # kept has its usage recorded before its error goes on. The paint's
     # input and the image (one that came back and could not be kept) are
-    # passed as they are, for the attempt's record.
+    # passed as they are, for the attempt's record. A credentialed run's
+    # error is already scrubbed (painting_attempt), an unkept image's reason
+    # with it, which is raised with no cause.
     def failed_paint(error, model_reference, timer, sent, image)
       usages, error = PaintedAnswer.unkept(error)
       workflow(:record_billed_usages, @agent_class, usages, :partial_attempt, model_reference,
@@ -91,13 +115,15 @@ module Smith
       error = outcome_uncertain(error) if Providers::RequestOutcome.uncertain?(error)
       attempt = workflow(:failed_provider_attempt, error, model_reference, timer, @facts, usages,
                          agent_class: @agent_class, request: sent, image:)
+      raise error, cause: nil if error.is_a?(ScrubbedError)
       raise error unless workflow(:provider_failure?, error) || workflow(:unsupported_content?, error)
 
       attempt
     end
 
     def painting_chat(prepared_input, model_reference)
-      chat = @agent_class.chat(**model_reference.chat_options, **workflow(:bridge_workflow_inputs, @agent_class))
+      chat = @agent_class.chat(**model_reference.chat_options, **(run_credentials&.chat_options || {}),
+                               **workflow(:bridge_workflow_inputs, @agent_class))
       sendable = chat.respond_to?(:with_context) && chat.respond_to?(:with_model)
       chat = workflow(:sent_once, chat, @agent_class) if sendable
       provider = workflow(:observed_model_reference, chat, fallback: model_reference).provider
@@ -132,10 +158,11 @@ module Smith
       Providers::RequestHolds.within(provider, ledger, @facts[:attempt_id], &paint)
     end
 
-    # Raised inside the transport error's rescue, so it is the cause.
+    # Its cause is the transport's error, as Smith took it (scrubbed, in a
+    # credentialed run).
     def outcome_uncertain(error)
       raise RequestOutcomeUncertain,
-            "the request was sent and no answer came (#{error.class}); it may have been billed"
+            "the request was sent and no answer came (#{error.class}); it may have been billed", cause: error
     rescue RequestOutcomeUncertain => e
       e
     end

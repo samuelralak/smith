@@ -69,6 +69,15 @@ module Smith
       # [the usages billed, the error that goes on]: an image that could
       # not be kept gives its usage and why; any other error, none and itself.
       def unkept(error) = error.is_a?(Unkept) ? [[error.usage].compact, error.reason] : [[], error]
+
+      # The error as the block takes it (a run's credentials scrub it), or
+      # an unkept image's reason so taken, its usage kept for the record.
+      def scrubbed(error)
+        return yield(error) unless error.is_a?(Unkept)
+
+        reason = yield(error.reason)
+        reason.equal?(error.reason) ? error : Unkept.new(error.usage, reason)
+      end
     end
   end
 end

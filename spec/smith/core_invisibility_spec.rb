@@ -299,6 +299,18 @@ module CoreInvisibilityHarness
       ].map { _1.merge("slice" => "RubyLLM 2.x pins") }.freeze
     end
 
+    # The names 0.16.0 gave every host class and where each went, as
+    # allowances: the private methods (`instance`) or the constants.
+    returned = lambda do |methods|
+      CoreInvisibilityHarness::RETURNED_TO_0_15.filter_map do |change, home|
+        next unless change.include?(" instance ") == methods
+
+        host = change.include?(" Smith::Agent ") ? "agent" : "workflow"
+        { "surface" => change, "why" => "a name 0.16.0 gave every host #{host}, now #{home}",
+          "slice" => "016 findings" }
+      end
+    end
+
     # Every way the tree differs from the release baseline, reviewed: a host
     # surface change ("+ <class> <table> <name>", which the harness's
     # `allowed?` must take), a scenario's facts ({fact => [release's,
@@ -306,11 +318,14 @@ module CoreInvisibilityHarness
     # that added it measured, so they hold until a release's baseline has it.
     # Each says why and which slice; one the tree no longer shows fails too.
     CHANGES = [
-      *CoreInvisibilityHarness::RETURNED_TO_0_15.map do |change, home|
-        host = change.include?(" Smith::Agent ") ? "agent" : "workflow"
-        { "surface" => change, "why" => "a name 0.16.0 gave every host #{host}, now #{home}",
-          "slice" => "016 findings" }
-      end,
+      *returned.call(true),
+      { "surface" => "+ Smith::Workflow singleton public provider_credentials",
+        "why" => "the run credentials DSL macro (additions design 3.3), the one macro the harness allows",
+        "slice" => "1c run credentials" },
+      { "surface" => "+ Smith::Workflow singleton public smith_provider_credentials_scope_keys",
+        "why" => "the declared scope keys' reader the design names, prefixed so no host name collides",
+        "slice" => "1c run credentials" },
+      *returned.call(false),
       { "scenario" => "orchestrate", "random_draws" => [11, 9],
         "why" => "an orchestrate worker's execution_id is named by its position, no longer drawn (two workers)",
         "slice" => "memo restore" },
@@ -779,6 +794,100 @@ RSpec.describe "Smith core invisibility: an app that does not use the eval seam 
         records.each do |sink, value|
           expect(harness.text(run["scenarios"][name][sink])).to eq(harness.text(value)), "#{mode} #{name} #{sink}"
         end
+      end
+    end
+  end
+
+  # Slice 1c: every path on a run's own credentials, and nothing sent without
+  # them under the fail-closed mode, each on this tree against its plain mode.
+  describe "run credentials on every path" do
+    let(:harness) { CoreInvisibilityHarness }
+    let(:run_key) { "sk-golden-run-key-0123456789abcdef" }
+
+    # The records with the run's saved scope (an empty one: no scope keys),
+    # the scope its batch requests are queued with, and its key taken out,
+    # as the plain mode has none of them, and a provider error's causes,
+    # which its scrubbed copy has none of (additions design 3.6): the causes
+    # recorded after it, and its trace's cause class. A refusal for want of
+    # credit (spend_limit_refusal) carries Smith's fixed text in a
+    # credentialed run, the provider's in a plain one (design 3.5): both read
+    # as one.
+    def without_credentials(value)
+      case value
+      when Hash
+        kept = without_provider_causes(value.except(":provider_credentials_scope", ":credentials_scope"))
+        kept.transform_values { without_credentials(_1) }
+      when Array then value.map { without_credentials(_1) }
+      when String
+        value.gsub('"provider_credentials_scope":{},', "").gsub(out_of_credit, "OUT OF CREDIT")
+             .sub(/\A(Bearer )?(test|#{run_key})\z/) { "#{Regexp.last_match(1)}KEY" }
+      else value
+      end
+    end
+
+    def out_of_credit
+      Regexp.union("You have reached your API usage limits: your organization has crossed its monthly API usage " \
+                   "threshold.", /(anthropic|the provider) reports the account is out of credit \(HTTP 402\)/)
+    end
+
+    def provider_error?(name) = name.to_s.start_with?("RubyLLM::")
+
+    def without_provider_causes(record)
+      record = record.except(":error_cause_class") if provider_error?(record[":error_class"])
+      causes = record["causes"]
+      return record unless causes.is_a?(Array)
+
+      kept = provider_error?(record["class"]) ? 0 : causes.index { provider_error?(_1["class"]) }&.succ
+      kept ? record.merge("causes" => causes.first(kept)) : record
+    end
+
+    it "gives the plain mode's records on every path but the one context a credentialed run builds" do
+      plain = harness.run("plain")
+      credentialed = harness.run("credentialed")
+      expect(credentialed["scenarios"].keys).to eq(plain["scenarios"].keys)
+      expect(credentialed["host_surface"]).to eq(plain["host_surface"])
+
+      plain["scenarios"].each do |name, records|
+        run = credentialed["scenarios"][name]
+        records.except("counts").each do |sink, value|
+          expect(harness.text(without_credentials(run[sink]))).to eq(harness.text(without_credentials(value))),
+                                                                  "#{name} #{sink}"
+        end
+        built = run["counts"].to_h { |label, count| [label, count - records["counts"][label]] }.reject { _2.zero? }
+        expect(built.keys).to eq(%w[RubyLLM.context RubyLLM::Context.new]), name
+        expect(built.values.uniq.length).to eq(1), name
+        expect(run["requests"].map { |request| request[2].values_at("x-api-key", "authorization").compact.sole })
+          .to all(end_with(run_key)), name
+        expect(run["states"].map { _1[":provider_credentials_scope"] }.uniq).to eq([{}]), name
+        expect(run["batches"].to_a.map { _1[":credentials_scope"] }).to all(eq({})), name
+        # The canary: the run's key, or any 12-character run of it, only on the wire.
+        windows = (0..(run_key.length - 12)).map { run_key[_1, 12] }
+        held = run.except("requests").select { |_sink, value| windows.any? { harness.text(value).include?(_1) } }
+        expect(held.keys).to eq([]), name
+      end
+    end
+
+    it "observes each provider attempt once on every credentialed path, as in a trial" do
+      credentialed = harness.run("credentialed")
+
+      credentialed["scenarios"].each do |name, scenario|
+        traced = harness.provider_calls(scenario)
+        traced = traced.reject { _1[":workflow"] == "GoldenCallChildWorkflow" } if name == "inline_call_child"
+        observed = credentialed["observations"].fetch(name).map { _1["attempt_id"] }
+        expect(observed).to eq(traced.map { _1[":attempt_id"] }), name
+      end
+    end
+
+    it "fails closed on every path: no request, ledger call, provider call or usage, each a missing credential" do
+      closed = harness.run("fail_closed")
+      expect(closed["scenarios"].keys).to eq(harness.run("plain")["scenarios"].keys)
+
+      closed["scenarios"].each do |name, scenario|
+        expect(%w[requests ledger memo batches].to_h { [_1, scenario[_1]] }).to eq(
+          "requests" => [], "ledger" => [], "memo" => [], "batches" => []
+        ), name
+        expect([harness.provider_calls(scenario), scenario["usage_entries"].flatten]).to eq([[], []]), name
+        expect(harness.text(scenario)).to include("Smith::ProviderCredentialsMissing"), name
       end
     end
   end

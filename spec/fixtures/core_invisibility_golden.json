@@ -3,12 +3,12 @@
   "smith": {
     "version": "0.16.0",
     "source": "index",
-    "built_on": "5b0f2a14cd5a1025c64cb2b92d70f85518ca0ec3",
+    "built_on": "106f429d83d2e6795222b2294abc57a8b7c9f4a7",
     "parts": {
-      "lib": "2e835c9c1d07f6ea8fe92f95c91c9fb6b167af27",
+      "lib": "5cb5f9364d38aab30ca49ca9209a1c454afe2834",
       "smith-agents.gemspec": "c53afa043a29d0108246de68b76d808a268e1ec6",
-      "script/core_invisibility_golden": "5180d12c15431cbdbe0cfa534b347973f0d89119",
-      "script/golden": "3199c73519c4fbc2eae647145a416ad693555a66",
+      "script/core_invisibility_golden": "fdb1a74b66a109c5c15fa6d37f172e98e8d6eecb",
+      "script/golden": "aa89720d22b18d707c3ce65f3431fd22d91cf2ad",
       "spec/support/sse_server.rb": "4941e3ea43940f40dae927586e75bb999856d198"
     }
   },
@@ -881,6 +881,7 @@
           "persistence_schema_version",
           "persistence_ttl",
           "pipeline",
+          "provider_credentials",
           "recover_prepared_step",
           "renamed_state",
           "renamed_states",
@@ -896,6 +897,7 @@
           "seed_messages",
           "seed_validation",
           "session",
+          "smith_provider_credentials_scope_keys",
           "state",
           "stuck_for?",
           "stuck_payload?",

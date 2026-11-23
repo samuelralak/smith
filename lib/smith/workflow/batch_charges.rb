@@ -58,11 +58,13 @@ module Smith
         kwargs[:model]
       end
 
-      # A result's usage, as the provider's own parser reads its message.
+      # A result's usage, as the provider's own parser reads its message, on
+      # its chat module: no provider is built, so no key is needed (a worker
+      # serving many accounts' keys keeps none in RubyLLM's configuration).
       def batch_reply_usage(message)
-        reply = RubyLLM::Providers::Anthropic.new(RubyLLM.config)
-                                             .send(:parse_completion_response,
-                                                   Providers::BatchExchange::Response.new(message.to_h))
+        reply = RubyLLM::Providers::Anthropic::Chat.parse_completion_response(
+          Providers::BatchExchange::Response.new(message.to_h)
+        )
         Agent::ProviderUsage.from_message(reply)&.new(mode: :batch)
       end
 

@@ -224,6 +224,24 @@ module Smith
   private_class_method :snapshot_value
 end
 
+# Run credentials (a workflow's `provider_credentials`, Smith::RunCredentials),
+# declared beside Smith's other settings.
+#
+# What a `provider_credentials` block returns, loaded when first named, so an
+# app that never uses run credentials loads none of them.
+Smith.autoload :ProviderCredentials, File.expand_path("smith/provider_credentials", __dir__)
+# When true, the fail-closed mode for a worker serving many accounts' keys: a
+# provider attempt made in no run with run credentials raises
+# ProviderCredentialsMissing before anything is sent or any budget ledger is
+# asked, and runtime readiness refuses a workflow class without them.
+Smith.setting :require_run_credentials, default: false,
+                                        constructor: Smith::SettingConstructors.require_run_credentials
+# :off (default): a credentialed run's RubyLLM context has no instrumenter, so
+# no subscriber sees a raw request. :keep keeps RubyLLM's, which the
+# fail-closed mode refuses.
+Smith.setting :run_credentials_instrumenter, default: :off,
+                                             constructor: Smith::SettingConstructors.run_credentials_instrumenter
+
 # Leaf modules (no internal dependencies)
 require_relative "smith/types"
 require_relative "smith/errors"

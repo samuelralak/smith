@@ -27,6 +27,8 @@ module Smith
           subclass.instance_variable_set(:@budget_config, @budget_config&.dup)
           subclass.instance_variable_set(:@budget_ledger_builder, @budget_ledger_builder)
           subclass.instance_variable_set(:@budget_ledger_scope_keys, @budget_ledger_scope_keys)
+          subclass.instance_variable_set(:@provider_credentials_builder, @provider_credentials_builder)
+          subclass.instance_variable_set(:@provider_credentials_scope_keys, @provider_credentials_scope_keys)
           subclass.instance_variable_set(:@max_transitions_count, @max_transitions_count)
           subclass.instance_variable_set(:@guardrails_class, @guardrails_class)
           subclass.instance_variable_set(:@context_manager_class, @context_manager_class)
@@ -98,6 +100,24 @@ module Smith
         end
 
         def budget_ledger_scope_keys = @budget_ledger_scope_keys || []
+
+        # The run's own provider keys (Smith::RunCredentials): the block gets
+        # the run's scope, the values `scope_keys` have in its trusted context
+        # when it is created, as a Smith::Scope (String keys, frozen, kept with
+        # the run), and returns a Smith::ProviderCredentials, or nil. It is
+        # asked at the run's first provider request in each process, and its
+        # answer is never persisted; the run's requests go out on it alone.
+        # With no arguments, the block (nil when none is declared).
+        def provider_credentials(*scope_keys, &block)
+          return @provider_credentials_builder if scope_keys.empty? && !block
+          raise ArgumentError, "provider_credentials needs a block that returns the run's credentials" unless block
+
+          require_relative "../run_credentials"
+          @provider_credentials_scope_keys = RunCredentials::Scoping.keys!(scope_keys)
+          @provider_credentials_builder = block
+        end
+
+        def smith_provider_credentials_scope_keys = @provider_credentials_scope_keys || []
 
         def max_transitions(count = nil)
           return @max_transitions_count if count.nil?

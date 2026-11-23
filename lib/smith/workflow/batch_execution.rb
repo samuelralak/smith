@@ -86,7 +86,10 @@ module Smith
       end
 
       # The request the agent's call would send (BatchExchange throws it out
-      # of the call before anything is sent), and its hold.
+      # of the call before anything is sent), and its hold. The capture holds
+      # the provider, its key with it (on Ruby 4 every RubyLLM object holding
+      # a configuration prints its keys), so the run keeps none of it once
+      # the capture is over, failed or not, but the hold.
       def capture_batch_request(agent_class, prepared_input, **call)
         @batch_capture = nil
         request = catch(Providers::BatchExchange::CAPTURED) do
@@ -97,6 +100,8 @@ module Smith
           @batch_capturing = false
         end
         [request || raise(BatchModeUnavailable, "a batch step's agent made no provider request"), @batch_capture.hold]
+      ensure
+        @batch_capture = nil
       end
 
       # `position` tells apart the waits of one attempt (an optimize step's
@@ -138,8 +143,9 @@ module Smith
       def enqueue_requests(captured)
         ids = captured.requests.to_h { |branch_key, request| [Batch.custom_id(captured.token, branch_key), request] }
         ids.each do |custom_id, request|
+          # A credentialed run's requests also go with its scope (RunCredentials#queued).
           Smith.config.batch_queue.enqueue(custom_id:, await_token: captured.token, request:,
-                                           execution_key: @persistence_key)
+                                           execution_key: @persistence_key, **Hash(@smith_run_credentials&.queued))
           # Handed off, it may be sent: its hold stays until its result, or
           # expires.
           @batch_holds&.delete(custom_id)
