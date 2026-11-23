@@ -1,0 +1,271 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:smith:evals:1:dataset-manifest",
+  "title": "Smith dataset manifest (format version 1, frozen in slice 1a)",
+  "description": "manifest.json beside samples.jsonl. Holds the dataset's version, its four content hashes and its one split assignment, which every suite on this version uses. Built by Smith::Evals::Dataset.build_manifest; verified at every eval run's start.",
+  "type": "object",
+  "required": [
+    "format",
+    "format_version",
+    "name",
+    "version",
+    "created_at",
+    "created_by",
+    "samples_file",
+    "samples_format",
+    "sample_count",
+    "hashes",
+    "split_rule",
+    "split_assignment",
+    "split_counts",
+    "hand_assigned",
+    "clusters",
+    "labels",
+    "retention",
+    "previous_version",
+    "resplits"
+  ],
+  "properties": {
+    "format": {
+      "const": "smith.evals.dataset_manifest"
+    },
+    "format_version": {
+      "$ref": "urn:smith:evals:1:common#/$defs/format_version"
+    },
+    "name": {
+      "$ref": "urn:smith:evals:1:common#/$defs/name"
+    },
+    "version": {
+      "description": "SHA-256 of the canonical JSON {format: 'smith.evals.dataset/1', inputs, labels, splits, metadata} (the four hashes below).",
+      "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+    },
+    "created_at": {
+      "$ref": "urn:smith:evals:1:common#/$defs/timestamp"
+    },
+    "created_by": {
+      "$ref": "urn:smith:evals:1:common#/$defs/nullable_actor"
+    },
+    "samples_file": {
+      "description": "A file in the dataset's folder: no path separator, no control character, not . or ..; a link that resolves outside the folder, or anything but a regular file, is refused.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^(?!\\.\\.?$)[^/\\\\\\u0000-\\u001f\\u007f]+$"
+    },
+    "samples_format": {
+      "const": "smith.evals.sample/1"
+    },
+    "sample_count": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "hashes": {
+      "description": "Each: SHA-256 over lines of canonical JSON, one per sample in id order (UTF-16 code units), each followed by a line feed. See design.md section 8.2.",
+      "type": "object",
+      "required": [
+        "inputs",
+        "labels",
+        "splits",
+        "metadata"
+      ],
+      "properties": {
+        "inputs": {
+          "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+        },
+        "labels": {
+          "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+        },
+        "splits": {
+          "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+        },
+        "metadata": {
+          "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+        }
+      }
+    },
+    "split_rule": {
+      "type": "object",
+      "required": [
+        "method",
+        "seed",
+        "key",
+        "shares"
+      ],
+      "properties": {
+        "method": {
+          "const": "hash_threshold"
+        },
+        "seed": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "key": {
+          "description": "cluster_or_id: a sample's cluster key, or its id when it has none.",
+          "const": "cluster_or_id"
+        },
+        "shares": {
+          "type": "object",
+          "required": [
+            "holdout",
+            "calibration"
+          ],
+          "properties": {
+            "holdout": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "calibration": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        }
+      }
+    },
+    "split_assignment": {
+      "description": "Every sample id under exactly one split, each list sorted by UTF-16 code units.",
+      "type": "object",
+      "required": [
+        "dev",
+        "holdout",
+        "calibration"
+      ],
+      "properties": {
+        "dev": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:smith:evals:1:common#/$defs/sample_id"
+          },
+          "uniqueItems": true
+        },
+        "holdout": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:smith:evals:1:common#/$defs/sample_id"
+          },
+          "uniqueItems": true
+        },
+        "calibration": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:smith:evals:1:common#/$defs/sample_id"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "split_counts": {
+      "type": "object",
+      "required": [
+        "dev",
+        "holdout",
+        "calibration"
+      ],
+      "properties": {
+        "dev": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "holdout": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "calibration": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        }
+      },
+      "description": "Realized counts per split. Shares vary around the rule's (each sample's split depends only on its own key), so a screen shows these counts, never the rule's shares."
+    },
+    "hand_assigned": {
+      "description": "Samples whose own split field set their split (it wins over the rule).",
+      "$ref": "urn:smith:evals:1:common#/$defs/count"
+    },
+    "clusters": {
+      "description": "Distinct cluster keys; a sample with none counts as its own.",
+      "$ref": "urn:smith:evals:1:common#/$defs/count"
+    },
+    "labels": {
+      "type": "object",
+      "required": [
+        "human",
+        "ai",
+        "adjudicated",
+        "disputed",
+        "none"
+      ],
+      "properties": {
+        "human": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "ai": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "adjudicated": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "disputed": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "none": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        }
+      }
+    },
+    "retention": {
+      "description": "Samples with an expiry, and samples marked keep. A sample built from a production run must have one or the other.",
+      "type": "object",
+      "required": [
+        "expiring",
+        "kept"
+      ],
+      "properties": {
+        "expiring": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "kept": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        }
+      }
+    },
+    "previous_version": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+        }
+      ]
+    },
+    "resplits": {
+      "description": "Every time Smith redrew the split rule on request (a new seed or new shares, which it refuses otherwise), oldest first: samples may have moved between splits, so the holdout was redrawn then. Smith's own rebuilds keep it while the previous manifest is there; deleting or editing the manifest loses it, so it is a note for readers, not evidence (holdout freshness is judged from stored records). Empty when the rule was never redrawn.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "at",
+          "by",
+          "previous_version",
+          "previous_split_rule"
+        ],
+        "properties": {
+          "at": {
+            "$ref": "urn:smith:evals:1:common#/$defs/timestamp"
+          },
+          "by": {
+            "$ref": "urn:smith:evals:1:common#/$defs/nullable_actor"
+          },
+          "previous_version": {
+            "description": "The dataset version whose split rule this re-split replaced.",
+            "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+          },
+          "previous_split_rule": {
+            "description": "The rule replaced.",
+            "$ref": "#/properties/split_rule"
+          }
+        }
+      }
+    }
+  }
+}

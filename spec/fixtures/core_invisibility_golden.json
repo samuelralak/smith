@@ -3,9 +3,9 @@
   "smith": {
     "version": "0.16.0",
     "source": "index",
-    "built_on": "1f9584605b6366ac1ffc013d4f33b52fb412ec90",
+    "built_on": "5b0f2a14cd5a1025c64cb2b92d70f85518ca0ec3",
     "parts": {
-      "lib": "179b0d3d737f617aacc3c89dba36cb7343b0c87c",
+      "lib": "2e835c9c1d07f6ea8fe92f95c91c9fb6b167af27",
       "smith-agents.gemspec": "c53afa043a29d0108246de68b76d808a268e1ec6",
       "script/core_invisibility_golden": "5180d12c15431cbdbe0cfa534b347973f0d89119",
       "script/golden": "3199c73519c4fbc2eae647145a416ad693555a66",

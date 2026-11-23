@@ -1,0 +1,175 @@
+{
+  "format": "smith.evals.suite_manifest",
+  "format_version": 1,
+  "name": "support.refund_agent_checks",
+  "dataset": {
+    "name": "refund-conversations",
+    "source": null,
+    "pinned_version": "sha256:b3b95d2c3a15ae14f03ee46007456399fcf4e328f35e71346863433c2e21a603"
+  },
+  "selection": {
+    "split": "dev",
+    "narrow": {
+      "tags_any": [
+        "refund"
+      ]
+    }
+  },
+  "subject": {
+    "kind": "definition",
+    "definition": {
+      "id": "refund-agent",
+      "digest": "sha256:67e8c6a8edf37c8e9805e502de6733016d03ead2b4ce5b872cd62d63357f0eb7"
+    },
+    "input": {
+      "conversation": {
+        "sample": "/input/messages"
+      },
+      "order": {
+        "sample": "/input/order"
+      },
+      "policy": {
+        "value": "standard"
+      }
+    },
+    "keep": [
+      "output"
+    ],
+    "until": null
+  },
+  "trials": {
+    "per_sample": 3,
+    "error_retries": 2,
+    "infrastructure_errors": [
+      "Net::ReadTimeout",
+      "PG::ConnectionBad"
+    ],
+    "reduce": "majority"
+  },
+  "scorers": [
+    {
+      "name": "decision",
+      "kind": "check",
+      "check": "equals",
+      "version": 1,
+      "scale": "binary",
+      "reduce": "majority",
+      "also": [],
+      "on_subject_failure": "fail",
+      "params": {
+        "actual": {
+          "output": "/decision"
+        },
+        "expected": {
+          "sample": "/expected/decision"
+        },
+        "ignore_case": true,
+        "trim": true
+      }
+    },
+    {
+      "name": "names_the_order",
+      "kind": "check",
+      "check": "contains",
+      "version": 1,
+      "scale": "binary",
+      "reduce": "majority",
+      "also": [],
+      "on_subject_failure": "fail",
+      "params": {
+        "actual": {
+          "output": "/reply"
+        },
+        "expected": {
+          "sample": "/input/order/number"
+        },
+        "ignore_case": false
+      }
+    },
+    {
+      "name": "greets",
+      "kind": "check",
+      "check": "pattern",
+      "version": 1,
+      "scale": "binary",
+      "reduce": "majority",
+      "also": [],
+      "on_subject_failure": "fail",
+      "params": {
+        "actual": {
+          "output": "/reply"
+        },
+        "pattern": "^(Hi|Hello|Dear)\\b",
+        "ignore_case": true
+      }
+    },
+    {
+      "name": "refund_in_policy",
+      "kind": "check",
+      "check": "number_in_range",
+      "version": 1,
+      "scale": "binary",
+      "reduce": "majority",
+      "also": [],
+      "on_subject_failure": "fail",
+      "params": {
+        "actual": {
+          "output": "/refund_amount"
+        },
+        "min": 0,
+        "max": 500,
+        "inclusive": true
+      }
+    },
+    {
+      "name": "looked_up_first",
+      "kind": "check",
+      "check": "tools_called",
+      "version": 1,
+      "scale": "binary",
+      "reduce": "majority",
+      "also": [],
+      "on_subject_failure": "score",
+      "params": {
+        "expected": [
+          "lookup_order",
+          "issue_refund"
+        ],
+        "match": "in_order",
+        "max_calls": 4
+      }
+    }
+  ],
+  "statistics": {
+    "level": 0.95,
+    "bootstrap_resamples": 2000,
+    "small_sample_threshold": 30
+  },
+  "recording": {
+    "content": true
+  },
+  "gates": [
+    {
+      "id": "decision_floor",
+      "kind": "at_least",
+      "scorer": "decision",
+      "reducer": "majority",
+      "target": 0.9
+    },
+    {
+      "id": "tools_floor",
+      "kind": "at_least",
+      "scorer": "looked_up_first",
+      "reducer": "majority",
+      "target": 0.95
+    }
+  ],
+  "budget": {
+    "max_cost_nanos": 2000000000
+  },
+  "labels": {
+    "accept": "human_only"
+  },
+  "judges": [],
+  "version": "sha256:65dd00beba8447339abdfad518fb4f7a9f02a27f37d5194522f8e4be40ce33d7"
+}

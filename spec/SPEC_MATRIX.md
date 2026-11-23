@@ -2198,6 +2198,26 @@ Purpose:
 
 - `require "smith/evals/statistics"` alone, in a child process, loads no workflow code and installs no observer; `require "smith"` defines none of slice 1a.1's constants; no file under `lib/smith/evals/`, nor canonical JSON or the scope type, names the provider gem; their RuboCop directives use only `disable` and `enable`, which RuboCop 1.85 reads as 1.92 does (Unreleased)
 
+### `spec/smith/evals/identity_spec.rb`
+
+Purpose:
+
+- pins `Smith::Evals::Identity` against `spec/fixtures/evals/identity_reference.json` (copied from the slice 1a contract examples, which the reference generator computed): all seven example records' eval run ids, their 693 trial ids, the sample ids digest, the plan digests, the code and data suites' versions and measure digests, the variant digests and the group id; each id's frame, the sample ids digest's frame and the plan digest's format field; the infrastructure errors in the suite version and the measure digest; an independent vector for the sample ids digest's UTF-16 order; random ids without a key; refused id parts; ids sorted by UTF-16 code units; the same bytes in child processes under the C and Turkish locales and other time zones (Unreleased)
+
+### `spec/smith/evals/dataset_spec.rb`, `split_rule_spec.rb`, `sample_spec.rb` and `contracts_spec.rb`
+
+Purpose:
+
+- pins datasets: the example dataset rebuilt with its four hashes, version and split (37 dev, 8 holdout, 3 calibration) and its `manifest.json` byte for byte; adding samples moves none; clusters stay together; a hand-set split wins and a straddling cluster is warned of, never written; UTF-16 order; a changed label moves only the labels hash; null hashes as absent; operational fields unhashed; every label kind counted, a disputed one included; a rebuilt manifest the same but for `created_at`, and `previous_version` on change; duplicate ids, an empty set and an unexpiring production-run sample refused; changed samples, a hand-edited manifest and a pinned version refused with the parts named; malformed lines refused by line number, never echoing content; a host source verified the same way, in its scope, its manifest read with String keys; independent vectors for synthetic and source in the metadata hash; shares kept as Floats; a split rule refused on rebuild unless re-split, a re-split recorded in `resplits` and kept, moved samples warned of; every derived count edited by hand refused, unknown fields inside derived objects ignored; a repeated key, a comment or an unknown escape refused whatever the json gem keeps; a line of 4 MiB before CR LF read and one byte more refused; NUL lines and nesting past 64 refused by name; control characters in `samples_file`, links out of the folder, FIFOs and directories refused without blocking; empty lists written `[]` whatever the json version (Unreleased)
+- pins the split rule's exact integer thresholds (never Float arithmetic), its framed bucket and its edges; the sample line's every field rule by path, a null inside label or source refused as the schema refuses it; and every published dataset and suite example, and every manifest and sample this slice writes, valid against `docs/evals/schemas` as published and with unknown fields refused (Unreleased)
+
+### `spec/smith/evals/suite_spec.rb`, `score_spec.rb`, `scorer_spec.rb`, `reducers_spec.rb`, `configuration_spec.rb`, `actor_spec.rb`, `errors_spec.rb` and `loading_spec.rb`
+
+Purpose:
+
+- pins suites: the published code suite's manifest and version (`sha256:c23bed10...`), its 37 selected samples and measure digest (`sha256:41f4d145...`), the same in child processes under other locales and time zones; budget and the dataset's location outside the version; a scorer's version, scale, reducers or failure rule changing both digests; a target and the subject's identity in the version only; defaults written out; the infrastructure errors as sorted class names in both digests; keep written sorted; independent vectors for a narrowed selection and for until; class scorers, and version or scale beside a scorer instance refused; narrowing as sorted data; integers past 2**53 - 1 and text not in UTF-8 refused as problem lines; a subject's missing or unknown settings collected as problems; a pin; a host source read in the run's scope; inheritance; every `SuiteInvalid` case of design 4.5 by its problem line, every problem at once; `SplitNotAllowed` for holdout and calibration (Unreleased)
+- pins scores (bounds, `score_invalid`, `grader_undecided`, the trial line's fields), scorers (class and block, inherited settings, the other scale or a raise made unscored, naming the error's class only), reducers (names, scale fit, the table's values and the statistics module's agreement), the configuration (defaults, bounds, a frozen copy per run), actors, the errors, and loading: `require "smith/evals"` defines them and installs no observer, `require "smith"` loads none of them (Unreleased)
+
 ### `spec/smith/optimize_batch_spec.rb`
 
 Purpose:

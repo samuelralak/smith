@@ -1,0 +1,105 @@
+{
+  "format": "smith.evals.dataset_manifest",
+  "format_version": 1,
+  "name": "support-tickets",
+  "version": "sha256:9e638e886bbbd1c95bebcd62098b1fb219d8df7290d273ae2de554ae681924cc",
+  "created_at": "2026-11-20T14:12:09.000Z",
+  "created_by": {
+    "kind": "person",
+    "id": "usr_51a8"
+  },
+  "samples_file": "samples.jsonl",
+  "samples_format": "smith.evals.sample/1",
+  "sample_count": 48,
+  "hashes": {
+    "inputs": "sha256:eefbcbaab51dcae18b035979882c9a1f5ca618112e9ab27e3cd93677301dd7e2",
+    "labels": "sha256:b66f29332aa0c9ee074a14f2af1db4fc1460c05bbc5cfbc45b3701be2df61d7c",
+    "splits": "sha256:1119a3bb62d463d8aa0c291662df83f1b541dbcac9e60f49a937ab8f35980655",
+    "metadata": "sha256:209efda8c0dfe058f842085ae20cb20115525deffce48ca733497850ad761850"
+  },
+  "split_rule": {
+    "method": "hash_threshold",
+    "seed": "support-tickets-2026-11",
+    "key": "cluster_or_id",
+    "shares": {
+      "holdout": 0.25,
+      "calibration": 0.05
+    }
+  },
+  "split_assignment": {
+    "dev": [
+      "t-0002",
+      "t-0004",
+      "t-0006",
+      "t-0008",
+      "t-0009",
+      "t-0010",
+      "t-0011",
+      "t-0013",
+      "t-0014",
+      "t-0015",
+      "t-0016",
+      "t-0017",
+      "t-0018",
+      "t-0019",
+      "t-0020",
+      "t-0021",
+      "t-0022",
+      "t-0023",
+      "t-0025",
+      "t-0026",
+      "t-0031",
+      "t-0032",
+      "t-0033",
+      "t-0034",
+      "t-0035",
+      "t-0037",
+      "t-0038",
+      "t-0039",
+      "t-0040",
+      "t-0041",
+      "t-0042",
+      "t-0043",
+      "t-0044",
+      "t-0045",
+      "t-0046",
+      "t-0047",
+      "t-0048"
+    ],
+    "holdout": [
+      "t-0003",
+      "t-0007",
+      "t-0012",
+      "t-0027",
+      "t-0028",
+      "t-0029",
+      "t-0030",
+      "t-0036"
+    ],
+    "calibration": [
+      "t-0001",
+      "t-0005",
+      "t-0024"
+    ]
+  },
+  "split_counts": {
+    "dev": 37,
+    "holdout": 8,
+    "calibration": 3
+  },
+  "hand_assigned": 1,
+  "clusters": 45,
+  "labels": {
+    "human": 43,
+    "ai": 3,
+    "adjudicated": 2,
+    "disputed": 0,
+    "none": 0
+  },
+  "retention": {
+    "expiring": 0,
+    "kept": 0
+  },
+  "previous_version": null,
+  "resplits": []
+}

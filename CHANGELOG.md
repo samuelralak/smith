@@ -82,6 +82,47 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   byte form for hashed JSON, and the one tenant scope type, a frozen Hash of
   at most 8 String pairs with a digest. Neither is loaded by
   `require "smith"`.
+- Experimental: datasets, scorers and suites for evals, loaded by
+  `require "smith/evals"` and never by `require "smith"`; nothing is
+  installed into the core yet. A dataset is a folder
+  (`samples.jsonl` and `manifest.json`) or a host source answering
+  `manifest(scope:)` and `each_sample(scope:)`;
+  `Smith::Evals::Dataset.build_manifest` writes the manifest and
+  `Smith::Evals::Dataset.load` checks every sample and recomputes every
+  hash and count before use (`DatasetInvalid`, `DatasetChanged`). Lines
+  are read strictly under every json version (a repeated key, a comment
+  or an unknown escape is refused), and only regular files inside the
+  dataset's folder are read. The version hashes four parts (inputs,
+  labels, splits, metadata), so a changed label moves only the labels
+  hash; a null top-level field hashes as an absent one, and a null inside
+  `label` or `source` is refused, as the schema does. One split
+  assignment per dataset version, from integer thresholds over a SHA-256
+  bucket of each sample's cluster or id, so adding samples never moves
+  one, a cluster stays together and a hand-set split wins. The rule is
+  fixed for the dataset's life: another seed or other shares need
+  `resplit: true`, noted in the manifest's `resplits` (a note for
+  readers, not evidence), and a rebuild warns of every sample it moved.
+  `Smith::Evals::Score` (pass, fail, match, value, unscored),
+  `Smith::Evals::Scorer` (a class or a block, with an author-declared
+  version), the named reducers, `Smith::Evals::Subject` and the
+  `Smith::Evals::Suite` DSL, whose manifest writes every default out. Its
+  version leaves out the budget and the dataset's location; a separate
+  measure digest, which takes the infrastructure errors and leaves out
+  the subject's identity, gates and budget, is what comparisons will
+  read. An infrastructure error class broad enough to swallow the
+  subject's own failures (`Exception`, `StandardError`, `Smith::Error`,
+  `ScriptError`, or one of Smith's subject failure classes or an
+  ancestor of one) is refused, naming the class. A suite refuses every
+  problem at once (`SuiteInvalid`, "path: problem" lines) and runs only
+  on the dev split until hidden runs are counted (`SplitNotAllowed`). The
+  DSL's `gate`, `budget` and `labels` only record what later slices act
+  on, and are experimental and not frozen: slice 1b.1 and slice 2 decide
+  their final names. `Smith::Evals::Identity` derives eval run, trial and
+  group ids and the sample ids, plan, measure, variant and dataset digests
+  over canonical JSON, each framed by a name or a format field, the same
+  in any process, Ruby, json version, locale or time zone. The dataset,
+  sample and suite manifest schemas and their examples are published in
+  `docs/evals/`.
 
 ### Changed
 

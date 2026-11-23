@@ -1,0 +1,1023 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:smith:evals:1:suite-manifest",
+  "title": "Smith suite manifest (format version 1; frozen in slice 1b except labels and judges, which stay drafts until slice 2)",
+  "description": "A suite as data. A code suite (Smith::Evals::Suite) writes one; Smith::Evals::Suite.from_manifest builds a suite from one whose scorers are all checks (slice 1b). Every parameter is written out (Smith fills defaults before hashing), and its version is SHA-256 of its canonical JSON without version, budget and dataset.source. Comparisons use the run header's measure_digest, not this version.",
+  "type": "object",
+  "required": [
+    "format",
+    "format_version",
+    "name",
+    "dataset",
+    "selection",
+    "subject",
+    "trials",
+    "scorers",
+    "statistics",
+    "recording"
+  ],
+  "properties": {
+    "format": {
+      "const": "smith.evals.suite_manifest"
+    },
+    "format_version": {
+      "$ref": "urn:smith:evals:1:common#/$defs/format_version"
+    },
+    "name": {
+      "$ref": "urn:smith:evals:1:common#/$defs/name"
+    },
+    "version": {
+      "description": "Computed: SHA-256 of the canonical JSON of the manifest without version, budget (a cap changes what a run may spend, not what it measures) and dataset.source (a location, not content).",
+      "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+    },
+    "dataset": {
+      "type": "object",
+      "required": [
+        "name",
+        "source",
+        "pinned_version"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "urn:smith:evals:1:common#/$defs/name"
+        },
+        "source": {
+          "description": "Where the default dataset source finds it (a folder), or null for a host source. Not part of the version.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 512
+        },
+        "pinned_version": {
+          "description": "A dataset version the suite insists on, or null for whatever the manifest holds.",
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+            }
+          ]
+        }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "required": [
+        "split",
+        "narrow"
+      ],
+      "properties": {
+        "split": {
+          "$ref": "urn:smith:evals:1:common#/$defs/split"
+        },
+        "narrow": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "ids"
+              ],
+              "properties": {
+                "ids": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "urn:smith:evals:1:common#/$defs/sample_id"
+                  },
+                  "minItems": 1,
+                  "uniqueItems": true
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "tags_any"
+              ],
+              "properties": {
+                "tags_any": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "minItems": 1,
+                  "uniqueItems": true
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "subject": {
+      "oneOf": [
+        {
+          "description": "A code workflow and its code input mapping (whose author-declared version stands in for it).",
+          "type": "object",
+          "required": [
+            "kind",
+            "workflow",
+            "keep",
+            "until",
+            "version"
+          ],
+          "properties": {
+            "kind": {
+              "const": "workflow"
+            },
+            "workflow": {
+              "type": "string",
+              "maxLength": 256
+            },
+            "keep": {
+              "description": "The end-state keys a scorer may read, sorted by UTF-16 code units: a set, so their order is not content.",
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "maxItems": 64,
+              "uniqueItems": true
+            },
+            "until": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "version": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          }
+        },
+        {
+          "description": "A definition (slice 1d) named by id, and an input mapping as data. digest null means 'the version the run is given'; the header's resolved manifest fills it.",
+          "type": "object",
+          "required": [
+            "kind",
+            "definition",
+            "input",
+            "keep",
+            "until"
+          ],
+          "properties": {
+            "kind": {
+              "const": "definition"
+            },
+            "definition": {
+              "type": "object",
+              "required": [
+                "id",
+                "digest"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "digest": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+                    }
+                  ]
+                }
+              }
+            },
+            "input": {
+              "type": "object",
+              "minProperties": 1,
+              "propertyNames": {
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$"
+              },
+              "additionalProperties": {
+                "$ref": "urn:smith:evals:1:common#/$defs/value_source"
+              }
+            },
+            "keep": {
+              "const": [
+                "output"
+              ]
+            },
+            "until": {
+              "type": "null"
+            }
+          }
+        }
+      ]
+    },
+    "trials": {
+      "type": "object",
+      "required": [
+        "per_sample",
+        "error_retries",
+        "infrastructure_errors",
+        "reduce"
+      ],
+      "properties": {
+        "per_sample": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "error_retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "infrastructure_errors": {
+          "description": "The host's error classes that are infrastructure, not the subject (design.md 6.3): a failure from one is an error, retried and then left out of the rate, instead of a subject failure counted in it. So it is part of the version and of the measure digest. Ruby class names, sorted by UTF-16 code units; empty by default. A class broad enough to swallow the subject's own failures is refused: Exception, StandardError, Smith::Error, ScriptError, and any class that is one of the errors design.md 6.3 counts as the subject's failure (output, refusals, limits and budget, tools, guardrails, agents, steps) or an ancestor of one.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 256,
+            "pattern": "^[A-Z][A-Za-z0-9_]*(::[A-Z][A-Za-z0-9_]*)*$"
+          },
+          "maxItems": 64,
+          "uniqueItems": true
+        },
+        "reduce": {
+          "type": "string",
+          "pattern": "^(majority|any|all|mean|pass_at_[1-9][0-9]?|pass_all_[1-9][0-9]?)$"
+        }
+      }
+    },
+    "scorers": {
+      "description": "kind code (Ruby), check (the closed vocabulary of slice 1b, parameters hashed) or judge (slice 2). Names are unique.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          {
+            "description": "A Ruby scorer (a block or a class); its author declares the version. A suite with one cannot be built from data.",
+            "type": "object",
+            "required": [
+              "name",
+              "kind",
+              "version",
+              "scale",
+              "reduce",
+              "also",
+              "on_subject_failure"
+            ],
+            "properties": {
+              "name": {
+                "$ref": "urn:smith:evals:1:common#/$defs/scorer_name"
+              },
+              "kind": {
+                "const": "code"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "scale": {
+                "enum": [
+                  "binary",
+                  "continuous"
+                ]
+              },
+              "reduce": {
+                "type": "string",
+                "pattern": "^(majority|any|all|mean|pass_at_[1-9][0-9]?|pass_all_[1-9][0-9]?)$"
+              },
+              "also": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(majority|any|all|mean|pass_at_[1-9][0-9]?|pass_all_[1-9][0-9]?)$"
+                },
+                "uniqueItems": true
+              },
+              "on_subject_failure": {
+                "description": "fail: a failed subject counts as a fail without the scorer; score: the scorer runs and reads the failure.",
+                "enum": [
+                  "fail",
+                  "score"
+                ]
+              }
+            }
+          },
+          {
+            "description": "Exactly equals: the actual value equals the expected one after canonical JSON; ignore_case and trim apply only when both are strings.",
+            "type": "object",
+            "required": [
+              "name",
+              "kind",
+              "check",
+              "version",
+              "scale",
+              "reduce",
+              "also",
+              "on_subject_failure",
+              "params"
+            ],
+            "properties": {
+              "name": {
+                "$ref": "urn:smith:evals:1:common#/$defs/scorer_name"
+              },
+              "kind": {
+                "const": "check"
+              },
+              "check": {
+                "const": "equals"
+              },
+              "version": {
+                "description": "The check's revision in Smith's vocabulary; 1 for format 1.",
+                "type": "integer",
+                "minimum": 1
+              },
+              "scale": {
+                "const": "binary"
+              },
+              "reduce": {
+                "type": "string",
+                "pattern": "^(majority|any|all|mean|pass_at_[1-9][0-9]?|pass_all_[1-9][0-9]?)$"
+              },
+              "also": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(majority|any|all|mean|pass_at_[1-9][0-9]?|pass_all_[1-9][0-9]?)$"
+                },
+                "uniqueItems": true
+              },
+              "on_subject_failure": {
+                "description": "fail: a failed subject counts as a fail without the scorer; score: the scorer runs and reads the failure.",
+                "enum": [
+                  "fail",
+                  "score"
+                ]
+              },
+              "params": {
+                "type": "object",
+                "required": [
+                  "actual",
+                  "expected",
+                  "ignore_case",
+                  "trim"
+                ],
+                "properties": {
+                  "actual": {
+                    "$ref": "urn:smith:evals:1:common#/$defs/value_source"
+                  },
+                  "expected": {
+                    "$ref": "urn:smith:evals:1:common#/$defs/value_source"
+                  },
+                  "ignore_case": {
+                    "type": "boolean"
+                  },
+                  "trim": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "description": "Contains: the actual string contains the expected string.",
+            "type": "object",
+            "required": [
+              "name",
+              "kind",
+              "check",
+              "version",
+              "scale",
+              "reduce",
+              "also",
+              "on_subject_failure",
+              "params"
+            ],
+            "properties": {
+              "name": {
+                "$ref": "urn:smith:evals:1:common#/$defs/scorer_name"
+              },
+              "kind": {
+                "const": "check"
+              },
+              "check": {
+                "const": "contains"
+              },
+              "version": {
+                "description": "The check's revision in Smith's vocabulary; 1 for format 1.",
+                "type": "integer",
+                "minimum": 1
+              },
+              "scale": {
+                "const": "binary"
+              },
+              "reduce": {
+                "type": "string",
+                "pattern": "^(majority|any|all|mean|pass_at_[1-9][0-9]?|pass_all_[1-9][0-9]?)$"
+              },
+              "also": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(majority|any|all|mean|pass_at_[1-9][0-9]?|pass_all_[1-9][0-9]?)$"
+                },
+                "uniqueItems": true
+              },
+              "on_subject_failure": {
+                "description": "fail: a failed subject counts as a fail without the scorer; score: the scorer runs and reads the failure.",
+                "enum": [
+                  "fail",
+                  "score"
+                ]
+              },
+              "params": {
+                "type": "object",
+                "required": [
+                  "actual",
+                  "expected",
+                  "ignore_case"
+                ],
+                "properties": {
+                  "actual": {
+                    "$ref": "urn:smith:evals:1:common#/$defs/value_source"
+                  },
+                  "expected": {
+                    "$ref": "urn:smith:evals:1:common#/$defs/value_source"
+                  },
+                  "ignore_case": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "description": "Matches a pattern: the pattern finds a match in the actual string (anchor it for a whole match).",
+            "type": "object",
+            "required": [
+              "name",
+              "kind",
+              "check",
+              "version",
+              "scale",
+              "reduce",
+              "also",
+              "on_subject_failure",
+              "params"
+            ],
+            "properties": {
+              "name": {
+                "$ref": "urn:smith:evals:1:common#/$defs/scorer_name"
+              },
+              "kind": {
+                "const": "check"
+              },
+              "check": {
+                "const": "pattern"
+              },
+              "version": {
+                "description": "The check's revision in Smith's vocabulary; 1 for format 1.",
+                "type": "integer",
+                "minimum": 1
+              },
+              "scale": {
+                "const": "binary"
+              },
+              "reduce": {
+                "type": "string",
+                "pattern": "^(majority|any|all|mean|pass_at_[1-9][0-9]?|pass_all_[1-9][0-9]?)$"
+              },
+              "also": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(majority|any|all|mean|pass_at_[1-9][0-9]?|pass_all_[1-9][0-9]?)$"
+                },
+                "uniqueItems": true
+              },
+              "on_subject_failure": {
+                "description": "fail: a failed subject counts as a fail without the scorer; score: the scorer runs and reads the failure.",
+                "enum": [
+                  "fail",
+                  "score"
+                ]
+              },
+              "params": {
+                "type": "object",
+                "required": [
+                  "actual",
+                  "pattern",
+                  "ignore_case"
+                ],
+                "properties": {
+                  "actual": {
+                    "$ref": "urn:smith:evals:1:common#/$defs/value_source"
+                  },
+                  "pattern": {
+                    "description": "A regular expression in the portable subset (design.md 11.2): literals, classes, quantifiers, anchors, groups, alternation; no backreferences, lookaround, possessive quantifiers, named groups or inline flags.",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "ignore_case": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "description": "Fits the answer format.",
+            "type": "object",
+            "required": [
+              "name",
+              "kind",
+              "check",
+              "version",
+              "scale",
+              "reduce",
+              "also",
+              "on_subject_failure",
+              "params"
+            ],
+            "properties": {
+              "name": {
+                "$ref": "urn:smith:evals:1:common#/$defs/scorer_name"
+              },
+              "kind": {
+                "const": "check"
+              },
+              "check": {
+                "const": "fits_schema"
+              },
+              "version": {
+                "description": "The check's revision in Smith's vocabulary; 1 for format 1.",
+                "type": "integer",
+                "minimum": 1
+              },
+              "scale": {
+                "const": "binary"
+              },
+              "reduce": {
+                "type": "string",
+                "pattern": "^(majority|any|all|mean|pass_at_[1-9][0-9]?|pass_all_[1-9][0-9]?)$"
+              },
+              "also": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(majority|any|all|mean|pass_at_[1-9][0-9]?|pass_all_[1-9][0-9]?)$"
+                },
+                "uniqueItems": true
+              },
+              "on_subject_failure": {
+                "description": "fail: a failed subject counts as a fail without the scorer; score: the scorer runs and reads the failure.",
+                "enum": [
+                  "fail",
+                  "score"
+                ]
+              },
+              "params": {
+                "type": "object",
+                "required": [
+                  "actual",
+                  "schema"
+                ],
+                "properties": {
+                  "actual": {
+                    "$ref": "urn:smith:evals:1:common#/$defs/value_source"
+                  },
+                  "schema": {
+                    "description": "subject: the subject's own answer format; or a JSON Schema in the portable subset.",
+                    "oneOf": [
+                      {
+                        "const": "subject"
+                      },
+                      {
+                        "type": "object"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "description": "A field equals: one field of the answer equals the expected value.",
+            "type": "object",
+            "required": [
+              "name",
+              "kind",
+              "check",
+              "version",
+              "scale",
+              "reduce",
+              "also",
+              "on_subject_failure",
+              "params"
+            ],
+            "properties": {
+              "name": {
+                "$ref": "urn:smith:evals:1:common#/$defs/scorer_name"
+              },
+              "kind": {
+                "const": "check"
+              },
+              "check": {
+                "const": "field_equals"
+              },
+              "version": {
+                "description": "The check's revision in Smith's vocabulary; 1 for format 1.",
+                "type": "integer",
+                "minimum": 1
+              },
+              "scale": {
+                "const": "binary"
+              },
+              "reduce": {
+                "type": "string",
+                "pattern": "^(majority|any|all|mean|pass_at_[1-9][0-9]?|pass_all_[1-9][0-9]?)$"
+              },
+              "also": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(majority|any|all|mean|pass_at_[1-9][0-9]?|pass_all_[1-9][0-9]?)$"
+                },
+                "uniqueItems": true
+              },
+              "on_subject_failure": {
+                "description": "fail: a failed subject counts as a fail without the scorer; score: the scorer runs and reads the failure.",
+                "enum": [
+                  "fail",
+                  "score"
+                ]
+              },
+              "params": {
+                "type": "object",
+                "required": [
+                  "field",
+                  "expected",
+                  "ignore_case",
+                  "trim"
+                ],
+                "properties": {
+                  "field": {
+                    "description": "A pointer into the answer; not empty.",
+                    "allOf": [
+                      {
+                        "$ref": "urn:smith:evals:1:common#/$defs/json_pointer"
+                      }
+                    ],
+                    "minLength": 1
+                  },
+                  "expected": {
+                    "$ref": "urn:smith:evals:1:common#/$defs/value_source"
+                  },
+                  "ignore_case": {
+                    "type": "boolean"
+                  },
+                  "trim": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "description": "A number within a range: at least one of min and max is set.",
+            "type": "object",
+            "required": [
+              "name",
+              "kind",
+              "check",
+              "version",
+              "scale",
+              "reduce",
+              "also",
+              "on_subject_failure",
+              "params"
+            ],
+            "properties": {
+              "name": {
+                "$ref": "urn:smith:evals:1:common#/$defs/scorer_name"
+              },
+              "kind": {
+                "const": "check"
+              },
+              "check": {
+                "const": "number_in_range"
+              },
+              "version": {
+                "description": "The check's revision in Smith's vocabulary; 1 for format 1.",
+                "type": "integer",
+                "minimum": 1
+              },
+              "scale": {
+                "const": "binary"
+              },
+              "reduce": {
+                "type": "string",
+                "pattern": "^(majority|any|all|mean|pass_at_[1-9][0-9]?|pass_all_[1-9][0-9]?)$"
+              },
+              "also": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(majority|any|all|mean|pass_at_[1-9][0-9]?|pass_all_[1-9][0-9]?)$"
+                },
+                "uniqueItems": true
+              },
+              "on_subject_failure": {
+                "description": "fail: a failed subject counts as a fail without the scorer; score: the scorer runs and reads the failure.",
+                "enum": [
+                  "fail",
+                  "score"
+                ]
+              },
+              "params": {
+                "type": "object",
+                "required": [
+                  "actual",
+                  "min",
+                  "max",
+                  "inclusive"
+                ],
+                "properties": {
+                  "actual": {
+                    "$ref": "urn:smith:evals:1:common#/$defs/value_source"
+                  },
+                  "min": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "max": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "inclusive": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "description": "The right tools were called.",
+            "type": "object",
+            "required": [
+              "name",
+              "kind",
+              "check",
+              "version",
+              "scale",
+              "reduce",
+              "also",
+              "on_subject_failure",
+              "params"
+            ],
+            "properties": {
+              "name": {
+                "$ref": "urn:smith:evals:1:common#/$defs/scorer_name"
+              },
+              "kind": {
+                "const": "check"
+              },
+              "check": {
+                "const": "tools_called"
+              },
+              "version": {
+                "description": "The check's revision in Smith's vocabulary; 1 for format 1.",
+                "type": "integer",
+                "minimum": 1
+              },
+              "scale": {
+                "const": "binary"
+              },
+              "reduce": {
+                "type": "string",
+                "pattern": "^(majority|any|all|mean|pass_at_[1-9][0-9]?|pass_all_[1-9][0-9]?)$"
+              },
+              "also": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(majority|any|all|mean|pass_at_[1-9][0-9]?|pass_all_[1-9][0-9]?)$"
+                },
+                "uniqueItems": true
+              },
+              "on_subject_failure": {
+                "description": "fail: a failed subject counts as a fail without the scorer; score: the scorer runs and reads the failure.",
+                "enum": [
+                  "fail",
+                  "score"
+                ]
+              },
+              "params": {
+                "type": "object",
+                "required": [
+                  "expected",
+                  "match",
+                  "max_calls"
+                ],
+                "properties": {
+                  "expected": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 64,
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z_][A-Za-z0-9_.-]{0,127}$"
+                    }
+                  },
+                  "match": {
+                    "description": "exact: these calls, in this order, and no others; in_order: these calls appear in this order, others may come between; any_order: each appears, as many times as listed.",
+                    "enum": [
+                      "exact",
+                      "in_order",
+                      "any_order"
+                    ]
+                  },
+                  "max_calls": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "description": "DRAFT (slice 2): a model judge.",
+            "type": "object",
+            "required": [
+              "name",
+              "kind",
+              "version"
+            ],
+            "properties": {
+              "name": {
+                "$ref": "urn:smith:evals:1:common#/$defs/scorer_name"
+              },
+              "kind": {
+                "const": "judge"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "scale": {
+                "enum": [
+                  "binary",
+                  "continuous"
+                ]
+              },
+              "reduce": {
+                "type": "string",
+                "pattern": "^(majority|any|all|mean|pass_at_[1-9][0-9]?|pass_all_[1-9][0-9]?)$"
+              },
+              "also": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(majority|any|all|mean|pass_at_[1-9][0-9]?|pass_all_[1-9][0-9]?)$"
+                },
+                "uniqueItems": true
+              },
+              "on_subject_failure": {
+                "description": "fail: a failed subject counts as a fail without the scorer; score: the scorer runs and reads the failure.",
+                "enum": [
+                  "fail",
+                  "score"
+                ]
+              },
+              "judge": {
+                "type": "object"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "statistics": {
+      "type": "object",
+      "required": [
+        "level",
+        "bootstrap_resamples",
+        "small_sample_threshold"
+      ],
+      "properties": {
+        "level": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "bootstrap_resamples": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 100000
+        },
+        "small_sample_threshold": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "recording": {
+      "description": "Whether step records keep message content. Not part of the measure.",
+      "type": "object",
+      "required": [
+        "content"
+      ],
+      "properties": {
+        "content": {
+          "type": "boolean"
+        }
+      }
+    },
+    "gates": {
+      "description": "Fixed targets (at_least) in slice 1b, judged on the headline estimate's point; baseline and statistical gates in slice 2.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "scorer"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "urn:smith:evals:1:common#/$defs/code"
+          },
+          "kind": {
+            "$ref": "urn:smith:evals:1:common#/$defs/code"
+          },
+          "scorer": {
+            "$ref": "urn:smith:evals:1:common#/$defs/scorer_name"
+          },
+          "reducer": {
+            "type": "string"
+          },
+          "target": {
+            "type": "number"
+          },
+          "margin": {
+            "type": "number"
+          },
+          "baseline_eval_run_id": {
+            "$ref": "urn:smith:evals:1:common#/$defs/eval_run_id"
+          }
+        }
+      }
+    },
+    "budget": {
+      "description": "DRAFT (slice 1b): the eval run's cap.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "max_cost_nanos": {
+          "$ref": "urn:smith:evals:1:common#/$defs/cost_nanos"
+        }
+      }
+    },
+    "labels": {
+      "description": "DRAFT (slice 2): which labels count.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "accept": {
+          "enum": [
+            "any",
+            "human_only"
+          ]
+        }
+      }
+    },
+    "judges": {
+      "description": "DRAFT (slice 2).",
+      "type": "array"
+    }
+  }
+}

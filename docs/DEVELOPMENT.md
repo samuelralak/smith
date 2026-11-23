@@ -60,6 +60,14 @@ an avoidable asymptotic regression as a release blocker.
   within 200. The inputs digest streams one sample at a time.
   Canonical JSON is `O(N + sum k_i log k_i)` within 64 levels, 1,000,000
   values and 64 MiB.
+- Evals datasets (`Smith::Evals::Dataset`) are `O(S + n log n)` time and
+  `O(S)` space for `S` sample bytes and `n` samples (each line is scanned
+  once more for repeated keys, comments and escapes the json gem may let
+  through; each sample is checked, canonicalized once and sorted by id), at
+  most 1,000,000 samples and 4 MiB a line; a split is `O(1)` a sample. A suite's manifest is `O(N)` in what
+  it declares (at most 64 scorers and 32 gates), and its selection
+  `O(n + k)` for `k` named ids or tags. Each id and digest is linear in what
+  it hashes; the sample ids digest is `O(n log n)`.
 - Retry delay calculation is `O(1)` time and space per attempt. A policy with
   `A` attempts performs at most `A` guarded operations and never materializes an
   exponential schedule.

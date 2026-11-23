@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:smith:evals:1:sample",
+  "title": "Smith dataset sample line (samples.jsonl, format smith.evals.sample/1, frozen in slice 1a)",
+  "description": "One sample per line. A null top-level field is the same as an absent one, in hashing too; inside label and source a field is a value or absent, never null. Operational fields (erasure_key, expires_at, keep, added_at) are not hashed, nor is a field this format does not know, so a scorer reads only the hashed fields.",
+  "type": "object",
+  "required": [
+    "id",
+    "input"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "urn:smith:evals:1:common#/$defs/sample_id"
+    },
+    "input": {
+      "description": "Any JSON value; an object is usual. Hashed into the inputs hash."
+    },
+    "expected": {
+      "description": "The label: any JSON value, or absent. Hashed into the labels hash."
+    },
+    "label": {
+      "description": "Who made the label. Hashed into the labels hash.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "description": "human, ai, adjudicated (two raters disagreed and a third settled it), disputed (raters disagreed and nobody settled it: scored apart, slice 2).",
+          "enum": [
+            "human",
+            "ai",
+            "adjudicated",
+            "disputed"
+          ]
+        },
+        "by": {
+          "description": "A person's id, or for an AI label the judge's name.",
+          "type": "string",
+          "maxLength": 256
+        },
+        "model": {
+          "description": "For an AI label, the model.",
+          "type": "string",
+          "maxLength": 256
+        },
+        "judge_version": {
+          "description": "For an AI label, the judge's version (its author's number with its execution identity, additions/design.md 2.9).",
+          "type": "string",
+          "maxLength": 128
+        },
+        "raters": {
+          "description": "For an adjudicated or disputed label, the raters who disagreed.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 256
+          }
+        },
+        "settled_by": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "at": {
+          "$ref": "urn:smith:evals:1:common#/$defs/timestamp"
+        }
+      }
+    },
+    "split": {
+      "description": "A split set by hand; it wins over the dataset's rule.",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "urn:smith:evals:1:common#/$defs/split"
+        }
+      ]
+    },
+    "cluster": {
+      "description": "Samples sharing a key (one customer, one document) stay on one side of a split and are resampled together.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "tags": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_.:-]{0,63}$"
+      },
+      "uniqueItems": true
+    },
+    "synthetic": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "source": {
+      "description": "Where the sample came from. production_run samples need expires_at or keep.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "description": "manual, import, production_run. Open vocabulary.",
+          "$ref": "urn:smith:evals:1:common#/$defs/code"
+        },
+        "run_key": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "step": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "at": {
+          "$ref": "urn:smith:evals:1:common#/$defs/timestamp"
+        }
+      }
+    },
+    "metadata": {
+      "description": "Free-form host fields a scorer may read. Hashed into the metadata hash.",
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "erasure_key": {
+      "description": "The host's key for finding every sample about one person, for erasure. Not hashed.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 256
+    },
+    "expires_at": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "urn:smith:evals:1:common#/$defs/timestamp"
+        }
+      ]
+    },
+    "keep": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "added_at": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "urn:smith:evals:1:common#/$defs/timestamp"
+        }
+      ]
+    }
+  }
+}
