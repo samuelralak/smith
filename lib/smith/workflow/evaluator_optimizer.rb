@@ -9,7 +9,7 @@ require_relative "optimizer_batch"
 
 module Smith
   class Workflow
-    module EvaluatorOptimizer
+    module EvaluatorOptimizer # rubocop:disable Metrics/ModuleLength -- in Workflow; a split adds a host-visible mixin
       include OptimizerBatch
 
       private
@@ -82,7 +82,8 @@ module Smith
       # share a key. A round a delivery goes on from at its evaluator has its
       # candidate, and one it goes on from at its generator asked
       # before_generate when its request was batched.
-      def run_optimization_round(state, round, transition, at_evaluator: false, resumed: false)
+      # Kept whole: a split adds a name to Workflow's host surface.
+      def run_optimization_round(state, round, transition, at_evaluator: false, resumed: false) # rubocop:disable Metrics/AbcSize
         rejection = generate_and_screen(state, round, transition, resumed:) unless at_evaluator
         evaluation = rejection || normalize_evaluation(
           IdempotencyKey.__send__(:within, :evaluator) { evaluate_candidate(state, round, transition) }

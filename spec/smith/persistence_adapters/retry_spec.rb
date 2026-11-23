@@ -30,12 +30,13 @@ RSpec.describe Smith::PersistenceAdapters::Retry do
 
   it "retries up to policy.attempts before raising PersistenceIOError" do
     calls = 0
-    expect do
+    store = lambda do
       described_class.with_retries(operation: :store, transient: transient, policy: policy) do
         calls += 1
         raise Errno::ECONNREFUSED, "boom"
       end
-    end.to raise_error(Smith::PersistenceIOError) do |err|
+    end
+    expect(&store).to raise_error(Smith::PersistenceIOError) do |err|
       expect(err.operation).to eq(:store)
       expect(err.cause).to be_a(Errno::ECONNREFUSED)
     end

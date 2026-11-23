@@ -28,7 +28,6 @@ module Smith
     # how the call was made (`:sync`, `:stream`, `:batch`).
     # `image_input_tokens` and `image_output_tokens` are the image parts of
     # `input_tokens` and `output_tokens`.
-    # rubocop:disable Style/RedundantStructKeywordInit
     UsageEntry = Struct.new(
       :usage_id,
       :agent_name,
@@ -89,6 +88,5 @@ module Smith
       cache_read_tokens cache_write_tokens thinking_tokens stop_reason provider_message_id mode
       image_input_tokens image_output_tokens
     ].freeze
-    # rubocop:enable Style/RedundantStructKeywordInit
   end
 end

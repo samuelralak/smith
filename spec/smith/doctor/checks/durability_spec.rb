@@ -23,6 +23,10 @@ RSpec.describe Smith::Doctor::Checks::Durability do
     check = report.checks.find { |c| c.name == "durability.adapter" }
     expect(check.status).to eq(:warn)
     expect(check.message).to include("No persistence adapter configured")
+    expect(check.detail).to eq("Set config.persistence_adapter to :rails_cache, :active_record, :redis, " \
+                               ":cache_store, or a custom adapter")
+    # With no adapter there is nothing to probe.
+    expect(report.checks.map(&:name)).to eq(["durability.adapter"])
   ensure
     Smith.configure do |c|
       c.persistence_adapter = original

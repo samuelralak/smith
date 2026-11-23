@@ -109,12 +109,17 @@ module CoreInvisibility
     end
 
     # The bundle resolves the versions the repository's Gemfile.lock holds
-    # (its specs run with them), the newest installed gems without one.
+    # (its specs run with them), the newest installed gems without one. It
+    # installs with a gem home and settings of its own (the installed gems
+    # still read through GEM_PATH), so it never waits on the lock every
+    # other bundle install on the machine takes in the shared gem home.
     def bundle!(dir, repo: ROOT)
       lock = File.join(ROOT, "Gemfile.lock")
       FileUtils.cp(lock, File.join(dir, "#{GEMFILE}.lock")) if File.file?(lock)
-      env = bundle_env(dir, repo:)
-      ok = unbundled { system(env, RbConfig.ruby, "-S", "bundle", "install", "--local", "--quiet") }
+      ok = Dir.mktmpdir("smith-golden-bundle-") do |own|
+        env = bundle_env(dir, repo:).merge("GEM_HOME" => own, "BUNDLE_APP_CONFIG" => own)
+        unbundled { system(env, RbConfig.ruby, "-S", "bundle", "install", "--local", "--quiet") }
+      end
       raise Refused, "the golden bundle for #{dir} did not install from local gems" unless ok
     end
 

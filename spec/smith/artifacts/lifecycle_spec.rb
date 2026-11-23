@@ -146,7 +146,8 @@ RSpec.describe "Smith::Artifacts::Memory lifecycle contract" do
 
     Smith.configure { |config| config.artifact_tenant_isolation = true }
 
-    expect { store.store("payload") }.to raise_error(require_const("Smith::Error"), /artifact_tenant_isolation requires a namespace/)
+    expect { store.store("payload") }
+      .to raise_error(require_const("Smith::Error"), /artifact_tenant_isolation requires a namespace/)
   ensure
     Smith.configure { |config| config.artifact_tenant_isolation = original_value }
   end

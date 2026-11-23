@@ -23,12 +23,7 @@ module Smith
     def self.run(profile: :auto, live: false, durability: false, io: $stdout)
       report = Report.new
 
-      Checks::Baseline.run(report)
-      Checks::Configuration.run(report)
-      Checks::Artifacts.run(report)
-      Checks::StateModel.run(report)
-      Checks::ModelsRegistry.run(report)
-      Checks::OpenaiApiMode.run(report)
+      run_standard_checks(report)
       Checks::Rails.run(report) if detect_rails?
       Checks::Persistence.run(report) if persistence_profile?(profile)
       Checks::PersistenceCapabilities.run(report) if persistence_profile?(profile)
@@ -40,6 +35,16 @@ module Smith
 
       Printer.new(report, io:).print
       report
+    end
+
+    # The checks every profile runs, in this order.
+    def self.run_standard_checks(report)
+      Checks::Baseline.run(report)
+      Checks::Configuration.run(report)
+      Checks::Artifacts.run(report)
+      Checks::StateModel.run(report)
+      Checks::ModelsRegistry.run(report)
+      Checks::OpenaiApiMode.run(report)
     end
 
     def self.detect_rails?

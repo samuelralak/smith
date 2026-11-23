@@ -5,7 +5,7 @@ module Smith
     module Statistics
       # estimate and rate.
       module Estimation
-        # rubocop:disable Metrics/ParameterLists -- the interface's keywords are frozen (design 7.1)
+        # The interface's keywords are frozen (design 7.1).
         # One reducer's value over samples, with the interval design 7.3 chooses.
         def estimate(samples:, reducer:, scale: :binary, confidence: 0.95, resamples: RESAMPLES,
                      small_sample_threshold: 30, seed: nil)
@@ -19,7 +19,6 @@ module Smith
           SampleList.bootstrap_work!(counted.size, request.resamples) if kind.bootstrap?
           Estimator.new(counted, request).call
         end
-        # rubocop:enable Metrics/ParameterLists
 
         # Wilson on counts that are not samples: a judge's catch rate.
         def rate(successes:, total:, confidence: 0.95)

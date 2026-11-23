@@ -29,9 +29,9 @@ RSpec.describe "Smith::Guardrails runtime behavior" do
       end
     end.new
 
-    workflow.define_singleton_method(:execute_transition_body) do |_transition, prepared_input: nil|
+    workflow.define_singleton_method(:execute_transition_body) do |transition, prepared_input: nil|
       @executed = true
-      super(_transition, prepared_input: prepared_input)
+      super(transition, prepared_input: prepared_input)
     end
 
     result = workflow.run!
@@ -68,9 +68,9 @@ RSpec.describe "Smith::Guardrails runtime behavior" do
       end
     end.new
 
-    workflow.define_singleton_method(:execute_transition_body) do |_transition, prepared_input: nil|
+    workflow.define_singleton_method(:execute_transition_body) do |transition, prepared_input: nil|
       observed << :executed
-      super(_transition, prepared_input: prepared_input)
+      super(transition, prepared_input: prepared_input)
       :ok
     end
 

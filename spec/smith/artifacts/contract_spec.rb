@@ -20,7 +20,8 @@ RSpec.describe "Smith artifacts contract" do
     calls = []
 
     backend = Object.new
-    backend.define_singleton_method(:store) do |data, content_type: "application/octet-stream", execution_namespace: nil|
+    backend.define_singleton_method(:store) do |data, content_type: "application/octet-stream",
+                                                execution_namespace: nil|
       calls << [:store, data, content_type, execution_namespace]
       "inner-ref"
     end

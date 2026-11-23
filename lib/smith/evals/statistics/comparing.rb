@@ -8,7 +8,7 @@ module Smith
         LABEL_LENGTH = (1..128)
         CODE = /\A[a-z][a-z0-9_]{0,63}\z/
 
-        # rubocop:disable Metrics/ParameterLists -- the interface's keywords are frozen (design 7.1)
+        # The interface's keywords are frozen (design 7.1).
         # One candidate against the baseline, paired by sample id (design 7.5).
         def compare(baseline:, candidate:, reducer:, scale: :binary, margin: 0.0, confidence: 0.95,
                     no_worse_margin: nil)
@@ -18,9 +18,8 @@ module Smith
           other = SampleList.check!(candidate, "candidate", reducer: comparer.reducer, scale: comparer.scale)
           comparer.comparison(comparer.pairing(other), other, level, no_worse_margin)
         end
-        # rubocop:enable Metrics/ParameterLists
 
-        # rubocop:disable Metrics/ParameterLists -- the interface's keywords are frozen (design 7.1)
+        # The interface's keywords are frozen (design 7.1).
         # Holm across every candidate named; each compared candidate's
         # interval at its Holm level. These per-candidate intervals agree
         # with Holm's decisions but are not simultaneous intervals.
@@ -34,7 +33,6 @@ module Smith
           SampleList.bootstrap_work!(comparer.base.size, RESAMPLES) if comparer.reducer.bootstrap?
           ComparisonSetBuilder.new(comparer, rows, label:, level:, no_worse_margin:).call
         end
-        # rubocop:enable Metrics/ParameterLists
 
         class << self
           def comparer(baseline, reducer, scale, margin)

@@ -9,7 +9,7 @@ module Smith
         RATES = %w[catches_failures passes_good].freeze
         BAR_SHAPE = "bar is nil or { catches_failures:, passes_good: }, each nil or a rate in 0..1"
 
-        # rubocop:disable Metrics/ParameterLists -- the interface's keywords are frozen (design 7.1)
+        # The interface's keywords are frozen (design 7.1).
         # A judge's two rates against labels, each read against the bar.
         def judge_check(caught:, failures:, passed:, good:, bar: nil, gates_on: :with_confidence, confidence: 0.95)
           bar = Judging.bar!(bar)
@@ -22,7 +22,6 @@ module Smith
                          meets_bar: bar && rates.to_h { |name, estimate| [name, Judging.reading(estimate, bar[name])] },
                          gates_on:)
         end
-        # rubocop:enable Metrics/ParameterLists
 
         class << self
           # The declared minimum rates, each nil (no bar) or in 0..1.

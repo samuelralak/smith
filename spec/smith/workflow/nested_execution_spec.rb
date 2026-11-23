@@ -126,7 +126,7 @@ RSpec.describe "Smith::Workflow nested execution" do
       state :done
     end
 
-    agent = with_stubbed_class("SpecNestedDualAgent", agent_class) do
+    with_stubbed_class("SpecNestedDualAgent", agent_class) do
       register_as :spec_nested_dual_agent
       model "gpt-5-mini"
     end
@@ -150,7 +150,7 @@ RSpec.describe "Smith::Workflow nested execution" do
       state :done
     end
 
-    classifier = with_stubbed_class("SpecNestedRouteClassifier", agent_class) do
+    with_stubbed_class("SpecNestedRouteClassifier", agent_class) do
       register_as :spec_nested_route_classifier
       model "gpt-5-mini"
     end
@@ -350,7 +350,8 @@ RSpec.describe "Smith::Workflow nested execution" do
     writes = []
 
     backend = Object.new
-    backend.define_singleton_method(:store) do |data, content_type: "application/octet-stream", execution_namespace: nil|
+    backend.define_singleton_method(:store) do |data, content_type: "application/octet-stream",
+                                                execution_namespace: nil|
       writes << { data: data, content_type: content_type, execution_namespace: execution_namespace }
       "backend-ref-#{writes.length}"
     end
@@ -405,7 +406,9 @@ RSpec.describe "Smith::Workflow nested execution" do
 
     expect(result.state).to eq(:done)
     expect(result.steps.first[:output]).to eq(ref: "#{execution_namespace}:backend-ref-1")
-    expect(writes).to eq([{ data: "nested-artifact", content_type: "text/plain", execution_namespace: execution_namespace }])
+    expect(writes).to eq(
+      [{ data: "nested-artifact", content_type: "text/plain", execution_namespace: execution_namespace }]
+    )
   ensure
     Smith.configure do |config|
       config.artifact_store = original_store

@@ -25,10 +25,10 @@ module Smith
         providers = if providers_arg.empty?
                       nil
                     else
-                      providers_arg.map(&:to_sym).to_set
+                      providers_arg.to_set(&:to_sym)
                     end
-        endpoints = provider_endpoints.transform_values { |v| Array(v).map(&:to_sym).to_set }
-        except_set = except&.transform_values { |v| Array(v).map(&:to_sym).to_set }
+        endpoints = provider_endpoints.transform_values { |v| Array(v).to_set(&:to_sym) }
+        except_set = except&.transform_values { |v| Array(v).to_set(&:to_sym) }
 
         {
           providers: providers,
@@ -53,9 +53,7 @@ module Smith
         endpoint = effective_endpoint || profile.endpoint_mode
 
         # exception list: explicit deny wins
-        if (excluded = spec[:except]&.[](provider)) && excluded.include?(endpoint)
-          return false
-        end
+        return false if excluded?(spec, provider, endpoint)
 
         # allowlist by provider (nil = all allowed)
         return false if spec[:providers] && !spec[:providers].include?(provider)
@@ -67,6 +65,11 @@ module Smith
 
         true
       end
+
+      def excluded?(spec, provider, endpoint)
+        (excluded = spec[:except]&.[](provider)) && excluded.include?(endpoint)
+      end
+      private_class_method :excluded?
     end
   end
 end

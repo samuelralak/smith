@@ -694,7 +694,8 @@ RSpec.describe "Smith::Workflow run result contract" do
     original_store = Smith.config.artifact_store
 
     configured_backend = Object.new
-    configured_backend.define_singleton_method(:store) do |data, content_type: "application/octet-stream", execution_namespace: nil|
+    configured_backend.define_singleton_method(:store) do |data, content_type: "application/octet-stream",
+                                                           execution_namespace: nil|
       backend_stores << { data: data, content_type: content_type, execution_namespace: execution_namespace }
       "backend-ref-#{backend_stores.length}"
     end
@@ -787,7 +788,8 @@ RSpec.describe "Smith::Workflow run result contract" do
     original_store = Smith.config.artifact_store
 
     configured_backend = Object.new
-    configured_backend.define_singleton_method(:store) do |data, content_type: "application/octet-stream", execution_namespace: nil|
+    configured_backend.define_singleton_method(:store) do |data, content_type: "application/octet-stream",
+                                                           execution_namespace: nil|
       backend_stores << { data: data, content_type: content_type, execution_namespace: execution_namespace }
       "backend-ref-#{backend_stores.length}"
     end

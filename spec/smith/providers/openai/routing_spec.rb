@@ -57,7 +57,8 @@ RSpec.describe Smith::Providers::OpenAI::Routing do
 
       expect do
         described_class.instance_method(:complete).bind(provider).call(
-          [], tools: {}, temperature: 1.0, model: nil,
+          [],
+          tools: {}, temperature: 1.0, model: nil,
           params: { openai_api_mode: :responses }
         )
       end.to raise_error(NotImplementedError, /Responses.*not yet vendored/)
@@ -68,7 +69,8 @@ RSpec.describe Smith::Providers::OpenAI::Routing do
 
       expect do
         described_class.instance_method(:complete).bind(provider).call(
-          [], tools: {}, temperature: 1.0, model: nil,
+          [],
+          tools: {}, temperature: 1.0, model: nil,
           params: { "openai_api_mode" => "responses" }
         )
       end.to raise_error(NotImplementedError)

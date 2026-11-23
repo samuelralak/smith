@@ -19,21 +19,19 @@ module Smith
         @session_strategy = { strategy: strategy, **opts }
       end
 
-      def persist(*keys, also: nil)
-        if keys.empty? && also.nil?
-          return @persist_keys || []
-        end
+      # Kept whole: a split adds a name to Context's host surface.
+      def persist(*keys, also: nil) # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
+        return @persist_keys || [] if keys.empty? && also.nil?
 
         validate_persist_keys!(keys)
-        if also && !keys.include?(:auto)
-          raise Smith::WorkflowError, ":also is only valid alongside :auto"
-        end
+        raise Smith::WorkflowError, ":also is only valid alongside :auto" if also && !keys.include?(:auto)
 
         if keys.include?(:auto)
           other_keys = keys.reject { |k| k == :auto }
           unless other_keys.empty?
             raise Smith::WorkflowError, "persist :auto must be the sole positional argument; got #{other_keys.inspect}"
           end
+
           @persist_mode = :auto
           @persist_keys = []
           @persist_auto_seed = Array(also).map(&:to_sym)

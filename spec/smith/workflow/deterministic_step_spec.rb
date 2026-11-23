@@ -18,7 +18,7 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
         state :done
 
         transition :check, from: :idle, to: :done do
-          compute { |_step| }
+          compute { |_step| nil }
         end
       end
 
@@ -33,7 +33,7 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
         state :done
 
         transition :normalize, from: :idle, to: :done do
-          run { |_step| }
+          run { |_step| nil }
         end
       end
 
@@ -69,7 +69,7 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
     end
 
     it "rejects malformed deterministic route annotations" do
-      expect {
+      expect do
         with_stubbed_class("SpecDeterministicRoutesTypeWorkflow", workflow_class) do
           initial_state :idle
           state :done
@@ -78,92 +78,92 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
             compute(routes: :finish) { |step| step.read_context(:noop) }
           end
         end
-      }.to raise_error(Smith::WorkflowError, /deterministic routes must be an Array/)
+      end.to raise_error(Smith::WorkflowError, /deterministic routes must be an Array/)
 
-      expect {
+      expect do
         with_stubbed_class("SpecDeterministicRoutesDuplicateWorkflow", workflow_class) do
           initial_state :idle
           state :done
 
           transition :check, from: :idle, to: :done do
-            run(routes: [:finish, :finish]) { |step| step.read_context(:noop) }
+            run(routes: %i[finish finish]) { |step| step.read_context(:noop) }
           end
         end
-      }.to raise_error(Smith::WorkflowError, /deterministic route .* is duplicated/)
+      end.to raise_error(Smith::WorkflowError, /deterministic route .* is duplicated/)
     end
 
     it "rejects compute + execute" do
-      expect {
+      expect do
         with_stubbed_class("SpecComputeExecuteWorkflow", workflow_class) do
           initial_state :idle
           state :done
 
           transition :check, from: :idle, to: :done do
             execute :some_agent
-            compute { |_step| }
+            compute { |_step| nil }
           end
         end
-      }.to raise_error(Smith::WorkflowError, /compute\/run and execute/)
+      end.to raise_error(Smith::WorkflowError, %r{compute/run and execute})
     end
 
     it "rejects execute + compute (reverse order)" do
-      expect {
+      expect do
         with_stubbed_class("SpecExecuteComputeWorkflow", workflow_class) do
           initial_state :idle
           state :done
 
           transition :check, from: :idle, to: :done do
-            compute { |_step| }
+            compute { |_step| nil }
             execute :some_agent
           end
         end
-      }.to raise_error(Smith::WorkflowError, /execute and compute\/run/)
+      end.to raise_error(Smith::WorkflowError, %r{execute and compute/run})
     end
 
     it "rejects compute + route" do
-      expect {
+      expect do
         with_stubbed_class("SpecComputeRouteWorkflow", workflow_class) do
           initial_state :idle
           state :done
 
           transition :check, from: :idle, to: :done do
             route :some_agent, routes: { done: :finish }, confidence_threshold: 0.5, fallback: :finish
-            compute { |_step| }
+            compute { |_step| nil }
           end
         end
-      }.to raise_error(Smith::WorkflowError, /compute\/run and route/)
+      end.to raise_error(Smith::WorkflowError, %r{compute/run and route})
     end
 
     it "rejects compute + run (two deterministic blocks)" do
-      expect {
+      expect do
         with_stubbed_class("SpecComputeRunWorkflow", workflow_class) do
           initial_state :idle
           state :done
 
           transition :check, from: :idle, to: :done do
-            compute { |_step| }
-            run { |_step| }
+            compute { |_step| nil }
+            run { |_step| nil }
           end
         end
-      }.to raise_error(Smith::WorkflowError, /compute and run/)
+      end.to raise_error(Smith::WorkflowError, /compute and run/)
     end
 
     it "rejects route + compute (reverse order)" do
-      expect {
+      expect do
         with_stubbed_class("SpecRouteComputeWorkflow", workflow_class) do
           initial_state :idle
           state :done
 
           transition :check, from: :idle, to: :done do
-            compute { |_step| }
+            compute { |_step| nil }
             route :some_agent, routes: {}, confidence_threshold: 0.5, fallback: :fail
           end
         end
-      }.to raise_error(Smith::WorkflowError, /route and compute\/run/)
+      end.to raise_error(Smith::WorkflowError, %r{route and compute/run})
     end
 
     it "rejects compute + workflow (both orders)" do
-      expect {
+      expect do
         child = with_stubbed_class("SpecChildWorkflow", workflow_class) do
           initial_state :idle
           state :done
@@ -175,66 +175,66 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
           state :done
 
           transition :check, from: :idle, to: :done do
-            compute { |_step| }
+            compute { |_step| nil }
             workflow child
           end
         end
-      }.to raise_error(Smith::WorkflowError, /workflow and compute\/run/)
+      end.to raise_error(Smith::WorkflowError, %r{workflow and compute/run})
     end
 
     it "rejects compute + optimize" do
       schema = Struct.new(:required_keys).new([:accept])
 
-      expect {
+      expect do
         with_stubbed_class("SpecComputeOptimizeWorkflow", workflow_class) do
           initial_state :idle
           state :done
 
           transition :check, from: :idle, to: :done do
-            compute { |_step| }
+            compute { |_step| nil }
             optimize generator: :g, evaluator: :e, max_rounds: 3, evaluator_schema: schema
           end
         end
-      }.to raise_error(Smith::WorkflowError, /optimize and compute\/run/)
+      end.to raise_error(Smith::WorkflowError, %r{optimize and compute/run})
     end
 
     it "rejects optimize + compute (reverse order)" do
       schema = Struct.new(:required_keys).new([:accept])
 
-      expect {
+      expect do
         with_stubbed_class("SpecOptimizeComputeWorkflow", workflow_class) do
           initial_state :idle
           state :done
 
           transition :check, from: :idle, to: :done do
             optimize generator: :g, evaluator: :e, max_rounds: 3, evaluator_schema: schema
-            compute { |_step| }
+            compute { |_step| nil }
           end
         end
-      }.to raise_error(Smith::WorkflowError, /compute\/run and optimize/)
+      end.to raise_error(Smith::WorkflowError, %r{compute/run and optimize})
     end
 
     it "rejects compute + orchestrate" do
       schema = Struct.new(:required_keys).new([:key])
 
-      expect {
+      expect do
         with_stubbed_class("SpecComputeOrchestrateWorkflow", workflow_class) do
           initial_state :idle
           state :done
 
           transition :check, from: :idle, to: :done do
-            compute { |_step| }
+            compute { |_step| nil }
             orchestrate orchestrator: :o, worker: :w, max_workers: 2, max_delegation_rounds: 3,
                         task_schema: schema, worker_output_schema: schema, final_output_schema: schema
           end
         end
-      }.to raise_error(Smith::WorkflowError, /orchestrate and compute\/run/)
+      end.to raise_error(Smith::WorkflowError, %r{orchestrate and compute/run})
     end
 
     it "rejects orchestrate + compute (reverse order)" do
       schema = Struct.new(:required_keys).new([:key])
 
-      expect {
+      expect do
         with_stubbed_class("SpecOrchestrateComputeWorkflow", workflow_class) do
           initial_state :idle
           state :done
@@ -242,14 +242,14 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
           transition :check, from: :idle, to: :done do
             orchestrate orchestrator: :o, worker: :w, max_workers: 2, max_delegation_rounds: 3,
                         task_schema: schema, worker_output_schema: schema, final_output_schema: schema
-            compute { |_step| }
+            compute { |_step| nil }
           end
         end
-      }.to raise_error(Smith::WorkflowError, /compute\/run and orchestrate/)
+      end.to raise_error(Smith::WorkflowError, %r{compute/run and orchestrate})
     end
 
     it "rejects compute without a block" do
-      expect {
+      expect do
         with_stubbed_class("SpecComputeNoBlockWorkflow", workflow_class) do
           initial_state :idle
           state :done
@@ -258,11 +258,11 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
             compute
           end
         end
-      }.to raise_error(Smith::WorkflowError, /compute requires a block/)
+      end.to raise_error(Smith::WorkflowError, /compute requires a block/)
     end
 
     it "rejects run without a block" do
-      expect {
+      expect do
         with_stubbed_class("SpecRunNoBlockWorkflow", workflow_class) do
           initial_state :idle
           state :done
@@ -271,7 +271,7 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
             run
           end
         end
-      }.to raise_error(Smith::WorkflowError, /run requires a block/)
+      end.to raise_error(Smith::WorkflowError, /run requires a block/)
     end
 
     it "detects deterministic route duplicates in normalized linear time" do
@@ -300,11 +300,11 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
         state :done
 
         transition :verify, from: :idle, to: :verified do
-          compute { |_step| }
+          compute { |_step| nil }
         end
 
         transition :finish, from: :verified, to: :done do
-          compute { |_step| }
+          compute { |_step| nil }
         end
       end
 
@@ -386,12 +386,15 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
       end
 
       workflow = klass.new
-      workflow.instance_variable_set(:@session_messages, [
-        { role: :user, content: "hello" },
-        { role: :assistant, content: "first response" },
-        { role: :user, content: "followup" },
-        { role: :assistant, content: "second response" }
-      ])
+      workflow.instance_variable_set(
+        :@session_messages,
+        [
+          { role: :user, content: "hello" },
+          { role: :assistant, content: "first response" },
+          { role: :user, content: "followup" },
+          { role: :assistant, content: "second response" }
+        ]
+      )
       workflow.run!
 
       expect(observed_output).to eq("second response")
@@ -539,11 +542,11 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
         end
 
         transition :default_path, from: :verified, to: :done do
-          compute { |_step| }
+          compute { |_step| nil }
         end
 
         transition :alternate_path, from: :verified, to: :done do
-          compute { |_step| }
+          compute { |_step| nil }
         end
       end
 
@@ -612,12 +615,12 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
         state :done
 
         transition :verify, from: :idle, to: :verified do
-          compute { |_step| }
+          compute { |_step| nil }
           on_success :finish
         end
 
         transition :finish, from: :verified, to: :done do
-          compute { |_step| }
+          compute { |_step| nil }
         end
       end
 
@@ -703,7 +706,7 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
         state :done
 
         transition :check, from: :idle, to: :done do
-          compute { |_step| }
+          compute { |_step| nil }
         end
       end
 
@@ -721,7 +724,7 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
         budget total_cost: 1.0, token_limit: 1000
 
         transition :check, from: :idle, to: :done do
-          compute { |_step| }
+          compute { |_step| nil }
         end
       end
 
@@ -740,7 +743,7 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
         budget wall_clock: 0
 
         transition :check, from: :idle, to: :done do
-          compute { |_step| }
+          compute { |_step| nil }
           on_failure :fail
         end
       end
@@ -767,7 +770,7 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
         end
 
         transition :finish, from: :verified, to: :done do
-          compute { |_step| }
+          compute { |_step| nil }
         end
       end
 
@@ -794,13 +797,13 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
         state :failed
 
         transition :verify, from: :idle, to: :verified do
-          compute { |_step| }
+          compute { |_step| nil }
           on_success :missing
           on_failure :fail
         end
 
         transition :finish, from: :verified, to: :done do
-          compute { |_step| }
+          compute { |_step| nil }
         end
       end
 
@@ -830,7 +833,7 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
         end
 
         transition :finish, from: :verified, to: :done do
-          compute { |_step| }
+          compute { |_step| nil }
         end
       end
 
@@ -844,12 +847,12 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
         state :done
 
         transition :verify, from: :idle, to: :verified do
-          compute { |_step| }
+          compute { |_step| nil }
           on_success :missing
         end
 
         transition :finish, from: :verified, to: :done do
-          compute { |_step| }
+          compute { |_step| nil }
         end
       end
 
@@ -952,7 +955,7 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
         end
 
         transition :finish, from: :normalized, to: :done do
-          compute { |_step| }
+          compute { |_step| nil }
         end
       end
 
@@ -977,7 +980,7 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
         end
 
         transition :finish, from: :verified, to: :done do
-          compute { |_step| }
+          compute { |_step| nil }
         end
       end
 
@@ -1087,13 +1090,15 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
 
         transition :prepare, from: :idle, to: :prepared do
           run do |step|
-            step.write_outcome(kind: :artifact_ready, payload: { title: "Test artifact", insights: [{ text: "Insight" }] })
+            step.write_outcome(
+              kind: :artifact_ready, payload: { title: "Test artifact", insights: [{ text: "Insight" }] }
+            )
             step.route_to(:finish)
           end
         end
 
         transition :finish, from: :prepared, to: :done do
-          compute { |_step| }
+          compute { |_step| nil }
         end
       end
 
@@ -1116,7 +1121,9 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
 
         transition :prepare, from: :idle, to: :done do
           run do |step|
-            step.write_outcome(kind: :artifact_ready, payload: { title: "Test artifact", insights: [{ text: "Insight" }] })
+            step.write_outcome(
+              kind: :artifact_ready, payload: { title: "Test artifact", insights: [{ text: "Insight" }] }
+            )
           end
         end
       end
@@ -1181,7 +1188,7 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
         state :done
 
         transition :check, from: :idle, to: :done do
-          compute { |_step| }
+          compute { |_step| nil }
         end
       end
 
@@ -1211,7 +1218,7 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
         end
 
         transition :finish, from: :verified, to: :done do
-          compute { |_step| }
+          compute { |_step| nil }
         end
       end
 
@@ -1386,7 +1393,7 @@ RSpec.describe "Smith::Workflow deterministic step contract" do
         end
 
         transition :finish, from: :normalized, to: :done do
-          compute { |_step| }
+          compute { |_step| nil }
         end
       end
 

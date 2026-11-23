@@ -151,9 +151,7 @@ RSpec.describe Smith::PersistenceAdapters do
     end
 
     it "fails when a custom adapter class does not implement the adapter contract" do
-      invalid_class = Class.new do
-        def initialize; end
-      end
+      invalid_class = Class.new
 
       expect do
         described_class.resolve(invalid_class)

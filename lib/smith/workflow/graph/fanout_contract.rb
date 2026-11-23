@@ -34,9 +34,7 @@ module Smith
 
         private
 
-        def branches
-          transition.fanout_config.fetch(:branches)
-        end
+        def branches = transition.fanout_config.fetch(:branches)
 
         def join_contract
           {
@@ -81,11 +79,7 @@ module Smith
               branch: branch_value,
               agent: agent_value,
               result_branch_value: branch_value,
-              result_shape: {
-                branch: branch_value,
-                agent: agent_value,
-                output: :agent_output
-              }
+              result_shape: { branch: branch_value, agent: agent_value, output: :agent_output }
             }
           end
         end
@@ -110,7 +104,7 @@ module Smith
         end
 
         def idempotency_mode
-          return :unknown unless workflow_class&.respond_to?(:idempotency_mode)
+          return :unknown unless workflow_class.respond_to?(:idempotency_mode)
 
           workflow_class.idempotency_mode
         end

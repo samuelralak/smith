@@ -953,7 +953,7 @@ RSpec.describe "Smith::Workflow::EvaluatorOptimizer runtime behavior" do
         transition :translate, from: :idle, to: :done do
           optimize generator: :spec_opt_gen_before_eval, evaluator: :spec_opt_eval_before_eval,
                    max_rounds: 3, evaluator_schema: schema,
-                   before_eval: ->(state, context) {
+                   before_eval: lambda { |state, context|
                      observed << [state.candidate, context.dup]
                      context[:violations] = ["fake violation"]
                    }
@@ -1251,10 +1251,13 @@ RSpec.describe "Smith::Workflow::EvaluatorOptimizer runtime behavior" do
       end
 
       stub_agent_sequence(generator, %w[draft1 draft2])
-      stub_agent_sequence(evaluator, [
-        { accept: false, feedback: "try again", score: 0.7 },
-        { accept: false, feedback: "still", score: 0.71 }
-      ])
+      stub_agent_sequence(
+        evaluator,
+        [
+          { accept: false, feedback: "try again", score: 0.7 },
+          { accept: false, feedback: "still", score: 0.71 }
+        ]
+      )
 
       schema = Class.new
 

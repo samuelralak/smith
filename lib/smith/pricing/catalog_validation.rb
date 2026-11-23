@@ -24,7 +24,7 @@ module Smith
       end
 
       def validated_key!(key)
-        provider, model = Pricing.__send__(:canonical_key, key)
+        provider, model = CatalogKeys.canonical_key(key)
         raise Smith::PricingConfigurationError, "unrecognized pricing catalog key #{key.inspect}" unless model
         return [provider, model] if provider
 

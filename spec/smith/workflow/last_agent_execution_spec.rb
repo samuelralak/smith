@@ -65,6 +65,19 @@ RSpec.describe "Smith::Workflow last agent execution attribution" do
     end
   end
 
+  describe "a later agent step without a served model" do
+    # Its :model is there but nil, and it still replaces the earlier
+    # attribution: a compute step never reads a model that did not serve
+    # the latest agent step.
+    it "replaces the earlier attribution" do
+      run = with_stubbed_class("SpecLastAgentNilModelWorkflow", workflow_class) { initial_state :idle }.new
+      run.send(:record_step_snapshot, { output: "drafted", model: "gpt-5-mini", provider: :openai })
+      run.send(:record_step_snapshot, { output: "redrafted", model: nil, provider: nil })
+
+      expect(run.to_state[:last_agent_execution]).to eq(model: nil, provider: nil)
+    end
+  end
+
   describe "execute -> compute integration" do
     it "exposes the served model/provider of the preceding agent step to a compute step" do
       agent = with_stubbed_class("SpecLastAgentAgent", agent_class) do

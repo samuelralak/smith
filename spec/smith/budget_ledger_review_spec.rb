@@ -248,8 +248,8 @@ RSpec.describe "Smith budget ledgers: review fixes" do
     end
 
     unbudgeted = lambda do |klass|
-      klass.runtime_readiness.runtime_diagnostics.select { _1.code == :child_run_unbudgeted }
-                                                 .map { [_1.severity, _1.transition, _1.target] }
+      diagnostics = klass.runtime_readiness.runtime_diagnostics.select { _1.code == :child_run_unbudgeted }
+      diagnostics.map { [_1.severity, _1.transition, _1.target] }
     end
     expect(unbudgeted.call(launching.call("SpecLedgerUnheldParent", plain_child) { |_scope| nil }))
       .to eq([[:warning, :fan, "SpecLedgerPlainChild"]])

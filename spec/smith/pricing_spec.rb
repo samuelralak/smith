@@ -235,6 +235,20 @@ RSpec.describe Smith::Pricing do
         .to raise_error(Smith::PricingConfigurationError, %r{collide as openai/shared-model})
     end
 
+    it "reads a Symbol key as its text: qualified admitted, model-only refused" do
+      entry = { input_cost_per_token: 0.001, output_cost_per_token: 0.002 }
+      catalog = { "openai/gpt-5-mini": entry }
+
+      expect(described_class.validate_catalog!(catalog)).to be(catalog)
+      expect { described_class.validate_catalog!("shared-model": entry) }
+        .to raise_error(Smith::PricingConfigurationError, /provider-qualified catalog key/)
+    end
+
+    # How a catalog key reads is Pricing's own, not a constant hosts can name.
+    it "keeps its key reading off its public constants" do
+      expect(described_class.constants).not_to include(:CatalogKeys)
+    end
+
     it "rejects a non-Hash catalog" do
       expect { described_class.validate_catalog!([]) }
         .to raise_error(Smith::PricingConfigurationError, /catalog must be a Hash/)

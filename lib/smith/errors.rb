@@ -192,7 +192,7 @@ module Smith
     # requests took no effect, so a retry of the step that raised it sends
     # them under new keys; `idempotency_scope` is that step's position. The
     # flag is not persisted with the failure record.
-    def initialize(message, retryable: nil, kind: nil, details: nil, new_idempotency_key: false, # rubocop:disable Metrics/ParameterLists
+    def initialize(message, retryable: nil, kind: nil, details: nil, new_idempotency_key: false,
                    idempotency_scope: nil)
       unless [true, false, nil].include?(new_idempotency_key)
         raise ArgumentError, "new_idempotency_key must be true or false"

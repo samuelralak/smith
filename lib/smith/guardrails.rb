@@ -14,21 +14,21 @@ module Smith
         return @inputs || [] if name.nil?
 
         @inputs ||= []
-        @inputs << ({ name: name, ** })
+        @inputs << { name: name, ** }
       end
 
       def tool(name = nil, **)
         return @tools || [] if name.nil?
 
         @tools ||= []
-        @tools << ({ name: name, ** })
+        @tools << { name: name, ** }
       end
 
       def output(name = nil, **)
         return @outputs || [] if name.nil?
 
         @outputs ||= []
-        @outputs << ({ name: name, ** })
+        @outputs << { name: name, ** }
       end
     end
   end

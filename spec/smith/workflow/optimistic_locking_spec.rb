@@ -51,9 +51,8 @@ RSpec.describe "Smith::Workflow optimistic locking via store_versioned" do
     w2.persist!("workflow:optimistic-test", adapter: adapter)
 
     # w3 tries to persist with expected_version=1 → conflict (stored is v2)
-    expect do
-      w3.persist!("workflow:optimistic-test", adapter: adapter)
-    end.to raise_error(Smith::PersistenceVersionConflict) do |err|
+    conflicting_persist = -> { w3.persist!("workflow:optimistic-test", adapter: adapter) }
+    expect(&conflicting_persist).to raise_error(Smith::PersistenceVersionConflict) do |err|
       expect(err.key).to eq("workflow:optimistic-test")
       expect(err.expected).to eq(1)
     end
@@ -82,7 +81,7 @@ RSpec.describe "Smith::Workflow optimistic locking via store_versioned" do
       session_messages: [], total_cost: 0.0, total_tokens: 0,
       tool_results: [], outcome: nil, usage_entries: [],
       last_output: nil, last_failed_step: nil
-      # Note: no :persistence_version key
+      # NOTE: no :persistence_version key
     }
     adapter.store("workflow:optimistic-test", JSON.generate(legacy_payload))
 

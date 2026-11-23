@@ -27,7 +27,7 @@ module Smith
     # traces, events and usage entries never carry it.
     Context = Data.define(:execution_key, :transition, :from, :to, :branch_key, :round, :workflow, :trial) do
       # Data passes every member by keyword, so the list is Data's own.
-      def initialize( # rubocop:disable Metrics/ParameterLists
+      def initialize(
         execution_key:, transition:, from:, to:, branch_key:, round:, workflow:, trial: nil
       )
         super

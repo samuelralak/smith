@@ -121,8 +121,8 @@ module Smith
       # agent class, and a chat with how many of its messages were sent, or an
       # image's request and the image the provider answered (kept or not).
       # With no observer installed an attempt reads one nil.
-      # rubocop:disable Metrics/ParameterLists -- what an observation reads is
-      # passed as it is, so an app that installs no observer allocates nothing.
+      # What an observation reads is passed as it is, so an app that installs
+      # no observer allocates nothing.
       def completed_provider_attempt(completion, observed_reference, timer, facts,
                                      agent_class:, chat: nil, sent_count: nil, request: nil, image: nil)
         usage = ProviderUsage.sum(completion.provider_usages)&.with_response_facts(completion.response_facts)
@@ -159,7 +159,6 @@ module Smith
         end
         attempt
       end
-      # rubocop:enable Metrics/ParameterLists
     end
   end
 end

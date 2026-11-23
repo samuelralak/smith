@@ -43,7 +43,8 @@ puts "\n--- Snapshot Cost (build_run_result deep copy) ---"
   time = measure { workflow.run! }
   after_gc = GC.stat[:total_allocated_objects]
 
-  printf "  %5d entries: %.4fs, ~%d allocations\n", count, time, (after_gc - before_gc)
+  printf "  %<count>5d entries: %<time>.4fs, ~%<allocations>d allocations\n",
+         count:, time:, allocations: after_gc - before_gc
 end
 
 # 2. JSON persistence round-trip
@@ -55,8 +56,8 @@ json = nil
   serialize_time = measure { json = JSON.generate(workflow.to_state) }
   restore_time = measure { klass.from_state(JSON.parse(json)) }
 
-  printf "  %5d entries: serialize=%.4fs restore=%.4fs json_bytes=%d\n",
-         count, serialize_time, restore_time, json.bytesize
+  printf "  %<count>5d entries: serialize=%<serialize>.4fs restore=%<restore>.4fs json_bytes=%<bytes>d\n",
+         count:, serialize: serialize_time, restore: restore_time, bytes: json.bytesize
 end
 
 # 3. Parallel collector contention
@@ -87,8 +88,8 @@ puts "\n--- Parallel Collector Contention ---"
   expected = branch_count * 5
 
   status = total == expected ? "OK" : "LOSS (#{expected - total} missing)"
-  printf "  %3d branches x 5 calls: %.4fs, %d/%d entries [%s]\n",
-         branch_count, time, total, expected, status
+  printf "  %<branches>3d branches x 5 calls: %<time>.4fs, %<total>d/%<expected>d entries [%<status>s]\n",
+         branches: branch_count, time:, total:, expected:, status:
 end
 
 puts "\n#{"=" * 70}\nDone."

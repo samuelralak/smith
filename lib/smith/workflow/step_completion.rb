@@ -9,7 +9,8 @@ module Smith
 
       private
 
-      def complete_step(transition, output)
+      # Kept whole: a split adds a name to Workflow's host surface.
+      def complete_step(transition, output) # rubocop:disable Metrics/AbcSize
         StepCompletion.instance_method(:check_result_storable!).bind_call(self, output)
         step = { transition: transition.name, from: transition.from, to: transition.to, output: output }
         # Fold in the serial agent attribution captured for this step (if any),

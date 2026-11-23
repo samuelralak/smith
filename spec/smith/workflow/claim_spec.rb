@@ -17,13 +17,13 @@ RSpec.describe Smith::Workflow::Claim do
 
     it "raises AdapterUnavailable with a useful message when ::ActiveRecord is undefined" do
       hide_const("ActiveRecord")
-      expect {
+      expect do
         described_class.atomic(double("model"), id: 1, from_statuses: ["queued"], transition_via: :mark_processing!)
-      }.to raise_error(Smith::Workflow::Claim::AdapterUnavailable, /ActiveRecord/)
+      end.to raise_error(Smith::Workflow::Claim::AdapterUnavailable, /ActiveRecord/)
 
-      expect {
+      expect do
         described_class.cas(double("model"), id: 1, from_statuses: ["queued"], to_status: "processing")
-      }.to raise_error(Smith::Workflow::Claim::AdapterUnavailable, /ActiveRecord/)
+      end.to raise_error(Smith::Workflow::Claim::AdapterUnavailable, /ActiveRecord/)
     end
 
     it "AdapterUnavailable inherits from Smith::Error" do
@@ -45,9 +45,10 @@ RSpec.describe Smith::Workflow::Claim do
       allow_any_instance_of(ClaimableRecord).to receive(:mark_processing!).and_call_original
 
       result = described_class.atomic(
-        ClaimableRecord, id: record.id,
+        ClaimableRecord,
+        id: record.id,
         from_statuses: ["queued"], transition_via: :mark_processing!,
-        terminal_statuses: ["processing", "ready"]
+        terminal_statuses: %w[processing ready]
       )
 
       expect(result).to be_a(ClaimableRecord)
@@ -63,7 +64,8 @@ RSpec.describe Smith::Workflow::Claim do
       end
 
       described_class.atomic(
-        ClaimableRecord, id: record.id,
+        ClaimableRecord,
+        id: record.id,
         from_statuses: ["queued"], transition_via: :mark_processing!,
         terminal_statuses: []
       )
@@ -75,25 +77,38 @@ RSpec.describe Smith::Workflow::Claim do
       record.update_columns(status: "ready")
 
       result = described_class.atomic(
-        ClaimableRecord, id: record.id,
+        ClaimableRecord,
+        id: record.id,
         from_statuses: ["queued"], transition_via: :mark_processing!,
-        terminal_statuses: ["processing", "ready"]
+        terminal_statuses: %w[processing ready]
       )
 
       expect(result).to be_nil
       expect(record.reload.status).to eq("ready")
     end
 
+    it "claims a row whose status is in both from_statuses and terminal_statuses" do
+      result = described_class.atomic(
+        ClaimableRecord,
+        id: record.id,
+        from_statuses: ["queued"], transition_via: :mark_processing!,
+        terminal_statuses: %w[queued ready]
+      )
+
+      expect(result&.status).to eq("processing")
+    end
+
     it "raises UnexpectedStatus when status is outside from_statuses ∪ terminal_statuses" do
       record.update_columns(status: "bogus")
 
-      expect {
+      expect do
         described_class.atomic(
-          ClaimableRecord, id: record.id,
+          ClaimableRecord,
+          id: record.id,
           from_statuses: ["queued"], transition_via: :mark_processing!,
           terminal_statuses: ["processing"]
         )
-      }.to raise_error(Smith::Workflow::Claim::UnexpectedStatus) { |err|
+      end.to raise_error(Smith::Workflow::Claim::UnexpectedStatus) { |err|
         expect(err.id).to eq(record.id)
         expect(err.observed_status).to eq("bogus")
       }
@@ -103,7 +118,8 @@ RSpec.describe Smith::Workflow::Claim do
       record.update_columns(status: "bogus")
 
       result = described_class.atomic(
-        ClaimableRecord, id: record.id,
+        ClaimableRecord,
+        id: record.id,
         from_statuses: ["queued"], transition_via: :mark_processing!,
         terminal_statuses: ["processing"],
         on_unexpected_status: :ignore
@@ -119,7 +135,8 @@ RSpec.describe Smith::Workflow::Claim do
       Smith.config.logger = Logger.new(log_io)
       begin
         result = described_class.atomic(
-          ClaimableRecord, id: record.id,
+          ClaimableRecord,
+          id: record.id,
           from_statuses: ["queued"], transition_via: :mark_processing!,
           terminal_statuses: ["processing"],
           on_unexpected_status: :log
@@ -145,7 +162,8 @@ RSpec.describe Smith::Workflow::Claim do
       end
 
       described_class.atomic(
-        ClaimableRecord, id: record.id,
+        ClaimableRecord,
+        id: record.id,
         from_statuses: ["queued"], transition_via: :mark_processing!,
         terminal_statuses: [],
         transaction_owner: owner
@@ -156,12 +174,14 @@ RSpec.describe Smith::Workflow::Claim do
 
     it "idempotency: second call with the same id returns record-then-nil" do
       first = described_class.atomic(
-        ClaimableRecord, id: record.id,
+        ClaimableRecord,
+        id: record.id,
         from_statuses: ["queued"], transition_via: :mark_processing!,
         terminal_statuses: ["processing"]
       )
       second = described_class.atomic(
-        ClaimableRecord, id: record.id,
+        ClaimableRecord,
+        id: record.id,
         from_statuses: ["queued"], transition_via: :mark_processing!,
         terminal_statuses: ["processing"]
       )
@@ -174,15 +194,17 @@ RSpec.describe Smith::Workflow::Claim do
       aasm_model = Class.new(ClaimableRecord)
       aasm_model.define_singleton_method(:aasm) { Object.new }
 
-      expect {
+      expect do
         described_class.atomic(aasm_model, id: 1, from_statuses: ["queued"], transition_via: nil, terminal_statuses: [])
-      }.to raise_error(ArgumentError, /AASM/)
+      end.to raise_error(ArgumentError, /AASM/)
     end
 
     it "raises ArgumentError on non-AASM model when transition_via is nil" do
-      expect {
-        described_class.atomic(ClaimableRecord, id: 1, from_statuses: ["queued"], transition_via: nil, terminal_statuses: [])
-      }.to raise_error(ArgumentError, /transition_via/)
+      expect do
+        described_class.atomic(
+          ClaimableRecord, id: 1, from_statuses: ["queued"], transition_via: nil, terminal_statuses: []
+        )
+      end.to raise_error(ArgumentError, /transition_via/)
     end
   end
 
@@ -191,7 +213,8 @@ RSpec.describe Smith::Workflow::Claim do
 
     it "claims a row whose status is in from_statuses; returns the reloaded record" do
       result = described_class.cas(
-        ClaimableRecord, id: record.id,
+        ClaimableRecord,
+        id: record.id,
         from_statuses: ["queued"], to_status: "processing"
       )
 
@@ -203,7 +226,8 @@ RSpec.describe Smith::Workflow::Claim do
       record.update_columns(status: "processing")
 
       result = described_class.cas(
-        ClaimableRecord, id: record.id,
+        ClaimableRecord,
+        id: record.id,
         from_statuses: ["queued"], to_status: "processing"
       )
 
@@ -213,7 +237,8 @@ RSpec.describe Smith::Workflow::Claim do
     it "stamps updated_at_column with the injected now: lambda value" do
       stamp = Time.utc(2026, 1, 1, 12, 0, 0)
       result = described_class.cas(
-        ClaimableRecord, id: record.id,
+        ClaimableRecord,
+        id: record.id,
         from_statuses: ["queued"], to_status: "processing",
         now: -> { stamp }
       )
@@ -225,8 +250,9 @@ RSpec.describe Smith::Workflow::Claim do
       record.update_columns(status: "failed")
 
       result = described_class.cas(
-        ClaimableRecord, id: record.id,
-        from_statuses: ["queued", "failed", "scheduled"],
+        ClaimableRecord,
+        id: record.id,
+        from_statuses: %w[queued failed scheduled],
         to_status: "processing"
       )
 

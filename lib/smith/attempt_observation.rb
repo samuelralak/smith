@@ -103,7 +103,7 @@ module Smith
       # provider answered, kept or not (a store that failed). An attempt that
       # failed before either existed has neither, and no messages. The
       # keywords are the recordings', passed through as they are.
-      def observe(attempt, agent_class, chat: nil, sent_count: nil, request: nil, image: nil) # rubocop:disable Metrics/ParameterLists
+      def observe(attempt, agent_class, chat: nil, sent_count: nil, request: nil, image: nil)
         trial = Attribution.current&.trial
         return unless trial
 

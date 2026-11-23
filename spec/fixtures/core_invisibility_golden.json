@@ -3,12 +3,12 @@
   "smith": {
     "version": "0.16.0",
     "source": "index",
-    "built_on": "eae5d93658384ad05e757acd644b2f577052b0bd",
+    "built_on": "8781714ad15c20f7945d06ff82dd7645cbc74ea0",
     "parts": {
-      "lib": "0bf4d80691b228fd719c617d502ff4e6865f2fb7",
+      "lib": "179b0d3d737f617aacc3c89dba36cb7343b0c87c",
       "smith-agents.gemspec": "c53afa043a29d0108246de68b76d808a268e1ec6",
       "script/core_invisibility_golden": "5180d12c15431cbdbe0cfa534b347973f0d89119",
-      "script/golden": "ac9cfc5668d33519577a15ec741ea8b5555c15c2",
+      "script/golden": "a717534e9458cfa555daeb805be303adeaf50f18",
       "spec/support/sse_server.rb": "4941e3ea43940f40dae927586e75bb999856d198"
     }
   },

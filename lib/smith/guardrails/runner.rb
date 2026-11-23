@@ -29,7 +29,9 @@ module Smith
         end
 
         def build_guardrail_error(error_class, error)
-          return error_class.new(error.message, retryable: retryable_tool_guardrail?(error.message)) if error_class == ToolGuardrailFailed
+          if error_class == ToolGuardrailFailed
+            return error_class.new(error.message, retryable: retryable_tool_guardrail?(error.message))
+          end
 
           error_class.new(error.message)
         end

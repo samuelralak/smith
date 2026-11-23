@@ -54,7 +54,6 @@ module Smith
     # catalog admission time via `validate_catalog!`.
     # `image_input_tokens` and `image_output_tokens` are the image parts of
     # `input_tokens` and `output_tokens`, never more than them.
-    # rubocop:disable Metrics/ParameterLists
     def self.compute_cost(model:, input_tokens:, output_tokens:, provider: nil, cache_read_tokens: 0,
                           cache_write_tokens: 0, image_input_tokens: 0, image_output_tokens: 0, mode: :sync)
       counts = [input_tokens, output_tokens, cache_read_tokens, cache_write_tokens].map { |count| token_count(count) }
@@ -64,7 +63,6 @@ module Smith
       images = Images.priced(rates, counts, token_count(image_input_tokens), token_count(image_output_tokens))
       apply_mode(priced_tokens(rates, *counts) + images, rates.fetch(:entry), mode)
     end
-    # rubocop:enable Metrics/ParameterLists
 
     # What one image of `size` and `quality` writes on this model, as its
     # catalog entry says (`:image_output_tokens`); nil when it says nothing.
@@ -158,41 +156,47 @@ module Smith
     # is the raising surface for the same rules.
     def self.build_normalized_index(catalog)
       catalog.each_with_object({ qualified: {}, legacy: {} }) do |(key, entry), index|
-        provider, model = canonical_key(key)
+        provider, model = CatalogKeys.canonical_key(key)
         next unless model
 
         provider ? (index[:qualified][[provider, model].freeze] = entry) : (index[:legacy][model] = entry)
       end
     end
 
-    # Returns [provider_or_nil, model] for a recognized key, nil otherwise.
-    # Mirrors Smith::Agent::ModelReference: the first slash separates
-    # provider from model, so slashed model ids are keyed with an explicit
-    # provider segment ("openrouter/openai/gpt-5" or [provider, model]).
-    def self.canonical_key(key)
-      case key
-      when Array then array_key(key)
-      when String, Symbol then text_key(key.to_s)
+    # How a catalog key reads, shared by the index and CatalogValidation.
+    module CatalogKeys
+      module_function
+
+      # Returns [provider_or_nil, model] for a recognized key, nil otherwise.
+      # Mirrors Smith::Agent::ModelReference: the first slash separates
+      # provider from model, so slashed model ids are keyed with an explicit
+      # provider segment ("openrouter/openai/gpt-5" or [provider, model]).
+      def canonical_key(key)
+        case key
+        when Array then array_key(key)
+        when String, Symbol then text_key(key.to_s)
+        end
+      end
+
+      def array_key(key)
+        provider, model = key.map { |part| scalar_key(part) } if key.length == 2
+        [provider, model] if provider && model
+      end
+
+      def text_key(text)
+        return if text.empty?
+        return [nil, text] unless text.include?("/")
+
+        provider, model = text.split("/", 2)
+        [provider, model] unless provider.empty? || model.empty?
+      end
+
+      def scalar_key(value)
+        text = value.to_s if value.is_a?(String) || value.is_a?(Symbol)
+        text unless text.nil? || text.empty?
       end
     end
-
-    def self.array_key(key)
-      provider, model = key.map { |part| scalar_key(part) } if key.length == 2
-      [provider, model] if provider && model
-    end
-
-    def self.text_key(text)
-      return if text.empty?
-      return [nil, text] unless text.include?("/")
-
-      provider, model = text.split("/", 2)
-      [provider, model] unless provider.empty? || model.empty?
-    end
-
-    def self.scalar_key(value)
-      text = value.to_s if value.is_a?(String) || value.is_a?(Symbol)
-      text unless text.nil? || text.empty?
-    end
+    private_constant :CatalogKeys
 
     # Returns { input:, output:, cache_read:, cache_write:, image_input:,
     # image_output:, entry: } or nil
@@ -231,8 +235,7 @@ module Smith
     ENTRY_RATES = %i[cache_read cache_write image_input image_output].freeze
     private_constant :RATES, :ENTRY_RATES
 
-    private_class_method :rate_at, :lookup_entry, :normalized_index, :build_normalized_index, :canonical_key,
-                         :array_key, :text_key, :scalar_key, :resolve_rates, :rates_from, :tier_applies?,
-                         :priced_tokens, :apply_mode, :token_count, :rates_for, :value_at
+    private_class_method :rate_at, :lookup_entry, :normalized_index, :build_normalized_index, :resolve_rates,
+                         :rates_from, :tier_applies?, :priced_tokens, :apply_mode, :token_count, :rates_for, :value_at
   end
 end

@@ -16,7 +16,9 @@ module Smith
         @tool_results = tool_results
         @current_state = state
         @transition_name = transition ? transition.name : options.fetch(:transition_name)
-        @allowed_routes = snapshot_allowed_routes(transition ? transition.deterministic_routes : options[:allowed_routes])
+        @allowed_routes = snapshot_allowed_routes(
+          transition ? transition.deterministic_routes : options[:allowed_routes]
+        )
         assign_execution_facts(options)
         @context_writes = {}
         @routed_to = nil
@@ -46,7 +48,7 @@ module Smith
         @last_output = msg && (msg[:content] || msg["content"])
       end
 
-      alias_method :output, :last_output
+      alias output last_output
 
       def read_context(key)
         @context_writes.key?(key) ? @context_writes[key] : context[key]

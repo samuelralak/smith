@@ -8,7 +8,7 @@ RSpec.describe "Smith::Workflow.stuck_for?" do
   let(:adapter) { Smith::PersistenceAdapters::Memory.new }
 
   def setup_workflow_class
-    workflow_class_under_test = with_stubbed_class("StuckForWorkflow", workflow_class) do
+    with_stubbed_class("StuckForWorkflow", workflow_class) do
       initial_state :idle
       state :working
       state :done
@@ -21,35 +21,34 @@ RSpec.describe "Smith::Workflow.stuck_for?" do
         compute { |_step| nil }
       end
     end
-    workflow_class_under_test
   end
 
   let(:workflow_klass) { setup_workflow_class }
 
   describe "argument validation" do
     it "raises WorkflowError when adapter is nil" do
-      expect {
+      expect do
         workflow_klass.stuck_for?(persistence_key: "k", threshold: 60, adapter: nil)
-      }.to raise_error(Smith::WorkflowError, /persistence_adapter is not configured/)
+      end.to raise_error(Smith::WorkflowError, /persistence_adapter is not configured/)
     end
 
     it "raises ArgumentError when persistence_key is blank" do
-      expect {
+      expect do
         workflow_klass.stuck_for?(persistence_key: "", threshold: 60, adapter: adapter)
-      }.to raise_error(ArgumentError, /persistence_key/)
+      end.to raise_error(ArgumentError, /persistence_key/)
     end
 
     it "raises ArgumentError when threshold lacks :to_i" do
-      expect {
+      expect do
         workflow_klass.stuck_for?(persistence_key: "k", threshold: Object.new, adapter: adapter)
-      }.to raise_error(ArgumentError, /threshold/)
+      end.to raise_error(ArgumentError, /threshold/)
     end
 
     it "raises ArgumentError when since: does not respond to :to_time" do
       no_time = Object.new
-      expect {
+      expect do
         workflow_klass.stuck_for?(persistence_key: "k", threshold: 60, since: no_time, adapter: adapter)
-      }.to raise_error(ArgumentError, /since must respond to :to_time/)
+      end.to raise_error(ArgumentError, /since must respond to :to_time/)
     end
   end
 
@@ -103,6 +102,20 @@ RSpec.describe "Smith::Workflow.stuck_for?" do
     end
   end
 
+  describe "a payload naming a class that no longer exists" do
+    let(:key) { "stuck-for:gone-class" }
+
+    # Its run cannot be shown terminal, so an old one reads as stuck
+    # instead of raising.
+    it "returns true once the heartbeat is older than threshold" do
+      adapter.store(key, JSON.generate(class: "StuckForGoneWorkflow", state: "done", next_transition_name: nil))
+      adapter.record_heartbeat(key)
+      adapter.instance_variable_get(:@heartbeats)[key][:at] = Time.now.utc - 3600
+
+      expect(workflow_klass.stuck_for?(persistence_key: key, threshold: 60, adapter: adapter)).to be true
+    end
+  end
+
   describe "path B: no payload, since: kwarg" do
     let(:key) { "stuck-for:path-b" }
 
@@ -113,7 +126,8 @@ RSpec.describe "Smith::Workflow.stuck_for?" do
 
     it "returns false when since is recent (within threshold)" do
       recent = Time.now.utc - 5
-      expect(workflow_klass.stuck_for?(persistence_key: key, threshold: 60, since: recent, adapter: adapter)).to be false
+      stuck = workflow_klass.stuck_for?(persistence_key: key, threshold: 60, since: recent, adapter: adapter)
+      expect(stuck).to be false
     end
 
     it "returns false when since: is omitted and no payload exists" do
@@ -122,7 +136,8 @@ RSpec.describe "Smith::Workflow.stuck_for?" do
 
     it "returns false when since is in the future (clock skew clamps to 0)" do
       future = Time.now.utc + 3600
-      expect(workflow_klass.stuck_for?(persistence_key: key, threshold: 60, since: future, adapter: adapter)).to be false
+      stuck = workflow_klass.stuck_for?(persistence_key: key, threshold: 60, since: future, adapter: adapter)
+      expect(stuck).to be false
     end
 
     it "accepts an ActiveSupport::TimeWithZone-like object (responds to :to_time)" do

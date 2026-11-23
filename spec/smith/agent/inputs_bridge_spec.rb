@@ -37,8 +37,11 @@ RSpec.describe "Smith::Agent::Lifecycle workflow-input bridge" do
     end
 
     workflow = with_stubbed_class("SpecBridgeDeclaredWorkflow", workflow_class) do
-      initial_state :idle; state :done
-      transition :go, from: :idle, to: :done do execute :spec_bridge_declared end
+      initial_state :idle
+      state :done
+      transition :go, from: :idle, to: :done do
+        execute :spec_bridge_declared
+      end
     end.new(context: { form_kind: "article", tone: "professional", unrelated: "ignored" })
 
     workflow.run!
@@ -61,8 +64,11 @@ RSpec.describe "Smith::Agent::Lifecycle workflow-input bridge" do
     end
 
     workflow = with_stubbed_class("SpecBridgeNoInputsWorkflow", workflow_class) do
-      initial_state :idle; state :done
-      transition :go, from: :idle, to: :done do execute :spec_bridge_no_inputs end
+      initial_state :idle
+      state :done
+      transition :go, from: :idle, to: :done do
+        execute :spec_bridge_no_inputs
+      end
     end.new(context: { form_kind: "article", anything: "else" })
 
     workflow.run!
@@ -92,8 +98,11 @@ RSpec.describe "Smith::Agent::Lifecycle workflow-input bridge" do
     end
 
     workflow = with_stubbed_class("SpecBridgeAbsentWorkflow", workflow_class) do
-      initial_state :idle; state :done
-      transition :go, from: :idle, to: :done do execute :spec_bridge_absent end
+      initial_state :idle
+      state :done
+      transition :go, from: :idle, to: :done do
+        execute :spec_bridge_absent
+      end
     end.new(context: { form_kind: "article" }) # tone absent
 
     workflow.run!
@@ -145,43 +154,44 @@ RSpec.describe "Smith::Agent::Lifecycle workflow-input bridge" do
     end
 
     it "raises Smith::AgentError when a user-declared name collides with :model_id" do
-      expect {
+      expect do
         with_stubbed_class("SpecBridgeCollidesModelId", agent_class) do
           register_as :spec_bridge_collides_model_id
           model "gpt-5-mini"
           inputs :model_id
         end
-      }.to raise_error(Smith::AgentError, /model_id.*reserved by Smith/)
+      end.to raise_error(Smith::AgentError, /model_id.*reserved by Smith/)
     end
 
     it "raises Smith::AgentError when a user-declared name collides with :provider" do
-      expect {
+      expect do
         with_stubbed_class("SpecBridgeCollidesProvider", agent_class) do
           register_as :spec_bridge_collides_provider
           model "gpt-5-mini"
           inputs :provider
         end
-      }.to raise_error(Smith::AgentError, /provider.*reserved by Smith/)
+      end.to raise_error(Smith::AgentError, /provider.*reserved by Smith/)
     end
 
     it "raises Smith::AgentError when a user-declared name collides with :endpoint_mode" do
-      expect {
+      expect do
         with_stubbed_class("SpecBridgeCollidesEndpointMode", agent_class) do
           register_as :spec_bridge_collides_endpoint_mode
           model "gpt-5-mini"
           inputs :endpoint_mode
         end
-      }.to raise_error(Smith::AgentError, /endpoint_mode.*reserved by Smith/)
+      end.to raise_error(Smith::AgentError, /endpoint_mode.*reserved by Smith/)
     end
 
     it "reports all colliding names at once when multiple reserved + benign are mixed" do
-      expect {
+      define_colliding = lambda do
         with_stubbed_class("SpecBridgeCollidesMultiple", agent_class) do
           register_as :spec_bridge_collides_multiple
           model "gpt-5-mini"
           inputs :form_kind, :model_id, :provider, :tone
         end
-      }.to raise_error(Smith::AgentError) do |err|
+      end
+      expect(&define_colliding).to raise_error(Smith::AgentError) do |err|
         expect(err.message).to match(/model_id/)
         expect(err.message).to match(/provider/)
       end
@@ -208,9 +218,16 @@ RSpec.describe "Smith::Agent::Lifecycle workflow-input bridge" do
       end
 
       workflow = with_stubbed_class("SpecBridgeReservedSkipWorkflow", workflow_class) do
-        initial_state :idle; state :done
-        transition :go, from: :idle, to: :done do execute :spec_bridge_reserved_skip end
-      end.new(context: { form_kind: "article", model_id: "stale-value", provider: "stale-provider", endpoint_mode: "stale-mode" })
+        initial_state :idle
+        state :done
+        transition :go, from: :idle, to: :done do
+          execute :spec_bridge_reserved_skip
+        end
+      end.new(
+        context: {
+          form_kind: "article", model_id: "stale-value", provider: "stale-provider", endpoint_mode: "stale-mode"
+        }
+      )
 
       workflow.run!
 

@@ -2,7 +2,6 @@
 
 module Smith
   class Workflow
-    # rubocop:disable Style/RedundantStructKeywordInit
     RunResult = Struct.new(:state, :output, :steps, :total_cost, :total_tokens, :context, :session_messages,
                            :tool_results, :outcome, :usage_entries, keyword_init: true) do
       def done?
@@ -59,6 +58,5 @@ module Smith
         }
       end
     end
-    # rubocop:enable Style/RedundantStructKeywordInit
   end
 end

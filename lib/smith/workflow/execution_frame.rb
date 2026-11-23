@@ -19,8 +19,8 @@ module Smith
       class OrderingError < Smith::Error; end
       class AlreadyRun < Smith::Error; end
 
-      def self.run(workflow: nil, on_clear: nil, always_ensure: nil, logger: nil)
-        new(workflow: workflow, on_clear: on_clear, always_ensure: always_ensure, logger: logger).run { |frame| yield frame }
+      def self.run(workflow: nil, on_clear: nil, always_ensure: nil, logger: nil, &)
+        new(workflow: workflow, on_clear: on_clear, always_ensure: always_ensure, logger: logger).run(&)
       end
 
       def initialize(workflow: nil, on_clear: nil, always_ensure: nil, logger: nil)
@@ -48,9 +48,11 @@ module Smith
         finish!
       end
 
-      def mark_claimed!(value = true)
+      # Positional: hosts call mark_claimed!(false).
+      def mark_claimed!(value = true) # rubocop:disable Style/OptionalBooleanParameter
         if @claimed_set && @claimed != value
-          raise OrderingError, "mark_claimed! called twice with conflicting values (#{@claimed.inspect} then #{value.inspect})"
+          raise OrderingError,
+                "mark_claimed! called twice with conflicting values (#{@claimed.inspect} then #{value.inspect})"
         end
 
         @claimed = value
@@ -70,7 +72,8 @@ module Smith
         @recorded = true
       end
 
-      def mark_intentional_retry!(value = true)
+      # Positional: hosts call mark_intentional_retry!(true).
+      def mark_intentional_retry!(value = true) # rubocop:disable Style/OptionalBooleanParameter
         if @claimed_set && @claimed == false
           raise OrderingError, "mark_intentional_retry! invalid after mark_claimed!(false)"
         end
@@ -84,25 +87,11 @@ module Smith
         @finalize_succeeded = true
       end
 
-      def claimed?
-        @claimed == true
-      end
-
-      def result_obtained?
-        @result_obtained
-      end
-
-      def recorded?
-        @recorded
-      end
-
-      def intentional_retry?
-        @intentional_retry
-      end
-
-      def finalize_succeeded?
-        @finalize_succeeded
-      end
+      def claimed? = @claimed == true
+      def result_obtained? = @result_obtained
+      def recorded? = @recorded
+      def intentional_retry? = @intentional_retry
+      def finalize_succeeded? = @finalize_succeeded
 
       def should_clear?
         claimed? && (@finalize_succeeded || (@intentional_retry && @recorded) || !@result_obtained)
@@ -114,9 +103,7 @@ module Smith
         @finished = true
         cleared = false
 
-        if should_clear?
-          cleared = invoke_on_clear
-        end
+        cleared = invoke_on_clear if should_clear?
 
         invoke_always_ensure if claimed?
 

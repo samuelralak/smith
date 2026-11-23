@@ -36,7 +36,8 @@ module Smith
       # Responses API adapter consumed by Smith::Providers::OpenAI::Routing
       # when Smith::Models::Normalizer flags a request for routing via
       # OpenAI /v1/responses (typically: gpt-5 family + tools + thinking).
-      module Responses
+      module Responses # rubocop:disable Metrics/ModuleLength -- vendored (PR #770), kept identical to its source
+        # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity -- vendored; kept identical to its source; retired by the RubyLLM 2.x move
         # ---- Vendored verbatim from PR #770 responses.rb -----------------
 
         RESPONSE_REASONING_TEXT_TYPES = %w[summary_text output_text].freeze
@@ -87,7 +88,6 @@ module Smith
           message
         end
 
-        # rubocop:disable Metrics/ParameterLists
         def self.render_response_payload(messages, tools:, temperature:, model:, stream: false, schema: nil,
                                          thinking: nil, tool_prefs: nil, native_tools: nil)
           tool_prefs ||= {}
@@ -104,7 +104,6 @@ module Smith
           apply_response_thinking(payload, thinking)
           payload
         end
-        # rubocop:enable Metrics/ParameterLists
 
         def self.format_response_input(messages)
           messages.flat_map do |message|
@@ -281,6 +280,8 @@ module Smith
           text.empty? ? nil : text
         end
 
+        # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity
+
         # ---- SMITH-AUTHORED helpers (inlined from PR #770 chat.rb) -------
 
         #
@@ -323,7 +324,7 @@ module Smith
           case role
           when :system
             config = provider&.instance_variable_get(:@config)
-            (config && config.respond_to?(:openai_use_system_role) && config.openai_use_system_role) ? "system" : "developer"
+            config.respond_to?(:openai_use_system_role) && config.openai_use_system_role ? "system" : "developer"
           else
             role.to_s
           end

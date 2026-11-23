@@ -4,12 +4,12 @@ require "json"
 
 module Smith
   class Workflow
-    module Durability
+    module Durability # rubocop:disable Metrics/ModuleLength -- in Workflow; a split adds a host-visible mixin
       def self.included(base)
         base.extend(ClassMethods)
       end
 
-      module ClassMethods
+      module ClassMethods # rubocop:disable Metrics/ModuleLength -- extends Workflow; a split adds a host-visible mixin
         def restore(key, adapter: Smith.persistence_adapter)
           resolved_key = explicit_persistence_key!(key)
           payload = fetch_persisted_payload(resolved_key, adapter:)
@@ -20,8 +20,8 @@ module Smith
           end
         end
 
-        def restore_or_initialize(key: nil, context: {}, adapter: Smith.persistence_adapter, **kwargs)
-          restore(resolved_persistence_key(key:, context:), adapter:) || new(context:, **kwargs)
+        def restore_or_initialize(key: nil, context: {}, adapter: Smith.persistence_adapter, **)
+          restore(resolved_persistence_key(key:, context:), adapter:) || new(context:, **)
         end
 
         # Peek without instantiating: returns true if persisted state
@@ -75,14 +75,15 @@ module Smith
           entries.any?
         end
 
-        def stuck_for?(persistence_key:, threshold:, since: nil, adapter: Smith.persistence_adapter)
+        # Kept whole: a split adds a name to Workflow's host surface.
+        def stuck_for?(persistence_key:, threshold:, since: nil, adapter: Smith.persistence_adapter) # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
           raise WorkflowError, "persistence_adapter is not configured" if adapter.nil?
-          raise ArgumentError, "persistence_key must not be blank" if persistence_key.nil? || (persistence_key.respond_to?(:strip) && persistence_key.strip.empty?)
+          if persistence_key.nil? || (persistence_key.respond_to?(:strip) && persistence_key.strip.empty?)
+            raise ArgumentError, "persistence_key must not be blank"
+          end
           raise ArgumentError, "threshold must respond to :to_i" unless threshold.respond_to?(:to_i)
 
-          if since && !since.respond_to?(:to_time)
-            raise ArgumentError, "since must respond to :to_time or be nil"
-          end
+          raise ArgumentError, "since must respond to :to_time or be nil" if since && !since.respond_to?(:to_time)
 
           threshold_seconds = threshold.to_i
           now = Time.now.utc
@@ -98,7 +99,7 @@ module Smith
           payload = adapter.fetch(persistence_key)
           return stuck_for_no_payload?(since, now, threshold_seconds) if payload.nil?
 
-          if !Smith::PersistenceAdapters.supports?(adapter, :last_heartbeat)
+          unless Smith::PersistenceAdapters.supports?(adapter, :last_heartbeat)
             Smith::PersistenceAdapters.warn_missing_heartbeat(adapter)
             fallback_age = age_from_payload_updated_at(payload, now)
             return false if fallback_age.nil? || fallback_age < threshold_seconds
@@ -152,10 +153,10 @@ module Smith
           stored_wait_call(key, adapter:, done: :expired) { |workflow| workflow.expire_wait!(token:, now:) }
         end
 
-        def run_persisted!(key: nil, context: {}, adapter: Smith.persistence_adapter, clear: :done, on_step: nil, **kwargs)
+        def run_persisted!(key: nil, context: {}, adapter: Smith.persistence_adapter, clear: :done, on_step: nil, **)
           clear_policy = normalize_clear_policy(clear)
           resolved_key = resolved_persistence_key(key:, context:)
-          workflow = restore(resolved_key, adapter:) || new(context:, **kwargs)
+          workflow = restore(resolved_key, adapter:) || new(context:, **)
           result = workflow.run_persisted!(resolved_key, adapter:, on_step:)
 
           workflow.clear_persisted!(resolved_key, adapter:) if clear_persisted_after_run?(clear_policy, workflow)
@@ -240,7 +241,7 @@ module Smith
 
           next_transition = parsed["next_transition_name"] || parsed[:next_transition_name]
           terminal_payload_state?(Object.const_get(class_name), state_name, next_transition)
-        rescue JSON::ParserError, NameError, NoMethodError
+        rescue JSON::ParserError, NameError # NoMethodError is a NameError
           false
         end
 
@@ -265,10 +266,10 @@ module Smith
           raise WorkflowError, "persistence key is required unless workflow defines persistence_key" unless builder
 
           derived = if builder.arity == 1
-            builder.call(ContextKeys.normalize_context(context))
-          else
-            builder.call
-          end
+                      builder.call(ContextKeys.normalize_context(context))
+                    else
+                      builder.call
+                    end
 
           return derived unless blank_key?(derived)
 
@@ -313,7 +314,8 @@ module Smith
         end
       end
 
-      def run_persisted!(key = nil, adapter: Smith.persistence_adapter, on_step: nil)
+      # Kept whole: a split adds a name to Workflow's host surface.
+      def run_persisted!(key = nil, adapter: Smith.persistence_adapter, on_step: nil) # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength
         return build_run_result([]) if nothing_to_advance?
 
         resolved_key = resolve_persistence_key!(key)

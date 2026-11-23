@@ -12,10 +12,9 @@ module Smith
           raw_adapter = ::Smith.config.persistence_adapter
           unless raw_adapter
             report.add(
-              name: "durability.adapter",
-              status: :warn,
-              message: "No persistence adapter configured",
-              detail: "Set config.persistence_adapter to :rails_cache, :active_record, :redis, :cache_store, or a custom adapter"
+              name: "durability.adapter", status: :warn, message: "No persistence adapter configured",
+              detail: "Set config.persistence_adapter to :rails_cache, :active_record, :redis, :cache_store, " \
+                      "or a custom adapter"
             )
             return
           end
@@ -23,13 +22,9 @@ module Smith
           adapter = ::Smith.persistence_adapter
           add_backend_warning(report, adapter)
         rescue StandardError => e
-          report.add(
-            name: "durability.adapter",
-            status: :fail,
-            message: "Persistence adapter configuration is invalid",
-            detail: e.message
-          )
-          return
+          report.add(name: "durability.adapter", status: :fail,
+                     message: "Persistence adapter configuration is invalid", detail: e.message)
+          nil # as the missing-adapter branch returns
         else
           check_ttl_support(report, adapter)
           check_persist_and_restore(report, adapter)

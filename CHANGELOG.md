@@ -85,6 +85,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Changed
 
+- RuboCop passes with no offenses under 1.85 and 1.92 (417 and 430
+  before), with no behaviour change. `.rubocop.yml` counts only positional
+  parameters, allows unused keyword block arguments and turns off
+  `Style/RedundantStructKeywordInit`, each with its reason. Class and
+  module length stay at 100: a body that must stay long (`Workflow` and
+  the modules it includes or extends, `Transition`, the vendored
+  `Responses`, `Inference`'s rule table, `Composite::Effects`) carries a
+  trailing disable on its `class` or `module` line saying why, and
+  `Pricing`, `ExecutionFrame`, `Graph::FanoutContract` and the doctor's
+  durability check were shortened instead. Methods that stay long carry a
+  trailing disable on `Workflow`, `Context` and a few others
+  (`Models::Inference.default_rules`, `ExecutionFrame`'s two positional
+  flags), each with its reason. `Method#parameters` changes for three
+  methods, with the same behaviour: `Workflow.restore_or_initialize` and
+  `Workflow.run_persisted!` forward `**` (`[:keyrest, :**]`, was
+  `[:keyrest, :kwargs]`), and `ExecutionFrame.run` takes the host's block
+  as `&` (`[:block, :&]`; it listed no block before). New specs pin
+  nineteen behaviours the cleanup's planted mistakes showed were loose.
+- The harness's golden bundle installs with a gem home and settings of
+  its own, so it never waits on, or reports, the lock another bundle
+  install on the machine holds, and a store-rules spec writes only in its
+  own temporary directory. Both made specs fail while a second suite ran.
 - The harness's golden file no longer has to come from a Smith without the
   eval seam: the seam's invisibility was proven once, at `eb14417` against
   `6bd0609`, and is now proven on the same tree (observer and trial modes

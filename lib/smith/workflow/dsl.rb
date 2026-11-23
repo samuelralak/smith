@@ -10,8 +10,9 @@ module Smith
         base.extend(ClassMethods)
       end
 
-      module ClassMethods
-        def inherited(subclass)
+      module ClassMethods # rubocop:disable Metrics/ModuleLength -- extends Workflow; a split adds a host-visible mixin
+        # Every setting a subclass inherits, copied in one place.
+        def inherited(subclass) # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
           super
           subclass.instance_variable_set(:@states, (@states || []).dup)
           subclass.instance_variable_set(:@transitions, (@transitions || {}).dup)

@@ -56,7 +56,7 @@ RSpec.describe "Smith::Agent runtime-block DSL normalization" do
 
       runtime = runtime_with(form_kind: "article")
       result = runtime.instance_exec(&agent.tools)
-      expect(result).to eq(["article", "article"])
+      expect(result).to eq(%w[article article])
     end
 
     it "passes nil for absent declared inputs (matches Smith's bridge contract)" do
@@ -85,7 +85,7 @@ RSpec.describe "Smith::Agent runtime-block DSL normalization" do
       end
 
       captured_input_values = nil
-      allow(agent).to receive(:apply_configuration) do |chat, input_values:, persist_instructions:|
+      allow(agent).to receive(:apply_configuration) do |_chat, input_values:, persist_instructions:|
         captured_input_values = input_values
       end
       allow(RubyLLM).to receive(:chat).and_return(Object.new)
@@ -108,7 +108,7 @@ RSpec.describe "Smith::Agent runtime-block DSL normalization" do
       end
 
       captured_input_values = nil
-      allow(agent).to receive(:apply_configuration) do |chat, input_values:, persist_instructions:|
+      allow(agent).to receive(:apply_configuration) do |_chat, input_values:, persist_instructions:|
         captured_input_values = input_values
       end
       allow(RubyLLM).to receive(:chat).and_return(Object.new)

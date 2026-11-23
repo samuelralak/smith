@@ -15,6 +15,7 @@ module Smith
     # before any other work when ::ActiveRecord is not defined.
     module Claim
       class AdapterUnavailable < Smith::Error; end
+
       class UnexpectedStatus < Smith::Error
         attr_reader :model, :id, :observed_status
 
@@ -40,16 +41,8 @@ module Smith
 
         owner.transaction do
           locked = model_class.lock.find(id)
-          status = locked.public_send(:status).to_s
-
-          if from.include?(status)
-            locked.public_send(transition_via)
-            claimed = true
-          elsif terminal.include?(status)
-            claimed = false
-          else
+          claimed = claim_locked?(locked, from, terminal, transition_via) do |status|
             handle_unexpected_status!(model_class, id, status, on_unexpected_status)
-            claimed = false
           end
         end
 
@@ -66,8 +59,8 @@ module Smith
         updates[updated_at_column] = now.call if updated_at_column
 
         rows = model_class
-          .where(:id => id, status_column => from)
-          .update_all(updates)
+               .where(:id => id, status_column => from)
+               .update_all(updates)
 
         rows.zero? ? nil : model_class.find(id)
       end
@@ -96,6 +89,22 @@ module Smith
         raise ArgumentError, "transition_via must be a Symbol or String; got #{transition_via.inspect}"
       end
       private_class_method :validate_atomic_args!
+
+      # Takes the transition when the locked row's status is claimable; a
+      # status neither claimable nor terminal goes to the block.
+      def self.claim_locked?(locked, from, terminal, transition_via)
+        status = locked.status.to_s
+        if from.include?(status)
+          locked.public_send(transition_via)
+          true
+        elsif terminal.include?(status)
+          false
+        else
+          yield status
+          false
+        end
+      end
+      private_class_method :claim_locked?
 
       def self.handle_unexpected_status!(model_class, id, status, mode)
         case mode

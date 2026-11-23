@@ -31,7 +31,8 @@ RSpec.describe "Smith artifacts operational contract" do
     backend_refs = []
 
     shared_backend = Object.new
-    shared_backend.define_singleton_method(:store) do |_data, content_type: "application/octet-stream", execution_namespace: nil|
+    shared_backend.define_singleton_method(:store) do |_data, content_type: "application/octet-stream",
+                                                       execution_namespace: nil|
       ref = "backend-ref-#{backend_refs.length + 1}"
       backend_refs << { ref: ref, content_type: content_type, execution_namespace: execution_namespace }
       ref

@@ -24,15 +24,7 @@ module Smith
           end
 
           if mode == :auto && !responses_adapter_loaded?
-            report.add(
-              name: "config.openai_api_mode",
-              status: :warn,
-              message: "openai_api_mode = :auto but Smith::Providers::OpenAI::Responses is not vendored",
-              detail: "When (gpt-5 family + tools + thinking) is detected, the routing path " \
-                      "raises NotImplementedError. Either: (a) set openai_api_mode = :off to fall " \
-                      "back to graceful tool-dropping, or (b) vendor the Responses adapter (PR #770 " \
-                      "on crmne/ruby_llm tracks the upstream effort)."
-            )
+            warn_responses_not_vendored(report)
           else
             report.add(
               name: "config.openai_api_mode",
@@ -40,6 +32,18 @@ module Smith
               message: "openai_api_mode = #{mode.inspect}"
             )
           end
+        end
+
+        def warn_responses_not_vendored(report)
+          report.add(
+            name: "config.openai_api_mode",
+            status: :warn,
+            message: "openai_api_mode = :auto but Smith::Providers::OpenAI::Responses is not vendored",
+            detail: "When (gpt-5 family + tools + thinking) is detected, the routing path " \
+                    "raises NotImplementedError. Either: (a) set openai_api_mode = :off to fall " \
+                    "back to graceful tool-dropping, or (b) vendor the Responses adapter (PR #770 " \
+                    "on crmne/ruby_llm tracks the upstream effort)."
+          )
         end
 
         def responses_adapter_loaded?

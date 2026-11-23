@@ -248,7 +248,7 @@ RSpec.describe "Smith::Agent block-form model DSL" do
     it "fails the step with Smith::AgentError when the block returns a non-string" do
       agent = with_stubbed_class("SpecBlockNonStringAgent", agent_class) do
         register_as :spec_block_non_string
-        model { |_ctx| :gpt_5_5 }
+        model { |_ctx| :"gpt-5.5" }
       end
 
       allow(agent).to receive(:chat) { stubbed_chat("never reached") }

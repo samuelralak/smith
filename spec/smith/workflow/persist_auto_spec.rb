@@ -19,10 +19,10 @@ RSpec.describe "Smith::Context persist :auto" do
 
     it "persist :auto, also: [:k] declares an input seed list" do
       manager = with_stubbed_class("AutoCtxB", context_class) do
-        persist :auto, also: [:user_message, :ticket_id]
+        persist :auto, also: %i[user_message ticket_id]
       end
       expect(manager.persist_mode).to eq(:auto)
-      expect(manager.persist_auto_seed).to eq([:user_message, :ticket_id])
+      expect(manager.persist_auto_seed).to eq(%i[user_message ticket_id])
     end
 
     it "persist :auto, also: with a single symbol still works" do
@@ -37,23 +37,23 @@ RSpec.describe "Smith::Context persist :auto" do
         persist :a, :b
       end
       expect(manager.persist_mode).to eq(:explicit)
-      expect(manager.persist).to eq([:a, :b])
+      expect(manager.persist).to eq(%i[a b])
     end
 
     it "persist(also: [:k]) without :auto raises WorkflowError" do
-      expect {
+      expect do
         with_stubbed_class("AutoCtxE", context_class) do
           persist also: [:foo]
         end
-      }.to raise_error(Smith::WorkflowError, /:also is only valid alongside :auto/)
+      end.to raise_error(Smith::WorkflowError, /:also is only valid alongside :auto/)
     end
 
     it "persist :auto, :extra (positional) raises WorkflowError" do
-      expect {
+      expect do
         with_stubbed_class("AutoCtxF", context_class) do
           persist :auto, :extra
         end
-      }.to raise_error(Smith::WorkflowError, /persist :auto must be the sole positional/)
+      end.to raise_error(Smith::WorkflowError, /persist :auto must be the sole positional/)
     end
   end
 
@@ -65,7 +65,7 @@ RSpec.describe "Smith::Context persist :auto" do
       child = with_stubbed_class("AutoChildExplicit", parent) do
         persist :c
       end
-      expect(child.persist).to eq([:a, :b, :c])
+      expect(child.persist).to eq(%i[a b c])
       expect(child.persist_mode).to eq(:explicit)
     end
 
@@ -74,6 +74,7 @@ RSpec.describe "Smith::Context persist :auto" do
         persist :auto, also: [:seed_a]
       end
       child = with_stubbed_class("AutoChildInherit", parent) do
+        # Declares nothing: mode and seed come from the parent.
       end
       expect(child.persist_mode).to eq(:auto)
       expect(child.persist_auto_seed).to eq([:seed_a])
@@ -97,7 +98,7 @@ RSpec.describe "Smith::Context persist :auto" do
         persist :x, :y
       end
       expect(child.persist_mode).to eq(:explicit)
-      expect(child.persist).to eq([:x, :y])
+      expect(child.persist).to eq(%i[x y])
     end
   end
 
@@ -158,7 +159,7 @@ RSpec.describe "Smith::Context persist :auto" do
       wf = workflow_klass.new(context: { input_a: "in" })
       wf.run!
       state = wf.to_state
-      expect(state[:persisted_keys]).to eq([:input_a, :produced_b, :produced_c])
+      expect(state[:persisted_keys]).to eq(%i[input_a produced_b produced_c])
 
       restored = workflow_klass.from_state(JSON.parse(JSON.generate(state)))
       expect(restored.persisted_keys).to include(:input_a, :produced_b, :produced_c)

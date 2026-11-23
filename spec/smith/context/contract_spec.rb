@@ -10,6 +10,11 @@ RSpec.describe "Smith::Context contract" do
     end
   end
 
+  # A workflow may name Smith::Context itself, which declared no keys.
+  it "reads no persisted keys, not nil, on a context that declared none" do
+    expect(context_class.persist).to eq([])
+  end
+
   it "can be attached at workflow level" do
     manager = with_stubbed_class("SpecResearchContext", context_class) do
       session_strategy :observation_masking, window: 10

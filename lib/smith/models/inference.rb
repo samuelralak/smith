@@ -19,7 +19,7 @@ module Smith
     # The rules array is mutable for runtime extension; tests must use
     # the `with_rules(*rules) { ... }` block helper to avoid test-suite
     # leakage of `prepend_rule` mutations.
-    module Inference
+    module Inference # rubocop:disable Metrics/ModuleLength -- default_rules is one ordered table
       # A single rule maps a model_id matcher to capability values.
       # The matcher is a Proc[String -> Boolean] — regex match OR
       # version-aware predicate (e.g., Opus 4.7+).
@@ -78,7 +78,8 @@ module Smith
       # Library-shipped pattern rules. Order: most specific first per
       # provider; provider families in declaration order. NO specific
       # model_id strings — only PROVIDER FAMILY and version-range patterns.
-      def self.default_rules
+      # One table, read in order: its order is the match order.
+      def self.default_rules # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
         [
           # ----- Anthropic -----
 

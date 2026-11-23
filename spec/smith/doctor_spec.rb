@@ -27,6 +27,15 @@ RSpec.describe Smith::Doctor do
     expect(names).to include("persistence.active_record")
   end
 
+  it "runs the checks every profile runs first, then the profile's own" do
+    report = described_class.run(profile: :rails_persistence, durability: true, io: StringIO.new)
+
+    names = report.checks.map(&:name)
+    expect(names.first).to eq("baseline.smith_loads")
+    expect(names.index("config.openai_api_mode")).to be < names.index("persistence.active_record")
+    expect(names.index("persistence.capabilities")).to be < names.index("serialization.to_state")
+  end
+
   it "includes live checks when live: true" do
     allow(Smith::Doctor::Checks::Live).to receive(:ruby_llm_configured?).and_return(false)
     allow(RubyLLM).to receive(:chat).and_raise(StandardError, "no provider")

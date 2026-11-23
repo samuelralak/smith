@@ -2,7 +2,6 @@
 
 module Smith
   class Workflow
-    # rubocop:disable Style/RedundantStructKeywordInit
     # `input_tokens` counts uncached input; `cache_read_tokens` and
     # `cache_write_tokens` are the prompt-cache input beside it, and
     # `total_tokens` adds all three to the output. `mode` is how the call was
@@ -63,6 +62,5 @@ module Smith
       cache_read_tokens cache_write_tokens thinking_tokens stop_reason provider_message_id image_input_tokens
       image_output_tokens
     ].freeze
-    # rubocop:enable Style/RedundantStructKeywordInit
   end
 end

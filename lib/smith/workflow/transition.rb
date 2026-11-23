@@ -4,7 +4,7 @@ require_relative "../tool_capture_failed"
 
 module Smith
   class Workflow
-    class Transition
+    class Transition # rubocop:disable Metrics/ClassLength -- a split adds a mixin to what host transition blocks run on
       attr_reader :name, :from, :to, :agent_name, :agent_opts, :success_transition, :failure_transition,
                   :router_config, :workflow_class, :optimization_config, :orchestrator_config,
                   :fanout_config, :retry_config, :deterministic_block, :deterministic_kind,
@@ -220,7 +220,6 @@ module Smith
       # `:retry`) instead of sleeping in the worker: the host wakes it with
       # `expire_wait!` and continues the run, which makes the next attempt
       # under the recorded attempt number and key generation.
-      # rubocop:disable Metrics/ParameterLists
       def retry_on(*error_classes, attempts:, backoff: 0, max_delay: nil, jitter: 0, new_idempotency_key_on: [],
                    durable: false)
         policy = normalize_retry_policy!(error_classes, attempts:, backoff:, max_delay:, jitter:)
@@ -239,7 +238,6 @@ module Smith
         @retry_config = config.freeze
         reject_new_idempotency_key_on_composite!
       end
-      # rubocop:enable Metrics/ParameterLists
 
       def durable_retry? = @retry_config&.fetch(:durable, false) == true
 

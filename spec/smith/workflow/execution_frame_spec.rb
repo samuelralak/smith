@@ -31,6 +31,31 @@ RSpec.describe Smith::Workflow::ExecutionFrame do
       expect(always_log).to eq([:called])
     end
 
+    it "(2b) mark_claimed! and mark_intentional_retry! with no argument mean true" do
+      marked = nil
+      described_class.run(on_clear: on_clear, always_ensure: always_ensure, logger: logger) do |frame|
+        frame.mark_claimed!
+        frame.mark_result_obtained!
+        frame.mark_recorded!
+        frame.mark_intentional_retry!
+        marked = [frame.claimed?, frame.intentional_retry?]
+      end
+
+      expect(marked).to eq([true, true])
+      expect(on_clear_log).to eq([:called])
+      expect(always_log).to eq([:called])
+    end
+
+    it "(2c) a truthy claim other than true reads as unclaimed and fires neither callback" do
+      claimed = nil
+      described_class.run(on_clear: on_clear, always_ensure: always_ensure, logger: logger) do |frame|
+        frame.mark_claimed!(:yes)
+        claimed = frame.claimed?
+      end
+
+      expect([claimed, on_clear_log, always_log]).to eq([false, [], []])
+    end
+
     it "(3) claimed=true, result_obtained, not recorded: on_clear skipped, always_ensure fires" do
       described_class.run(on_clear: on_clear, always_ensure: always_ensure, logger: logger) do |frame|
         frame.mark_claimed!(true)
@@ -90,26 +115,27 @@ RSpec.describe Smith::Workflow::ExecutionFrame do
 
   describe "exception paths" do
     it "(8) block raises after claim, before result_obtained: on_clear + always_ensure run, exception re-raised" do
-      expect {
+      expect do
         described_class.run(on_clear: on_clear, always_ensure: always_ensure, logger: logger) do |frame|
           frame.mark_claimed!(true)
           raise "boom"
         end
-      }.to raise_error(RuntimeError, "boom")
+      end.to raise_error(RuntimeError, "boom")
 
       expect(on_clear_log).to eq([:called])
       expect(always_log).to eq([:called])
     end
 
-    it "(9) block raises after recorded, no retry, no finalize: on_clear skipped, always_ensure fires, exception re-raised" do
-      expect {
+    it "(9) block raises after recorded, no retry, no finalize: " \
+       "on_clear skipped, always_ensure fires, exception re-raised" do
+      expect do
         described_class.run(on_clear: on_clear, always_ensure: always_ensure, logger: logger) do |frame|
           frame.mark_claimed!(true)
           frame.mark_result_obtained!
           frame.mark_recorded!
           raise "boom"
         end
-      }.to raise_error(RuntimeError, "boom")
+      end.to raise_error(RuntimeError, "boom")
 
       expect(on_clear_log).to be_empty
       expect(always_log).to eq([:called])
@@ -141,12 +167,12 @@ RSpec.describe Smith::Workflow::ExecutionFrame do
 
     it "(12) host block and on_clear both raise: host exception wins, always_ensure still runs" do
       bad_on_clear = -> { raise "on_clear blew up" }
-      expect {
+      expect do
         described_class.run(on_clear: bad_on_clear, always_ensure: always_ensure, logger: logger) do |frame|
           frame.mark_claimed!(true)
           raise "host boom"
         end
-      }.to raise_error(RuntimeError, "host boom")
+      end.to raise_error(RuntimeError, "host boom")
 
       expect(always_log).to eq([:called])
       expect(logger_io.string).to include("on_clear raised")
@@ -155,57 +181,62 @@ RSpec.describe Smith::Workflow::ExecutionFrame do
 
   describe "ordering enforcement" do
     it "(13) mark_result_obtained! before mark_claimed!(true) raises OrderingError" do
-      expect {
-        described_class.run(logger: logger) do |frame|
-          frame.mark_result_obtained!
-        end
-      }.to raise_error(Smith::Workflow::ExecutionFrame::OrderingError, /mark_result_obtained!/)
+      expect do
+        described_class.run(logger: logger, &:mark_result_obtained!)
+      end.to raise_error(Smith::Workflow::ExecutionFrame::OrderingError, /mark_result_obtained!/)
     end
 
     it "(14) mark_recorded! before mark_result_obtained! raises OrderingError" do
-      expect {
+      expect do
         described_class.run(logger: logger) do |frame|
           frame.mark_claimed!(true)
           frame.mark_recorded!
         end
-      }.to raise_error(Smith::Workflow::ExecutionFrame::OrderingError, /mark_recorded!/)
+      end.to raise_error(Smith::Workflow::ExecutionFrame::OrderingError, /mark_recorded!/)
     end
 
     it "(15) mark_finalize_succeeded! before mark_recorded! raises OrderingError" do
-      expect {
+      expect do
         described_class.run(logger: logger) do |frame|
           frame.mark_claimed!(true)
           frame.mark_result_obtained!
           frame.mark_finalize_succeeded!
         end
-      }.to raise_error(Smith::Workflow::ExecutionFrame::OrderingError, /mark_finalize_succeeded!/)
+      end.to raise_error(Smith::Workflow::ExecutionFrame::OrderingError, /mark_finalize_succeeded!/)
     end
 
     it "(16) mark_intentional_retry! after mark_claimed!(false) raises OrderingError" do
-      expect {
+      expect do
         described_class.run(logger: logger) do |frame|
           frame.mark_claimed!(false)
           frame.mark_intentional_retry!(true)
         end
-      }.to raise_error(Smith::Workflow::ExecutionFrame::OrderingError, /mark_intentional_retry!/)
+      end.to raise_error(Smith::Workflow::ExecutionFrame::OrderingError, /mark_intentional_retry!/)
     end
 
     it "(17) idempotent re-mark_claimed!(false) does NOT raise" do
-      expect {
+      expect do
         described_class.run(logger: logger) do |frame|
           frame.mark_claimed!(false)
           frame.mark_claimed!(false)
         end
-      }.not_to raise_error
+      end.not_to raise_error
     end
 
     it "mark_claimed! called twice with conflicting values raises" do
-      expect {
+      expect do
         described_class.run(logger: logger) do |frame|
           frame.mark_claimed!(true)
           frame.mark_claimed!(false)
         end
-      }.to raise_error(Smith::Workflow::ExecutionFrame::OrderingError, /conflicting/)
+      end.to raise_error(Smith::Workflow::ExecutionFrame::OrderingError, /conflicting/)
+    end
+
+    it "(17b) run without a block raises LocalJumpError and fires no callback" do
+      expect do
+        described_class.run(on_clear: on_clear, always_ensure: always_ensure, logger: logger)
+      end.to raise_error(LocalJumpError)
+      expect([on_clear_log, always_log]).to eq([[], []])
     end
 
     it "(18) OrderingError is NOT a subclass of Smith::WorkflowError" do
@@ -254,21 +285,27 @@ RSpec.describe Smith::Workflow::ExecutionFrame do
 
   describe "return value" do
     it "(23) block returns nil: ExecutionFrame.run returns nil" do
-      result = described_class.run(on_clear: on_clear, logger: logger) { |frame| frame.mark_claimed!(true); nil }
+      result = described_class.run(on_clear: on_clear, logger: logger) do |frame|
+        frame.mark_claimed!(true)
+        nil
+      end
       expect(result).to be_nil
     end
 
     it "(24) block returns a Hash: ExecutionFrame.run returns it byte-identical" do
       payload = { ok: true, count: 3 }
       result = described_class.run(on_clear: on_clear, logger: logger) do |frame|
-        frame.mark_claimed!(true); frame.mark_result_obtained!; frame.mark_recorded!; frame.mark_finalize_succeeded!
+        frame.mark_claimed!(true)
+        frame.mark_result_obtained!
+        frame.mark_recorded!
+        frame.mark_finalize_succeeded!
         payload
       end
       expect(result).to equal(payload)
     end
 
     it "(25) early return before any mark: no callbacks fire" do
-      result = described_class.run(on_clear: on_clear, always_ensure: always_ensure, logger: logger) { |frame| nil }
+      result = described_class.run(on_clear: on_clear, always_ensure: always_ensure, logger: logger) { |_frame| nil }
       expect(result).to be_nil
       expect(on_clear_log).to be_empty
       expect(always_log).to be_empty
@@ -310,20 +347,23 @@ RSpec.describe Smith::Workflow::ExecutionFrame do
     end
 
     it "(28) workflow: Proc returns nil even at ensure-time: log + skip without raising" do
-      resolver = -> { nil }
+      resolver = -> {}
 
-      expect {
+      expect do
         described_class.run(workflow: resolver, logger: logger) do |frame|
           frame.mark_claimed!(true)
         end
-      }.not_to raise_error
+      end.not_to raise_error
 
       expect(logger_io.string).to include("workflow resolver returned nil")
     end
 
     it "(29) workflow: + on_clear: both passed: on_clear wins, resolver NOT invoked" do
       resolver_called = false
-      resolver = -> { resolver_called = true; fake_workflow }
+      resolver = lambda do
+        resolver_called = true
+        fake_workflow
+      end
 
       described_class.run(workflow: resolver, on_clear: on_clear, logger: logger) do |frame|
         frame.mark_claimed!(true)
@@ -345,7 +385,7 @@ RSpec.describe Smith::Workflow::ExecutionFrame do
         frame.mark_claimed!(true)
       end
 
-      expect(call_order).to eq([:on_clear, :always_ensure])
+      expect(call_order).to eq(%i[on_clear always_ensure])
     end
 
     it "(32) always_ensure does NOT run when claimed=false" do
@@ -414,9 +454,9 @@ RSpec.describe Smith::Workflow::ExecutionFrame do
     it "(37) second invocation of .run on same instance raises AlreadyRun" do
       frame = described_class.new(on_clear: on_clear, logger: logger)
       frame.run { |f| f.mark_claimed!(true) }
-      expect {
+      expect do
         frame.run { |f| f.mark_claimed!(true) }
-      }.to raise_error(Smith::Workflow::ExecutionFrame::AlreadyRun)
+      end.to raise_error(Smith::Workflow::ExecutionFrame::AlreadyRun)
     end
 
     it "(38) finish! called twice: callbacks invoked at most once" do
@@ -434,14 +474,14 @@ RSpec.describe Smith::Workflow::ExecutionFrame do
   describe "integration with Smith::PersistenceAdapters::Memory" do
     let(:adapter) { Smith::PersistenceAdapters::Memory.new }
     let(:workflow_class) do
-      stub_const("SpecExecutionFrameWorkflow", Class.new(Smith::Workflow) {
+      stub_const("SpecExecutionFrameWorkflow", Class.new(Smith::Workflow) do
         initial_state :idle
         state :done
 
         transition :finish, from: :idle, to: :done do
           compute { |_step| "ok" }
         end
-      })
+      end)
       SpecExecutionFrameWorkflow
     end
 
@@ -473,14 +513,14 @@ RSpec.describe Smith::Workflow::ExecutionFrame do
       workflow_class.run_persisted!(key: key, adapter: adapter, clear: false)
       handle = workflow_class.restore(key, adapter: adapter)
 
-      expect {
+      expect do
         described_class.run(workflow: handle, logger: logger) do |frame|
           frame.mark_claimed!(true)
           frame.mark_result_obtained!
           frame.mark_recorded!
           raise "boom"
         end
-      }.to raise_error(RuntimeError, "boom")
+      end.to raise_error(RuntimeError, "boom")
 
       expect(adapter.fetch(key)).not_to be_nil
     end

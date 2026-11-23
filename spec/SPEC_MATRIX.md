@@ -367,6 +367,8 @@ Documented contracts covered:
   - `nil` `max_input_tokens` is treated as the unbounded ceiling (last-tier fallthrough)
   - one-token-over-threshold falls into the next tier (verifies the boundary is correct, not off-by-one)
 - both flat and tiered shapes accept either symbol or string keys (JSON round-trip safety from host-persisted pricing config)
+- a Symbol catalog key reads as its text at admission: a qualified one is admitted, a model-only one refused (Unreleased)
+- how a catalog key reads is not among `Smith::Pricing.constants` (Unreleased)
 
 Notes:
 
@@ -486,6 +488,7 @@ Documented contracts covered:
   inactive; compatibility is an endpoint contract, not a thinking-only hint
 - disabling Responses routing drops a Responses-only OpenAI tool before the
   provider request
+- String providers in `compatible_with` read as Symbols, so they match a profile's provider (Unreleased)
 
 Notes:
 
@@ -910,6 +913,7 @@ Documented contracts covered:
 
 - `.restore(key, adapter:)` restores a workflow from configured host persistence, requires a non-blank explicit key, and treats the lookup key as authoritative over any embedded persisted key
 - `.restore_or_initialize(key:, context:, adapter:)` returns restored state when present or a new workflow when absent, and can derive the key from workflow-declared `persistence_key`
+- `.restore_or_initialize` and `.run_persisted!` pass their other keywords (such as `created_at:`) on to `new` (Unreleased)
 - `.run_persisted!(key:, context:, adapter:, clear:, on_step:)` restores or initializes, checkpoints through terminal state, supports synchronous per-run step callbacks, and can clear terminal state through a configurable policy
 - `#advance_persisted!(key, adapter:, on_step:)` checkpoints around a single accepted transition for stepwise resume loops
 - `#run_persisted!(key, adapter:, on_step:)` checkpoints before execution and after each accepted step
@@ -2154,6 +2158,7 @@ Purpose:
 Purpose:
 
 - the shared "no difference" harness: the thirty-four scenarios of `script/core_invisibility_golden` (an image agent, a fan-out over items, steps that end failed with their failure records, orchestrate over String-keyed replies and restored after a kill among them, and every way a paint can fail, be refused, be held or be retried, image agents by inheritance, and fan-outs over items refused, failing, empty, within a budget, retried, after a wait and painting), every artifact store call recorded, the golden written from a commit or the staged index, never an unstaged edit, in a bundle of its own from its parts extracted by their git ids (the header names `lib`, the gemspec, the harness and the local server by id, and the commit they were built on, and never the golden itself; a folder with a part changed, added to or taken from, code in its Gemfile, an unknown id or commit, or a working tree refused; the golden bundle handed the gems the suite sees, a vendored bundle's included), written again from the ids it names byte for byte under the same `Gemfile.lock` (the golden bundle resolves its versions; skipped with its reason in a shallow clone, or while its source is an uncommitted change; a full repository whose HEAD does not reach every id fails, though the objects are in it, shown in a repository of the example's own so it runs in a shallow clone too; a file written again is compared in every block but the versions), run on the tree in child processes, equal the golden file byte for byte without an observer, with one installed and no trial, and inside a trial (no extra random draw, one observation per `:provider_call` trace), and the observer and trial modes equal the plain mode sink by sink; `--diff` names what differs between two goldens, header part by part and scenario by scenario; a concurrent run of the parallel, fan-out and fan-out over items scenarios matches by counts and branch content; the host surface of Workflow, Agent, Context and Tool (method names, Object and Kernel names they override, constants a host's class body can see) equal to the golden's; against the release baseline (`spec/fixtures/core_invisibility_release.json`, 0.16.0's lib and gemspec with a91fd45's harness, written again from the ids it names byte for byte and named by the commit its release tag names, the tag check skipped with its reason in a clone without the tag and failing when the tag names another commit), which no golden regeneration writes, the host surface and each scenario's random draws, lookups, requests, traces, events and log lines differ only as the spec lists, each with why and its slice, a method a slice adds named `smith_` or a listed DSL macro, nothing removed but the 27 private methods and two constants 0.16.0 added to `Smith::Workflow` and the four constants it added to `Smith::Agent`, each listed with where it went, and no other name allowed to go (Unreleased)
+- the golden bundle installs with a gem home and settings of its own, so it never waits on the lock in the shared gem home (Unreleased)
 
 ### `spec/smith/contracts/ruby_llm_spec.rb`
 
@@ -3083,6 +3088,7 @@ Documented contracts covered:
 - `.persist`
 - `.inject_state`
 - workflow-level `.context_manager`
+- `.persist` on a context that declared no keys, `Smith::Context` itself among them, reads `[]`, not nil (Unreleased)
 
 Notes:
 
@@ -3819,7 +3825,7 @@ Covered behaviors:
 
 Covered behaviors:
 
-- warns when no persistence_adapter configured
+- warns when no persistence_adapter configured, naming the adapters word for word, and runs no other durability check (Unreleased)
 - passes persist_restore and resume_after_restore with working adapter
 - fails when adapter returns corrupted data
 - resolves built-in symbol adapters via persistence_options
@@ -3856,6 +3862,15 @@ Covered behaviors:
 - durability: true includes serialization + durability checks
 - profile: :rails_persistence includes persistence checks
 - live: true includes live checks
+- the checks every profile runs come first, then the profile's own (Unreleased)
+
+### `spec/smith/providers/openai/responses_spec.rb`
+
+Covered behaviors:
+
+- a Responses body that carries an error raises it with its response, though it has no output (Unreleased)
+- a reasoning output's summary is read, not its content, when it has both (Unreleased)
+- the system role goes out as `developer` unless the provider's config asks for `system` (Unreleased)
 
 ### `spec/smith/cli_spec.rb`
 
@@ -4257,6 +4272,8 @@ Covered behaviors:
 
 - heterogeneous fan-out preserves strict capture uncertainty over a retryable
   sibling agent failure without replaying the external tool outcome
+- a fan-out's graph contract read for a class without `idempotency_mode` says
+  `:unknown` for its idempotency mode and in-flight resume, and does not raise (Unreleased)
 
 ### `spec/smith/workflow/composite_execution_spec.rb`
 

@@ -37,6 +37,24 @@ RSpec.describe "Smith::Workflow heterogeneous fan-out" do
     )
   end
 
+  # A graph read for a class that is not a workflow cannot say how a
+  # fan-out resumes, and says so instead of raising.
+  it "reads an unknown resume contract for a class without idempotency_mode" do
+    workflow = with_stubbed_class("SpecFanoutUnknownModeWorkflow", workflow_class) do
+      initial_state :idle
+      state :reviewed
+
+      transition :review, from: :idle, to: :reviewed do
+        fan_out branches: { static: :spec_fanout_static_agent, security: :spec_fanout_security_agent }
+      end
+    end
+    transition = workflow.find_transition(:review)
+
+    contract = Smith::Workflow::Graph::FanoutContract.from_transition(transition, workflow_class: Object)
+
+    expect(contract[:resume_contract]).to include(idempotency_mode: :unknown, in_flight_resume: :unknown)
+  end
+
   it "propagates opaque invocation context to heterogeneous fan-out branches" do
     invocation_context = Object.new
     observed = Queue.new
@@ -609,12 +627,12 @@ RSpec.describe "Smith::Workflow heterogeneous fan-out" do
     end
 
     strict_fanout = strict_workflow
-      .validate_graph
-      .transitions
-      .find { |snapshot| snapshot.name == :review }
-      .to_h
-      .fetch(:fanout)
-      .fetch(:resume_contract)
+                    .validate_graph
+                    .transitions
+                    .find { |snapshot| snapshot.name == :review }
+                    .to_h
+                    .fetch(:fanout)
+                    .fetch(:resume_contract)
 
     expect(strict_fanout).to include(
       idempotency_mode: :strict,

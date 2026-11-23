@@ -55,6 +55,22 @@ RSpec.describe "Smith::Workflow durability helpers" do
     expect(restored.to_state[:context]).to eq(topic: "payments")
   end
 
+  it "passes the other keywords of restore_or_initialize and run_persisted! on to new" do
+    klass = with_stubbed_class("SpecDurableNewKeywordsWorkflow", workflow_class) do
+      initial_state :idle
+      state :done
+
+      transition :finish, from: :idle, to: :done
+    end
+    created_at = "2026-01-02T03:04:05.000000Z"
+
+    fresh = klass.restore_or_initialize(key: "missing", context: {}, adapter:, created_at:)
+    klass.run_persisted!(key: "fresh-run", context: {}, adapter:, clear: false, created_at:)
+
+    expect(fresh.to_state[:created_at]).to eq(created_at)
+    expect(adapter.writes.last).to match(["fresh-run", hash_including("created_at" => created_at)])
+  end
+
   it "treats the restore lookup key as authoritative over any embedded persistence_key in stored state" do
     klass = with_stubbed_class("SpecRestoreAuthoritativeKeyWorkflow", workflow_class) do
       persistence_key { |ctx| "workflow:#{ctx[:ticket_id]}" }
@@ -209,7 +225,7 @@ RSpec.describe "Smith::Workflow durability helpers" do
 
     workflow = klass.new(context: { ticket_id: "T-2048" })
 
-    workflow.run_persisted!(adapter:, on_step: ->(_step) { nil })
+    workflow.run_persisted!(adapter:, on_step: ->(_step) {})
 
     expect(adapter.fetch("workflow:T-2048")).not_to be_nil
   end
@@ -284,8 +300,9 @@ RSpec.describe "Smith::Workflow durability helpers" do
       initial_state :idle
     end
 
-    expect { klass.restore(nil, adapter:) }.to raise_error(workflow_error, /restore requires a non-blank explicit persistence key/)
-    expect { klass.restore("", adapter:) }.to raise_error(workflow_error, /restore requires a non-blank explicit persistence key/)
+    blank_key = /restore requires a non-blank explicit persistence key/
+    expect { klass.restore(nil, adapter:) }.to raise_error(workflow_error, blank_key)
+    expect { klass.restore("", adapter:) }.to raise_error(workflow_error, blank_key)
     expect(adapter.writes).to eq([])
     expect(adapter.deleted).to eq([])
   end

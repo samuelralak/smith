@@ -25,3 +25,18 @@ Layout/LineLength:
 
 Lint/EmptyClass:
   Enabled: false
+
+# Smith's interfaces take keywords, named at every call (several are fixed
+# by design); positional lists are still counted.
+Metrics/ParameterLists:
+  CountKeywordArgs: false
+
+# A stub's keywords are the interface it stands in for: renaming one to
+# _name changes what callers may pass.
+Lint/UnusedBlockArgument:
+  AllowUnusedKeywordArguments: true
+
+# keyword_init: true makes a Struct refuse positional arguments, so it is
+# not redundant; RuboCop has this cop off by default from 1.87.0.
+Style/RedundantStructKeywordInit:
+  Enabled: false

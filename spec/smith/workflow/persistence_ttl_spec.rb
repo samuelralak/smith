@@ -36,10 +36,15 @@ RSpec.describe "Smith::Workflow per-workflow persistence_ttl DSL" do
   let(:non_versioned_adapter_class) do
     Class.new do
       attr_reader :store_calls
-      def initialize; @store_calls = []; end
+
+      def initialize
+        @store_calls = []
+      end
+
       def store(key, payload, **kwargs)
         @store_calls << { key: key, payload: payload, kwargs: kwargs }
       end
+
       def fetch(_key); end
       def delete(_key); end
     end
@@ -82,21 +87,21 @@ RSpec.describe "Smith::Workflow per-workflow persistence_ttl DSL" do
     end
 
     it "rejects zero" do
-      expect {
+      expect do
         Class.new(Smith::Workflow) { persistence_ttl 0 }
-      }.to raise_error(ArgumentError, /must be a positive Numeric/)
+      end.to raise_error(ArgumentError, /must be a positive Numeric/)
     end
 
     it "rejects negative" do
-      expect {
+      expect do
         Class.new(Smith::Workflow) { persistence_ttl(-1) }
-      }.to raise_error(ArgumentError, /must be a positive Numeric/)
+      end.to raise_error(ArgumentError, /must be a positive Numeric/)
     end
 
     it "rejects non-Numeric" do
-      expect {
+      expect do
         Class.new(Smith::Workflow) { persistence_ttl "30" }
-      }.to raise_error(ArgumentError, /must be a positive Numeric/)
+      end.to raise_error(ArgumentError, /must be a positive Numeric/)
     end
 
     it "propagates through class inheritance" do
@@ -163,9 +168,16 @@ RSpec.describe "Smith::Workflow per-workflow persistence_ttl DSL" do
     it "preserves backward compat: external adapters with bare store(key, payload) keep working when TTL is nil" do
       bare_adapter = Class.new do
         attr_reader :calls
-        def initialize; @calls = []; end
+
+        def initialize
+          @calls = []
+        end
+
         # No ttl: kwarg, no **kwargs splat. Strictly the REQUIRED_METHODS contract.
-        def store(key, payload); @calls << [key, payload]; end
+        def store(key, payload)
+          @calls << [key, payload]
+        end
+
         def fetch(_key); end
         def delete(_key); end
       end.new

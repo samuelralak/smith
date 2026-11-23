@@ -279,11 +279,11 @@ RSpec.describe "Smith::Workflow seed_messages drift validation" do
 
   describe "DSL validation" do
     it "rejects unknown seed_validation modes" do
-      expect {
+      expect do
         Class.new(Smith::Workflow) do
           seed_validation :loose
         end
-      }.to raise_error(ArgumentError, /must be :strict, :warn, or :off/)
+      end.to raise_error(ArgumentError, /must be :strict, :warn, or :off/)
     end
   end
 end

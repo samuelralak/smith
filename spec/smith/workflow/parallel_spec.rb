@@ -1200,9 +1200,9 @@ RSpec.describe "Smith::Workflow parallel execution" do
       original.call(key, amount)
     end
 
-    workflow.define_singleton_method(:execute_transition_body) do |_transition, prepared_input: nil|
+    workflow.define_singleton_method(:execute_transition_body) do |transition, prepared_input: nil|
       sleep 0.05
-      super(_transition, prepared_input: prepared_input)
+      super(transition, prepared_input: prepared_input)
     end
 
     result = workflow.run!
@@ -1242,10 +1242,10 @@ RSpec.describe "Smith::Workflow parallel execution" do
     end
 
     executed = Queue.new
-    workflow.define_singleton_method(:execute_transition_body) do |_transition, prepared_input: nil|
+    workflow.define_singleton_method(:execute_transition_body) do |transition, prepared_input: nil|
       executed << :ran
       sleep 0.05
-      super(_transition, prepared_input: prepared_input)
+      super(transition, prepared_input: prepared_input)
     end
 
     result = workflow.run!

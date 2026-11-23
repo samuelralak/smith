@@ -27,11 +27,11 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
 
   it "succeeds when orchestrator emits valid final output" do
     orchestrator = with_stubbed_class("SpecOwOrch1", agent_class) do
-      register_as :spec_ow_orch_1
+      register_as :spec_ow_orch1
       model "gpt-5-mini"
     end
-    worker = with_stubbed_class("SpecOwWork1", agent_class) do
-      register_as :spec_ow_work_1
+    with_stubbed_class("SpecOwWork1", agent_class) do
+      register_as :spec_ow_work1
       model "gpt-5-mini"
     end
 
@@ -43,7 +43,7 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
       state :failed
 
       transition :research, from: :idle, to: :done do
-        orchestrate orchestrator: :spec_ow_orch_1, worker: :spec_ow_work_1,
+        orchestrate orchestrator: :spec_ow_orch1, worker: :spec_ow_work1,
                     max_workers: 4, max_delegation_rounds: 3,
                     task_schema: SpecOwTaskSchema,
                     worker_output_schema: SpecOwWorkerOutputSchema,
@@ -61,11 +61,11 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
 
   it "runs workers and feeds results back to orchestrator" do
     orchestrator = with_stubbed_class("SpecOwOrch2", agent_class) do
-      register_as :spec_ow_orch_2
+      register_as :spec_ow_orch2
       model "gpt-5-mini"
     end
     worker = with_stubbed_class("SpecOwWork2", agent_class) do
-      register_as :spec_ow_work_2
+      register_as :spec_ow_work2
       model "gpt-5-mini"
     end
 
@@ -81,7 +81,7 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
       state :failed
 
       transition :research, from: :idle, to: :done do
-        orchestrate orchestrator: :spec_ow_orch_2, worker: :spec_ow_work_2,
+        orchestrate orchestrator: :spec_ow_orch2, worker: :spec_ow_work2,
                     max_workers: 4, max_delegation_rounds: 3,
                     task_schema: SpecOwTaskSchema,
                     worker_output_schema: SpecOwWorkerOutputSchema,
@@ -159,11 +159,11 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
 
   it "fails when max_delegation_rounds exhausted without final output" do
     orchestrator = with_stubbed_class("SpecOwOrch3", agent_class) do
-      register_as :spec_ow_orch_3
+      register_as :spec_ow_orch3
       model "gpt-5-mini"
     end
     worker = with_stubbed_class("SpecOwWork3", agent_class) do
-      register_as :spec_ow_work_3
+      register_as :spec_ow_work3
       model "gpt-5-mini"
     end
 
@@ -176,7 +176,7 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
       state :failed
 
       transition :research, from: :idle, to: :done do
-        orchestrate orchestrator: :spec_ow_orch_3, worker: :spec_ow_work_3,
+        orchestrate orchestrator: :spec_ow_orch3, worker: :spec_ow_work3,
                     max_workers: 4, max_delegation_rounds: 2,
                     task_schema: SpecOwTaskSchema,
                     worker_output_schema: SpecOwWorkerOutputSchema,
@@ -194,11 +194,11 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
 
   it "fails when tasks exceed max_workers" do
     orchestrator = with_stubbed_class("SpecOwOrch4", agent_class) do
-      register_as :spec_ow_orch_4
+      register_as :spec_ow_orch4
       model "gpt-5-mini"
     end
-    worker = with_stubbed_class("SpecOwWork4", agent_class) do
-      register_as :spec_ow_work_4
+    with_stubbed_class("SpecOwWork4", agent_class) do
+      register_as :spec_ow_work4
       model "gpt-5-mini"
     end
 
@@ -210,7 +210,7 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
       state :failed
 
       transition :research, from: :idle, to: :done do
-        orchestrate orchestrator: :spec_ow_orch_4, worker: :spec_ow_work_4,
+        orchestrate orchestrator: :spec_ow_orch4, worker: :spec_ow_work4,
                     max_workers: 2, max_delegation_rounds: 3,
                     task_schema: SpecOwTaskSchema,
                     worker_output_schema: SpecOwWorkerOutputSchema,
@@ -289,11 +289,11 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
 
   it "fails when orchestrator emits stop signal" do
     orchestrator = with_stubbed_class("SpecOwOrch5", agent_class) do
-      register_as :spec_ow_orch_5
+      register_as :spec_ow_orch5
       model "gpt-5-mini"
     end
-    worker = with_stubbed_class("SpecOwWork5", agent_class) do
-      register_as :spec_ow_work_5
+    with_stubbed_class("SpecOwWork5", agent_class) do
+      register_as :spec_ow_work5
       model "gpt-5-mini"
     end
 
@@ -305,7 +305,7 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
       state :failed
 
       transition :research, from: :idle, to: :done do
-        orchestrate orchestrator: :spec_ow_orch_5, worker: :spec_ow_work_5,
+        orchestrate orchestrator: :spec_ow_orch5, worker: :spec_ow_work5,
                     max_workers: 4, max_delegation_rounds: 3,
                     task_schema: SpecOwTaskSchema,
                     worker_output_schema: SpecOwWorkerOutputSchema,
@@ -322,11 +322,11 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
 
   it "fails when orchestrator emits both tasks and final" do
     orchestrator = with_stubbed_class("SpecOwOrch6", agent_class) do
-      register_as :spec_ow_orch_6
+      register_as :spec_ow_orch6
       model "gpt-5-mini"
     end
-    worker = with_stubbed_class("SpecOwWork6", agent_class) do
-      register_as :spec_ow_work_6
+    with_stubbed_class("SpecOwWork6", agent_class) do
+      register_as :spec_ow_work6
       model "gpt-5-mini"
     end
 
@@ -338,7 +338,7 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
       state :failed
 
       transition :research, from: :idle, to: :done do
-        orchestrate orchestrator: :spec_ow_orch_6, worker: :spec_ow_work_6,
+        orchestrate orchestrator: :spec_ow_orch6, worker: :spec_ow_work6,
                     max_workers: 4, max_delegation_rounds: 3,
                     task_schema: SpecOwTaskSchema,
                     worker_output_schema: SpecOwWorkerOutputSchema,
@@ -355,11 +355,11 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
 
   it "fails when orchestrator output is not a Hash" do
     orchestrator = with_stubbed_class("SpecOwOrch7", agent_class) do
-      register_as :spec_ow_orch_7
+      register_as :spec_ow_orch7
       model "gpt-5-mini"
     end
-    worker = with_stubbed_class("SpecOwWork7", agent_class) do
-      register_as :spec_ow_work_7
+    with_stubbed_class("SpecOwWork7", agent_class) do
+      register_as :spec_ow_work7
       model "gpt-5-mini"
     end
 
@@ -371,7 +371,7 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
       state :failed
 
       transition :research, from: :idle, to: :done do
-        orchestrate orchestrator: :spec_ow_orch_7, worker: :spec_ow_work_7,
+        orchestrate orchestrator: :spec_ow_orch7, worker: :spec_ow_work7,
                     max_workers: 4, max_delegation_rounds: 3,
                     task_schema: SpecOwTaskSchema,
                     worker_output_schema: SpecOwWorkerOutputSchema,
@@ -388,11 +388,11 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
 
   it "keeps parent step count as one across all orchestration rounds" do
     orchestrator = with_stubbed_class("SpecOwOrch8", agent_class) do
-      register_as :spec_ow_orch_8
+      register_as :spec_ow_orch8
       model "gpt-5-mini"
     end
     worker = with_stubbed_class("SpecOwWork8", agent_class) do
-      register_as :spec_ow_work_8
+      register_as :spec_ow_work8
       model "gpt-5-mini"
     end
 
@@ -408,7 +408,7 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
       state :failed
 
       transition :research, from: :idle, to: :done do
-        orchestrate orchestrator: :spec_ow_orch_8, worker: :spec_ow_work_8,
+        orchestrate orchestrator: :spec_ow_orch8, worker: :spec_ow_work8,
                     max_workers: 4, max_delegation_rounds: 3,
                     task_schema: SpecOwTaskSchema,
                     worker_output_schema: SpecOwWorkerOutputSchema,
@@ -432,7 +432,8 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
 
         transition :research, from: :idle, to: :done do
           orchestrate orchestrator: :o, worker: :w, max_workers: 0, max_delegation_rounds: 3,
-                      task_schema: SpecOwLooseSchema, worker_output_schema: SpecOwLooseSchema, final_output_schema: SpecOwLooseSchema
+                      task_schema: SpecOwLooseSchema, worker_output_schema: SpecOwLooseSchema,
+                      final_output_schema: SpecOwLooseSchema
         end
       end
     end.to raise_error(workflow_error, /max_workers must be a positive integer/)
@@ -446,7 +447,8 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
 
         transition :research, from: :idle, to: :done do
           orchestrate orchestrator: nil, worker: :w, max_workers: 4, max_delegation_rounds: 3,
-                      task_schema: SpecOwLooseSchema, worker_output_schema: SpecOwLooseSchema, final_output_schema: SpecOwLooseSchema
+                      task_schema: SpecOwLooseSchema, worker_output_schema: SpecOwLooseSchema,
+                      final_output_schema: SpecOwLooseSchema
         end
       end
     end.to raise_error(workflow_error, /requires an orchestrator/)
@@ -460,7 +462,8 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
 
         transition :research, from: :idle, to: :done do
           orchestrate orchestrator: :o, worker: nil, max_workers: 4, max_delegation_rounds: 3,
-                      task_schema: SpecOwLooseSchema, worker_output_schema: SpecOwLooseSchema, final_output_schema: SpecOwLooseSchema
+                      task_schema: SpecOwLooseSchema, worker_output_schema: SpecOwLooseSchema,
+                      final_output_schema: SpecOwLooseSchema
         end
       end
     end.to raise_error(workflow_error, /requires a worker/)
@@ -516,7 +519,8 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
 
         transition :research, from: :idle, to: :done do
           orchestrate orchestrator: :o, worker: :w, max_workers: 4, max_delegation_rounds: 3,
-                      task_schema: Class.new, worker_output_schema: SpecOwLooseSchema, final_output_schema: SpecOwLooseSchema
+                      task_schema: Class.new, worker_output_schema: SpecOwLooseSchema,
+                      final_output_schema: SpecOwLooseSchema
         end
       end
     end.to raise_error(workflow_error, /task_schema must respond to :required_keys/)
@@ -530,7 +534,8 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
 
         transition :research, from: :idle, to: :done do
           orchestrate orchestrator: :o, worker: :w, max_workers: 4, max_delegation_rounds: 0,
-                      task_schema: SpecOwLooseSchema, worker_output_schema: SpecOwLooseSchema, final_output_schema: SpecOwLooseSchema
+                      task_schema: SpecOwLooseSchema, worker_output_schema: SpecOwLooseSchema,
+                      final_output_schema: SpecOwLooseSchema
         end
       end
     end.to raise_error(workflow_error, /max_delegation_rounds must be a positive integer/)
@@ -564,8 +569,11 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
       chat.define_singleton_method(:with_schema) { |_s| self }
       chat.define_singleton_method(:complete) do
         orchestrator_messages << messages.map { |msg| { role: msg.role, content: msg.content } }
-        result = orchestrator_messages.size == 1 ? { tasks: [{ task_id: "t1", input: "research pricing" }] } :
-                                                   { final: { summary: "done" } }
+        result = if orchestrator_messages.size == 1
+                   { tasks: [{ task_id: "t1", input: "research pricing" }] }
+                 else
+                   { final: { summary: "done" } }
+                 end
         Struct.new(:content, :input_tokens, :output_tokens).new(result, 5, 3)
       end
       chat
@@ -618,7 +626,8 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
         transition :research, from: :idle, to: :done do
           execute :some_agent
           orchestrate orchestrator: :o, worker: :w, max_workers: 4, max_delegation_rounds: 3,
-                      task_schema: SpecOwLooseSchema, worker_output_schema: SpecOwLooseSchema, final_output_schema: SpecOwLooseSchema
+                      task_schema: SpecOwLooseSchema, worker_output_schema: SpecOwLooseSchema,
+                      final_output_schema: SpecOwLooseSchema
         end
       end
     end.to raise_error(workflow_error, /cannot declare both/)
@@ -633,7 +642,8 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
         transition :research, from: :idle, to: :done do
           route :classifier, routes: { a: :done }, confidence_threshold: 0.8, fallback: :done
           orchestrate orchestrator: :o, worker: :w, max_workers: 4, max_delegation_rounds: 3,
-                      task_schema: SpecOwLooseSchema, worker_output_schema: SpecOwLooseSchema, final_output_schema: SpecOwLooseSchema
+                      task_schema: SpecOwLooseSchema, worker_output_schema: SpecOwLooseSchema,
+                      final_output_schema: SpecOwLooseSchema
         end
       end
     end.to raise_error(workflow_error, /cannot declare both/)
@@ -654,7 +664,8 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
         transition :research, from: :idle, to: :done do
           workflow child
           orchestrate orchestrator: :o, worker: :w, max_workers: 4, max_delegation_rounds: 3,
-                      task_schema: SpecOwLooseSchema, worker_output_schema: SpecOwLooseSchema, final_output_schema: SpecOwLooseSchema
+                      task_schema: SpecOwLooseSchema, worker_output_schema: SpecOwLooseSchema,
+                      final_output_schema: SpecOwLooseSchema
         end
       end
     end.to raise_error(workflow_error, /cannot declare both/)
@@ -669,7 +680,8 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
         transition :research, from: :idle, to: :done do
           optimize generator: :g, evaluator: :e, max_rounds: 3, evaluator_schema: Class.new
           orchestrate orchestrator: :o, worker: :w, max_workers: 4, max_delegation_rounds: 3,
-                      task_schema: SpecOwLooseSchema, worker_output_schema: SpecOwLooseSchema, final_output_schema: SpecOwLooseSchema
+                      task_schema: SpecOwLooseSchema, worker_output_schema: SpecOwLooseSchema,
+                      final_output_schema: SpecOwLooseSchema
         end
       end
     end.to raise_error(workflow_error, /cannot declare both/)
@@ -680,7 +692,7 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
       register_as :spec_ow_orch_tasks_stop
       model "gpt-5-mini"
     end
-    worker = with_stubbed_class("SpecOwWorkTasksStop", agent_class) do
+    with_stubbed_class("SpecOwWorkTasksStop", agent_class) do
       register_as :spec_ow_work_tasks_stop
       model "gpt-5-mini"
     end
@@ -695,7 +707,8 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
       transition :research, from: :idle, to: :done do
         orchestrate orchestrator: :spec_ow_orch_tasks_stop, worker: :spec_ow_work_tasks_stop,
                     max_workers: 4, max_delegation_rounds: 3,
-                    task_schema: SpecOwTaskSchema, worker_output_schema: SpecOwWorkerOutputSchema, final_output_schema: SpecOwFinalOutputSchema
+                    task_schema: SpecOwTaskSchema, worker_output_schema: SpecOwWorkerOutputSchema,
+                    final_output_schema: SpecOwFinalOutputSchema
         on_failure :fail
       end
     end.new
@@ -711,7 +724,7 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
       register_as :spec_ow_orch_final_stop
       model "gpt-5-mini"
     end
-    worker = with_stubbed_class("SpecOwWorkFinalStop", agent_class) do
+    with_stubbed_class("SpecOwWorkFinalStop", agent_class) do
       register_as :spec_ow_work_final_stop
       model "gpt-5-mini"
     end
@@ -726,7 +739,8 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
       transition :research, from: :idle, to: :done do
         orchestrate orchestrator: :spec_ow_orch_final_stop, worker: :spec_ow_work_final_stop,
                     max_workers: 4, max_delegation_rounds: 3,
-                    task_schema: SpecOwTaskSchema, worker_output_schema: SpecOwWorkerOutputSchema, final_output_schema: SpecOwFinalOutputSchema
+                    task_schema: SpecOwTaskSchema, worker_output_schema: SpecOwWorkerOutputSchema,
+                    final_output_schema: SpecOwFinalOutputSchema
         on_failure :fail
       end
     end.new
@@ -742,7 +756,7 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
       register_as :spec_ow_orch_bad_task
       model "gpt-5-mini"
     end
-    worker = with_stubbed_class("SpecOwWorkBadTask", agent_class) do
+    with_stubbed_class("SpecOwWorkBadTask", agent_class) do
       register_as :spec_ow_work_bad_task
       model "gpt-5-mini"
     end
@@ -757,7 +771,8 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
       transition :research, from: :idle, to: :done do
         orchestrate orchestrator: :spec_ow_orch_bad_task, worker: :spec_ow_work_bad_task,
                     max_workers: 4, max_delegation_rounds: 3,
-                    task_schema: SpecOwTaskSchema, worker_output_schema: SpecOwWorkerOutputSchema, final_output_schema: SpecOwFinalOutputSchema
+                    task_schema: SpecOwTaskSchema, worker_output_schema: SpecOwWorkerOutputSchema,
+                    final_output_schema: SpecOwFinalOutputSchema
         on_failure :fail
       end
     end.new
@@ -789,7 +804,8 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
       transition :research, from: :idle, to: :done do
         orchestrate orchestrator: :spec_ow_orch_bad_output, worker: :spec_ow_work_bad_output,
                     max_workers: 4, max_delegation_rounds: 3,
-                    task_schema: SpecOwTaskSchema, worker_output_schema: SpecOwWorkerOutputSchema, final_output_schema: SpecOwFinalOutputSchema
+                    task_schema: SpecOwTaskSchema, worker_output_schema: SpecOwWorkerOutputSchema,
+                    final_output_schema: SpecOwFinalOutputSchema
         on_failure :fail
       end
     end.new
@@ -805,7 +821,7 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
       register_as :spec_ow_orch_bad_final
       model "gpt-5-mini"
     end
-    worker = with_stubbed_class("SpecOwWorkBadFinal", agent_class) do
+    with_stubbed_class("SpecOwWorkBadFinal", agent_class) do
       register_as :spec_ow_work_bad_final
       model "gpt-5-mini"
     end
@@ -820,7 +836,8 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
       transition :research, from: :idle, to: :done do
         orchestrate orchestrator: :spec_ow_orch_bad_final, worker: :spec_ow_work_bad_final,
                     max_workers: 4, max_delegation_rounds: 3,
-                    task_schema: SpecOwTaskSchema, worker_output_schema: SpecOwWorkerOutputSchema, final_output_schema: SpecOwFinalOutputSchema
+                    task_schema: SpecOwTaskSchema, worker_output_schema: SpecOwWorkerOutputSchema,
+                    final_output_schema: SpecOwFinalOutputSchema
         on_failure :fail
       end
     end.new
@@ -860,7 +877,8 @@ RSpec.describe "Smith::Workflow::OrchestratorWorker runtime behavior" do
       transition :research, from: :idle, to: :done do
         orchestrate orchestrator: :spec_ow_orch_worker_failure, worker: :spec_ow_work_worker_failure,
                     max_workers: 4, max_delegation_rounds: 3,
-                    task_schema: SpecOwTaskSchema, worker_output_schema: SpecOwWorkerOutputSchema, final_output_schema: SpecOwFinalOutputSchema
+                    task_schema: SpecOwTaskSchema, worker_output_schema: SpecOwWorkerOutputSchema,
+                    final_output_schema: SpecOwFinalOutputSchema
         on_failure :fail
       end
     end.new

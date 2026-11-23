@@ -111,7 +111,8 @@ module Smith
         invoke_agent(resolve_agent_class(transition), prepared_input)
       end
 
-      def execute_serial_step(transition, prepared_input: nil)
+      # Kept whole: a split adds a name to Workflow's host surface.
+      def execute_serial_step(transition, prepared_input: nil) # rubocop:disable Metrics/AbcSize
         Thread.current[:smith_last_agent_result] = nil
         clear_failed_billable_attempts
         ledger = effective_call_ledger
@@ -122,7 +123,8 @@ module Smith
           # Capture the model/provider that actually served this serial agent
           # step (post fallback resolution) for complete_step to fold into the
           # durable step record. Nil when no agent ran (e.g. unconfigured model).
-          @pending_agent_execution = agent_result && { model: agent_result.model_used, provider: agent_result.provider_used }
+          @pending_agent_execution =
+            agent_result && { model: agent_result.model_used, provider: agent_result.provider_used }
           reconcile_branch_budget(ledger, reserved, agent_result: agent_result)
           reserved = nil
           agent_result ? agent_result.content : result

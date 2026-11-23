@@ -15,7 +15,7 @@ require_relative "workflow/string_snapshot"
 require_relative "workflow/usage_entry"
 
 module Smith
-  class Workflow
+  class Workflow # rubocop:disable Metrics/ClassLength -- host subclasses inherit it; a split adds a mixin to each
     include DSL
     include DefinitionIdentity
     include Persistence
@@ -51,7 +51,8 @@ module Smith
       snapshot_session_messages
     end
 
-    def initialize(context: {}, ledger: nil, created_at: nil)
+    # Kept whole: the fields every run starts with; restore_state mirrors them.
+    def initialize(context: {}, ledger: nil, created_at: nil) # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
       @state = self.class.initial_state
       # Symbol keys at every depth, the shape a restore produces, so a
       # context reads the same live and after a checkpoint round trip.
@@ -144,7 +145,8 @@ module Smith
       @persisted_keys.dup.freeze
     end
 
-    def advance!
+    # Kept whole: a split adds a name to Workflow's host surface.
+    def advance! # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
       StepStream.instance_method(:deliver_streamed_output).bind_call(self)
       return if waiting?
 
@@ -270,7 +272,9 @@ module Smith
         # Capture serial agent attribution only on steps that carried it (an
         # `execute :agent` step); deterministic steps have no :model key, so
         # the last agent execution persists across intervening compute steps.
-        @last_agent_execution = { model: step_result[:model], provider: step_result[:provider] } if step_result.key?(:model)
+        if step_result.key?(:model)
+          @last_agent_execution = { model: step_result[:model], provider: step_result[:provider] }
+        end
       end
     end
 
@@ -347,7 +351,7 @@ module Smith
       @state == name || @state.to_s == name.to_s
     end
 
-    def build_run_result(steps)
+    def build_run_result(steps) # rubocop:disable Metrics/AbcSize -- splitting it adds a name to Workflow's host surface
       # `output` derivation matches existing semantics on fresh runs
       # (last non-nil step output via `compact.first`). Terminal-restore
       # path (steps.empty?) falls back to `@last_output` so the durable

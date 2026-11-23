@@ -89,7 +89,8 @@ RSpec.describe "Smith::Workflow schema versioning" do
     end
 
     payload = base_payload.merge(schema_version: 5)
-    expect { workflow_class.from_state(payload) }.to raise_error(Smith::PersistenceSchemaMismatch, /stored v5, current v1/)
+    expect { workflow_class.from_state(payload) }
+      .to raise_error(Smith::PersistenceSchemaMismatch, /stored v5, current v1/)
   end
 
   it "applies a registered migration to bridge stored v1 to current v2" do
@@ -246,37 +247,37 @@ RSpec.describe "Smith::Workflow schema versioning" do
 
   describe "DSL validation" do
     it "rejects non-positive persistence_schema_version" do
-      expect {
+      expect do
         Class.new(Smith::Workflow) do
           persistence_schema_version 0
         end
-      }.to raise_error(ArgumentError, /must be a positive Integer/)
+      end.to raise_error(ArgumentError, /must be a positive Integer/)
     end
 
     it "rejects non-Integer persistence_schema_version" do
-      expect {
+      expect do
         Class.new(Smith::Workflow) do
           persistence_schema_version "2"
         end
-      }.to raise_error(ArgumentError, /must be a positive Integer/)
+      end.to raise_error(ArgumentError, /must be a positive Integer/)
     end
 
     it "rejects migrate_from without a block" do
-      expect {
+      expect do
         Class.new(Smith::Workflow) do
           migrate_from 1
         end
-      }.to raise_error(ArgumentError, /requires a block/)
+      end.to raise_error(ArgumentError, /requires a block/)
     end
 
     it "rejects migrate_from with a non-Integer version" do
-      expect {
+      expect do
         Class.new(Smith::Workflow) do
           migrate_from "1" do |payload|
             payload
           end
         end
-      }.to raise_error(ArgumentError, /must be a positive Integer/)
+      end.to raise_error(ArgumentError, /must be a positive Integer/)
     end
   end
 end

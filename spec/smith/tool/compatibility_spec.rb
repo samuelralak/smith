@@ -3,18 +3,18 @@
 RSpec.describe Smith::Tool::Compatibility do
   def build_profile(provider:, endpoint_mode: :chat_completions)
     Smith::Models::Profile.new(
-      model_id:                   "test-model",
-      provider:                   provider,
-      thinking_shape:             :reasoning_effort,
-      accepts_temperature:        true,
+      model_id: "test-model",
+      provider: provider,
+      thinking_shape: :reasoning_effort,
+      accepts_temperature: true,
       tools_with_thinking_native: false,
-      tools_with_thinking_route:  endpoint_mode == :responses ? :responses : nil
+      tools_with_thinking_route: endpoint_mode == :responses ? :responses : nil
     )
   end
 
   describe ".parse" do
     it "parses positional providers into a Set allowlist" do
-      spec = described_class.parse([:anthropic, :gemini], except: nil)
+      spec = described_class.parse(%i[anthropic gemini], except: nil)
       expect(spec[:providers]).to eq(Set[:anthropic, :gemini])
       expect(spec[:endpoints]).to eq({})
       expect(spec[:except]).to be_nil
@@ -32,6 +32,12 @@ RSpec.describe Smith::Tool::Compatibility do
       expect(spec[:except]).to eq(openai: Set[:chat_completions])
     end
 
+    it "reads String providers as Symbols, so they match a profile's provider" do
+      spec = described_class.parse(%w[anthropic], except: nil)
+      expect(spec[:providers]).to eq(Set[:anthropic])
+      expect(described_class.allows?(spec, build_profile(provider: :anthropic))).to be(true)
+    end
+
     it "freezes the resulting spec hash" do
       spec = described_class.parse([:anthropic], except: nil)
       expect(spec).to be_frozen
@@ -47,7 +53,7 @@ RSpec.describe Smith::Tool::Compatibility do
     end
 
     context "with a providers allowlist" do
-      let(:spec) { described_class.parse([:anthropic, :gemini], except: nil) }
+      let(:spec) { described_class.parse(%i[anthropic gemini], except: nil) }
 
       it "allows providers on the allowlist" do
         expect(described_class.allows?(spec, build_profile(provider: :anthropic))).to be(true)
@@ -62,10 +68,11 @@ RSpec.describe Smith::Tool::Compatibility do
     context "with provider + endpoint constraints" do
       # Think's actual spec: Anthropic (any endpoint), Gemini (any),
       # OpenAI (only :responses endpoint).
-      let(:spec) { described_class.parse([:anthropic, :gemini], except: nil, openai: :responses) }
+      let(:spec) { described_class.parse(%i[anthropic gemini], except: nil, openai: :responses) }
 
       it "allows Anthropic on chat_completions endpoint" do
-        expect(described_class.allows?(spec, build_profile(provider: :anthropic, endpoint_mode: :chat_completions))).to be(true)
+        profile = build_profile(provider: :anthropic, endpoint_mode: :chat_completions)
+        expect(described_class.allows?(spec, profile)).to be(true)
       end
 
       it "allows OpenAI ONLY on the :responses endpoint" do
@@ -73,7 +80,8 @@ RSpec.describe Smith::Tool::Compatibility do
       end
 
       it "denies OpenAI on the :chat_completions endpoint" do
-        expect(described_class.allows?(spec, build_profile(provider: :openai, endpoint_mode: :chat_completions))).to be(false)
+        profile = build_profile(provider: :openai, endpoint_mode: :chat_completions)
+        expect(described_class.allows?(spec, profile)).to be(false)
       end
     end
 
@@ -81,7 +89,8 @@ RSpec.describe Smith::Tool::Compatibility do
       let(:spec) { described_class.parse([], except: { openai: :chat_completions }) }
 
       it "denies the excluded provider+endpoint combo" do
-        expect(described_class.allows?(spec, build_profile(provider: :openai, endpoint_mode: :chat_completions))).to be(false)
+        profile = build_profile(provider: :openai, endpoint_mode: :chat_completions)
+        expect(described_class.allows?(spec, profile)).to be(false)
       end
 
       it "allows OpenAI on other endpoints" do

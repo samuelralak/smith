@@ -4,8 +4,9 @@ require_relative "usage_entry"
 
 module Smith
   class Workflow
-    module Persistence
-      def to_state
+    module Persistence # rubocop:disable Metrics/ModuleLength -- in Workflow; a split adds a host-visible mixin
+      # The persisted payload, one literal.
+      def to_state # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
         {
           class: self.class.name,
           state: @state,
@@ -84,7 +85,8 @@ module Smith
 
       private
 
-      def restore_state(hash, allow_step_in_progress: false)
+      # Kept whole: it mirrors initialize, and a split adds a name to Workflow's host surface.
+      def restore_state(hash, allow_step_in_progress: false) # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
         validate_raw_step_in_progress!(hash) if
           self.class.idempotency_mode == :strict && !allow_step_in_progress
         migrated = apply_renames(migrate_if_needed(hash))
@@ -231,7 +233,8 @@ module Smith
       # A digest Smith before 0.12.3 took, its parts' cache flags included.
       def flagged_seed_digest?(messages, stored) = compute_seed_digest(messages, cache_flags: true) == stored
 
-      def validate_seed_digest!(normalized)
+      # Kept whole: a split adds a name to Workflow's host surface.
+      def validate_seed_digest!(normalized) # rubocop:disable Metrics/AbcSize
         stored_digest = normalized[:seed_digest]
         return if stored_digest.nil?
 
@@ -294,10 +297,10 @@ module Smith
 
       def restore_last_agent_execution(normalized)
         value = if normalized.key?(:last_agent_execution)
-          normalized[:last_agent_execution]
-        elsif normalized.key?("last_agent_execution")
-          normalized["last_agent_execution"]
-        end
+                  normalized[:last_agent_execution]
+                elsif normalized.key?("last_agent_execution")
+                  normalized["last_agent_execution"]
+                end
         return unless value.is_a?(Hash)
 
         execution = symbolize_keys(value)
@@ -388,7 +391,8 @@ module Smith
         raise Smith::SerializationError, "persisted workflow execution_namespace must be a UUID"
       end
 
-      def restore_persisted_keys(normalized)
+      # Kept whole: a split adds a name to Workflow's host surface.
+      def restore_persisted_keys(normalized) # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
         @persisted_keys_mutex = Mutex.new
         raw = normalized[:persisted_keys]
         if raw.is_a?(Array) && !raw.empty?
@@ -414,7 +418,8 @@ module Smith
       # normalize pipeline. Pre-versioning payloads are treated as v1
       # for backward compatibility with state written before Smith
       # carried :schema_version.
-      def migrate_if_needed(hash)
+      # Kept whole: a split adds a name to Workflow's host surface.
+      def migrate_if_needed(hash) # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
         payload = hash.transform_keys { |k| k.is_a?(String) ? k.to_sym : k }
         current = self.class.persistence_schema_version
         stored = payload[:schema_version] || 1
@@ -526,7 +531,8 @@ module Smith
         normalized
       end
 
-      def normalize_symbol_fields!(normalized)
+      # Kept whole: a split adds a name to Workflow's host surface.
+      def normalize_symbol_fields!(normalized) # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
         normalized[:state] = normalize_state_name(normalized[:state])
         if normalized[:outcome].is_a?(Hash) && normalized[:outcome].key?(:kind)
           normalized[:outcome][:kind] = normalized[:outcome][:kind]&.to_sym

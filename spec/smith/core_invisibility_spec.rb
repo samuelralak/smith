@@ -403,6 +403,19 @@ RSpec.describe "Smith core invisibility: an app that does not use the eval seam 
 
     def git(*args) = CoreInvisibilityHarness.git(*args).first.strip
 
+    # Its install takes Bundler's lock in its own gem home, never the shared
+    # one another bundle install on the machine may hold; every installed
+    # gem stays readable through GEM_PATH.
+    it "installs the golden bundle with a gem home and settings of its own" do
+      handed = nil
+      allow(source).to receive(:system) { |env, *| handed = env }
+      Dir.mktmpdir { source.bundle!(_1) }
+
+      expect(handed["GEM_HOME"]).not_to eq(Gem.dir)
+      expect(handed["BUNDLE_APP_CONFIG"]).to eq(handed["GEM_HOME"])
+      expect(handed["GEM_PATH"].split(File::PATH_SEPARATOR)).to include(Gem.dir)
+    end
+
     # Anyone can extract the parts by their ids and write the golden again.
     # Another machine's gems may differ (the versions block); nothing else.
     it "comes from the parts it names: extracted by their git ids, they write the same golden again" do

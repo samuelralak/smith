@@ -24,7 +24,7 @@ module Smith
             whole(paired_raw(p1, p2, correlation, alpha, power))
           end
 
-          # rubocop:disable Metrics/ParameterLists -- design 7.7's keywords, with alpha and power
+          # Design 7.7's keywords, with alpha and power.
           # The smallest change from baseline, up (:increase) or down
           # (:decrease), whose size is at most n; correlation nil is unpaired.
           # nil when no change up to the end of the scale is detectable at n:
@@ -48,7 +48,6 @@ module Smith
             best = fewest_samples(edge, size)
             smallest_within(best, n, size) if size.call(best) <= n
           end
-          # rubocop:enable Metrics/ParameterLists
 
           private
 

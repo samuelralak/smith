@@ -127,13 +127,14 @@ RSpec.describe "Smith artifacts: the rules every built-in store keeps" do
     expect(store.instance_variable_get(:@metadata)).to be_empty
   end
 
+  # The store sits one level inside @dir, so the file it must not reach is
+  # this example's own, never one in the temp directory every run shares.
   it "keeps a File store's deletes inside its directory" do
-    File.write(File.join(@dir, "..", "keep.txt"), "outside")
-    store = Smith::Artifacts::File.new(dir: @dir)
+    dir = File.join(@dir, "store").tap { Dir.mkdir(_1) }
+    File.write(File.join(@dir, "keep.txt"), "outside")
+    store = Smith::Artifacts::File.new(dir:)
     store.delete("../keep.txt")
-    expect(File.read(File.join(@dir, "..", "keep.txt"))).to eq("outside")
-  ensure
-    FileUtils.rm_f(File.join(@dir, "..", "keep.txt"))
+    expect(File.read(File.join(@dir, "keep.txt"))).to eq("outside")
   end
 
   describe Smith::Artifacts::S3 do
