@@ -1,0 +1,590 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:smith:evals:1:record-header",
+  "title": "Smith eval record header (format version 1, frozen in slice 1a)",
+  "description": "Written once when an eval run starts, never changed. Holds every version the run depends on. A relaunch, or a start with the same idempotency key, must produce the same plan_digest or it is refused.",
+  "type": "object",
+  "required": [
+    "format",
+    "format_version",
+    "eval_run_id",
+    "scope",
+    "kind",
+    "created_at",
+    "started_by",
+    "idempotency_key",
+    "suite",
+    "dataset",
+    "selection",
+    "plan",
+    "subject",
+    "group",
+    "candidate",
+    "driver",
+    "recording",
+    "statistics",
+    "environment",
+    "cost_unit",
+    "per_sample_visibility"
+  ],
+  "properties": {
+    "format": {
+      "const": "smith.evals.record_header"
+    },
+    "format_version": {
+      "$ref": "urn:smith:evals:1:common#/$defs/format_version"
+    },
+    "eval_run_id": {
+      "$ref": "urn:smith:evals:1:common#/$defs/eval_run_id"
+    },
+    "scope": {
+      "$ref": "urn:smith:evals:1:common#/$defs/scope"
+    },
+    "kind": {
+      "description": "eval in slice 1a. Later: rescore (slice 2), tuning_validation and tuning_holdout (slice 5a). Open vocabulary.",
+      "$ref": "urn:smith:evals:1:common#/$defs/code"
+    },
+    "created_at": {
+      "$ref": "urn:smith:evals:1:common#/$defs/timestamp"
+    },
+    "started_by": {
+      "$ref": "urn:smith:evals:1:common#/$defs/nullable_actor"
+    },
+    "idempotency_key": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "suite": {
+      "type": "object",
+      "required": [
+        "name",
+        "version",
+        "measure_digest",
+        "manifest"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "urn:smith:evals:1:common#/$defs/name"
+        },
+        "version": {
+          "description": "The suite manifest's version (for audit): SHA-256 of its canonical JSON without version, budget and dataset.source.",
+          "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+        },
+        "measure_digest": {
+          "description": "What the run measured, for comparisons: dataset version, selected samples, split and narrowing, the subject's input mapping, keep and until (never its identity or variant), trials and reducers and the errors counted as infrastructure, every scorer with its version and parameters, the statistics level and the label rule. Two runs compare only when these are equal (design.md 8.5).",
+          "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+        },
+        "manifest": {
+          "description": "The suite manifest the run used, inline and resolved: defaults filled, a definition subject's digest filled (suite-manifest.schema.json).",
+          "type": "object"
+        }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "required": [
+        "name",
+        "version",
+        "hashes",
+        "sample_count_total"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "urn:smith:evals:1:common#/$defs/name"
+        },
+        "version": {
+          "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+        },
+        "hashes": {
+          "type": "object",
+          "required": [
+            "inputs",
+            "labels",
+            "splits",
+            "metadata"
+          ],
+          "properties": {
+            "inputs": {
+              "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+            },
+            "labels": {
+              "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+            },
+            "splits": {
+              "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+            },
+            "metadata": {
+              "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+            }
+          }
+        },
+        "sample_count_total": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "required": [
+        "split",
+        "narrow",
+        "sample_count",
+        "sample_ids_digest"
+      ],
+      "properties": {
+        "split": {
+          "$ref": "urn:smith:evals:1:common#/$defs/split"
+        },
+        "narrow": {
+          "description": "How the suite narrowed the split, as data: {ids: [...]} or {tags_any: [...]}; null for the whole split.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "sample_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sample_ids_digest": {
+          "description": "SHA-256 of 'smith.evals.sample_ids/1\\n' and the canonical JSON array of the selected sample ids, sorted by UTF-16 code units.",
+          "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+        }
+      }
+    },
+    "plan": {
+      "type": "object",
+      "required": [
+        "trials_per_sample",
+        "planned_trials",
+        "order",
+        "concurrency",
+        "error_retries",
+        "max_cost_nanos",
+        "plan_digest"
+      ],
+      "properties": {
+        "trials_per_sample": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "planned_trials": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "order": {
+          "description": "trial_index_major: every sample's trial 0, then every sample's trial 1, and so on.",
+          "const": "trial_index_major"
+        },
+        "concurrency": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "error_retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "max_cost_nanos": {
+          "description": "This run's cap: the lower of the suite's budget and the limit it was started with; for a linked run, its share of the group's cap (slice 1b enforces it; slice 1a writes the suite's budget or null).",
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "urn:smith:evals:1:common#/$defs/cost_nanos"
+            }
+          ]
+        },
+        "plan_digest": {
+          "$ref": "urn:smith:evals:1:common#/$defs/content_hash",
+          "description": "SHA-256 of the canonical JSON {format: 'smith.evals.plan/1', candidate, dataset, samples, split, suite, trials_per_sample, variant}."
+        }
+      }
+    },
+    "subject": {
+      "description": "What was tested. kind workflow: a code workflow class. kind definition: a workflow built from a definition document (slice 1d). variant: the model variant of a linked run (slice 1b).",
+      "type": "object",
+      "required": [
+        "kind",
+        "workflow",
+        "definition_digest",
+        "definition",
+        "input",
+        "until",
+        "keep",
+        "version",
+        "agents",
+        "variant"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "workflow",
+            "definition"
+          ]
+        },
+        "workflow": {
+          "description": "The workflow class name, or for a definition its persisted class label 'smith.definition/1:<id>@<digest>'.",
+          "type": "string",
+          "maxLength": 512
+        },
+        "definition_digest": {
+          "description": "The workflow class's definition_digest, when it has one.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "definition": {
+          "description": "For kind definition: the document that ran. digest is the document's (after any variant); prompt_digest is the document without its llm block, so runs that differ only in model share it.",
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "scope",
+                "id",
+                "digest",
+                "format",
+                "prompt_digest",
+                "components"
+              ],
+              "properties": {
+                "scope": {
+                  "$ref": "urn:smith:evals:1:common#/$defs/scope"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "digest": {
+                  "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+                },
+                "format": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "prompt_digest": {
+                  "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+                },
+                "components": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "urn:smith:evals:1:common#/$defs/component_version"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "input": {
+          "description": "For kind definition: how each definition input is read from a sample (value sources); null for kind workflow, whose mapping is code.",
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$"
+              },
+              "additionalProperties": {
+                "$ref": "urn:smith:evals:1:common#/$defs/value_source"
+              }
+            }
+          ]
+        },
+        "until": {
+          "description": "The named state a trial stops at, or null to run to the end.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 256
+        },
+        "keep": {
+          "description": "The end-state keys a scorer may read and the record keeps.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "maxItems": 64
+        },
+        "version": {
+          "description": "For kind workflow: the author-declared version of the code input mapping. Null for kind definition.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "agents": {
+          "description": "The agents and their declared models: from the document for kind definition, from the variant for a linked run; empty for a code workflow (the observed models are in summary.models).",
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "lazy"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "maxLength": 256
+              },
+              "model": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 256
+              },
+              "provider": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 64
+              },
+              "fallback_models": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "model",
+                    "provider"
+                  ],
+                  "properties": {
+                    "model": {
+                      "type": "string"
+                    },
+                    "provider": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "lazy": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "variant": {
+          "$ref": "urn:smith:evals:1:common#/$defs/variant"
+        }
+      }
+    },
+    "group": {
+      "description": "For a linked run (slice 1b; shape frozen with 1b): the group it belongs to. One eval ledger covers the group; each member's share is its own cap. Null otherwise.",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "role",
+            "label",
+            "baseline_eval_run_id",
+            "members",
+            "max_cost_nanos",
+            "share_nanos",
+            "share_basis",
+            "no_worse_margin"
+          ],
+          "properties": {
+            "id": {
+              "$ref": "urn:smith:evals:1:common#/$defs/group_id"
+            },
+            "kind": {
+              "description": "models in slice 1b. Open vocabulary.",
+              "$ref": "urn:smith:evals:1:common#/$defs/code"
+            },
+            "role": {
+              "enum": [
+                "baseline",
+                "candidate"
+              ]
+            },
+            "label": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "baseline_eval_run_id": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "urn:smith:evals:1:common#/$defs/eval_run_id"
+                }
+              ]
+            },
+            "members": {
+              "type": "integer",
+              "minimum": 2
+            },
+            "max_cost_nanos": {
+              "$ref": "urn:smith:evals:1:common#/$defs/cost_nanos"
+            },
+            "share_nanos": {
+              "$ref": "urn:smith:evals:1:common#/$defs/cost_nanos"
+            },
+            "share_basis": {
+              "description": "explicit (the caller passed shares), estimate (in proportion to each member's estimated cost per trial), equal (no estimate was available).",
+              "enum": [
+                "explicit",
+                "estimate",
+                "equal"
+              ]
+            },
+            "no_worse_margin": {
+              "description": "The no-worse margin declared in compare_models before any trial ran (0.05 is 5 points); null when none. Comparisons read it from here, never from the request that reads the results.",
+              "type": [
+                "number",
+                "null"
+              ],
+              "exclusiveMinimum": 0
+            }
+          }
+        }
+      ]
+    },
+    "candidate": {
+      "description": "The tuning candidate under test (slice 5a); null before then.",
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "driver": {
+      "type": "object",
+      "required": [
+        "name",
+        "form",
+        "max_concurrency",
+        "isolation"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "form": {
+          "description": "in_process (slice 1a) or across_processes (slice 3a).",
+          "$ref": "urn:smith:evals:1:common#/$defs/code"
+        },
+        "max_concurrency": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "isolation": {
+          "description": "none, around_trial (in process), or prepare_cleanup (across processes).",
+          "$ref": "urn:smith:evals:1:common#/$defs/code"
+        }
+      }
+    },
+    "recording": {
+      "type": "object",
+      "required": [
+        "content",
+        "max_steps",
+        "max_message_bytes",
+        "max_tool_bytes",
+        "max_step_bytes",
+        "max_trial_bytes"
+      ],
+      "properties": {
+        "content": {
+          "description": "False keeps step metadata only (no messages).",
+          "type": "boolean"
+        },
+        "max_steps": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 4096
+        },
+        "max_message_bytes": {
+          "type": "integer",
+          "minimum": 256,
+          "maximum": 1048576
+        },
+        "max_tool_bytes": {
+          "type": "integer",
+          "minimum": 256,
+          "maximum": 1048576
+        },
+        "max_step_bytes": {
+          "type": "integer",
+          "minimum": 4096,
+          "maximum": 4194304
+        },
+        "max_trial_bytes": {
+          "type": "integer",
+          "minimum": 65536,
+          "maximum": 8388608
+        }
+      }
+    },
+    "statistics": {
+      "type": "object",
+      "required": [
+        "level",
+        "bootstrap_resamples",
+        "small_sample_threshold",
+        "stats_schema"
+      ],
+      "properties": {
+        "level": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "bootstrap_resamples": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 100000
+        },
+        "small_sample_threshold": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "stats_schema": {
+          "description": "The statistics shape the summary embeds. A bootstrap's seed is in each result (from its inputs digest), not here.",
+          "const": "smith.evals.stats/1"
+        }
+      }
+    },
+    "environment": {
+      "$ref": "urn:smith:evals:1:common#/$defs/environment"
+    },
+    "cost_unit": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "per_sample_visibility": {
+      "description": "sealed for a holdout run: a reader shows totals only until a recorded reveal (slice 2).",
+      "enum": [
+        "open",
+        "sealed"
+      ]
+    }
+  }
+}

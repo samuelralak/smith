@@ -1,0 +1,632 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:smith:evals:1:summary",
+  "title": "Smith eval record summary (format version 1, frozen in slice 1a; gate fields first filled in slice 1b)",
+  "description": "Written when an eval run ends (atomically). A record with a header and no summary is running, or was interrupted and can be resumed. A later revision (summary_revision 2 and up) replaces it whole when the run is extended on the record: 'run the failed trials again' (slice 1b.2) now, 'raise the limit and finish' later; reruns lists each extension, so the history stays readable.",
+  "type": "object",
+  "required": [
+    "format",
+    "format_version",
+    "eval_run_id",
+    "scope",
+    "summary_revision",
+    "written_at",
+    "status",
+    "stop",
+    "complete",
+    "started_at",
+    "ended_at",
+    "duration_ms",
+    "segments",
+    "planned",
+    "outcomes",
+    "causes",
+    "retries",
+    "results",
+    "usage",
+    "latency_ms",
+    "counts",
+    "models",
+    "gates",
+    "gate_result",
+    "warnings",
+    "reruns",
+    "per_sample_visibility"
+  ],
+  "properties": {
+    "format": {
+      "const": "smith.evals.summary"
+    },
+    "format_version": {
+      "$ref": "urn:smith:evals:1:common#/$defs/format_version"
+    },
+    "eval_run_id": {
+      "$ref": "urn:smith:evals:1:common#/$defs/eval_run_id"
+    },
+    "scope": {
+      "$ref": "urn:smith:evals:1:common#/$defs/scope"
+    },
+    "summary_revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "written_at": {
+      "$ref": "urn:smith:evals:1:common#/$defs/timestamp"
+    },
+    "status": {
+      "description": "succeeded: every planned trial reached a final outcome (errors included). failed: a run-stopping error stopped it (for a linked run, only that run). cancelled: an operator stopped it. incomplete: its cap, or its share of a group's cap, stopped it. (running is a header with no summary.)",
+      "enum": [
+        "succeeded",
+        "failed",
+        "cancelled",
+        "incomplete"
+      ]
+    },
+    "stop": {
+      "description": "Why the run stopped before its plan ended; null when it succeeded.",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "actor",
+            "at",
+            "trial_id"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "urn:smith:evals:1:common#/$defs/reason"
+            },
+            "actor": {
+              "description": "Who cancelled, for a cancel.",
+              "$ref": "urn:smith:evals:1:common#/$defs/nullable_actor"
+            },
+            "at": {
+              "$ref": "urn:smith:evals:1:common#/$defs/timestamp"
+            },
+            "trial_id": {
+              "description": "The trial that met the stopping error or the cap, if one did.",
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "urn:smith:evals:1:common#/$defs/trial_id"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "complete": {
+      "description": "True when every planned trial has a final outcome other than not_run.",
+      "type": "boolean"
+    },
+    "started_at": {
+      "$ref": "urn:smith:evals:1:common#/$defs/timestamp"
+    },
+    "ended_at": {
+      "$ref": "urn:smith:evals:1:common#/$defs/timestamp"
+    },
+    "duration_ms": {
+      "$ref": "urn:smith:evals:1:common#/$defs/count"
+    },
+    "segments": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "segment",
+          "purpose",
+          "started_at",
+          "smith_version",
+          "host_code_version"
+        ],
+        "properties": {
+          "segment": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "purpose": {
+            "enum": [
+              "start",
+              "resume",
+              "rerun_errors"
+            ]
+          },
+          "started_at": {
+            "$ref": "urn:smith:evals:1:common#/$defs/timestamp"
+          },
+          "smith_version": {
+            "type": "string"
+          },
+          "host_code_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "planned": {
+      "type": "object",
+      "required": [
+        "samples",
+        "trials_per_sample",
+        "trials"
+      ],
+      "properties": {
+        "samples": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "trials_per_sample": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "trials": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "outcomes": {
+      "description": "Counts of the effective trial results; they add up to planned.trials (trials that never started are not_run).",
+      "type": "object",
+      "required": [
+        "scored",
+        "subject_failed",
+        "limit_hit",
+        "unscored",
+        "error",
+        "not_run"
+      ],
+      "properties": {
+        "scored": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "subject_failed": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "limit_hit": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "unscored": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "error": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "not_run": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        }
+      }
+    },
+    "causes": {
+      "description": "For each outcome other than scored, how many effective trials had each reason code; trials that never started are counted under not_run with the stop's code. The product's 'common cause' reads this; it never scans trial lines.",
+      "type": "object",
+      "required": [
+        "subject_failed",
+        "limit_hit",
+        "unscored",
+        "error",
+        "not_run"
+      ],
+      "properties": {
+        "subject_failed": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count_map"
+        },
+        "limit_hit": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count_map"
+        },
+        "unscored": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count_map"
+        },
+        "error": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count_map"
+        },
+        "not_run": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count_map"
+        }
+      }
+    },
+    "retries": {
+      "type": "object",
+      "required": [
+        "trials_retried",
+        "attempts_retried"
+      ],
+      "properties": {
+        "trials_retried": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "attempts_retried": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        }
+      }
+    },
+    "results": {
+      "description": "One entry per scorer and reducer. headline marks the number the suite reports for that scorer. estimate is exactly a smith.evals.stats/1 estimate (stats.schema.json).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "scorer",
+          "scorer_version",
+          "scale",
+          "reducer",
+          "headline",
+          "samples_uncounted",
+          "trials_counted",
+          "trials_unscored",
+          "estimate"
+        ],
+        "properties": {
+          "scorer": {
+            "$ref": "urn:smith:evals:1:common#/$defs/scorer_name"
+          },
+          "scorer_version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "scale": {
+            "enum": [
+              "binary",
+              "continuous"
+            ]
+          },
+          "reducer": {
+            "description": "majority, any, all, mean, pass_at_<k>, pass_all_<k>.",
+            "type": "string",
+            "pattern": "^(majority|any|all|mean|pass_at_[1-9][0-9]?|pass_all_[1-9][0-9]?)$"
+          },
+          "headline": {
+            "type": "boolean"
+          },
+          "samples_uncounted": {
+            "description": "Selected samples with no counted trial for this scorer.",
+            "$ref": "urn:smith:evals:1:common#/$defs/count"
+          },
+          "trials_counted": {
+            "$ref": "urn:smith:evals:1:common#/$defs/count"
+          },
+          "trials_unscored": {
+            "$ref": "urn:smith:evals:1:common#/$defs/count"
+          },
+          "estimate": {
+            "$ref": "urn:smith:evals:1:stats#/$defs/estimate"
+          }
+        }
+      }
+    },
+    "usage": {
+      "description": "Every line's usage, superseded lines and errored attempts included.",
+      "type": "object",
+      "required": [
+        "tokens",
+        "cost_nanos",
+        "cost_complete",
+        "provider_calls",
+        "cost_per_trial_nanos",
+        "samples_costed",
+        "cost_per_sample_nanos",
+        "cost_per_1000_samples_nanos"
+      ],
+      "properties": {
+        "tokens": {
+          "$ref": "urn:smith:evals:1:common#/$defs/tokens"
+        },
+        "cost_nanos": {
+          "$ref": "urn:smith:evals:1:common#/$defs/cost_nanos"
+        },
+        "cost_complete": {
+          "type": "boolean"
+        },
+        "provider_calls": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "cost_per_trial_nanos": {
+          "description": "cost_nanos over the trials that ran, rounded half up. Not per example: use cost_per_sample_nanos for that.",
+          "$ref": "urn:smith:evals:1:common#/$defs/cost_nanos"
+        },
+        "samples_costed": {
+          "description": "Samples whose every planned trial finished; the per-sample costs rest on these, so an incomplete run is not biased by its part-run samples.",
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "cost_per_sample_nanos": {
+          "description": "The mean cost of a costed sample, all its lines included, rounded half up; null when no sample is costed.",
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "urn:smith:evals:1:common#/$defs/cost_nanos"
+            }
+          ]
+        },
+        "cost_per_1000_samples_nanos": {
+          "description": "The same, for 1,000 samples, computed from the exact mean (the screens' 'cost per 1,000 examples').",
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "urn:smith:evals:1:common#/$defs/cost_nanos"
+            }
+          ]
+        }
+      }
+    },
+    "latency_ms": {
+      "description": "Over trials that ran, from each trial's latency_ms (its final attempt, so queue time and retries do not inflate it); null when none ran. p50 (the screens' 'typical time per answer') and p90 by linear interpolation (type 7), rounded half up.",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "mean",
+            "p50",
+            "p90",
+            "max"
+          ],
+          "properties": {
+            "mean": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "p50": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "p90": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      ]
+    },
+    "counts": {
+      "type": "object",
+      "required": [
+        "agent_attempts",
+        "tool_calls",
+        "tool_calls_per_trial"
+      ],
+      "properties": {
+        "agent_attempts": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "tool_calls": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "tool_calls_per_trial": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "models": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "model",
+          "provider",
+          "attempts"
+        ],
+        "properties": {
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "attempts": {
+            "$ref": "urn:smith:evals:1:common#/$defs/count"
+          }
+        }
+      }
+    },
+    "gates": {
+      "description": "Gate results (fixed gates in slice 1b; baseline and statistical gates in slice 2). Empty in slice 1a. Codes, not prose: the product words them.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "scorer",
+          "reducer",
+          "target",
+          "observed",
+          "successes",
+          "n_samples",
+          "lower",
+          "upper",
+          "passed",
+          "reason_code"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "urn:smith:evals:1:common#/$defs/code"
+          },
+          "kind": {
+            "description": "at_least, baseline, statistical. Open vocabulary.",
+            "$ref": "urn:smith:evals:1:common#/$defs/code"
+          },
+          "scorer": {
+            "$ref": "urn:smith:evals:1:common#/$defs/scorer_name"
+          },
+          "reducer": {
+            "type": "string"
+          },
+          "target": {
+            "type": "number"
+          },
+          "observed": {
+            "description": "The headline estimate's point.",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "successes": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "n_samples": {
+            "$ref": "urn:smith:evals:1:common#/$defs/count"
+          },
+          "lower": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "upper": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "reason_code": {
+            "description": "met, missed, run_not_complete (an incomplete, failed or cancelled run fails every gate), no_samples. Open vocabulary.",
+            "$ref": "urn:smith:evals:1:common#/$defs/code"
+          }
+        }
+      }
+    },
+    "gate_result": {
+      "description": "none when the suite declares no gates. An incomplete, failed or cancelled run fails every gate.",
+      "enum": [
+        "none",
+        "passed",
+        "failed"
+      ]
+    },
+    "warnings": {
+      "description": "Run-level notes as codes with a count: errors_present, unscored_present, resumed (the number of resumes), mixed_code_versions (the number of distinct host code versions across segments), variant_model_not_observed (steps that used a model other than the run's variant). Open vocabulary.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "code",
+          "count"
+        ],
+        "properties": {
+          "code": {
+            "$ref": "urn:smith:evals:1:common#/$defs/code"
+          },
+          "count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "reruns": {
+      "description": "Each 'run the failed trials again' on this record, oldest first (slice 1b.2). Empty when none.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "segment",
+          "requested_by",
+          "request_key",
+          "requested_at",
+          "max_cost_nanos",
+          "trials_requested",
+          "trials_rerun",
+          "recovered",
+          "still_error",
+          "cost_nanos",
+          "stop_reason_code"
+        ],
+        "properties": {
+          "segment": {
+            "type": "integer",
+            "minimum": 2
+          },
+          "requested_by": {
+            "$ref": "urn:smith:evals:1:common#/$defs/actor"
+          },
+          "request_key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "requested_at": {
+            "$ref": "urn:smith:evals:1:common#/$defs/timestamp"
+          },
+          "max_cost_nanos": {
+            "description": "The limit the request was started with.",
+            "$ref": "urn:smith:evals:1:common#/$defs/cost_nanos"
+          },
+          "trials_requested": {
+            "description": "Trials whose effective line ended in error when the request was made.",
+            "$ref": "urn:smith:evals:1:common#/$defs/count"
+          },
+          "trials_rerun": {
+            "description": "Of those, the ones that ran again (fewer when the limit stopped it).",
+            "$ref": "urn:smith:evals:1:common#/$defs/count"
+          },
+          "recovered": {
+            "description": "Rerun trials whose new line is not error.",
+            "$ref": "urn:smith:evals:1:common#/$defs/count"
+          },
+          "still_error": {
+            "$ref": "urn:smith:evals:1:common#/$defs/count"
+          },
+          "cost_nanos": {
+            "description": "What the rerun lines cost; already included in usage.cost_nanos.",
+            "$ref": "urn:smith:evals:1:common#/$defs/cost_nanos"
+          },
+          "stop_reason_code": {
+            "description": "Why the rerun stopped early (cap_reached, a run-stopping code, cancelled); null when it ran every requested trial.",
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "urn:smith:evals:1:common#/$defs/code"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "per_sample_visibility": {
+      "enum": [
+        "open",
+        "sealed"
+      ]
+    }
+  }
+}

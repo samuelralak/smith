@@ -6,7 +6,7 @@ RSpec.describe Smith::Evals::Configuration do
   subject(:config) { described_class.new }
 
   it "starts from the design's defaults" do
-    expect(config.store).to be_nil
+    expect(config.store).to be_a(Smith::Evals::Stores::File)
     expect(config.dataset_root).to be_nil
     expect(config.dataset_source).to be_nil
     expect(config.host_code_version).to be_nil

@@ -1,0 +1,83 @@
+# frozen_string_literal: true
+
+require "smith/evals"
+require "tmpdir"
+
+# The store interface's names, the lease every built-in store hands out, and
+# the configuration's default store (slice-1a design, 4.1 and 9.1).
+RSpec.describe Smith::Evals::Store do
+  it "names the twelve methods of slice 1a, which both stores answer with keywords only" do
+    expect(described_class::METHODS).to eq(
+      %i[create_record read_header acquire_lease append_segment append_trial each_segment each_trial write_summary
+         read_summary list_records request_cancel cancel_request]
+    )
+    [Smith::Evals::Stores::Memory.new, Smith::Evals::Stores::File.new(root: "unused")].each do |store|
+      expect(described_class.store?(store)).to be(true)
+      kinds = described_class::METHODS.flat_map { store.method(_1).parameters.map(&:first) }
+      expect(kinds.uniq - %i[keyreq key block]).to eq([])
+    end
+    expect(described_class.store?(Object.new)).to be(false)
+  end
+
+  it "takes as a store only an object that answers every one of the twelve methods" do
+    methods = described_class::METHODS
+    partial = methods.map do |missing|
+      Class.new { (methods - [missing]).each { |name| define_method(name) { |**| nil } } }.new
+    end
+    whole = Class.new { methods.each { |name| define_method(name) { |**| nil } } }.new
+
+    expect(partial.map { described_class.store?(_1) }).to all(be(false))
+    partial.each { |store| expect { Smith::Evals::Configuration.new.store = store }.to raise_error(ArgumentError) }
+    expect(described_class.store?(whole)).to be(true)
+  end
+
+  it "defaults the configured store to a file store under tmp/smith-evals, created on its first write" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        config = Smith::Evals::Configuration.new
+
+        expect(config.store).to be_a(Smith::Evals::Stores::File)
+        expect(config.store.root).to eq(File.join(Dir.pwd, "tmp", "smith-evals"))
+        expect(Dir.children(dir)).to eq([])
+      end
+    end
+  end
+
+  # A host that sets its own store never needs a working folder; the
+  # default store is built when first read, and says why it cannot be.
+  it "configures with the working folder gone: no default store, and a plain error when one is read" do
+    Dir.mktmpdir do |dir|
+      gone = File.join(dir, "gone")
+      Dir.mkdir(gone)
+      Dir.chdir(gone) do
+        Dir.rmdir(gone)
+        config = Smith::Evals::Configuration.new
+        config.store = Smith::Evals::Stores::Memory.new
+
+        expect(config.frozen_copy.store).to be_a(Smith::Evals::Stores::Memory)
+        expect { Smith::Evals::Configuration.new.store }.to raise_error(ArgumentError, /working folder/)
+      end
+    end
+  end
+
+  it "refuses a configured store that does not answer the interface" do
+    config = Smith::Evals::Configuration.new
+
+    expect { config.store = Object.new }.to raise_error(ArgumentError, /store/)
+    expect { config.store = nil }.to raise_error(ArgumentError, /store/)
+    config.store = Smith::Evals::Stores::Memory.new
+    expect(config.store).to be_a(Smith::Evals::Stores::Memory)
+  end
+
+  describe Smith::Evals::Store::Lease do
+    it "releases once, from any thread, and says so" do
+      calls = []
+      lease = described_class.new(scope: { "tenant" => "t" }, eval_run_id: EvalRecords.run_id(1)) { calls << :released }
+
+      expect(lease).not_to be_released
+      4.times.map { Thread.new { lease.release } }.each(&:join)
+      expect([lease.released?, calls, lease.eval_run_id, lease.scope])
+        .to eq([true, [:released], EvalRecords.run_id(1), { "tenant" => "t" }])
+    end
+  end
+end

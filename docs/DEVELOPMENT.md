@@ -68,6 +68,20 @@ an avoidable asymptotic regression as a release blocker.
   it declares (at most 64 scorers and 32 gates), and its selection
   `O(n + k)` for `k` named ids or tags. Each id and digest is linear in what
   it hashes; the sample ids digest is `O(n log n)`.
+- Eval stores (`Smith::Evals::Stores::Memory` and `::File`) check, write
+  and read a record in `O(B)` for its `B` bytes (at most 8 MiB, 64 levels
+  and 1,000,000 values), and know it by its canonical JSON in
+  `O(B + sum k_i log k_i)`; reading a run's lines is `O(L)` in the file,
+  and the file store's first append under a lease reads that file's ids
+  once, `O(L)`, keeping `O(T)` digests for `T` lines. A lease holder cuts a
+  torn last line in `O(L)` (the file is copied up to its last line feed
+  and renamed over). A listing reads every header in the scope on every
+  page, `O(R log R)` for `R` records, and the page's summaries; a database
+  store indexes instead. Measured on a laptop: an append about 5 ms on
+  macOS, most of it the drive flush (about 0.8 ms with a plain fsync), a
+  lease about 8 ms and a create about 15 ms (each flushes its folders),
+  records read at 4 to 5 MB/s (the strict reader), a listing page 1 to
+  1.5 s at 2,000 runs.
 - Retry delay calculation is `O(1)` time and space per attempt. A policy with
   `A` attempts performs at most `A` guarded operations and never materializes an
   exponential schedule.

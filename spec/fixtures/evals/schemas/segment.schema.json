@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:smith:evals:1:segment",
+  "title": "Smith eval record launch log line (format version 1, frozen in slice 1a)",
+  "description": "One line of segments.jsonl per launch of an eval run: the first start, each resume after a kill, and each 'run the failed trials again' (slice 1b.2). Trial lines name the segment that wrote them.",
+  "type": "object",
+  "required": [
+    "format",
+    "format_version",
+    "eval_run_id",
+    "segment",
+    "started_at",
+    "started_by",
+    "environment",
+    "purpose",
+    "request_key",
+    "resumed",
+    "trials_already_recorded"
+  ],
+  "properties": {
+    "format": {
+      "const": "smith.evals.segment"
+    },
+    "format_version": {
+      "$ref": "urn:smith:evals:1:common#/$defs/format_version"
+    },
+    "eval_run_id": {
+      "$ref": "urn:smith:evals:1:common#/$defs/eval_run_id"
+    },
+    "segment": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "started_at": {
+      "$ref": "urn:smith:evals:1:common#/$defs/timestamp"
+    },
+    "started_by": {
+      "$ref": "urn:smith:evals:1:common#/$defs/nullable_actor"
+    },
+    "environment": {
+      "$ref": "urn:smith:evals:1:common#/$defs/environment"
+    },
+    "purpose": {
+      "description": "start (the first launch), resume (after an interruption; nothing recorded runs again), rerun_errors (an actor asked to run again the trials whose effective line ended in error; slice 1b.2). Closed list within format 1.",
+      "enum": [
+        "start",
+        "resume",
+        "rerun_errors"
+      ]
+    },
+    "request_key": {
+      "description": "For rerun_errors, the request's idempotency key: the same key never runs the trials twice. Null otherwise.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "resumed": {
+      "type": "boolean",
+      "description": "True when purpose is resume (kept for readers of the first draft)."
+    },
+    "trials_already_recorded": {
+      "description": "Trials with a final line when this launch began; none of them runs again.",
+      "$ref": "urn:smith:evals:1:common#/$defs/count"
+    }
+  }
+}

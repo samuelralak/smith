@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../scope"
+require_relative "stores/file"
 
 module Smith
   module Evals
@@ -9,7 +10,10 @@ module Smith
     # `frozen_copy` when it starts and reads only that, so a later configure
     # (in a test, say) never reaches a running run.
     #
-    # store: the eval store (slice 1a.3 gives the default file store).
+    # store: the eval store; by default a file store in tmp/smith-evals under
+    # the directory current when the configuration is made (a later chdir
+    # never moves it), and none when that directory is gone (a host then
+    # sets its own).
     # dataset_root: where a suite's `dataset "name"` folders are found; nil
     # is the current directory. dataset_source: ->(name, scope:) for suites
     # built from data (slice 1b). host_code_version: the host's own code
@@ -22,18 +26,28 @@ module Smith
       RECORDING_CEILINGS = { max_steps: 4_096, max_message_bytes: 1_048_576, max_tool_bytes: 1_048_576,
                              max_step_bytes: 4_194_304, max_trial_bytes: 8_388_608 }.freeze
       MAX_HOST_CODE_VERSION = 128
+      DEFAULT_STORE_ROOT = "tmp/smith-evals"
 
-      attr_accessor :store
       attr_reader :dataset_root, :dataset_source, :host_code_version, :cost_unit, :default_scope, :recording
 
       def initialize
-        @store = nil
+        @store = default_store
         @dataset_root = nil
         @dataset_source = nil
         @host_code_version = nil
         @cost_unit = "USD"
         @default_scope = Smith::Scope.build({})
         @recording = RECORDING_DEFAULTS
+      end
+
+      def store
+        @store or raise ArgumentError, "no default store: the working folder was gone when the configuration was made"
+      end
+
+      def store=(value)
+        raise ArgumentError, "store answers every method of Smith::Evals::Store::METHODS" unless Store.store?(value)
+
+        @store = value
       end
 
       def dataset_root=(value)
@@ -84,6 +98,12 @@ module Smith
       end
 
       private
+
+      def default_store
+        Stores::File.new(root: DEFAULT_STORE_ROOT)
+      rescue Errno::ENOENT
+        nil
+      end
 
       def recording_setting(name, setting)
         if name == :content

@@ -1,0 +1,669 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:smith:evals:1:trial",
+  "title": "Smith eval trial line (format version 1, frozen in slice 1a)",
+  "description": "One line of trials.jsonl: one trial's final result. A trial id may appear on more than one line; the line with the highest trial_revision is the trial's result, and every line's cost counts toward spend.",
+  "type": "object",
+  "required": [
+    "format",
+    "format_version",
+    "eval_run_id",
+    "trial_id",
+    "trial_revision",
+    "segment",
+    "sample_id",
+    "trial_index",
+    "candidate_id",
+    "split",
+    "outcome",
+    "reason",
+    "started_at",
+    "ended_at",
+    "duration_ms",
+    "latency_ms",
+    "attempts",
+    "subject",
+    "output",
+    "state",
+    "error",
+    "scores",
+    "usage",
+    "counts",
+    "steps",
+    "recording"
+  ],
+  "properties": {
+    "format": {
+      "const": "smith.evals.trial"
+    },
+    "format_version": {
+      "$ref": "urn:smith:evals:1:common#/$defs/format_version"
+    },
+    "eval_run_id": {
+      "$ref": "urn:smith:evals:1:common#/$defs/eval_run_id"
+    },
+    "trial_id": {
+      "$ref": "urn:smith:evals:1:common#/$defs/trial_id"
+    },
+    "trial_revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "segment": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "sample_id": {
+      "$ref": "urn:smith:evals:1:common#/$defs/sample_id"
+    },
+    "trial_index": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 99
+    },
+    "candidate_id": {
+      "$ref": "urn:smith:evals:1:common#/$defs/candidate_id"
+    },
+    "split": {
+      "$ref": "urn:smith:evals:1:common#/$defs/split"
+    },
+    "outcome": {
+      "$ref": "urn:smith:evals:1:common#/$defs/outcome"
+    },
+    "reason": {
+      "description": "Null only for scored. Known codes are listed in design.md section 6.",
+      "$ref": "urn:smith:evals:1:common#/$defs/nullable_reason"
+    },
+    "started_at": {
+      "$ref": "urn:smith:evals:1:common#/$defs/timestamp"
+    },
+    "ended_at": {
+      "$ref": "urn:smith:evals:1:common#/$defs/timestamp"
+    },
+    "duration_ms": {
+      "description": "From the first attempt's start to the end, retries included.",
+      "$ref": "urn:smith:evals:1:common#/$defs/count"
+    },
+    "latency_ms": {
+      "description": "The final attempt's duration: what latency statistics use, so queue time before a retry does not count.",
+      "$ref": "urn:smith:evals:1:common#/$defs/count"
+    },
+    "attempts": {
+      "description": "Every attempt of this trial in this line: the first, then each retry after an error. The last attempt's outcome is the line's.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 11,
+      "items": {
+        "type": "object",
+        "required": [
+          "n",
+          "outcome",
+          "reason",
+          "started_at",
+          "duration_ms",
+          "cost_nanos",
+          "error"
+        ],
+        "properties": {
+          "n": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "outcome": {
+            "$ref": "urn:smith:evals:1:common#/$defs/outcome"
+          },
+          "reason": {
+            "$ref": "urn:smith:evals:1:common#/$defs/nullable_reason"
+          },
+          "started_at": {
+            "$ref": "urn:smith:evals:1:common#/$defs/timestamp"
+          },
+          "duration_ms": {
+            "$ref": "urn:smith:evals:1:common#/$defs/count"
+          },
+          "cost_nanos": {
+            "$ref": "urn:smith:evals:1:common#/$defs/cost_nanos"
+          },
+          "error": {
+            "$ref": "urn:smith:evals:1:common#/$defs/nullable_error_info"
+          }
+        }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "required": [
+        "final_state",
+        "ended",
+        "waiting"
+      ],
+      "properties": {
+        "final_state": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 256
+        },
+        "ended": {
+          "description": "terminal (a state with no way on), until (the suite's named state), waiting (stopped at a wait the driver cannot deliver), raised (the run raised).",
+          "enum": [
+            "terminal",
+            "until",
+            "waiting",
+            "raised",
+            null
+          ]
+        },
+        "waiting": {
+          "description": "The wait kind when ended is waiting: await, delay, children, batch.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "output": {
+      "description": "The workflow's output, as JSON, at most 64 KiB canonical; a recording gap output_cut when cut."
+    },
+    "state": {
+      "description": "The kept end-state keys (the suite's keep list), at most 1 MiB canonical; null when the subject left none.",
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "error": {
+      "description": "The subject's terminal error, when it had one.",
+      "$ref": "urn:smith:evals:1:common#/$defs/nullable_error_info"
+    },
+    "scores": {
+      "description": "One entry per scorer that applied, by scorer name. Empty for error and not_run.",
+      "type": "object",
+      "propertyNames": {
+        "$ref": "urn:smith:evals:1:common#/$defs/scorer_name"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "status",
+          "source",
+          "scorer_version",
+          "passed",
+          "value",
+          "label",
+          "explanation",
+          "metadata",
+          "reason"
+        ],
+        "properties": {
+          "status": {
+            "enum": [
+              "scored",
+              "unscored"
+            ]
+          },
+          "source": {
+            "description": "scorer: the scorer judged it; outcome_rule: a failed subject counts as a fail without running the scorer.",
+            "enum": [
+              "scorer",
+              "outcome_rule"
+            ]
+          },
+          "scorer_version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "passed": {
+            "description": "Binary scorers; null for continuous and unscored.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "value": {
+            "description": "0 to 1; for binary, 1 or 0; null when unscored.",
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 256
+          },
+          "explanation": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 4096
+          },
+          "metadata": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "reason": {
+            "description": "Why it is unscored.",
+            "$ref": "urn:smith:evals:1:common#/$defs/nullable_reason"
+          }
+        }
+      }
+    },
+    "usage": {
+      "$ref": "urn:smith:evals:1:common#/$defs/usage"
+    },
+    "counts": {
+      "type": "object",
+      "required": [
+        "agent_attempts",
+        "tool_calls",
+        "steps_recorded"
+      ],
+      "properties": {
+        "agent_attempts": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "tool_calls": {
+          "description": "Tool calls the subject's agents made in this line's last attempt.",
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "steps_recorded": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        }
+      }
+    },
+    "steps": {
+      "description": "The recorder's step records for the last attempt: one per provider attempt of an agent, in order.",
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    },
+    "recording": {
+      "type": "object",
+      "required": [
+        "complete",
+        "dropped_steps",
+        "dropped_seq",
+        "cut_fields",
+        "gaps"
+      ],
+      "properties": {
+        "complete": {
+          "description": "False when steps were dropped or something the trial did was not recorded (see gaps).",
+          "type": "boolean"
+        },
+        "dropped_steps": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "dropped_seq": {
+          "description": "The first and last seq dropped from the middle, or null.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "integer"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "cut_fields": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "gaps": {
+          "description": "Known gaps: child_runs_not_followed, output_cut, state_cut, content_off. Open vocabulary.",
+          "type": "array",
+          "items": {
+            "$ref": "urn:smith:evals:1:common#/$defs/code"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "step": {
+      "type": "object",
+      "required": [
+        "seq",
+        "position",
+        "agent",
+        "components",
+        "attempt_id",
+        "attempt_index",
+        "outcome",
+        "failure",
+        "model",
+        "provider",
+        "mode",
+        "memo",
+        "duration_ms",
+        "tokens",
+        "cost_nanos",
+        "cost_known",
+        "stop_reason",
+        "sent_count",
+        "messages",
+        "tool_calls",
+        "tool_call_names",
+        "cut"
+      ],
+      "properties": {
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "position": {
+          "type": "object",
+          "required": [
+            "workflow",
+            "transition",
+            "branch_key",
+            "round",
+            "execution_key"
+          ],
+          "properties": {
+            "workflow": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "transition": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "branch_key": {
+              "type": [
+                "string",
+                "integer",
+                "null"
+              ]
+            },
+            "round": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "execution_key": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "agent": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "components": {
+          "description": "The prompt components this call sent, in order (a definition's system and user components; slice 4's named prompts); null when the agent has none.",
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "urn:smith:evals:1:common#/$defs/component_version"
+              }
+            }
+          ]
+        },
+        "attempt_id": {
+          "description": "Smith's attempt id; usage entries carry the same id.",
+          "type": "string",
+          "maxLength": 64
+        },
+        "attempt_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "outcome": {
+          "description": "completed (the provider answered), failed (a provider failure), aborted (another error cut it short, unsupported content included, as Smith's trace reads it), skipped (a candidate of the model chain passed over before its chat was built, because the run's credentials do not cover its provider: nothing was sent).",
+          "enum": [
+            "completed",
+            "failed",
+            "aborted",
+            "skipped"
+          ]
+        },
+        "failure": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "kind",
+                "error_class",
+                "message"
+              ],
+              "properties": {
+                "kind": {
+                  "description": "Smith's own reading: credentials_missing, key_refused (401), out_of_credit (402 or a billing refusal), permission (403), model_unavailable (404, 410), transient, transport, unsupported_content, rejected, aborted. Open vocabulary.",
+                  "$ref": "urn:smith:evals:1:common#/$defs/code"
+                },
+                "error_class": {
+                  "type": "string",
+                  "maxLength": 512
+                },
+                "message": {
+                  "type": "string",
+                  "maxLength": 1024,
+                  "description": "Bounded text. For credentials_missing, key_refused, out_of_credit and permission it is always Smith's fixed text, never the provider's."
+                }
+              }
+            }
+          ]
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "provider": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mode": {
+          "enum": [
+            "sync",
+            "stream",
+            "batch"
+          ]
+        },
+        "memo": {
+          "description": "True when a response memo answered and nothing was sent.",
+          "type": "boolean"
+        },
+        "duration_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "tokens": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "urn:smith:evals:1:common#/$defs/tokens"
+            }
+          ]
+        },
+        "cost_nanos": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "cost_known": {
+          "type": "boolean"
+        },
+        "stop_reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 64
+        },
+        "sent_count": {
+          "description": "How many of messages the attempt's first request carried; the rest the attempt added.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "messages": {
+          "description": "Null when recording.content is false or the trial's byte budget was spent.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/message"
+          }
+        },
+        "tool_calls": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "tool_call_names": {
+          "description": "The names of the tools this attempt called, in order. Kept with recording.content false (names are metadata), so a tools_called check still reads them.",
+          "type": "array",
+          "maxItems": 1024,
+          "items": {
+            "type": "string",
+            "maxLength": 128
+          }
+        },
+        "cut": {
+          "type": "object",
+          "required": [
+            "fields",
+            "elided_messages",
+            "content_dropped"
+          ],
+          "properties": {
+            "fields": {
+              "$ref": "urn:smith:evals:1:common#/$defs/count"
+            },
+            "elided_messages": {
+              "$ref": "urn:smith:evals:1:common#/$defs/count"
+            },
+            "content_dropped": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "message": {
+      "type": "object",
+      "required": [
+        "role"
+      ],
+      "properties": {
+        "role": {
+          "enum": [
+            "system",
+            "user",
+            "assistant",
+            "tool"
+          ]
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "json": {
+          "description": "A structured reply parsed under an output schema."
+        },
+        "attachments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "mime_type",
+              "bytes"
+            ],
+            "properties": {
+              "filename": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "mime_type": {
+                "type": "string"
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "tool_calls": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "name"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "object"
+              },
+              "arguments_text": {
+                "description": "The arguments as JSON text, cut, when they passed max_tool_bytes.",
+                "type": "string"
+              }
+            }
+          }
+        },
+        "tool_call_id": {
+          "type": "string"
+        },
+        "thinking": {
+          "type": "string"
+        },
+        "cached": {
+          "type": "boolean"
+        },
+        "cut": {
+          "description": "True when text, a tool result or arguments were cut to the recording bounds.",
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

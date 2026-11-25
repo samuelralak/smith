@@ -214,6 +214,54 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   credentials on the machine, and names each loaded workflow class that asks
   an agent and declares no `provider_credentials` (one only a credentialed
   class nests aside).
+- Experimental: the eval store, where each eval run's record is kept and
+  where a killed run resumes from. `Smith::Evals::Store::METHODS` names
+  its twelve calls (create the header once, read it, take the run's lease,
+  append launch and trial lines, read them back in order, write and read
+  the summary, list a scope's records, and request and read a cancel);
+  each takes a `Smith::Scope`, and one scope never sees another's records.
+  Their return values are part of the contract a host's own store keeps.
+  A record is one JSON object, read back byte for byte as a frozen Hash,
+  and every field is checked on it as it will be kept, never on the
+  caller's object; a value JSON cannot hold exactly (a Symbol, a Time,
+  NaN), one with no canonical JSON (an integer past 2**53 - 1, more than
+  1,000,000 values) and a line over 8 MiB are refused. The same record is
+  the same canonical JSON, so a retry that another json version wrote, or
+  with its keys in another order or 1 for 1.0, is `:exists` and the text
+  first kept stays; the header is never clobbered (a second create
+  returns `:exists`), and a different record under an id the run holds (a
+  trial id and revision, a launch number, a summary revision not above
+  the stored one) is refused. Every write but the header and the cancel
+  flag needs the run's live lease, which belongs to the process that took
+  it; a second lease raises `RunBusy`. A read of a run's lines yields
+  those there when it began. Listing is newest first with a cursor, and a
+  run that does not read is left out and named in `unreadable` (part of
+  the frozen return value), so one bad record never breaks a scope's
+  listing. `Smith::Evals::Stores::Memory`
+  keeps records in memory for tests; `Smith::Evals::Stores::File`, now the
+  default store (`tmp/smith-evals`), keeps them in the `v1` layout, a
+  run's folder read as the published example records are: the header and
+  the cancel flag created whole by a link, the summary replaced whole by
+  a rename, each line appended, and every write flushed to the drive
+  before the call returns (`F_FULLFSYNC` on macOS, `fsync` elsewhere),
+  with every folder from the root down flushed on each create and lease;
+  a lease that is a flock the operating system frees when its process
+  dies (`kill -9` included) and a forked child never holds (loading
+  `smith/evals` adds a `Process._fork` hook that, in a child, only closes
+  the file store's own lease files; `Process.daemon` does not call it, so
+  a holder that daemonizes keeps its lease until the daemon exits); and a
+  crash
+  leaving at most a torn last line, which readers skip and the next lease
+  holder cuts by replacing the file. A complete line that does not parse
+  raises `RecordCorrupt` with its number. No path leaves the root: ids are
+  lowercase hex, links are refused and never followed, a file with
+  another link is never written, and only regular files are opened,
+  without blocking on a FIFO; files are 0600 and folders 0700. The file
+  store needs a local file system with hard links: `flock` is reliable on
+  local file systems only, and a first create where `link(2)` is not
+  supported fails with a `StoreError` saying so. Every listing page reads
+  every header in the scope (1 to 1.5 seconds a page at 2,000 runs) and
+  records read at 4 to 5 MB/s; a hosted product uses a database store.
 
 ### Changed
 

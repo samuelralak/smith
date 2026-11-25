@@ -6,9 +6,14 @@ require "json"
 # a strict copy that refuses unknown fields (every object that lists
 # properties gains additionalProperties: false), the way the contracts'
 # validate.py checks the examples. Every schema is loaded by its URN $id, so
-# their $refs resolve to one another.
+# their $refs resolve to one another. The record schemas (header, segment,
+# trial, summary) are copied from the slice 1a contracts into
+# spec/fixtures/evals/schemas for the stores' specs until slice 1a.5
+# publishes them; a schema in both places is an error, so that move drops
+# the copies.
 module EvalsSchema
   DIRECTORY = File.expand_path("../../docs/evals/schemas", __dir__)
+  FIXTURES = File.expand_path("../fixtures/evals/schemas", __dir__)
   PREFIX = "urn:smith:evals:1:"
 
   class << self
@@ -19,9 +24,12 @@ module EvalsSchema
     end
 
     def documents
-      @documents ||= Dir[File.join(DIRECTORY, "*.schema.json")].to_h do |path|
+      @documents ||= [DIRECTORY, FIXTURES].flat_map { Dir[File.join(_1, "*.schema.json")] }
+                                          .each_with_object({}) do |path, loaded|
         schema = JSON.parse(File.read(path))
-        [schema.fetch("$id"), schema]
+        raise ArgumentError, "#{schema.fetch("$id")} is published twice" if loaded.key?(schema.fetch("$id"))
+
+        loaded[schema.fetch("$id")] = schema
       end
     end
 
