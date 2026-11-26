@@ -26,10 +26,11 @@ RSpec.describe "Loading evals" do
                  ResumeMismatch RunBusy RecordCorrupt StoreError Configuration Identity Actor Sample SplitRule
                  DatasetManifest Dataset FileDataset Score Scorer Reducers Subject Suite SuiteManifest Statistics
                  Store Stores ScopeConflict TrialSpec TrialContext SubjectResult Trial Outcomes Recorder Recording
-                 Driver Drivers]
+                 Driver Drivers Spend Summary Record EvalRun Plan Runner]
       print JSON.generate(
         "defined" => names.select { |name| Smith::Evals.const_defined?(name, false) },
         "experimental" => Smith::Evals::EXPERIMENTAL,
+        "calls" => %i[run cancel record under].select { Smith::Evals.respond_to?(_1) },
         "config" => Smith::Evals.config.class.name,
         "stores" => Smith::Evals::Stores.constants.sort.map(&:to_s),
         "observer" => Smith::AttemptObservation.observer&.name,
@@ -42,8 +43,9 @@ RSpec.describe "Loading evals" do
                       DriverUnsupported ResumeMismatch RunBusy RecordCorrupt StoreError Configuration Identity Actor
                       Sample SplitRule DatasetManifest Dataset FileDataset Score Scorer Reducers Subject Suite
                       SuiteManifest Statistics Store Stores ScopeConflict TrialSpec TrialContext SubjectResult Trial
-                      Outcomes Recorder Recording Driver Drivers],
-      "experimental" => true, "config" => "Smith::Evals::Configuration", "stores" => %w[File Memory],
+                      Outcomes Recorder Recording Driver Drivers Spend Summary Record EvalRun Plan Runner],
+      "experimental" => true, "calls" => %w[run cancel record under], "config" => "Smith::Evals::Configuration",
+      "stores" => %w[File Memory],
       "observer" => "Smith::Evals::Recording", "drivers" => %w[InProcess]
     )
   end

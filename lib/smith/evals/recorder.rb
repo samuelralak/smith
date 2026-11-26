@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "configuration"
+require_relative "spend"
 require_relative "recorder/step"
 
 module Smith
@@ -20,8 +21,8 @@ module Smith
     # metadata only; past max_steps the first ceil(max/2) and the last
     # floor(max/2) are kept and the middle dropped (`recording`'s
     # dropped_steps and dropped_seq), a dropped step's bytes freed for the
-    # newer ones. `usage` and `counts` cover every step it was given,
-    # dropped ones too.
+    # newer ones. `usage` (by provider and model too) and `counts` cover
+    # every step it was given, dropped ones too.
     #
     # `started_at` is the trial attempt's start on the monotonic clock, each
     # step's offset_ms counted from it. Thread-safe: each step is built and
@@ -43,8 +44,8 @@ module Smith
         @tail = []
         @dropped = nil
         @seq = @bytes = @cut_fields = @dropped_steps = 0
-        @totals = { tokens: Fields::TOKENS.keys.to_h { [_1, 0] }, cost_nanos: 0, cost_complete: true,
-                    provider_calls: 0, tool_calls: 0 }
+        @spend = Spend.new
+        @tool_calls = 0
         @lock = Mutex.new
       end
 
@@ -80,19 +81,13 @@ module Smith
       end
 
       # What every step it was given used: tokens, the cost of those priced
-      # (complete only when each was), and how many of its attempts sent a
-      # request to a provider (Step#provider_call?; a tool loop's rounds are
-      # one attempt).
-      def usage
-        @lock.synchronize do
-          { "tokens" => @totals[:tokens].dup.freeze, "cost_nanos" => @totals[:cost_nanos],
-            "cost_complete" => @totals[:cost_complete], "provider_calls" => @totals[:provider_calls] }.freeze
-        end
-      end
+      # (complete only when each was), the requests that went to a provider,
+      # and the same by provider and model (Spend).
+      def usage = @lock.synchronize { @spend.usage }
 
       def counts
         @lock.synchronize do
-          { "agent_attempts" => @seq, "tool_calls" => @totals[:tool_calls],
+          { "agent_attempts" => @seq, "tool_calls" => @tool_calls,
             "steps_recorded" => @head.length + @tail.length }.freeze
         end
       end
@@ -107,17 +102,11 @@ module Smith
       end
 
       def count(step)
-        spent(step)
-        @totals[:provider_calls] += 1 if step.provider_call?
-        @totals[:tool_calls] += step.tool_calls
+        record = step.record
+        @spend.add(provider: record["provider"], model: record["model"], provider_calls: step.provider_call? ? 1 : 0,
+                   tokens: step.tokens, cost_nanos: step.cost_nanos.to_i, cost_complete: step.cost_known)
+        @tool_calls += step.tool_calls
         @cut_fields += step.cut_fields
-      end
-
-      def spent(step)
-        totals = @totals
-        totals[:tokens].merge!(step.tokens) { |_key, sum, value| sum + value } if step.tokens
-        totals[:cost_nanos] += step.cost_nanos.to_i
-        totals[:cost_complete] &&= step.cost_known
       end
 
       # The head keeps the first ceil(max/2); the tail is a ring of the last

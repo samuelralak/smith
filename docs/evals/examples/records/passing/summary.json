@@ -1,0 +1,239 @@
+{
+  "format": "smith.evals.summary",
+  "format_version": 1,
+  "eval_run_id": "er_82fd17291dfbf6075021be0769657957",
+  "scope": {
+    "tenant": "ten_0193",
+    "project": "prj_ticket_triage"
+  },
+  "summary_revision": 1,
+  "written_at": "2026-11-22T07:30:55.133Z",
+  "status": "succeeded",
+  "stop": null,
+  "complete": true,
+  "started_at": "2026-11-22T07:30:03.998Z",
+  "ended_at": "2026-11-22T07:30:55.133Z",
+  "duration_ms": 51135,
+  "segments": [
+    {
+      "segment": 1,
+      "purpose": "start",
+      "started_at": "2026-11-22T07:30:03.998Z",
+      "smith_version": "0.16.0",
+      "host_code_version": "9b27c3f"
+    }
+  ],
+  "planned": {
+    "samples": 37,
+    "trials_per_sample": 3,
+    "trials": 111
+  },
+  "outcomes": {
+    "scored": 111,
+    "subject_failed": 0,
+    "limit_hit": 0,
+    "unscored": 0,
+    "error": 0,
+    "not_run": 0
+  },
+  "causes": {
+    "subject_failed": {},
+    "limit_hit": {},
+    "unscored": {},
+    "error": {},
+    "not_run": {}
+  },
+  "retries": {
+    "trials_retried": 0,
+    "attempts_retried": 0
+  },
+  "results": [
+    {
+      "scorer": "category",
+      "scorer_version": 1,
+      "scale": "binary",
+      "reducer": "majority",
+      "headline": true,
+      "samples_uncounted": 0,
+      "trials_counted": 111,
+      "trials_unscored": 0,
+      "estimate": {
+        "schema": "smith.evals.stats/1",
+        "type": "estimate",
+        "measure": "pass_rate",
+        "reducer": "majority",
+        "method": "wilson",
+        "method_revision": 1,
+        "confidence": 0.95,
+        "basis": "samples",
+        "n": 37,
+        "successes": 34,
+        "clusters": 36,
+        "design_effect": 1.033477174653645,
+        "n_effective": 35.801468002812946,
+        "point": 0.918918918918919,
+        "lower": 0.7841566056451803,
+        "upper": 0.9724934942942292,
+        "approximate": false,
+        "warnings": [],
+        "display": {
+          "unit": "percent",
+          "decimals": 0,
+          "point": "92",
+          "lower": "78",
+          "upper": "97"
+        },
+        "inputs_digest": "sha256:db94ba515c5121abe5d3bde6ffd7d113a59fac78a7e0f9fd833a87f592748159",
+        "seed": null
+      }
+    },
+    {
+      "scorer": "priority",
+      "scorer_version": 2,
+      "scale": "binary",
+      "reducer": "majority",
+      "headline": true,
+      "samples_uncounted": 0,
+      "trials_counted": 111,
+      "trials_unscored": 0,
+      "estimate": {
+        "schema": "smith.evals.stats/1",
+        "type": "estimate",
+        "measure": "pass_rate",
+        "reducer": "majority",
+        "method": "wilson",
+        "method_revision": 1,
+        "confidence": 0.95,
+        "basis": "samples",
+        "n": 37,
+        "successes": 32,
+        "clusters": 36,
+        "design_effect": 1.0372586872586873,
+        "n_effective": 35.670947329238786,
+        "point": 0.8648648648648649,
+        "lower": 0.717049099275536,
+        "upper": 0.9417351482591599,
+        "approximate": false,
+        "warnings": [],
+        "display": {
+          "unit": "percent",
+          "decimals": 0,
+          "point": "86",
+          "lower": "72",
+          "upper": "94"
+        },
+        "inputs_digest": "sha256:65643363ffce818aa32e2591f97ef9b4d72ddf9ca5121fb1d030c154cf6ae252",
+        "seed": null
+      }
+    },
+    {
+      "scorer": "priority",
+      "scorer_version": 2,
+      "scale": "binary",
+      "reducer": "mean",
+      "headline": false,
+      "samples_uncounted": 0,
+      "trials_counted": 111,
+      "trials_unscored": 0,
+      "estimate": {
+        "schema": "smith.evals.stats/1",
+        "type": "estimate",
+        "measure": "mean",
+        "reducer": "mean",
+        "method": "t",
+        "method_revision": 1,
+        "confidence": 0.95,
+        "basis": "samples",
+        "n": 37,
+        "successes": 32.0,
+        "clusters": 36,
+        "design_effect": 1.0023607280750138,
+        "n_effective": 36.912858777953865,
+        "point": 0.8648648648648649,
+        "lower": 0.7841949711777477,
+        "upper": 0.9455347585519821,
+        "approximate": false,
+        "warnings": [],
+        "display": {
+          "unit": "percent",
+          "decimals": 0,
+          "point": "86",
+          "lower": "78",
+          "upper": "95"
+        },
+        "inputs_digest": "sha256:00c3db5df187c34952779d0695890a3a467856137d14c8c809636cca31899787",
+        "seed": null
+      }
+    }
+  ],
+  "usage": {
+    "tokens": {
+      "input": 38913,
+      "output": 1554,
+      "cache_read": 0,
+      "cache_write": 0,
+      "thinking": 0
+    },
+    "cost_nanos": 46683000,
+    "cost_complete": true,
+    "provider_calls": 111,
+    "cost_per_trial_nanos": 420568,
+    "samples_costed": 37,
+    "cost_per_sample_nanos": 1261703,
+    "cost_per_1000_samples_nanos": 1261702703,
+    "by_model": [
+      {
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5",
+        "provider_calls": 111,
+        "tokens": {
+          "input": 38913,
+          "output": 1554,
+          "cache_read": 0,
+          "cache_write": 0,
+          "thinking": 0
+        },
+        "cost_nanos": 46683000,
+        "cost_complete": true
+      }
+    ]
+  },
+  "latency_ms": {
+    "mean": 885,
+    "p50": 870,
+    "p90": 1140,
+    "max": 1140
+  },
+  "counts": {
+    "agent_attempts": 111,
+    "tool_calls": 0,
+    "tool_calls_per_trial": 0.0
+  },
+  "models": [
+    {
+      "model": "claude-haiku-4-5",
+      "provider": "anthropic",
+      "attempts": 111
+    }
+  ],
+  "gates": [
+    {
+      "id": "category_floor",
+      "kind": "at_least",
+      "scorer": "category",
+      "reducer": "majority",
+      "target": 0.8,
+      "observed": 0.918918918918919,
+      "successes": 34,
+      "n_samples": 37,
+      "lower": 0.7841566056451803,
+      "upper": 0.9724934942942292,
+      "passed": true,
+      "reason_code": "met"
+    }
+  ],
+  "gate_result": "passed",
+  "warnings": [],
+  "reruns": [],
+  "per_sample_visibility": "open"
+}

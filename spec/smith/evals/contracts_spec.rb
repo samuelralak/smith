@@ -5,11 +5,13 @@ require "json"
 require "tmpdir"
 require "smith/evals"
 
-# The dataset, sample and suite manifest contracts (docs/evals/schemas,
-# copied from the slice 1a contracts): every published example, and every
-# document this slice's Ruby writes, valid as published and in the strict
-# mode that refuses unknown fields.
-RSpec.describe "The dataset and suite contracts" do
+# The published contracts (docs/evals/schemas and docs/evals/examples,
+# copied from the slice 1a contracts): the dataset, sample and suite
+# manifest formats, and the record formats (header, launch line, trial line,
+# summary; slice 1a.5). Every published example, and every document Smith
+# writes, is valid as published and in the strict mode that refuses unknown
+# fields.
+RSpec.describe "The dataset, suite and record contracts" do
   examples = File.expand_path("../../../docs/evals/examples", __dir__)
 
   def valid!(document, schema)
@@ -21,8 +23,9 @@ RSpec.describe "The dataset and suite contracts" do
   it "publishes each schema as valid JSON Schema 2020-12, by its URN" do
     require "json_schemer"
 
-    expect(EvalsSchema.documents.keys).to include("urn:smith:evals:1:sample", "urn:smith:evals:1:dataset-manifest",
-                                                  "urn:smith:evals:1:suite-manifest", "urn:smith:evals:1:common")
+    expect(EvalsSchema.documents.keys)
+      .to include(*%w[sample dataset-manifest suite-manifest common stats record-header segment trial summary]
+                    .map { "urn:smith:evals:1:#{_1}" })
     EvalsSchema.documents.each_value { expect(JSONSchemer.valid_schema?(_1)).to be(true), _1["$id"] }
   end
 
@@ -30,6 +33,19 @@ RSpec.describe "The dataset and suite contracts" do
     valid!(JSON.parse(File.read(File.join(examples, "dataset/support-tickets/manifest.json"))), "dataset-manifest")
     File.foreach(File.join(examples, "dataset/support-tickets/samples.jsonl")) { valid!(JSON.parse(_1), "sample") }
     Dir[File.join(examples, "suite/**/*.json")].each { valid!(JSON.parse(File.read(_1)), "suite-manifest") }
+  end
+
+  it "validates every published record: header, launch lines, trial lines and summary" do
+    folders = Dir[File.join(examples, "records/*"), File.join(examples, "groups/*/*")]
+    expect(folders.size).to eq(7)
+    folders.each do |folder|
+      header = JSON.parse(File.read(File.join(folder, "header.json")))
+      valid!(header, "record-header")
+      valid!(header.dig("suite", "manifest"), "suite-manifest")
+      File.foreach(File.join(folder, "segments.jsonl")) { valid!(JSON.parse(_1), "segment") }
+      File.foreach(File.join(folder, "trials.jsonl")) { valid!(JSON.parse(_1), "trial") }
+      valid!(JSON.parse(File.read(File.join(folder, "summary.json"))), "summary")
+    end
   end
 
   # B1 of the slice 1a.2 review: a null inside label or source is refused by

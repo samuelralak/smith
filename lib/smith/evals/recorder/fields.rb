@@ -3,6 +3,7 @@
 require_relative "../../canonical_json"
 require_relative "../../diagnostic_text"
 require_relative "../../pricing"
+require_relative "../spend"
 
 module Smith
   module Evals
@@ -22,8 +23,7 @@ module Smith
       # written), whatever the provider said. Internal. O(R) for R responses
       # but the bounded strings.
       module Fields
-        TOKENS = { "input" => :input, "output" => :output, "cache_read" => :cache_read,
-                   "cache_write" => :cache_write, "thinking" => :thinking }.freeze
+        TOKENS = Spend::TOKENS.to_h { [_1, _1.to_sym] }.freeze
         PRICED = { input_tokens: :input, output_tokens: :output, cache_read_tokens: :cache_read,
                    cache_write_tokens: :cache_write, image_input_tokens: :image_input,
                    image_output_tokens: :image_output }.freeze

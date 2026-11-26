@@ -1,0 +1,115 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Slice 1a.5's probe: the worked example of the slice-1a design (4.10), a
+# ticket triage suite on request-aware stubs, in a fresh process on a file
+# store in a temporary folder. Nothing is sent: an unstubbed call is
+# refused. Prints the run's status, outcomes and headline results as JSON.
+#
+#   bundle exec ruby -Ilib script/evals_probe
+#
+# script/evals_kill_probe loads the example from here.
+
+require "json"
+require "tmpdir"
+require "smith"
+require "smith/testing"
+require "smith/evals"
+
+module EvalsProbe
+  class TriageSchema
+    def to_json_schema
+      { name: "triage", schema: { type: "object", required: %w[category priority],
+                                  properties: { category: { type: "string" }, priority: { type: "string" } } } }
+    end
+  end
+
+  class TicketClassifier < Smith::Agent
+    register_as :ticket_classifier
+    model "claude-haiku-4-5", provider: :anthropic
+    instructions { "Sort the support ticket. Answer JSON: category and priority." }
+    output_schema TriageSchema
+  end
+
+  class TicketTriage < Smith::Workflow
+    initial_state :new
+    state :triaged
+    state :failed
+    seed_messages { |context| [{ role: :user, content: "Channel: #{context[:channel]}\n\n#{context[:ticket]}" }] }
+
+    transition :classify, from: :new, to: :triaged do
+      execute :ticket_classifier, output_to: :triage
+      on_failure :fail
+    end
+  end
+
+  TICKETS = [
+    ["email", "I was charged twice for order 5521.", "billing", "normal"],
+    ["chat", "My parcel shows delivered but never arrived.", "shipping", "urgent"],
+    ["email", "How do I change my email address?", "account", "low"]
+  ].freeze
+  # The stub answers by the ticket, so every trial of a sample gets the same
+  # answer whatever order trials run in.
+  ANSWERS = { "charged twice" => { category: "billing", priority: "normal" },
+              "never arrived" => { category: "shipping", priority: "normal" }, # priority wrong on purpose
+              "email address" => { category: "account", priority: "low" } }.freeze
+
+  module_function
+
+  # The example's dataset in `dir`: `samples` tickets, the three in turn.
+  def dataset(dir, samples: TICKETS.size)
+    lines = (0...samples).map do |index|
+      channel, text, category, priority = TICKETS[index % TICKETS.size]
+      { "id" => "t-#{index + 1}", "input" => { "channel" => channel, "text" => text },
+        "expected" => { "category" => category, "priority" => priority }, "cluster" => "cus-#{index + 1}" }
+    end
+    File.write(File.join(dir, "samples.jsonl"), lines.map { "#{JSON.generate(_1)}\n" }.join)
+    Smith::Evals::Dataset.build_manifest(dir, name: "tickets-demo", holdout: 0.0, calibration: 0.0, seed: "demo")
+  end
+
+  def suite(dir, trials: 3, concurrency: 1)
+    suite = Class.new(Smith::Evals::Suite) do
+      suite_name "demo.ticket_triage"
+      dataset dir
+      subject workflow: TicketTriage, input: ->(s) { { ticket: s.input[:text], channel: s.input[:channel] } },
+              keep: %i[triage]
+      trials trials, reduce: :majority
+      concurrency concurrency
+    end
+    %i[category priority].each { |field| scorer(suite, field) }
+    suite
+  end
+
+  def scorer(suite, field)
+    suite.scorer(field, version: 1) { |s, t| Smith::Evals::Score.match(t.state.dig(:triage, field), s.expected[field]) }
+  end
+
+  # Answers each request by its ticket; `each` is called with the request
+  # first.
+  def stub!(&each)
+    RubyLLM.configure { |config| config.anthropic_api_key = "test" } # any key; the chat is built, nothing is sent
+    Smith::Testing.unstubbed = :refuse
+    Smith::Testing.stub_agent(TicketClassifier, outputs: lambda { |request|
+      each&.call(request)
+      ANSWERS.find { |needle, _| request.last_user.include?(needle) }&.last || { category: "other", priority: "low" }
+    })
+  end
+
+  def report(run)
+    { "status" => run.status, "outcomes" => run.summary["outcomes"],
+      "results" => run.summary["results"].select { _1["headline"] }.to_h do |result|
+        [result["scorer"], result["estimate"].slice("point", "lower", "upper", "display")]
+      end }
+  end
+end
+
+if $PROGRAM_NAME == __FILE__
+  Dir.mktmpdir do |dir|
+    data = File.join(dir, "tickets").tap { Dir.mkdir(_1) }
+    EvalsProbe.dataset(data)
+    EvalsProbe.stub!
+    run = Smith::Evals.run(EvalsProbe.suite(data), store: Smith::Evals::Stores::File.new(root: File.join(dir, "store")))
+    puts JSON.pretty_generate(EvalsProbe.report(run))
+    exit(run.status == :succeeded ? 0 : 1)
+  end
+end

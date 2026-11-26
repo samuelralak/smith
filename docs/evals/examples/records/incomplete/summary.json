@@ -1,0 +1,256 @@
+{
+  "format": "smith.evals.summary",
+  "format_version": 1,
+  "eval_run_id": "er_f5b395add30e23aac5d022c1d0d0f752",
+  "scope": {
+    "tenant": "ten_0193",
+    "project": "prj_ticket_triage"
+  },
+  "summary_revision": 1,
+  "written_at": "2026-11-22T10:05:15.617Z",
+  "status": "incomplete",
+  "stop": {
+    "reason": {
+      "code": "cap_reached",
+      "by": "eval_run",
+      "detail": "the next request would have passed this run's spending limit"
+    },
+    "actor": null,
+    "at": "2026-11-22T10:05:14.722Z",
+    "trial_id": "tr_22153a21b64da10a528e8132cfd43458"
+  },
+  "complete": false,
+  "started_at": "2026-11-22T10:04:50.957Z",
+  "ended_at": "2026-11-22T10:05:15.617Z",
+  "duration_ms": 24660,
+  "segments": [
+    {
+      "segment": 1,
+      "purpose": "start",
+      "started_at": "2026-11-22T10:04:50.957Z",
+      "smith_version": "0.16.0",
+      "host_code_version": "9b27c3f"
+    }
+  ],
+  "planned": {
+    "samples": 37,
+    "trials_per_sample": 3,
+    "trials": 111
+  },
+  "outcomes": {
+    "scored": 53,
+    "subject_failed": 0,
+    "limit_hit": 0,
+    "unscored": 0,
+    "error": 0,
+    "not_run": 58
+  },
+  "causes": {
+    "subject_failed": {},
+    "limit_hit": {},
+    "unscored": {},
+    "error": {},
+    "not_run": {
+      "cap_reached": 58
+    }
+  },
+  "retries": {
+    "trials_retried": 0,
+    "attempts_retried": 0
+  },
+  "results": [
+    {
+      "scorer": "category",
+      "scorer_version": 1,
+      "scale": "binary",
+      "reducer": "majority",
+      "headline": true,
+      "samples_uncounted": 0,
+      "trials_counted": 53,
+      "trials_unscored": 0,
+      "estimate": {
+        "schema": "smith.evals.stats/1",
+        "type": "estimate",
+        "measure": "pass_rate",
+        "reducer": "majority",
+        "method": "wilson",
+        "method_revision": 1,
+        "confidence": 0.95,
+        "basis": "samples",
+        "n": 37,
+        "successes": 31,
+        "clusters": 36,
+        "design_effect": 1.039332419977581,
+        "n_effective": 35.599774709999046,
+        "point": 0.8378378378378378,
+        "lower": 0.6852856024937672,
+        "upper": 0.9245812722925317,
+        "approximate": false,
+        "warnings": [
+          "uneven_trials"
+        ],
+        "display": {
+          "unit": "percent",
+          "decimals": 0,
+          "point": "84",
+          "lower": "69",
+          "upper": "92"
+        },
+        "inputs_digest": "sha256:844831ffb59c959ee9497b1701cd0ed8c68ae169f6a5602b6ca3faa0d1e672be",
+        "seed": null
+      }
+    },
+    {
+      "scorer": "priority",
+      "scorer_version": 2,
+      "scale": "binary",
+      "reducer": "majority",
+      "headline": true,
+      "samples_uncounted": 0,
+      "trials_counted": 53,
+      "trials_unscored": 0,
+      "estimate": {
+        "schema": "smith.evals.stats/1",
+        "type": "estimate",
+        "measure": "pass_rate",
+        "reducer": "majority",
+        "method": "wilson",
+        "method_revision": 1,
+        "confidence": 0.95,
+        "basis": "samples",
+        "n": 37,
+        "successes": 31,
+        "clusters": 36,
+        "design_effect": 1.039332419977581,
+        "n_effective": 35.599774709999046,
+        "point": 0.8378378378378378,
+        "lower": 0.6852856024937672,
+        "upper": 0.9245812722925317,
+        "approximate": false,
+        "warnings": [
+          "uneven_trials"
+        ],
+        "display": {
+          "unit": "percent",
+          "decimals": 0,
+          "point": "84",
+          "lower": "69",
+          "upper": "92"
+        },
+        "inputs_digest": "sha256:d2191209789ec1be2b2bf2bb626755f04317d8d1db35cbc207be1f37b2fdb1ed",
+        "seed": null
+      }
+    },
+    {
+      "scorer": "priority",
+      "scorer_version": 2,
+      "scale": "binary",
+      "reducer": "mean",
+      "headline": false,
+      "samples_uncounted": 0,
+      "trials_counted": 53,
+      "trials_unscored": 0,
+      "estimate": {
+        "schema": "smith.evals.stats/1",
+        "type": "estimate",
+        "measure": "mean",
+        "reducer": "mean",
+        "method": "t",
+        "method_revision": 1,
+        "confidence": 0.95,
+        "basis": "samples",
+        "n": 37,
+        "successes": 32.5,
+        "clusters": 36,
+        "design_effect": 1.0380724304774938,
+        "n_effective": 35.64298493408663,
+        "point": 0.8783783783783784,
+        "lower": 0.776917369846885,
+        "upper": 0.9798393869098718,
+        "approximate": false,
+        "warnings": [
+          "uneven_trials"
+        ],
+        "display": {
+          "unit": "percent",
+          "decimals": 0,
+          "point": "88",
+          "lower": "78",
+          "upper": "98"
+        },
+        "inputs_digest": "sha256:a9b0e928f859d6f43fe88070ca323a5146bb7a917bf7ad2079e03adf6ac72a5d",
+        "seed": null
+      }
+    }
+  ],
+  "usage": {
+    "tokens": {
+      "input": 18579,
+      "output": 742,
+      "cache_read": 0,
+      "cache_write": 0,
+      "thinking": 0
+    },
+    "cost_nanos": 22289000,
+    "cost_complete": true,
+    "provider_calls": 53,
+    "cost_per_trial_nanos": 420547,
+    "samples_costed": 0,
+    "cost_per_sample_nanos": null,
+    "cost_per_1000_samples_nanos": null,
+    "by_model": [
+      {
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5",
+        "provider_calls": 53,
+        "tokens": {
+          "input": 18579,
+          "output": 742,
+          "cache_read": 0,
+          "cache_write": 0,
+          "thinking": 0
+        },
+        "cost_nanos": 22289000,
+        "cost_complete": true
+      }
+    ]
+  },
+  "latency_ms": {
+    "mean": 890,
+    "p50": 960,
+    "p90": 1122,
+    "max": 1140
+  },
+  "counts": {
+    "agent_attempts": 53,
+    "tool_calls": 0,
+    "tool_calls_per_trial": 0.0
+  },
+  "models": [
+    {
+      "model": "claude-haiku-4-5",
+      "provider": "anthropic",
+      "attempts": 53
+    }
+  ],
+  "gates": [
+    {
+      "id": "category_floor",
+      "kind": "at_least",
+      "scorer": "category",
+      "reducer": "majority",
+      "target": 0.8,
+      "observed": 0.8378378378378378,
+      "successes": 31,
+      "n_samples": 37,
+      "lower": 0.6852856024937672,
+      "upper": 0.9245812722925317,
+      "passed": false,
+      "reason_code": "run_not_complete"
+    }
+  ],
+  "gate_result": "failed",
+  "warnings": [],
+  "reruns": [],
+  "per_sample_visibility": "open"
+}

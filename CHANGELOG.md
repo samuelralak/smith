@@ -445,6 +445,64 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   `tuning_run_id`, `candidate_id` and `reflection_trial_id`, and
   `Statistics::SplitMix64#to_hex` gives a generator's state, which
   `from_hex` continues.
+- Experimental: running a suite to its record. `Smith::Evals.run(suite,
+  scope:, idempotency_key:, eval_run_id:, started_by:, store:, driver:)`
+  runs every selected sample's trials in this process, trial-index-major,
+  up to the suite's `concurrency` (capped by the driver's) on worker
+  threads that carry the caller's attribution, each attempt in the
+  driver's isolation and every record written outside it, and returns a
+  `Smith::Evals::EvalRun` (`status`, `summary`, `result(scorer,
+  reducer:)` as a `Statistics::Estimate`, `record`). A trial that ends in
+  a retried error runs again, up to `error_retries`, after
+  `min(30, 2**attempt)` seconds, or at once with the driver's
+  `retry_waits: :immediate` (`Driver#retry_waits` is new, `:sleep` by
+  default); its line keeps every attempt and its latency is the last
+  attempt's. `Drivers::InProcess`'s `retry_waits` now defaults to `:sleep`
+  (so a durable retry in the subject waits until it is due too), and to
+  `:immediate` when `smith/testing` is loaded, so a test suite never
+  waits. The store is the resume ledger: the same idempotency key or id
+  resumes the run, recording with the bounds its header names, and a
+  trial with a line never runs again, so a killed run pays for no
+  recorded trial twice; a finished run is returned as it is, as is one
+  that another start finished while this one waited for the lease;
+  either way the plan digest must match, or `ResumeMismatch` names what
+  differs. A run-stopping error, the store failing (`store_error`, on an
+  append or on reading the cancel flag) or `Smith::Evals.cancel(id,
+  actor:, reason:)` stops dispatch, lets running trials finish and
+  record, and ends the run `failed` or `cancelled`; trials never started
+  count as `not_run`. A caller interrupted while trials run (a
+  `Timeout`, say) stops them the same way and raises once each has its
+  line. A start is refused before anything is written for an invalid
+  suite or dataset, a `pass_at_<k>` or `pass_all_<k>` reducer whose
+  bootstrap over the selection would pass
+  `Statistics::MAX_BOOTSTRAP_WORK` (`SuiteInvalid`), a subject whose
+  runtime readiness is `:not_ready` (`SubjectNotReady`, naming the
+  diagnostics' codes) or a driver that is not in process.
+  `Configuration#recording=` refuses a bound below the record header
+  schema's minimum (`Configuration::RECORDING_FLOORS`;
+  `Configuration.recording` takes `floors:`). `Smith::Evals.record(id,
+  scope:)` reads a run back (`Smith::Evals::Record`: `header`,
+  `segments`, `each_trial`, the effective line of each trial, and
+  `summary`). `Smith::Evals::Summary` builds the summary from the
+  header, launch lines and trial lines, and the selected samples'
+  clusters (outcomes and causes, retries, a `smith.evals.stats/1`
+  estimate per scorer and reducer, a `pass_at_<k>` or `pass_all_<k>` one
+  leaving out each sample with fewer than k counted trials and counting
+  it in `samples_uncounted`, usage with cost per trial, per sample and
+  per 1,000 samples, latency, models, and the warnings `errors_present`,
+  `unscored_present`, `resumed` and `mixed_code_versions`); gates are
+  slice 1b.1's, so `gates` is empty and `gate_result` "none". The record
+  formats (header, launch line, trial line, summary; format 1) are
+  published in `docs/evals/schemas` with their examples in
+  `docs/evals/examples` and frozen: a trial line's and the summary's
+  `usage` gain `by_model` (calls, tokens and cost by provider and model,
+  summing to the usage), a line's usage covers every attempt, every cost
+  is the subject's spend only (judging, from slice 2, is counted apart),
+  and the header's `kind` reserves `try` and `online`. A
+  `Smith::Evals::Recorder`'s `usage` gains `by_model`. `docs/EVALS.md`
+  describes evals; `script/evals_probe` runs the design's worked example
+  in a fresh process and `script/evals_kill_probe` kills a run with
+  SIGKILL and resumes it.
 
 ### Changed
 

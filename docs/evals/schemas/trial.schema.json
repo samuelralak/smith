@@ -262,6 +262,7 @@
       "$ref": "urn:smith:evals:1:common#/$defs/usage"
     },
     "counts": {
+      "description": "The last attempt's, as its steps are.",
       "type": "object",
       "required": [
         "agent_attempts",

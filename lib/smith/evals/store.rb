@@ -61,7 +61,11 @@ module Smith
     #   lease; a second lease raises RunBusy. A lease belongs to the process
     #   that took it: in the file store a forked child may not write under
     #   it; the memory store lives in one process, so there the rule holds
-    #   within it (a forked child writes only to its own copy).
+    #   within it (a forked child writes only to its own copy). A lease has
+    #   no heartbeat, so a store keeps it as long as its holder lives (a
+    #   database store must not expire it on a timer): a run that lost its
+    #   lease mid-trial would lose the trials it had running, paid for and
+    #   refused their lines, though never write a line twice.
     # - A read of a run's lines yields those there when it begins, never one
     #   appended during it.
     # - Listing is newest first, by created_at read as a time, then by eval

@@ -1,0 +1,90 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Slice 1a.5's kill probe (slice-1a design, 12.4): the probe suite with 40
+# trials (10 samples, 4 trials each, two at a time) runs on a file store in
+# a child process, which is killed with SIGKILL once 15 trial lines are
+# written; the run is then resumed in this process. It checks that every
+# planned trial has exactly one line, that no trial recorded before the
+# kill was asked again, that no torn tail is left, and that the summary's
+# spend is its lines'. Prints the facts as JSON; exits 1 when one fails.
+#
+#   bundle exec ruby -Ilib script/evals_kill_probe
+
+load File.expand_path("evals_probe", __dir__)
+
+KILL_AFTER = 15
+KEY = "kill-probe"
+
+def suite(data) = EvalsProbe.suite(data, trials: 4, concurrency: 2)
+
+# Logs each request's trial, by process, and takes a little time over it.
+def stub_logging(log)
+  EvalsProbe.stub! do
+    File.open(log, "a") { _1.puts("#{Process.pid} #{Smith::Attribution.current.trial}") }
+    sleep 0.02
+  end
+end
+
+def asked(log, pid)
+  File.readlines(log).filter_map { |line| line.split.last if line.start_with?("#{pid} ") }
+end
+
+def written(file) = File.exist?(file) ? File.binread(file).count("\n") : 0
+
+if ARGV.first == "--child"
+  _, data, root, log = ARGV
+  stub_logging(log)
+  Smith::Evals.run(suite(data), idempotency_key: KEY, store: Smith::Evals::Stores::File.new(root:))
+  exit!(0)
+end
+
+# Runs the suite in a child process until it has written KILL_AFTER lines,
+# then kills it with SIGKILL; whether SIGKILL ended it.
+def killed?(data, root, log, lines_file)
+  child = Process.spawn(RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), __FILE__, "--child", data, root, log)
+  deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 120
+  sleep 0.01 until written(lines_file) >= KILL_AFTER || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+  Process.kill(:KILL, child)
+  _, status = Process.wait2(child)
+  status.termsig == 9
+end
+
+def facts(run, recorded, after, again, lines_file)
+  { "lines_before_resume" => recorded.size, "asked_by_the_resume" => again.size,
+    "recorded_trials_asked_again" => (again & recorded).size, **record_facts(run, after),
+    "no_torn_tail" => File.binread(lines_file).end_with?("\n") }
+end
+
+def record_facts(run, after)
+  { "lines" => after.size, "trials" => after.map { _1["trial_id"] }.uniq.size, "status" => run.status.to_s,
+    "launches" => run.record.segments.map { _1["purpose"] },
+    "spend_is_the_lines" => run.summary.dig("usage", "cost_nanos") == after.sum { _1.dig("usage", "cost_nanos") } }
+end
+
+# What every fact must read.
+HELD = { "killed_by_sigkill" => true, "recorded_trials_asked_again" => 0, "lines" => 40, "trials" => 40,
+         "status" => "succeeded", "launches" => %w[start resume], "spend_is_the_lines" => true,
+         "no_torn_tail" => true }.freeze
+
+def held?(facts) = facts["lines_before_resume"] >= KILL_AFTER && facts.slice(*HELD.keys) == HELD
+
+Dir.mktmpdir do |dir|
+  data = File.join(dir, "tickets").tap { Dir.mkdir(_1) }
+  root = File.join(dir, "store")
+  log = File.join(dir, "asked.log")
+  EvalsProbe.dataset(data, samples: 10)
+  scope = Smith::Evals.config.default_scope
+  run_id = Smith::Evals::Identity.eval_run_id(key: KEY, scope:, suite: "demo.ticket_triage")
+  lines_file = File.join(root, "v1/scopes", Smith::Evals::Identity.scope_digest(scope), "runs", run_id, "trials.jsonl")
+
+  killed = killed?(data, root, log, lines_file)
+  store = Smith::Evals::Stores::File.new(root:)
+  recorded = store.each_trial(scope:, eval_run_id: run_id).map { _1["trial_id"] }
+  stub_logging(log)
+  run = Smith::Evals.run(suite(data), idempotency_key: KEY, store:)
+  after = store.each_trial(scope:, eval_run_id: run_id).to_a
+  found = { "killed_by_sigkill" => killed, **facts(run, recorded, after, asked(log, Process.pid), lines_file) }
+  puts JSON.pretty_generate(found)
+  exit(held?(found) ? 0 : 1)
+end

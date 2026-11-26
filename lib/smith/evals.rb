@@ -29,16 +29,56 @@ require_relative "evals/recorder"
 require_relative "evals/recording"
 require_relative "evals/driver"
 require_relative "evals/drivers/in_process"
+require_relative "evals/spend"
+require_relative "evals/summary"
+require_relative "evals/record"
+require_relative "evals/eval_run"
+require_relative "evals/plan"
+require_relative "evals/runner"
 
 module Smith
-  # Experimental. Evals: datasets, scorers, suites, the store, and running
-  # one trial (its spec and context, the in-process driver, the recorder
-  # and outcome classification), loaded only by `require "smith/evals"`
-  # (slice-1a design), never by `require "smith"`. Loading it installs
-  # Smith::Evals::Recording into the core's attempt seam; outside a trial
-  # (Smith::Evals.under) the seam calls nothing.
+  # Experimental. Evals: datasets, scorers, suites, the store, running one
+  # trial (its spec and context, the in-process driver, the recorder and
+  # outcome classification) and running a suite to its record, loaded only
+  # by `require "smith/evals"` (slice-1a design), never by `require
+  # "smith"`. Loading it installs Smith::Evals::Recording into the core's
+  # attempt seam; outside a trial (Smith::Evals.under) the seam calls
+  # nothing.
   module Evals
     EXPERIMENTAL = true
+
+    class << self
+      # Runs a suite in this process and returns its EvalRun (slice-1a
+      # design, 4.6). The same idempotency key (or eval_run_id) resumes the
+      # run, or returns it when it has finished, if its plan digest matches,
+      # else raises ResumeMismatch. `scope` is the tenant (default
+      # config.default_scope); `started_by` an Actor; `store` and `driver`
+      # override the configuration's and the suite's. The run reads a frozen
+      # copy of the configuration taken now.
+      def run(suite, scope: nil, idempotency_key: nil, eval_run_id: nil, started_by: nil, store: nil, driver: nil)
+        config = self.config.frozen_copy
+        plan = Plan.new(suite, scope: scope || config.default_scope, driver:, recording: config.recording)
+        Runner.new(plan, store: store || config.store, config:)
+              .call(eval_run_id:, idempotency_key:, started_by: started_by && actor(started_by))
+      end
+
+      # Asks a run to stop: its runner starts no trial after reading the
+      # flag, records those running, and ends cancelled. The first request
+      # stands: :requested, then :exists.
+      def cancel(eval_run_id, actor:, reason: nil, scope: nil, store: nil)
+        (store || config.store).request_cancel(scope: scope || config.default_scope, eval_run_id:, actor:, reason:)
+      end
+
+      # The run's Record, or nil when the store holds none in the scope.
+      def record(eval_run_id, scope: nil, store: nil)
+        Record.read(store: store || config.store, scope: Smith::Scope.build(scope || config.default_scope),
+                    eval_run_id:)
+      end
+
+      private
+
+      def actor(value) = value.is_a?(Actor) ? value : Actor.from_h(value)
+    end
 
     # Runs the block inside the trial's scope (a TrialContext): every agent
     # attempt made in it, on any thread its steps use, reaches the recorder

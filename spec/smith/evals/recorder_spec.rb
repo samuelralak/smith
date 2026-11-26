@@ -483,11 +483,38 @@ RSpec.describe Smith::Evals::Recorder do
       expect(recorder.recording).to eq("complete" => false, "dropped_steps" => 2, "dropped_seq" => [3, 4],
                                        "cut_fields" => 0, "gaps" => [])
       expect(recorder.counts).to eq("agent_attempts" => 5, "tool_calls" => 0, "steps_recorded" => 3)
+      tokens = { "input" => 500, "output" => 100, "cache_read" => 0, "cache_write" => 0, "thinking" => 0 }
       expect(recorder.usage).to eq(
-        "tokens" => { "input" => 500, "output" => 100, "cache_read" => 0, "cache_write" => 0, "thinking" => 0 },
-        "cost_nanos" => 3_000_000, "cost_complete" => true, "provider_calls" => 5
+        "tokens" => tokens, "cost_nanos" => 3_000_000, "cost_complete" => true, "provider_calls" => 5,
+        "by_model" => [{ "provider" => "anthropic", "model" => "claude-sonnet-5-5", "provider_calls" => 5,
+                         "tokens" => tokens, "cost_nanos" => 3_000_000, "cost_complete" => true }]
       )
       expect_valid_steps(recorder.steps)
+    end
+
+    # The trial line's usage.by_model (slice 1a.5): the subject's spend by
+    # provider and model, from every step it was given, dropped ones too, so
+    # it sums to the usage whatever the record kept.
+    it "splits its usage by provider and model, dropped steps included, the entries summing to it" do
+      recorder = described_class.new(trial_spec.trial_id, recording: { max_steps: 2 })
+      recorder.record(observed(1, model: "gpt-5", provider: :openai))
+      recorder.record(observed(2))
+      recorder.record(observed(3, model: "gpt-5", provider: :openai, outcome: :failed, tokens: nil,
+                                  failure: { kind: :transient, error_class: "E", message: "m" }))
+      recorder.record(observed(4, model: "claude-unpriced-9", provider: :anthropic))
+      recorder.record(observed(5, outcome: :skipped, duration_ms: nil, tokens: nil))
+      usage = recorder.usage
+      by_model = usage["by_model"]
+
+      expect(recorder.recording["dropped_steps"]).to eq(3)
+      expect(by_model.map { _1.values_at("provider", "model", "provider_calls", "cost_complete") })
+        .to eq([["anthropic", "claude-sonnet-5-5", 1, true], ["anthropic", "claude-unpriced-9", 1, false],
+                ["openai", "gpt-5", 2, true]])
+      expect(by_model.map { _1["tokens"]["input"] }).to eq([100, 100, 100])
+      %w[cost_nanos provider_calls].each { |key| expect(by_model.sum { _1[key] }).to eq(usage[key]) }
+      expect(usage.values_at("provider_calls", "cost_complete")).to eq([4, false])
+      expect(usage["tokens"]["input"]).to eq(300)
+      expect(EvalsSchema.errors(usage, schema: "common", strict: true, pointer: "#/$defs/usage")).to eq([])
     end
 
     it "elides messages from the middle of a step past max_step_bytes, keeping the first and the last that fit" do

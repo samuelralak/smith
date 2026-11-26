@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require "smith/evals"
 
 RSpec.describe Smith::Evals::Configuration do
@@ -21,9 +22,28 @@ RSpec.describe Smith::Evals::Configuration do
 
     expect(config.recording).to include(max_steps: 4_096, content: false, max_message_bytes: 32_768)
     expect { config.recording = { max_trial_bytes: (8 * 1024 * 1024) + 1 } }
-      .to raise_error(ArgumentError, /max_trial_bytes is an Integer from 1 to 8388608/)
+      .to raise_error(ArgumentError, /max_trial_bytes is an Integer from 65536 to 8388608/)
     expect { config.recording = { max_lines: 3 } }.to raise_error(ArgumentError, /unknown recording setting max_lines/)
     expect { config.recording = { content: "yes" } }.to raise_error(ArgumentError, /content is true or false/)
+  end
+
+  # A recorder takes smaller bounds (its own specs do); a run's header
+  # could not record them.
+  it "refuses recording bounds below the record header schema's minimums, and takes the minimums" do
+    schema = JSON.parse(File.read(File.expand_path("../../../docs/evals/schemas/record-header.schema.json", __dir__)))
+    floors = schema.dig("properties", "recording", "properties")
+                   .filter_map { |name, rule| [name.to_sym, rule["minimum"]] if rule["minimum"] }.to_h
+
+    expect(floors).to eq(max_steps: 2, max_message_bytes: 256, max_tool_bytes: 256, max_step_bytes: 4_096,
+                         max_trial_bytes: 65_536)
+    floors.each do |name, floor|
+      ceiling = described_class::RECORDING_CEILINGS.fetch(name)
+      expect { config.recording = { name => floor - 1 } }
+        .to raise_error(ArgumentError, "recording #{name} is an Integer from #{floor} to #{ceiling}")
+    end
+    config.recording = floors
+    expect(config.recording).to include(floors)
+    expect(Smith::Evals::Recorder.new("tr_1", recording: { max_steps: 1, max_message_bytes: 1 }).trial_id).to eq("tr_1")
   end
 
   it "keeps the default scope as a Smith::Scope and refuses one that is not" do

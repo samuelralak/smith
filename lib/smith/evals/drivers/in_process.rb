@@ -15,11 +15,15 @@ module Smith
       # runs it inside Smith::Evals.under(context) a step at a time
       # (`advance!`, as `run!` does, so the steps it ran are known even when
       # one raises) to its end or a wait, or with the subject's `until:`
-      # until that state. A durable retry's wait is ended at once and
-      # the run goes on (with `retry_waits: :sleep`, once it is due), bounded
-      # by the step's own retry_on attempts, as Smith::Testing does: Smith
-      # never sleeps for a host unless told to. Any other wait ends the
-      # trial waiting.
+      # until that state. A durable retry's wait is ended once it is due
+      # (`retry_waits: :sleep`, as long as the step's retry_on says, with no
+      # ceiling, as in production), or at once (`:immediate`), and the run
+      # goes on, bounded by the step's own retry_on attempts; the runner
+      # reads the same setting for its backoff before a trial's retry
+      # (design 5.7), which stops at 30 seconds.
+      # The default is :sleep, and :immediate under Smith::Testing (`require
+      # "smith/testing"`), so a test suite never waits. Any other wait ends
+      # the trial waiting.
       #
       # The mapping is the suite's code, so what it raises or a context
       # that is no Hash leaves `run` as the driver's own failure, and a
@@ -31,7 +35,8 @@ module Smith
         RETRY_WAITS = %i[immediate sleep].freeze
         private_constant :RETRY_WAITS
 
-        def initialize(max_concurrency: 8, around_trial: nil, retry_waits: :immediate)
+        # retry_waits: nil for the default.
+        def initialize(max_concurrency: 8, around_trial: nil, retry_waits: nil)
           super()
           unless max_concurrency.is_a?(Integer) && max_concurrency.positive?
             raise ArgumentError, "max_concurrency is a positive Integer"
@@ -39,7 +44,9 @@ module Smith
           unless around_trial.nil? || around_trial.respond_to?(:call)
             raise ArgumentError, "around_trial is nil or responds to call(trial, &run)"
           end
-          raise ArgumentError, "retry_waits is :immediate or :sleep" unless RETRY_WAITS.include?(retry_waits)
+          unless retry_waits.nil? || RETRY_WAITS.include?(retry_waits)
+            raise ArgumentError, "retry_waits is :immediate or :sleep"
+          end
 
           @max_concurrency = max_concurrency
           @around_trial = around_trial
@@ -47,6 +54,8 @@ module Smith
         end
 
         attr_reader :max_concurrency
+
+        def retry_waits = @retry_waits || (defined?(::Smith::Testing) ? :immediate : :sleep)
 
         def isolation = @around_trial ? :around_trial : :none
 
@@ -149,7 +158,7 @@ module Smith
           deadline = wait.deadline_at
           deadline = Time.iso8601(deadline) if deadline.is_a?(String)
           due = deadline - Time.now
-          sleep(due) if @retry_waits == :sleep && due.positive?
+          sleep(due) if retry_waits == :sleep && due.positive?
           workflow.expire_wait!(token: wait.token, now: deadline + 1)
         end
 

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "open3"
 require "smith/evals"
 require "smith/testing"
 
@@ -70,6 +71,23 @@ RSpec.describe Smith::Evals::Drivers::InProcess do
       [{ max_concurrency: 0 }, { around_trial: :rollback }, { retry_waits: :later }].each do |options|
         expect { described_class.new(**options) }.to raise_error(ArgumentError), options.inspect
       end
+    end
+
+    # Design 5.7: the backoff before a trial's retry, and a durable retry's
+    # wait (5.2), except in a test suite. A child process loads evals
+    # without smith/testing, as a host's production code does.
+    it "waits before retries by default, and not by default under Smith::Testing" do
+      script = <<~RUBY
+        require "smith/evals"
+        drivers = [Smith::Evals::Drivers::InProcess.new, Smith::Evals::Driver.new,
+                   Smith::Evals::Drivers::InProcess.new(retry_waits: :immediate)]
+        print drivers.map(&:retry_waits).join(" ")
+      RUBY
+      waits, errors, status = Open3.capture3(RbConfig.ruby, "-I", File.expand_path("../../../../lib", __dir__),
+                                             "-e", script)
+
+      expect([waits, errors, status.success?]).to eq(["sleep sleep immediate", "", true])
+      expect(described_class.new.retry_waits).to eq(:immediate)
     end
   end
 
@@ -207,7 +225,7 @@ RSpec.describe Smith::Evals::Drivers::InProcess do
       expect { driven(subject_of(triage("SpecDriverBuggy"))) }.to raise_error(NoMethodError, "the driver's bug")
     end
 
-    it "ends a durable retry's wait at once and runs on, or sleeps until it is due first" do
+    it "ends a durable retry's wait at once and runs on, or sleeps until it is due, as by default outside tests" do
       klass = with_stubbed_class("SpecDriverRetry", workflow_class) do
         initial_state :idle
         state :failed
@@ -234,6 +252,15 @@ RSpec.describe Smith::Evals::Drivers::InProcess do
       trial = trial_for(subject_of(klass))
       expect(sleeping.run(trial, trial.context).output).to eq("Second time.")
       expect(sleeping).to have_received(:sleep).with(a_value_between(29, 31))
+
+      # Given no retry_waits, outside Smith::Testing (:sleep, as the child
+      # process in "waits before retries by default" shows).
+      calls = 0
+      defaulted = described_class.new
+      allow(defaulted).to receive_messages(retry_waits: :sleep, sleep: nil)
+      trial = trial_for(subject_of(klass))
+      expect(defaulted.run(trial, trial.context).output).to eq("Second time.")
+      expect(defaulted).to have_received(:sleep).with(a_value_between(29, 31))
     end
 
     it "stops at the until state, a step at a time, and reports a run that waits as waiting" do

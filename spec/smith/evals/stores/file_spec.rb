@@ -3,6 +3,7 @@
 require "fileutils"
 require "json"
 require "open3"
+require "timeout"
 require "tmpdir"
 require "smith/evals"
 
@@ -800,6 +801,9 @@ RSpec.describe Smith::Evals::Stores::File do
       end
     end
 
+    # It failed once, beside other load, for no cause found (slice 1a.3):
+    # each read from the holder is bounded, and a lease still busy after the
+    # holder was reaped says who holds the file, so a failure explains itself.
     it "frees a lease when its holder dies, kill -9 included, while a child it forked lives on" do
       created!
       # The forked child says "hooked" from its block, which runs after the
@@ -813,18 +817,48 @@ RSpec.describe Smith::Evals::Stores::File do
         $stdin.read
       RUBY
       child(script) do |input, output, waiter|
-        said = 2.times.map { output.gets }
+        said = said_within(output, 2, waiter)
         forked = Integer(said.find { _1.match?(/\A\d+\n\z/) })
         expect(said).to include("hooked\n")
         expect { leased }.to raise_error(Smith::Evals::RunBusy)
         killed(waiter)
 
-        leased.release
+        freed(waiter, forked).release
         expect(Process.kill(0, forked)).to eq(1)
       ensure
         Process.kill("KILL", forked) if forked
         input.close
       end
+    end
+
+    # The next `count` lines a child prints, waiting at most `seconds` for
+    # them all.
+    def said_within(output, count, waiter, seconds = 30)
+      said = []
+      Timeout.timeout(seconds) { count.times { said << output.gets } }
+      return said unless said.include?(nil)
+
+      raise "the holder #{waiter.pid} closed its output after #{said.compact.inspect}"
+    rescue Timeout::Error
+      raise "the holder #{waiter.pid} said #{said.inspect} in #{seconds} seconds; #{processes(waiter.pid)}"
+    end
+
+    # The lease, taken once its holder has been reaped; or a failure naming
+    # what still holds the lease file.
+    def freed(waiter, forked)
+      leased
+    rescue Smith::Evals::RunBusy
+      raise "the lease stayed busy after its holder #{waiter.pid} was reaped (#{waiter.value.inspect}); " \
+            "#{processes(forked)}; lsof: #{shell("lsof", "--", path("lease"))}"
+    end
+
+    def processes(*pids) = "ps: #{shell("ps", "-o", "pid,ppid,stat,etime,comm", "-p", pids.join(","))}"
+
+    def shell(*command)
+      said = Timeout.timeout(10) { IO.popen(command, err: %i[child out], &:read) }.strip
+      said.empty? ? "(nothing)" : said.gsub("\n", " | ")
+    rescue StandardError => e
+      "#{command.first} gave #{e.class}"
     end
 
     # A fork while another thread is inside a write: nothing the child keeps

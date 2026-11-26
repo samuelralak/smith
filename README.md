@@ -20,7 +20,9 @@ What you get:
   runs, cache-aware pricing, and half-price batch calls.
 - **Safety**: isolated steps, outside text marked untrusted, guardrails and
   tool budgets.
-- **Operations**: streaming, traces, a doctor, and a testing kit.
+- **Operations**: streaming, traces, a doctor, a testing kit, and evals
+  (experimental) that score a workflow on a dataset and resume without paying
+  twice.
 
 > [!WARNING]
 > Smith is pre-1.0: contracts can tighten between minor versions. Pin an exact
@@ -298,6 +300,7 @@ Outside Rails: `smith doctor`, `smith doctor --durability`, `smith doctor --live
 | Tools and guardrails | [`docs/TOOLS_AND_GUARDRAILS.md`](docs/TOOLS_AND_GUARDRAILS.md) |
 | Every setting | [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) |
 | Testing and the doctor | [`docs/TESTING.md`](docs/TESTING.md) |
+| Evals (experimental): suites, runs and their records | [`docs/EVALS.md`](docs/EVALS.md) |
 | Inspecting a workflow before it runs | [`docs/INSPECTION.md`](docs/INSPECTION.md) |
 | Working on Smith itself | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) |
 | What changed | [`CHANGELOG.md`](CHANGELOG.md) |

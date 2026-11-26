@@ -20,6 +20,10 @@ module Smith
 
       def around_trial(_trial) = yield
 
+      # How the runner waits before a trial's retry after an error: :sleep,
+      # a backoff of min(30, 2**attempt) seconds, or :immediate, none.
+      def retry_waits = :sleep
+
       def run(_trial, _context)
         raise NotImplementedError, "#{self.class} defines run(trial, context), returning a SubjectResult"
       end

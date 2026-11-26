@@ -290,10 +290,11 @@
             "type": "boolean"
           },
           "samples_uncounted": {
-            "description": "Selected samples with no counted trial for this scorer.",
+            "description": "Selected samples this result leaves out: those with no counted trial for this scorer, and for pass_at_<k> and pass_all_<k> those with fewer than k counted trials.",
             "$ref": "urn:smith:evals:1:common#/$defs/count"
           },
           "trials_counted": {
+            "description": "The counted trials of the samples this result reads.",
             "$ref": "urn:smith:evals:1:common#/$defs/count"
           },
           "trials_unscored": {
@@ -306,7 +307,7 @@
       }
     },
     "usage": {
-      "description": "Every line's usage, superseded lines and errored attempts included.",
+      "description": "Every line's usage, superseded lines and a retry's attempts included. The subject's spend only: judging (slice 2) is counted apart, in a field of its own, though the eval run's cap covers both. So are cost_per_trial_nanos, cost_per_sample_nanos and cost_per_1000_samples_nanos: what production would pay.",
       "type": "object",
       "required": [
         "tokens",
@@ -316,7 +317,8 @@
         "cost_per_trial_nanos",
         "samples_costed",
         "cost_per_sample_nanos",
-        "cost_per_1000_samples_nanos"
+        "cost_per_1000_samples_nanos",
+        "by_model"
       ],
       "properties": {
         "tokens": {
@@ -360,6 +362,10 @@
               "$ref": "urn:smith:evals:1:common#/$defs/cost_nanos"
             }
           ]
+        },
+        "by_model": {
+          "description": "The usage above by provider and model, summed over every line's usage.by_model; it sums to the usage above (the product's spend by provider and model).",
+          "$ref": "urn:smith:evals:1:common#/$defs/usage_by_model"
         }
       }
     },
@@ -529,7 +535,7 @@
       ]
     },
     "warnings": {
-      "description": "Run-level notes as codes with a count: errors_present, unscored_present, resumed (the number of resumes), mixed_code_versions (the number of distinct host code versions across segments), variant_model_not_observed (steps that used a model other than the run's variant). Open vocabulary.",
+      "description": "Run-level notes as codes with a count: errors_present, unscored_present, resumed (the number of resumes), mixed_code_versions (the number of distinct Smith and host code versions across segments, when more than one), variant_model_not_observed (steps that used a model other than the run's variant). Open vocabulary.",
       "type": "array",
       "items": {
         "type": "object",

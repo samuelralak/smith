@@ -19,12 +19,16 @@ module Smith
     # built from data (slice 1b). host_code_version: the host's own code
     # version, recorded in every header. cost_unit: the pricing catalog's
     # unit. default_scope: the tenant scope when a call names none.
-    # recording: step record bounds, each capped at its ceiling (5.4).
+    # recording: step record bounds, each from its floor (the record header
+    # schema's minimum, as a run records the bounds in its header) to its
+    # ceiling (5.4).
     class Configuration
       RECORDING_DEFAULTS = { content: true, max_steps: 256, max_message_bytes: 32_768, max_tool_bytes: 4_096,
                              max_step_bytes: 262_144, max_trial_bytes: 4_194_304 }.freeze
       RECORDING_CEILINGS = { max_steps: 4_096, max_message_bytes: 1_048_576, max_tool_bytes: 1_048_576,
                              max_step_bytes: 4_194_304, max_trial_bytes: 8_388_608 }.freeze
+      RECORDING_FLOORS = { max_steps: 2, max_message_bytes: 256, max_tool_bytes: 256, max_step_bytes: 4_096,
+                           max_trial_bytes: 65_536 }.freeze
       MAX_HOST_CODE_VERSION = 128
       DEFAULT_STORE_ROOT = "tmp/smith-evals"
 
@@ -84,30 +88,31 @@ module Smith
 
       # Bounds given in part keep the defaults for the rest.
       def recording=(value)
-        @recording = self.class.recording(value, from: @recording)
+        @recording = self.class.recording(value, from: @recording, floors: RECORDING_FLOORS)
       end
 
-      # `value`'s recording settings over `from`'s, each checked (a recorder
-      # takes them this way too).
-      def self.recording(value, from: RECORDING_DEFAULTS)
+      # `value`'s recording settings over `from`'s, each checked, a bound
+      # from its floor (1 unless `floors` names one: a recorder takes them
+      # this way, its own specs with bounds below a header's).
+      def self.recording(value, from: RECORDING_DEFAULTS, floors: {})
         raise ArgumentError, "recording is a Hash of settings" unless value.is_a?(Hash)
 
         value.each_with_object(from.dup) do |(key, setting), bounds|
           name = key.to_sym
-          bounds[name] = recording_setting(name, setting)
+          bounds[name] = recording_setting(name, setting, floors.fetch(name, 1))
         end.freeze
       end
 
-      def self.recording_setting(name, setting)
+      def self.recording_setting(name, setting, floor)
         if name == :content
           raise ArgumentError, "recording content is true or false" unless [true, false].include?(setting)
 
           return setting
         end
         ceiling = RECORDING_CEILINGS.fetch(name) { raise ArgumentError, "unknown recording setting #{name}" }
-        return setting if setting.is_a?(Integer) && setting.between?(1, ceiling)
+        return setting if setting.is_a?(Integer) && setting.between?(floor, ceiling)
 
-        raise ArgumentError, "recording #{name} is an Integer from 1 to #{ceiling}"
+        raise ArgumentError, "recording #{name} is an Integer from #{floor} to #{ceiling}"
       end
       private_class_method :recording_setting
 

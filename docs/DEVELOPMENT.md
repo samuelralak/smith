@@ -113,6 +113,14 @@ an avoidable asymptotic regression as a release blocker.
   observer is installed each request reads them too, where it leaves
   (`RubyLLM::Connection#post`), and inside a trial reads its settings off
   its payload in `O(1)`.
+- An eval run (`Smith::Evals.run`) reads its lines once to resume (`O(L)`
+  time, `O(T)` ids kept for `T` trials) and once more for its summary,
+  which keeps a few facts per trial (`O(T)` memory) and adds one estimate
+  per scorer and reducer; a trial line's usage and every `by_model` sum in
+  `O(M log M)` for `M` models. The work queue hands a trial out in `O(Q)`
+  for `Q` waiting, under one Mutex; workers wait on a condition variable
+  until the earliest retry is due, never polling. A record's effective
+  lines (`Record#each_trial`) are two reads, `O(L)` time and `O(T)` memory.
 - Retry delay calculation is `O(1)` time and space per attempt. A policy with
   `A` attempts performs at most `A` guarded operations and never materializes an
   exponential schedule.

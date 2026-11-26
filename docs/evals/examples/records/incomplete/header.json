@@ -1,0 +1,167 @@
+{
+  "format": "smith.evals.record_header",
+  "format_version": 1,
+  "eval_run_id": "er_f5b395add30e23aac5d022c1d0d0f752",
+  "scope": {
+    "tenant": "ten_0193",
+    "project": "prj_ticket_triage"
+  },
+  "kind": "eval",
+  "created_at": "2026-11-22T10:04:50.897Z",
+  "started_by": {
+    "kind": "person",
+    "id": "usr_51a8"
+  },
+  "idempotency_key": "manual-2026-11-22-1004",
+  "suite": {
+    "name": "support.ticket_triage",
+    "version": "sha256:c23bed10efb170e9afeaea625a87c4811393c4a9089b402b56682ede4a6e0f8a",
+    "measure_digest": "sha256:41f4d1454e4caed2a75622ad9dcdb2b1dcbb2ea59518562cfd53d6292a573565",
+    "manifest": {
+      "format": "smith.evals.suite_manifest",
+      "format_version": 1,
+      "name": "support.ticket_triage",
+      "dataset": {
+        "name": "support-tickets",
+        "source": "evals/support_tickets",
+        "pinned_version": null
+      },
+      "selection": {
+        "split": "dev",
+        "narrow": null
+      },
+      "subject": {
+        "kind": "workflow",
+        "workflow": "TicketTriage",
+        "keep": [
+          "triage"
+        ],
+        "until": null,
+        "version": 1
+      },
+      "trials": {
+        "per_sample": 3,
+        "error_retries": 2,
+        "infrastructure_errors": [],
+        "reduce": "majority"
+      },
+      "scorers": [
+        {
+          "name": "category",
+          "kind": "code",
+          "version": 1,
+          "scale": "binary",
+          "reduce": "majority",
+          "also": [],
+          "on_subject_failure": "fail"
+        },
+        {
+          "name": "priority",
+          "kind": "code",
+          "version": 2,
+          "scale": "binary",
+          "reduce": "majority",
+          "also": [
+            "mean"
+          ],
+          "on_subject_failure": "fail"
+        }
+      ],
+      "statistics": {
+        "level": 0.95,
+        "bootstrap_resamples": 2000,
+        "small_sample_threshold": 30
+      },
+      "recording": {
+        "content": true
+      },
+      "gates": [
+        {
+          "id": "category_floor",
+          "kind": "at_least",
+          "scorer": "category",
+          "reducer": "majority",
+          "target": 0.8
+        }
+      ],
+      "budget": {
+        "max_cost_nanos": 250000000
+      },
+      "labels": {
+        "accept": "any"
+      },
+      "judges": [],
+      "version": "sha256:c23bed10efb170e9afeaea625a87c4811393c4a9089b402b56682ede4a6e0f8a"
+    }
+  },
+  "dataset": {
+    "name": "support-tickets",
+    "version": "sha256:9e638e886bbbd1c95bebcd62098b1fb219d8df7290d273ae2de554ae681924cc",
+    "hashes": {
+      "inputs": "sha256:eefbcbaab51dcae18b035979882c9a1f5ca618112e9ab27e3cd93677301dd7e2",
+      "labels": "sha256:b66f29332aa0c9ee074a14f2af1db4fc1460c05bbc5cfbc45b3701be2df61d7c",
+      "splits": "sha256:1119a3bb62d463d8aa0c291662df83f1b541dbcac9e60f49a937ab8f35980655",
+      "metadata": "sha256:209efda8c0dfe058f842085ae20cb20115525deffce48ca733497850ad761850"
+    },
+    "sample_count_total": 48
+  },
+  "selection": {
+    "split": "dev",
+    "narrow": null,
+    "sample_count": 37,
+    "sample_ids_digest": "sha256:9e9a450bb65f50cb9f8a75e076f8d09bd6044d30e4a030d7a306d28558939ac8"
+  },
+  "plan": {
+    "trials_per_sample": 3,
+    "planned_trials": 111,
+    "order": "trial_index_major",
+    "concurrency": 2,
+    "error_retries": 2,
+    "max_cost_nanos": 22500000,
+    "plan_digest": "sha256:dbbaeb10f6e02ca8b76e7fdebb343c9fbbc0bb7a5c3e2b99f1f9019b5df0258c"
+  },
+  "subject": {
+    "kind": "workflow",
+    "workflow": "TicketTriage",
+    "definition_digest": null,
+    "definition": null,
+    "input": null,
+    "until": null,
+    "keep": [
+      "triage"
+    ],
+    "version": 1,
+    "agents": [],
+    "variant": null
+  },
+  "group": null,
+  "candidate": null,
+  "driver": {
+    "name": "Smith::Evals::Drivers::InProcess",
+    "form": "in_process",
+    "max_concurrency": 8,
+    "isolation": "none"
+  },
+  "recording": {
+    "content": true,
+    "max_steps": 256,
+    "max_message_bytes": 32768,
+    "max_tool_bytes": 4096,
+    "max_step_bytes": 262144,
+    "max_trial_bytes": 4194304
+  },
+  "statistics": {
+    "level": 0.95,
+    "bootstrap_resamples": 2000,
+    "small_sample_threshold": 30,
+    "stats_schema": "smith.evals.stats/1"
+  },
+  "environment": {
+    "smith_version": "0.16.0",
+    "execution_semantics_version": "7",
+    "ruby_version": "3.4.7",
+    "host_code_version": "9b27c3f"
+  },
+  "cost_unit": "USD",
+  "per_sample_visibility": "open"
+}

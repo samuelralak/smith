@@ -41,7 +41,7 @@
       "$ref": "urn:smith:evals:1:common#/$defs/scope"
     },
     "kind": {
-      "description": "eval in slice 1a. Later: rescore (slice 2), tuning_validation and tuning_holdout (slice 5a). Open vocabulary.",
+      "description": "eval in slice 1a. Reserved: try (a one-off recorded run on a typed input, under a session's limit; slice 1d.3) and online (scoring calls an app reports; slice 2b). Later: rescore (slice 2), tuning_validation and tuning_holdout (slice 5a). Open vocabulary.",
       "$ref": "urn:smith:evals:1:common#/$defs/code"
     },
     "created_at": {

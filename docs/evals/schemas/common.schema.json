@@ -246,12 +246,14 @@
       "minimum": 0
     },
     "usage": {
+      "description": "What the subject spent in every attempt of this trial in this line (a retry's attempts included), by_model splitting it by provider and model. The subject's spend only: judging (slice 2) is counted apart, in a field of its own, though the eval run's cap covers both.",
       "type": "object",
       "required": [
         "tokens",
         "cost_nanos",
         "cost_complete",
-        "provider_calls"
+        "provider_calls",
+        "by_model"
       ],
       "properties": {
         "tokens": {
@@ -267,6 +269,56 @@
         "provider_calls": {
           "description": "How many agent attempts sent a request to a provider: one a step record whose call started, a tool loop's rounds counted once; a skipped candidate and a response memo's replay are not.",
           "$ref": "#/$defs/count"
+        },
+        "by_model": {
+          "$ref": "#/$defs/usage_by_model"
+        }
+      }
+    },
+    "usage_by_model": {
+      "description": "One entry per provider and model the subject's attempts used, ordered by provider, then model (UTF-16 code units, an unknown one first). The entries sum to the usage beside it: tokens, cost_nanos and provider_calls add up, and cost_complete is true only when every entry's is.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/model_usage"
+      }
+    },
+    "model_usage": {
+      "description": "What the subject spent on one provider and model.",
+      "type": "object",
+      "required": [
+        "provider",
+        "model",
+        "provider_calls",
+        "tokens",
+        "cost_nanos",
+        "cost_complete"
+      ],
+      "properties": {
+        "provider": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 64
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 256
+        },
+        "provider_calls": {
+          "$ref": "#/$defs/count"
+        },
+        "tokens": {
+          "$ref": "#/$defs/tokens"
+        },
+        "cost_nanos": {
+          "$ref": "#/$defs/cost_nanos"
+        },
+        "cost_complete": {
+          "type": "boolean"
         }
       }
     },
