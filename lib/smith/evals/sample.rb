@@ -2,7 +2,7 @@
 
 require_relative "errors"
 require_relative "identity"
-require_relative "json_value"
+require_relative "../json_value"
 
 module Smith
   module Evals

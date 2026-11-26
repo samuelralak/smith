@@ -39,7 +39,7 @@
       "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
     },
     "content_hash": {
-      "description": "SHA-256, lowercase hex, tagged 'sha256:'. JSON values are hashed as RFC 8785 canonical JSON, framed either by a 'name/N\\n' prefix or by a format field inside the hashed object; a single text is hashed as its UTF-8 bytes.",
+      "description": "SHA-256, lowercase hex, tagged 'sha256:'. JSON values are hashed as RFC 8785 canonical JSON, framed either by a 'name/N\\n' prefix or by a format field inside the hashed object; a single text is hashed as its UTF-8 bytes. A hashed value holds no number canonical JSON would write as an integer past 2^53 - 1 (an integer of that size, or a decimal from 2^53 up to 1e21), so its canonical text reads back as itself.",
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
     },

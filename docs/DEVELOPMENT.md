@@ -82,6 +82,16 @@ an avoidable asymptotic regression as a release blocker.
   lease about 8 ms and a create about 15 ms (each flushes its folders),
   records read at 4 to 5 MB/s (the strict reader), a listing page 1 to
   1.5 s at 2,000 runs.
+- Definitions (`Smith::Definitions.parse`) are `O(N + B)` time and space for
+  `N` JSON values and `B` bytes, within 1 MiB, 32 levels and 20,000 values
+  (a JSON text is read only when it is 1 MiB or less, and copied once), plus
+  `O(N + sum k_i log k_i)` for each canonical form a digest hashes. An
+  output schema is `O(S + R)` for `S` nodes and `R` references, its
+  definitions followed on a stack of their own. `Smith::Template` reads a
+  text in `O(L)` for `L` bytes (each refused tag's position in `O(L)`, at
+  most 100 of them) and fills it in in `O(L + V)` for `V` bytes of values,
+  a String not in UTF-8 converted in `O(V)`. The strict JSON reader checks
+  each number of a text against canonical JSON's rule in `O(1)`.
 - Retry delay calculation is `O(1)` time and space per attempt. A policy with
   `A` attempts performs at most `A` guarded operations and never materializes an
   exponential schedule.

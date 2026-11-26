@@ -81,7 +81,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   `Smith::Scope` with `Smith::ScopeInvalid` (`require "smith/scope"`): one
   byte form for hashed JSON, and the one tenant scope type, a frozen Hash of
   at most 8 String pairs with a digest. Neither is loaded by
-  `require "smith"`.
+  `require "smith"`. Canonical JSON refuses a number it would write as an
+  integer past 2**53 - 1, an Integer or a Float from 2**53 up to 1e21
+  (`1e20` is written `100000000000000000000`), so whatever it writes reads
+  back as itself; five numbers of RFC 8785's Appendix B are such Floats.
+  Smith's strict JSON reader refuses such a number too, so a dataset line
+  holding one does not load, and `Smith::Evals::Score.match` on a value
+  holding one is unscored.
 - Experimental: datasets, scorers and suites for evals, loaded by
   `require "smith/evals"` and never by `require "smith"`; nothing is
   installed into the core yet. A dataset is a folder
@@ -90,12 +96,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   `Smith::Evals::Dataset.build_manifest` writes the manifest and
   `Smith::Evals::Dataset.load` checks every sample and recomputes every
   hash and count before use (`DatasetInvalid`, `DatasetChanged`). Lines
-  are read strictly under every json version (a repeated key, a comment
-  or an unknown escape is refused), and only regular files inside the
-  dataset's folder are read. The version hashes four parts (inputs,
-  labels, splits, metadata), so a changed label moves only the labels
-  hash; a null top-level field hashes as an absent one, and a null inside
-  `label` or `source` is refused, as the schema does. One split
+  are read strictly under every json version (a repeated key, a comment,
+  an unknown escape or an escaped half of a surrogate pair alone is
+  refused), and only regular files inside the dataset's folder are read.
+  The version hashes four parts (inputs, labels, splits, metadata), so a
+  changed label moves only the labels hash; a null top-level field
+  hashes as an absent one, and a null inside `label` or `source` is
+  refused, as the schema does. One split
   assignment per dataset version, from integer thresholds over a SHA-256
   bucket of each sample's cluster or id, so adding samples never moves
   one, a cluster stays together and a hand-set split wins. The rule is
@@ -262,6 +269,42 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   supported fails with a `StoreError` saying so. Every listing page reads
   every header in the scope (1 to 1.5 seconds a page at 2,000 runs) and
   records read at 4 to 5 MB/s; a hosted product uses a database store.
+- Definitions as data, format 1: an agent or a judge written as a JSON
+  document in Smith's own closed, versioned format (shaped close to Open
+  Agent Spec, but not a standard), published as
+  `docs/schemas/smith-definition-1.json` with the design's agent and judge
+  as its examples. Loaded by `require "smith/definitions"`, never by
+  `require "smith"`; nothing is built from a document yet.
+  `Smith::Definitions.parse` takes a Hash (String or Symbol keys) or its
+  JSON text, read strictly, and gives a frozen
+  `Smith::Definitions::Document` holding the document as written (no default
+  is filled in), or raises `Smith::DefinitionInvalid` with every "path:
+  problem" line found, at most 100: an unknown field or role, a kind this
+  Smith does not read (`kind` is reserved: later kinds join format 1), a key
+  that names a credential, a fill-in field naming no declared input, an
+  untrusted input in a system component, no user component, outputs outside
+  the portable JSON Schema subset, a number with more than one spelling
+  across languages or one canonical JSON cannot write, and each bound (1
+  MiB, 32 levels, 20,000 values, 64 KiB and 200 fill-in fields a component,
+  10 schema levels); a line shows a key or value of the document by its
+  first 64 characters and its length, so an error stays small. Each setting
+  (`temperature`, `max_output_tokens`, `thinking` by effort or by budget) is
+  checked against the model as Smith's model table describes it, and a
+  refusal names the model, when a definition is created or imported;
+  `parse(value, stored: true)` reads back a stored one without that check,
+  so a later model table never strands it, and the Document says so
+  (`#stored?`). `Document#digest`, `#prompt_digest` (the document without
+  its `llm`) and `#component_versions` are frozen "sha256:" digests over
+  canonical JSON, annotations left out, the same in any language; two
+  Documents are the same definition when their digests are equal.
+  `#replace_component` keeps a component's fill-in fields, and `#with_llm`
+  derives a model variant with the same prompt digest. Experimental:
+  `Smith::Template` (`require "smith/template"`) reads logic-less `{{name}}`
+  and `{{ name }}` fill-in fields, refuses every other `{{` at its line and
+  column, and fills them in one pass with no escaping, a String in UTF-8
+  (converted from its own encoding) and Hash and Array values as canonical
+  JSON, so what it returns is UTF-8; a field with no value raises
+  `Smith::TemplateValueMissing`, a `WorkflowError`.
 
 ### Changed
 

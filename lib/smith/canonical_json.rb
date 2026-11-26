@@ -11,9 +11,12 @@ module Smith
   # Array, and Hash with String or Symbol keys; anything else raises Error.
   # Members sort by their keys' UTF-16 code units; strings escape as
   # ECMAScript's JSON.stringify does; numbers follow ECMAScript's
-  # Number-to-String on Ruby's shortest round-trip digits. Integers past
-  # 2**53 - 1 raise (I-JSON: another language would round them), as do
-  # NaN, Infinity and strings that are not valid UTF-8.
+  # Number-to-String on Ruby's shortest round-trip digits. A number it
+  # would write as an integer past 2**53 - 1 raises (I-JSON: another
+  # language would round it), an Integer or a Float from 2**53 up to 1e21
+  # alike, so whatever it writes reads back as itself; this is the one
+  # number rule, which Smith's strict JSON reader and definitions read
+  # with too. NaN, Infinity and strings that are not valid UTF-8 raise.
   #
   # O(N + sum k_i log k_i) time for N values and k_i keys per object, and
   # O(depth) stack, within the bounds below.
@@ -153,6 +156,12 @@ module Smith
           return "0" if number.zero?
 
           text = ecmascript(*shortest_digits(number.abs))
+          # Written as an integer (from 2**53 up to 1e21), it is held to the
+          # integers' bound, so it reads back as itself.
+          if number.abs > MAX_SAFE_INTEGER && !text.match?(/[.e]/)
+            raise Error, "canonical JSON numbers written without an exponent are at most 2**53 - 1 in size"
+          end
+
           number.negative? ? "-#{text}" : text
         end
 

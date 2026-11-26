@@ -1,0 +1,990 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:smith:definition:1",
+  "title": "Smith definition, format 1",
+  "description": "An agent or a judge defined as data. This is Smith's own format, not a standard: it is shaped close to Open Agent Spec 26.x (JSON Schema properties with a title for inputs, {{name}} fill-in fields, the same names for a later workflow's nodes and edges) so export to other formats stays cheap. The format is closed: an unknown field is refused, and a new field means a new format number. The kind is reserved: a later Smith adds kinds within format 1 (the workflow kind, with its own fields), and a reader refuses a kind it does not know. Every number is 0 or from 0.000001 to 2^53 - 1 in size, so canonical JSON writes it without an exponent and reads it back as itself. Smith::Definitions.parse applies this schema's rules and those JSON Schema cannot state: a document is at most 1 MiB of canonical JSON (or of JSON text), nests at most 32 levels and holds at most 20,000 values; a number is never negative zero, and an integer where one is required is written without a fraction (2, not 2.0), which JSON Schema holds to be the same number; input titles and component ids are unique; the provider is one Smith runs, and a fallback repeats neither the model nor another fallback; each prompt component is at most 64 KiB of UTF-8 and holds at most 200 fill-in fields, each naming a declared input, and a system component holds only trusted inputs; outputs list every property in required and nothing else, refer only to their own $defs, by a name they define, never recursively, and nest at most 10 levels; and each setting is one the model takes, by Smith's model table (a temperature, thinking by effort or by budget, an output limit for the provider), when a definition is created or imported; a stored one read back (parse with stored: true) is not checked again against a model table that changed since. Digests (all 'sha256:' and 64 lowercase hex, over RFC 8785 canonical JSON, the annotations at the top and on each prompt component left out): the document's of 'smith.definition/1\\n' and the document; the prompt's of 'smith.definition_prompt/1\\n' and the document without llm; each prompt component's version of its text's UTF-8 bytes.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/agent"
+    },
+    {
+      "$ref": "#/$defs/judge"
+    }
+  ],
+  "allOf": [
+    {
+      "$ref": "#/$defs/numbers"
+    }
+  ],
+  "examples": [
+    {
+      "smith_definition": 1,
+      "kind": "agent",
+      "id": "job-triage",
+      "name": "Job triage",
+      "description": "Sorts a posting as apply, maybe or skip for one person.",
+      "inputs": [
+        {
+          "title": "person_summary",
+          "type": "string",
+          "trust": "untrusted"
+        },
+        {
+          "title": "posting",
+          "type": "string",
+          "trust": "untrusted"
+        }
+      ],
+      "outputs": {
+        "type": "object",
+        "properties": {
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "apply",
+              "maybe",
+              "skip"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "llm": {
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "settings": {
+          "temperature": 0,
+          "max_output_tokens": 800
+        },
+        "fallbacks": [
+          {
+            "provider": "openai",
+            "model": "gpt-5-mini"
+          }
+        ]
+      },
+      "prompt": [
+        {
+          "component_id": "triage.rules",
+          "role": "system",
+          "text": "You sort job postings for one person. Answer apply, maybe or skip, with a one-line reason."
+        },
+        {
+          "component_id": "triage.case",
+          "role": "user",
+          "text": "The person:\n{{person_summary}}\n\nThe posting:\n{{posting}}"
+        }
+      ]
+    },
+    {
+      "smith_definition": 1,
+      "kind": "judge",
+      "id": "reason-cites-posting",
+      "version": 2,
+      "inputs": [
+        {
+          "title": "posting",
+          "type": "string",
+          "trust": "untrusted"
+        },
+        {
+          "title": "output",
+          "type": "string",
+          "trust": "untrusted"
+        }
+      ],
+      "llm": {
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "settings": {
+          "temperature": 0
+        }
+      },
+      "prompt": [
+        {
+          "component_id": "judge.criterion",
+          "role": "system",
+          "text": "Decide one thing: does the reason name a fact that appears in the posting? Answer pass or fail. Answer unsure only if there is no reason."
+        },
+        {
+          "component_id": "judge.case",
+          "role": "user",
+          "text": "Posting:\n{{posting}}\n\nAnswer to judge:\n{{output}}"
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "agent": {
+      "type": "object",
+      "description": "An agent: answers text, or JSON fitting its outputs. Its untrusted inputs are not fenced unless an input says fence: true.",
+      "required": [
+        "smith_definition",
+        "kind",
+        "id",
+        "inputs",
+        "llm",
+        "prompt"
+      ],
+      "properties": {
+        "smith_definition": {
+          "const": 1
+        },
+        "kind": {
+          "const": "agent"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/input"
+          }
+        },
+        "outputs": {
+          "$ref": "#/$defs/output_root"
+        },
+        "llm": {
+          "$ref": "#/$defs/llm"
+        },
+        "prompt": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/prompt_component"
+          },
+          "contains": {
+            "$ref": "#/$defs/user_component"
+          }
+        },
+        "annotations": {
+          "$ref": "#/$defs/annotations"
+        }
+      },
+      "additionalProperties": false
+    },
+    "judge": {
+      "type": "object",
+      "description": "A judge: one narrow pass or fail question. Smith fixes its output (verdict pass, fail or unsure, and an explanation), so it declares no outputs. Its untrusted inputs are fenced unless an input says fence: false.",
+      "required": [
+        "smith_definition",
+        "kind",
+        "id",
+        "version",
+        "inputs",
+        "llm",
+        "prompt"
+      ],
+      "properties": {
+        "smith_definition": {
+          "const": 1
+        },
+        "kind": {
+          "const": "judge"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/input"
+          }
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "The author's number for this judge."
+        },
+        "llm": {
+          "$ref": "#/$defs/llm"
+        },
+        "prompt": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/prompt_component"
+          },
+          "contains": {
+            "$ref": "#/$defs/user_component"
+          }
+        },
+        "annotations": {
+          "$ref": "#/$defs/annotations"
+        }
+      },
+      "additionalProperties": false
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$",
+      "not": {
+        "pattern": "[^a-z0-9._-]"
+      },
+      "description": "1 to 128 lowercase letters, digits, '.', '_' or '-', starting with a letter or digit."
+    },
+    "annotations": {
+      "type": "object",
+      "$ref": "#/$defs/annotation_value",
+      "description": "Kept and never read: a host's canvas positions or notes. Left out of every digest. A key naming a credential (api key, token, secret, password, authorization, credential, in any case and with any separators) is refused at any depth."
+    },
+    "annotation_value": {
+      "propertyNames": {
+        "not": {
+          "pattern": "[aA][^A-Za-z0-9\\u0130\\u212A]*[pP][^A-Za-z0-9\\u0130\\u212A]*[iI\\u0130][^A-Za-z0-9\\u0130\\u212A]*[kK\\u212A][^A-Za-z0-9\\u0130\\u212A]*[eE][^A-Za-z0-9\\u0130\\u212A]*[yY]|[tT][^A-Za-z0-9\\u0130\\u212A]*[oO][^A-Za-z0-9\\u0130\\u212A]*[kK\\u212A][^A-Za-z0-9\\u0130\\u212A]*[eE][^A-Za-z0-9\\u0130\\u212A]*[nN]|[sS][^A-Za-z0-9\\u0130\\u212A]*[eE][^A-Za-z0-9\\u0130\\u212A]*[cC][^A-Za-z0-9\\u0130\\u212A]*[rR][^A-Za-z0-9\\u0130\\u212A]*[eE][^A-Za-z0-9\\u0130\\u212A]*[tT]|[pP][^A-Za-z0-9\\u0130\\u212A]*[aA][^A-Za-z0-9\\u0130\\u212A]*[sS][^A-Za-z0-9\\u0130\\u212A]*[sS][^A-Za-z0-9\\u0130\\u212A]*[wW][^A-Za-z0-9\\u0130\\u212A]*[oO][^A-Za-z0-9\\u0130\\u212A]*[rR][^A-Za-z0-9\\u0130\\u212A]*[dD]|[aA][^A-Za-z0-9\\u0130\\u212A]*[uU][^A-Za-z0-9\\u0130\\u212A]*[tT][^A-Za-z0-9\\u0130\\u212A]*[hH][^A-Za-z0-9\\u0130\\u212A]*[oO][^A-Za-z0-9\\u0130\\u212A]*[rR][^A-Za-z0-9\\u0130\\u212A]*[iI\\u0130][^A-Za-z0-9\\u0130\\u212A]*[zZ][^A-Za-z0-9\\u0130\\u212A]*[aA][^A-Za-z0-9\\u0130\\u212A]*[tT][^A-Za-z0-9\\u0130\\u212A]*[iI\\u0130][^A-Za-z0-9\\u0130\\u212A]*[oO][^A-Za-z0-9\\u0130\\u212A]*[nN]|[cC][^A-Za-z0-9\\u0130\\u212A]*[rR][^A-Za-z0-9\\u0130\\u212A]*[eE][^A-Za-z0-9\\u0130\\u212A]*[dD][^A-Za-z0-9\\u0130\\u212A]*[eE][^A-Za-z0-9\\u0130\\u212A]*[nN][^A-Za-z0-9\\u0130\\u212A]*[tT][^A-Za-z0-9\\u0130\\u212A]*[iI\\u0130][^A-Za-z0-9\\u0130\\u212A]*[aA][^A-Za-z0-9\\u0130\\u212A]*[lL]"
+        }
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/annotation_value"
+      },
+      "items": {
+        "$ref": "#/$defs/annotation_value"
+      }
+    },
+    "numbers": {
+      "if": {
+        "type": "number"
+      },
+      "then": {
+        "anyOf": [
+          {
+            "const": 0
+          },
+          {
+            "minimum": 1e-06,
+            "maximum": 9007199254740991
+          },
+          {
+            "minimum": -9007199254740991,
+            "maximum": -1e-06
+          }
+        ]
+      },
+      "items": {
+        "$ref": "#/$defs/numbers"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/numbers"
+      }
+    },
+    "template": {
+      "type": "string",
+      "description": "Text with logic-less fill-in fields, {{name}} or {{ name }}, each naming a declared input; any other '{{' is refused (Mustache sections, inverted sections, closings, partials, comments, triple braces, unescaped tags, delimiter changes). Values go in as they are, with no escaping. At most 64 KiB of UTF-8 and 200 fill-in fields.",
+      "pattern": "\\S",
+      "not": {
+        "pattern": "\\{\\{(?![A-Za-z_][A-Za-z0-9_]{0,63}\\}\\}|\\ [A-Za-z_][A-Za-z0-9_]{0,63}\\ \\}\\})"
+      }
+    },
+    "input": {
+      "type": "object",
+      "required": [
+        "title",
+        "type"
+      ],
+      "description": "A JSON Schema property: its title is the fill-in field's name.",
+      "properties": {
+        "title": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+          "not": {
+            "anyOf": [
+              {
+                "pattern": "[^A-Za-z0-9_]"
+              },
+              {
+                "enum": [
+                  "chat",
+                  "prompt",
+                  "context",
+                  "model_id",
+                  "provider",
+                  "endpoint_mode"
+                ]
+              }
+            ]
+          }
+        },
+        "type": {
+          "enum": [
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "object",
+            "array"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trust": {
+          "enum": [
+            "trusted",
+            "untrusted"
+          ],
+          "default": "untrusted"
+        },
+        "fence": {
+          "type": "boolean",
+          "description": "Wrap the value with Smith::Untrusted.wrap. Only on an untrusted input; false in an agent and true in a judge unless given."
+        }
+      },
+      "additionalProperties": false,
+      "if": {
+        "required": [
+          "trust"
+        ],
+        "properties": {
+          "trust": {
+            "const": "trusted"
+          }
+        },
+        "additionalProperties": true
+      },
+      "then": {
+        "not": {
+          "required": [
+            "fence"
+          ]
+        }
+      }
+    },
+    "llm": {
+      "type": "object",
+      "required": [
+        "provider",
+        "model"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A provider Smith runs: in this release anthropic, azure, bedrock, deepseek, gemini, gpustack, mistral, ollama, openai, openrouter, perplexity, vertexai or xai."
+        },
+        "model": {
+          "type": "string",
+          "pattern": "^[^\\u0000-\\u001f\\u007f]{1,256}$",
+          "not": {
+            "pattern": "[\\u0000-\\u001f\\u007f]"
+          }
+        },
+        "settings": {
+          "$ref": "#/$defs/settings"
+        },
+        "fallbacks": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/fallback"
+          },
+          "description": "Tried in order; each takes the model's settings, shaped for it by Smith. None repeats the model or another."
+        },
+        "assume_exists": {
+          "type": "boolean",
+          "description": "Use a model RubyLLM's model list does not hold yet; its price is then unknown."
+        }
+      },
+      "additionalProperties": false
+    },
+    "fallback": {
+      "type": "object",
+      "required": [
+        "provider",
+        "model"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A provider Smith runs: in this release anthropic, azure, bedrock, deepseek, gemini, gpustack, mistral, ollama, openai, openrouter, perplexity, vertexai or xai."
+        },
+        "model": {
+          "type": "string",
+          "pattern": "^[^\\u0000-\\u001f\\u007f]{1,256}$",
+          "not": {
+            "pattern": "[\\u0000-\\u001f\\u007f]"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "settings": {
+      "type": "object",
+      "properties": {
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "max_output_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "Sent as the provider's own parameter; only for anthropic, openai, gemini, vertexai and bedrock."
+        },
+        "thinking": {
+          "$ref": "#/$defs/thinking"
+        }
+      },
+      "additionalProperties": false
+    },
+    "thinking": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "effort"
+          ],
+          "properties": {
+            "effort": {
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "budget"
+          ],
+          "properties": {
+            "budget": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "prompt_component": {
+      "type": "object",
+      "required": [
+        "component_id",
+        "role",
+        "text"
+      ],
+      "properties": {
+        "component_id": {
+          "$ref": "#/$defs/id"
+        },
+        "role": {
+          "enum": [
+            "system",
+            "user"
+          ]
+        },
+        "text": {
+          "$ref": "#/$defs/template"
+        },
+        "annotations": {
+          "$ref": "#/$defs/annotations"
+        }
+      },
+      "additionalProperties": false
+    },
+    "user_component": {
+      "type": "object",
+      "required": [
+        "component_id",
+        "role",
+        "text"
+      ],
+      "properties": {
+        "component_id": {
+          "$ref": "#/$defs/id"
+        },
+        "role": {
+          "const": "user"
+        },
+        "text": {
+          "$ref": "#/$defs/template"
+        },
+        "annotations": {
+          "$ref": "#/$defs/annotations"
+        }
+      },
+      "additionalProperties": false
+    },
+    "type_name": {
+      "enum": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "array",
+        "object",
+        "null"
+      ]
+    },
+    "output_root": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "object"
+        },
+        "properties": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/output_schema"
+          }
+        },
+        "required": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": {
+          "const": false
+        },
+        "items": {
+          "$ref": "#/$defs/output_schema"
+        },
+        "enum": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": [
+              "string",
+              "number",
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "anyOf": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/output_schema"
+          }
+        },
+        "$ref": {
+          "type": "string",
+          "pattern": "^#/\\$defs/[A-Za-z_][A-Za-z0-9_.-]{0,63}$",
+          "not": {
+            "pattern": "[^A-Za-z0-9_.#/$-]"
+          }
+        },
+        "description": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "pattern": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string"
+        },
+        "minimum": {
+          "type": "number"
+        },
+        "maximum": {
+          "type": "number"
+        },
+        "exclusiveMinimum": {
+          "type": "number"
+        },
+        "exclusiveMaximum": {
+          "type": "number"
+        },
+        "multipleOf": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "minLength": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxLength": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "minItems": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxItems": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "uniqueItems": {
+          "type": "boolean"
+        },
+        "$defs": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_.-]{0,63}$",
+            "not": {
+              "pattern": "[^A-Za-z0-9_.-]"
+            }
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/output_schema"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "$ref"
+            ]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "$ref",
+                "description",
+                "title"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "anyOf"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "type"
+                  ]
+                },
+                {
+                  "required": [
+                    "properties"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "anyOf": [
+            {
+              "required": [
+                "type"
+              ]
+            },
+            {
+              "required": [
+                "$ref"
+              ]
+            },
+            {
+              "required": [
+                "anyOf"
+              ]
+            }
+          ]
+        },
+        {
+          "if": {
+            "anyOf": [
+              {
+                "required": [
+                  "properties"
+                ]
+              },
+              {
+                "required": [
+                  "type"
+                ],
+                "additionalProperties": true,
+                "properties": {
+                  "type": {
+                    "anyOf": [
+                      {
+                        "const": "object"
+                      },
+                      {
+                        "type": "array",
+                        "contains": {
+                          "const": "object"
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "then": {
+            "required": [
+              "properties",
+              "required",
+              "additionalProperties"
+            ]
+          }
+        }
+      ],
+      "description": "JSON Schema in the portable core subset every provider takes. Value constraints (pattern, format, bounds, lengths, sizes) are kept: Smith strips what a provider rejects and checks them after the call."
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/type_name"
+            },
+            {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/type_name"
+              }
+            }
+          ]
+        },
+        "properties": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/output_schema"
+          }
+        },
+        "required": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": {
+          "const": false
+        },
+        "items": {
+          "$ref": "#/$defs/output_schema"
+        },
+        "enum": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": [
+              "string",
+              "number",
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "anyOf": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/output_schema"
+          }
+        },
+        "$ref": {
+          "type": "string",
+          "pattern": "^#/\\$defs/[A-Za-z_][A-Za-z0-9_.-]{0,63}$",
+          "not": {
+            "pattern": "[^A-Za-z0-9_.#/$-]"
+          }
+        },
+        "description": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "pattern": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string"
+        },
+        "minimum": {
+          "type": "number"
+        },
+        "maximum": {
+          "type": "number"
+        },
+        "exclusiveMinimum": {
+          "type": "number"
+        },
+        "exclusiveMaximum": {
+          "type": "number"
+        },
+        "multipleOf": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "minLength": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxLength": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "minItems": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxItems": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "uniqueItems": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "$ref"
+            ]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "$ref",
+                "description",
+                "title"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "anyOf"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "type"
+                  ]
+                },
+                {
+                  "required": [
+                    "properties"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "anyOf": [
+            {
+              "required": [
+                "type"
+              ]
+            },
+            {
+              "required": [
+                "$ref"
+              ]
+            },
+            {
+              "required": [
+                "anyOf"
+              ]
+            }
+          ]
+        },
+        {
+          "if": {
+            "anyOf": [
+              {
+                "required": [
+                  "properties"
+                ]
+              },
+              {
+                "required": [
+                  "type"
+                ],
+                "additionalProperties": true,
+                "properties": {
+                  "type": {
+                    "anyOf": [
+                      {
+                        "const": "object"
+                      },
+                      {
+                        "type": "array",
+                        "contains": {
+                          "const": "object"
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "then": {
+            "required": [
+              "properties",
+              "required",
+              "additionalProperties"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

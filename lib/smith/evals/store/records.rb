@@ -4,7 +4,7 @@ require "json"
 require_relative "../../scope"
 require_relative "../actor"
 require_relative "../identity"
-require_relative "../json_value"
+require_relative "../../json_value"
 require_relative "json_check"
 require_relative "clock"
 

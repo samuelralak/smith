@@ -4,7 +4,7 @@ require "json"
 require_relative "actor"
 require_relative "errors"
 require_relative "identity"
-require_relative "json_value"
+require_relative "../json_value"
 require_relative "split_rule"
 
 module Smith

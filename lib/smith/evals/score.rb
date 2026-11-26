@@ -2,7 +2,7 @@
 
 require_relative "../canonical_json"
 require_relative "../diagnostic_text"
-require_relative "json_value"
+require_relative "../json_value"
 
 module Smith
   module Evals

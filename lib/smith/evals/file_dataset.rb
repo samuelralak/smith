@@ -2,7 +2,7 @@
 
 require "securerandom"
 require_relative "errors"
-require_relative "json_value"
+require_relative "../json_value"
 require_relative "dataset_manifest"
 
 module Smith

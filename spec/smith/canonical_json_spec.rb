@@ -9,11 +9,35 @@ RSpec.describe Smith::CanonicalJSON do
 
   def generate(value) = described_class.generate(value)
 
-  it "matches every number of RFC 8785's Appendix B as Node.js writes it" do
+  # Five of the table's numbers are written as integers past 2**53 - 1,
+  # which read back as such integers, so canonical JSON refuses them as it
+  # refuses those integers.
+  it "matches every number of RFC 8785's Appendix B as Node.js writes it, but those written as large integers" do
+    large = ->(text) { text.match?(/\A-?\d+\z/) && text.to_i.abs > (2**53) - 1 }
+
     expect(reference["numbers"].size).to eq(24)
+    expect(reference["numbers"].count { large.call(_1["canonical"]) }).to eq(5)
     reference["numbers"].each do |row|
-      expect(generate(float.call(row["ieee754_hex"]))).to eq(row["canonical"]), row["ieee754_hex"]
+      number = float.call(row["ieee754_hex"])
+      if large.call(row["canonical"])
+        expect { generate(number) }.to raise_error(described_class::Error, /2\*\*53/), row["ieee754_hex"]
+      else
+        expect(generate(number)).to eq(row["canonical"]), row["ieee754_hex"]
+      end
     end
+  end
+
+  it "refuses a Float it would write as an integer past 2**53 - 1, so what it writes reads back as itself" do
+    [1e20, 2.0**53, -(2.0**53), 9.99e20, 1.2345678901234568e17].each do |number|
+      expect { generate(number) }
+        .to raise_error(described_class::Error,
+                        "canonical JSON numbers written without an exponent are at most 2**53 - 1 in size"),
+            number.to_s
+    end
+    kept = [9_007_199_254_740_991.0, -9_007_199_254_740_991.0, 1e21, 1.5e300, 12.0, 0.1, 5e-324]
+    expect(kept.map { generate(_1) })
+      .to eq(%w[9007199254740991 -9007199254740991 1e+21 1.5e+300 12 0.1 5e-324])
+    kept.each { |number| expect(generate(JSON.parse(generate(number)))).to eq(generate(number)) }
   end
 
   it "refuses NaN and Infinity" do

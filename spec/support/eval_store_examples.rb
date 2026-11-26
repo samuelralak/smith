@@ -142,7 +142,7 @@ RSpec.shared_examples "an eval store" do
       output = { "astral" => "😀 \u{1F600}", "scripts" => "é ü 中文 ع", "controls" => (0..31).map(&:chr).join,
                  "separators" => "\u2028\u2029\u007f", "escapes" => "\"\\/",
                  "big" => (2**53) - 1, "small" => 1 - (2**53),
-                 "floats" => [-0.0, 1.0, 5e-324, 1.7976931348623157e308, 1e20, 1.0 / 3, 0.1 + 0.2],
+                 "floats" => [-0.0, 1.0, 5e-324, 1.7976931348623157e308, 1e21, 1.0 / 3, 0.1 + 0.2],
                  "literals" => [nil, true, false], "empty" => { "a" => [], "b" => {}, "c" => "" },
                  "order" => { "z" => 1, "a" => 2, "m" => 3 }, "deep" => (1..60).reduce(1) { |inner, _| [inner] } }
       line = EvalRecords.trial_for(run_id, 1, output:)
@@ -161,7 +161,7 @@ RSpec.shared_examples "an eval store" do
       created!
       lease = leased
       odd = [{ a: 1 }, :symbol, Time.utc(2026), Float::NAN, Float::INFINITY, "\xFF".b, "é".encode("ISO-8859-1"),
-             Rational(1, 3), { 1 => 2 }, Object.new, (1..64).reduce(1) { |inner, _| [inner] }, 2**53, -(2**53)]
+             Rational(1, 3), { 1 => 2 }, Object.new, (1..64).reduce(1) { |inner, _| [inner] }, 2**53, -(2**53), 1e20]
 
       odd.each do |value|
         line = EvalRecords.trial_for(run_id, 1, output: value)
