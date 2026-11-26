@@ -23,6 +23,9 @@ module Smith
           # The scope the run's provider_credentials are asked with, kept only
           # by a class that declares them; never a key.
           **(self.class.provider_credentials ? { provider_credentials_scope: @smith_run_credentials&.scope.dup } : {}),
+          # The text each named prompt sends and its version, kept once one
+          # is pinned.
+          **Prompts.__send__(:state, @smith_prompt_pins),
           active_seconds: @active_seconds || 0.0,
           active_step_started_at: @active_step_started_at,
           execution_namespace: @execution_namespace,
@@ -158,6 +161,7 @@ module Smith
         initialize_budget_ledger
         @memo_attempts = []
         @budget_ledger_scope = restored_budget_ledger_scope(normalized[:budget_ledger_scope])
+        @smith_prompt_pins = Prompts.__send__(:restored, self.class, normalized[:prompt_pins])
         return unless self.class.provider_credentials
 
         @smith_run_credentials = RunCredentials::Scoping.restored(self.class, normalized[:provider_credentials_scope],

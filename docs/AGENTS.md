@@ -159,6 +159,66 @@ fallback provider from the primary model or from a model id because the same id
 may be registered by more than one provider. Unqualified fallback entries fail
 closed during agent configuration.
 
+## Named prompts
+
+An agent's instructions can be a named prompt: text a tuner can swap and a
+host can promote without a deploy, with the component id a tuner credits.
+
+```ruby
+class TriageAgent < Smith::Agent
+  register_as :triage
+  model "claude-sonnet-5-5", provider: :anthropic
+  inputs :person_summary
+  instructions Smith::Prompt.file("triage.rules", "app/prompts/triage_rules.md")
+  # or Smith::Prompt.new("triage.rules", "You sort postings for {{person_summary}}.")
+end
+```
+
+- The text is inert: a file is read as it is, never as ERB or Ruby. Its only
+  substitution is `{{name}}` (Smith::Template), filled in once, as it is,
+  from the agent's declared inputs. A field that names no input fails the
+  step before any request; a context key the run marks untrusted is never an
+  input.
+- Its version is its text's SHA-256 (`prompt.version`). A text that replaces
+  it keeps exactly its fill-in fields (`prompt.with_text(text)`), or is
+  refused with `Smith::PromptInvalid`.
+- A run sends, in this order: a trial's candidate
+  (`Smith::Prompts.with_candidate("triage.rules" => text) { ... }`), the
+  text the run pinned, the prompt registry's active version, the default.
+  With no `Smith.config.prompt_registry` the default is in force: the files
+  in the repo. A registry answers `active(component_id:, scope:)`, the text
+  in force or nil; Smith works out every version itself.
+- A candidate is kept by a run built or restored in its block, and then by
+  every thread Smith starts for that run and every child run it builds; a
+  nested `with_candidate` adds to the one around it, its own texts first.
+  Like a trial's attribution it is fiber-local: a fiber or thread a host
+  starts in the block (a job pool's, say) never takes it. An id no
+  component of the run has is ignored (a child may have it): check a
+  candidate's ids with `Smith::Prompts.components` first. A candidate for
+  an agent registered behind a block is checked when that agent is first
+  used, so a bad one fails that step rather than the run's start.
+- A run pins its named prompts when it starts, for every agent its
+  transitions name (its nested workflows' too, fan-out branches, optimizer
+  and orchestrator agents), and any other at its first use, and saves each
+  pinned text in its state (`prompt_pins`: each component's version, and
+  each version's text once). A run that waits sends exactly what it started
+  with: a label that moves, or a deploy that edits the prompt's file, never
+  changes it, and fails it only when the deploy drops an input its text
+  fills in (the step fails, `WorkflowError`, before any request). Branches
+  and nested workflows share the pins; a child run starts from them, its
+  parent's pinned texts with them, and pins its own further ones when it
+  starts.
+- An agent called from Ruby inside a run's step (a `compute` block, a tool,
+  in a branch too) sends what the run sends for it, pinned under the run's
+  lock; called outside any run, it sends its default.
+- Usage entries, `:provider_call` traces and eval observations carry the
+  versions an attempt was built to send:
+  `components: [{ id: "triage.rules", version: "sha256:..." }]`, worked out
+  once from the text resolved for it. An attempt that fails before its
+  request is built (a field with no value, a refused text) carries none.
+- `Smith::Prompts.components(Workflow)` lists a workflow's named prompts as
+  a run would pin them now.
+
 ## Streaming
 
 An agent step can send its reply's text to the host as the model writes it:

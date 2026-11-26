@@ -52,7 +52,8 @@ module Smith
 
       def batch_entries(ids)
         digests = @pending_batch.fetch("requests")
-        ids.to_h { |branch_key, id| [branch_key, Batch::Delivery::Entry.new(yield(id), digests.fetch(id))] }
+        stamps = @pending_batch.fetch("components", {})
+        ids.to_h { |branch_key, id| [branch_key, Batch::Delivery::Entry.new(yield(id), digests.fetch(id), stamps[id])] }
       end
 
       # The step runs again at the batch's attempt, each call taking its
@@ -104,20 +105,24 @@ module Smith
       # (which WaitRecord checked is still a batch step), an attempt its
       # retry policy allows, a key generation only a declared
       # `new_idempotency_key_on` moves, the digest of each request the
-      # step's branches send, and for an optimize step its loop's progress
+      # step's branches send, the version stamp of each request that has one
+      # (Smith::Prompts::Stamp), and for an optimize step its loop's progress
       # (OptimizerBatch); a stored batch wait needs one, the one its token
       # was made for. Anything else raises SerializationError.
       def restore_pending_batch(value)
         return if value.nil? && !batch_waiting?
 
         record = value.is_a?(Hash) ? value.transform_keys(&:to_s) : {}
+        if record.key?("components")
+          record["components"] = Prompts::Stamp.by_id(record["components"], record["requests"])
+        end
         check_pending_batch!(record)
         record.transform_values(&:freeze).freeze
       end
 
       def check_pending_batch!(record)
         raise Smith::SerializationError, "persisted workflow pending_batch is invalid" unless
-          well_formed_pending_batch?(record)
+          well_formed_pending_batch?(record) && record.fetch("components", true)
         return if batch_wait_made_for?(record)
 
         raise Smith::SerializationError, "persisted workflow pending_batch is not the one its wait was made for"
@@ -134,7 +139,7 @@ module Smith
 
       def well_formed_pending_batch?(record)
         transition = self.class.transition_named(@awaiting["transition"]) if batch_waiting?
-        transition && record.keys.sort == pending_batch_fields(transition) &&
+        transition && (record.keys - %w[components]).sort == pending_batch_fields(transition) &&
           record["transition"] == transition.name.to_s && pending_batch_parts?(transition, record)
       end
 

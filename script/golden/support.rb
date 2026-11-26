@@ -29,6 +29,15 @@ module CoreInvisibility
       end
     end
 
+    # The prompted mode: an agent declaring a named prompt is loaded, never
+    # registered or run, so every run starts with the prompt seam in use,
+    # and a prompt registry that refuses every call is set, so a scenario
+    # whose agents declare none shows any call it makes (slice 4).
+    def prompted!
+      Class.new(Smith::Agent) { instructions Smith::Prompt.new("golden.unused", "Never sent to {{nobody}}.") }
+      Smith.config.prompt_registry = RefusingRegistry.new
+    end
+
     def scenarios = @scenarios ||= []
 
     # Declares a scenario; `concurrent:` also runs it with branches in
@@ -38,6 +47,11 @@ module CoreInvisibility
 
       scenarios << Scenario.new(name, concurrent, drive)
     end
+  end
+
+  # A prompt registry no scenario may ask.
+  class RefusingRegistry
+    def active(component_id:, scope:) = raise("the prompt registry was asked for #{component_id} in #{scope}")
   end
 
   # A test observer for the seam: what it was handed, in order.

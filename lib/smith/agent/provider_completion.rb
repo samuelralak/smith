@@ -71,8 +71,7 @@ module Smith
       # cut short, not failed, and is taken again from its first candidate
       # once the host can do its part.
       def fail_over!(attempt, agent_class, candidates, interrupted, set_aside)
-        handle_provider_failure!(attempt.error, attempt.model_reference, agent_class,
-                                 fallback_available: candidates.fallback_available?, attempt_id: attempt.attempt_id)
+        handle_provider_failure!(attempt, agent_class, fallback_available: candidates.fallback_available?)
         set_aside.concat(attempt.captures)
       rescue StandardError => e
         raise if interrupted.nil? || Interruptions.find(e) || Smith::Errors.retry_forbidden?(e)
@@ -136,10 +135,16 @@ module Smith
       # credentialed run's error is scrubbed first and raised again in its
       # place (RunCredentials), so the outer rescue handles the scrubbed one:
       # Ruby makes it, never the original, the cause of anything raised there.
+      # A named prompt's text is resolved once for the attempt and its chat
+      # built with it (Smith::Prompts); the attempt carries its version once
+      # the chat is built, so one that fails before then carries none.
       def attempt_model(agent_class, prepared_input, model_reference, shape:, attempt_index:)
         facts = { attempt_id: SecureRandom.uuid, attempt_index:, agent_name: agent_class.register_as }
         begin
-          chat = prepared_attempt_chat(agent_class, prepared_input, model_reference, shape)
+          chat = Prompts.__send__(:sending, @smith_prompt_pins, agent_class) do |components|
+            prepared_attempt_chat(agent_class, prepared_input, model_reference, shape)
+              .tap { facts[:components] = components if components }
+          end
           message_count = chat_message_count(chat)
           observed_reference = observed_model_reference(chat, fallback: model_reference)
           timer = ProviderCallTiming::Timer.start
@@ -163,7 +168,7 @@ module Smith
         observed_reference ||= observed_model_reference(chat, fallback: model_reference)
         prefix_usages = account_completed_prefix(
           agent_class, observed_reference, new_chat_messages(chat, message_count),
-          attempt_id: facts[:attempt_id], stream: streamed(collected || [])
+          attempt_id: facts[:attempt_id], components: facts[:components], stream: streamed(collected || [])
         )
         attempt = failed_provider_attempt(e, observed_reference, timer, facts, prefix_usages,
                                           agent_class:, chat:, sent_count: message_count)

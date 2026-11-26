@@ -3,6 +3,7 @@
 require "digest"
 require "securerandom"
 require_relative "../canonical_json"
+require_relative "../content_identity"
 require_relative "../scope"
 
 module Smith
@@ -18,7 +19,7 @@ module Smith
     # sorts).
     module Identity
       NAME = /\A[a-z][a-z0-9_.-]{0,127}\z/
-      CONTENT_HASH = /\Asha256:[0-9a-f]{64}\z/
+      CONTENT_HASH = ContentIdentity::DIGEST
       EVAL_RUN_ID = /\Aer_[0-9a-f]{32}\z/
       CANDIDATE_ID = /\Acd_[0-9a-f]{32}\z/
       SAMPLE_ID = /\A[^\u0000-\u001f\u007f]{1,256}\z/

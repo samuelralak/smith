@@ -47,8 +47,8 @@ module Smith
                              child.instance_variable_get(:@total_tokens))
       end
 
-      # A nested workflow inherits the run's untrusted keys, and charges the
-      # run's budget ledger unless it names its own.
+      # A nested workflow inherits the run's untrusted keys and prompt pins,
+      # and charges the run's budget ledger unless it names its own.
       # An item's child takes its item under its key (`item`: [key, value]),
       # and spends within its own budget when it is given one.
       def new_nested_workflow(child_class, item: nil, ledger: @ledger)
@@ -61,7 +61,9 @@ module Smith
         StepIO.with_inherited_untrusted_keys(untrusted_context_keys) do
           Budget::HostLedger.inheriting(method(:run_budget_ledger)) do
             ResponseMemo.inheriting([*@memo_attempts, @step_attempt.to_i]) do
-              child_class.new(context:, ledger:, created_at: @created_at)
+              Prompts.__send__(:inheriting, @smith_prompt_pins) do
+                child_class.new(context:, ledger:, created_at: @created_at)
+              end
             end
           end
         end

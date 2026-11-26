@@ -131,14 +131,15 @@ module Smith
     end
 
     # The results a resumed step takes, one per branch (nil for a step
-    # without branches), each with the digest of the request it answers, and
+    # without branches), each with the digest of the request it answers and
+    # that request's version stamp (nil without named prompts), and
     # what a result does when its call renders another request
     # (`on_change`). Each is taken once: a follow-up call the step makes
     # after it (a repair) goes over the wire. `untaken` is what no call took
     # (a branch cancelled by a sibling's failure) or set aside (a result its
     # call would not use), paid for all the same.
     class Delivery
-      Entry = Struct.new(:result, :digest)
+      Entry = Struct.new(:result, :digest, :components)
 
       attr_reader :on_change
 

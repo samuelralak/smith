@@ -27,7 +27,9 @@ module Smith
     # `provider_message_id` come from the provider response, and `mode` is
     # how the call was made (`:sync`, `:stream`, `:batch`).
     # `image_input_tokens` and `image_output_tokens` are the image parts of
-    # `input_tokens` and `output_tokens`.
+    # `input_tokens` and `output_tokens`. `components` names the named
+    # prompt versions the attempt was built to send, [{id:, version:}]
+    # (Smith::Prompts).
     UsageEntry = Struct.new(
       :usage_id,
       :agent_name,
@@ -51,6 +53,7 @@ module Smith
       :mode,
       :image_input_tokens,
       :image_output_tokens,
+      :components,
       keyword_init: true
     ) do
       def initialize(**attributes)
@@ -80,13 +83,24 @@ module Smith
         %i[agent_name provider attempt_kind transition branch_key mode].each do |attribute|
           filtered[attribute] = filtered[attribute].to_sym if filtered[attribute].is_a?(String)
         end
+        filtered[:components] = restored_components(filtered[:components]) if filtered.key?(:components)
         new(**filtered)
       end
+
+      # A saved stamp read back as it was recorded (Symbol keys, frozen),
+      # or refused.
+      def self.restored_components(components)
+        return if components.nil?
+
+        Prompts::Stamp.read(components) ||
+          raise(SerializationError, "a usage entry's components are {id, version} pairs")
+      end
+      private_class_method :restored_components
     end
     UsageEntry::OPTIONAL_MEMBERS = %i[
       transition branch_key round attempt_id workflow
       cache_read_tokens cache_write_tokens thinking_tokens stop_reason provider_message_id mode
-      image_input_tokens image_output_tokens
+      image_input_tokens image_output_tokens components
     ].freeze
   end
 end

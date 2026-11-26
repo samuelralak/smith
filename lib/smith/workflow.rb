@@ -139,6 +139,8 @@ module Smith
       # The attempts of the runs a nested workflow runs inside (ResponseMemo).
       @memo_attempts = ResponseMemo.take_inherited
       @budget_ledger_scope = capture_budget_ledger_scope
+      # The named prompts' versions it sends, pinned now (Smith::Prompts).
+      @smith_prompt_pins = Prompts.__send__(:start, self.class)
       # Only a class that declares provider_credentials holds them (RunCredentials).
       return unless self.class.provider_credentials
 

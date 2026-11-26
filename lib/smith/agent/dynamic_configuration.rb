@@ -22,11 +22,23 @@ module Smith
         super(&wrap_runtime_block(block))
       end
 
+      # A named prompt (Smith::Prompt) is the agent's instructions through
+      # RubyLLM's block form, which renders what a Smith call sends for it
+      # (Smith::Prompts); any other declaration replaces it.
       def instructions(text = nil, **prompt_locals, &block)
+        if Prompts.__send__(:prompt?, text)
+          rendering = Prompts.__send__(:declare, self, text, prompt_locals, block)
+          @smith_prompt = text
+          return super(&rendering)
+        end
+        @smith_prompt = nil unless text.nil? && prompt_locals.empty? && !block
         return super unless block
 
         super(text, **prompt_locals, &wrap_runtime_block(block))
       end
+
+      # The named prompt the agent's instructions are, or nil.
+      def smith_prompt = @smith_prompt
 
       def params(**params_kwargs, &block)
         return super unless block

@@ -22,9 +22,10 @@ module Smith
       private
 
       # A request whose outcome is uncertain is never sent again, to this
-      # model or another.
-      def handle_provider_failure!(error, model_reference, agent_class, fallback_available:, attempt_id: nil)
-        account_failed_attempt(error, model_reference, agent_class, attempt_id:)
+      # model or another. The failed attempt's usage is accounted first.
+      def handle_provider_failure!(attempt, agent_class, fallback_available:)
+        account_failed_attempt(attempt, agent_class)
+        error = attempt.error
         raise error if error.is_a?(Smith::RequestOutcomeUncertain)
 
         if uncertain_tool_calls?
@@ -34,7 +35,7 @@ module Smith
         end
         return if ProviderFailureHandling.goes_again?(self, error, agent_class) && fallback_available
 
-        raise terminal_provider_error(error, model_reference, agent_class), cause: error
+        raise terminal_provider_error(error, attempt.model_reference, agent_class), cause: error
       end
 
       def provider_failure?(error)

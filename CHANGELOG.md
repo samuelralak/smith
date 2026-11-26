@@ -305,6 +305,51 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   (converted from its own encoding) and Hash and Array values as canonical
   JSON, so what it returns is UTF-8; a field with no value raises
   `Smith::TemplateValueMissing`, a `WorkflowError`.
+- Experimental: named prompts, the prompt seam a tuner swaps text through
+  (plan 5.2). An agent declares its instructions as a `Smith::Prompt`: a
+  component id and inert text, a String or a file read as it is
+  (`instructions Smith::Prompt.file("triage.rules", path)`), never ERB or
+  Ruby. Its only substitution is `Smith::Template`'s `{{name}}` fields,
+  filled in once from the agent's declared inputs (a context key the run
+  marks untrusted never is one); a field that names no input fails the step
+  before any request. Its version is its text's SHA-256, as definition
+  format 1 versions a prompt component, and a text that replaces it keeps
+  exactly its fill-in fields (`Smith::Prompt#with_text`, else
+  `Smith::PromptInvalid`). What a run sends is resolved in one order: a
+  trial's candidate (`Smith::Prompts.with_candidate(id => text) { ... }`,
+  fiber-local as a trial's attribution is, kept by a run built in it, every
+  thread Smith starts for that run and the children it builds; a nested one
+  adds to the one around it), the run's pin, the prompt registry's active
+  version (`Smith.config.prompt_registry`, answering `active(component_id:,
+  scope:)` with an empty `Smith::Scope` in this release; nil by default,
+  which sends the agent's own text, the files in the repo), the default. A
+  run pins its components when it starts, for every agent its transitions
+  name, its nested workflows' included, and any other at its first use (an
+  agent registered behind a block, or called from Ruby inside one of its
+  steps, which sends what the run sends), and saves each pinned text
+  (`prompt_pins`: each component's version and each version's text once), so
+  a waiting run sends exactly what it started with: a label that moves or a
+  deploy that edits the prompt never changes it, and fails it only when the
+  deploy drops an input its text fills in (its step fails, before any
+  request). Its branches and nested workflows share the pins; a child run
+  starts from them (`Smith::ChildRun#prompt_pins`, which a queue launcher
+  passes as it passes `untrusted_keys`: it carries every pinned text, so a
+  launcher's job payload grows by them) and pins its own further components
+  when it starts; a run saved before is pinned when next restored. Usage
+  entries, `:provider_call` traces and attempt observations carry the
+  versions an attempt was built to send, `components: [{id:, version:}]`,
+  worked out once from the text resolved for it (an agent class's own
+  `smith_prompt_components` otherwise); a batch step's pending batch keeps
+  each request's stamp beside its digest, so its result, taken or charged,
+  names the version its request was sent with; an attempt that fails before
+  its request is built carries none, and a saved run or a branch's results
+  holding another shape is refused. `Smith::Prompts.components` lists a
+  workflow's named prompts as a run would pin them now. An agent without a
+  named prompt is unchanged: nothing pinned, saved, stamped or asked of a
+  registry, and the harness's new `prompted` mode (a named prompt declared
+  in the process, a refusing registry set) equals the golden. `require
+  "smith"` loads `smith/prompts` alone; `Smith::Prompt` and the template
+  load when first named, the pins when a run first starts.
 
 ### Changed
 

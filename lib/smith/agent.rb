@@ -35,7 +35,8 @@ module Smith
         subclass.instance_variable_set(:@model_block, @model_block)
         subclass.instance_variable_set(:@tool_budget_exhaustion, @tool_budget_exhaustion)
         subclass.instance_variable_set(:@prompt_cache, @prompt_cache)
-        %i[@on_truncation @on_refusal @output_contract @output_repairs @smith_image_request].each do |name|
+        %i[@on_truncation @on_refusal @output_contract @output_repairs @smith_image_request
+           @smith_prompt].each do |name|
           subclass.instance_variable_set(name, instance_variable_get(name))
         end
         subclass.instance_variable_set(:@execution_identity, nil)

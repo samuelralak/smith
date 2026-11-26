@@ -300,10 +300,12 @@ module CoreInvisibilityHarness
     end
 
     # The names 0.16.0 gave every host class and where each went, as
-    # allowances: the private methods (`instance`) or the constants.
-    returned = lambda do |methods|
+    # allowances: the private methods (`instance`) or the constants (of one
+    # class, when named).
+    returned = lambda do |methods, klass = nil|
       CoreInvisibilityHarness::RETURNED_TO_0_15.filter_map do |change, home|
         next unless change.include?(" instance ") == methods
+        next if klass && !change.include?(" #{klass} ")
 
         host = change.include?(" Smith::Agent ") ? "agent" : "workflow"
         { "surface" => change, "why" => "a name 0.16.0 gave every host #{host}, now #{home}",
@@ -325,7 +327,11 @@ module CoreInvisibilityHarness
       { "surface" => "+ Smith::Workflow singleton public smith_provider_credentials_scope_keys",
         "why" => "the declared scope keys' reader the design names, prefixed so no host name collides",
         "slice" => "1c run credentials" },
-      *returned.call(false),
+      *returned.call(false, "Smith::Workflow"),
+      { "surface" => "+ Smith::Agent singleton public smith_prompt",
+        "why" => "the named prompt an agent's instructions are, which the prompt seam reads (plan 5.2), prefixed",
+        "slice" => "4 prompt seam" },
+      *returned.call(false, "Smith::Agent"),
       { "scenario" => "orchestrate", "random_draws" => [11, 9],
         "why" => "an orchestrate worker's execution_id is named by its position, no longer drawn (two workers)",
         "slice" => "memo restore" },
@@ -796,6 +802,17 @@ RSpec.describe "Smith core invisibility: an app that does not use the eval seam 
         end
       end
     end
+  end
+
+  # Slice 4: with an agent in the process declaring a named prompt, and a
+  # prompt registry that refuses every call, a run whose agents declare
+  # none is the run it was: nothing pinned, stamped, saved or asked.
+  it "gives the golden's records with the prompt seam in use beside agents that declare no named prompt" do
+    prompted = CoreInvisibilityHarness.run("prompted")
+
+    expect(prompted["prompts_declared"]).to be(true)
+    expect(prompted["host_surface"]).to eq(golden["host_surface"])
+    expect_golden_scenarios(prompted)
   end
 
   # Slice 1c: every path on a run's own credentials, and nothing sent without

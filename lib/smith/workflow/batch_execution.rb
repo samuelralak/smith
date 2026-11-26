@@ -11,16 +11,18 @@ module Smith
     # (its context checks included), the requests go to
     # Smith.config.batch_queue under ids of the wait's token and the run waits
     # on `:batch_result`, recording its pending batch (the transition, the
-    # attempt, its key generation, and each request's digest). Like any wait
+    # attempt, its key generation, each request's digest, and the version
+    # stamp of each request that has one, Smith::Prompts). Like any wait
     # it is not a step; BatchWait completes it. A step inside another run's
     # step (an in-process child) cannot wait, so it never sends a batch.
-    module BatchExecution
+    module BatchExecution # rubocop:disable Metrics/ModuleLength -- in Workflow; a split adds a host-visible mixin
       # Batches end within 24 hours; the wait allows one more.
       WAIT_SECONDS = 25 * 3600
-      # The requests an attempt captured, for the step to queue, and an
-      # optimize step's `progress` (OptimizerBatch).
-      Captured = Data.define(:token, :requests, :attempt, :key_generation, :progress) do
-        def initialize(progress: nil, **) = super
+      # The requests an attempt captured, for the step to queue, the version
+      # stamp of each that has one, and an optimize step's `progress`
+      # (OptimizerBatch).
+      Captured = Data.define(:token, :requests, :components, :attempt, :key_generation, :progress) do
+        def initialize(components: {}, progress: nil, **) = super
       end
 
       private
@@ -86,7 +88,8 @@ module Smith
       end
 
       # The request the agent's call would send (BatchExchange throws it out
-      # of the call before anything is sent), and its hold. The capture holds
+      # of the call before anything is sent), its hold, and its attempt's
+      # version stamp. The capture holds
       # the provider, its key with it (on Ruby 4 every RubyLLM object holding
       # a configuration prints its keys), so the run keeps none of it once
       # the capture is over, failed or not, but the hold.
@@ -99,7 +102,8 @@ module Smith
         ensure
           @batch_capturing = false
         end
-        [request || raise(BatchModeUnavailable, "a batch step's agent made no provider request"), @batch_capture.hold]
+        [request || raise(BatchModeUnavailable, "a batch step's agent made no provider request"), @batch_capture.hold,
+         @batch_capture.components]
       ensure
         @batch_capture = nil
       end
@@ -108,10 +112,12 @@ module Smith
       # calls), `progress` is its loop's.
       def send_batch(transition, captures, position: [], progress: nil)
         refuse_batch_wait!
-        token = wait_token_for(transition, ["batch", @step_attempt || 1, *position])
+        attempt = @step_attempt || 1
+        token = wait_token_for(transition, ["batch", attempt, *position])
         captured = captures.transform_values(&:call)
-        hold_batch!(token, captured.transform_values(&:last))
-        Captured.new(token:, requests: captured.transform_values(&:first), attempt: @step_attempt || 1,
+        hold_batch!(token, captured.transform_values { |_request, hold, _components| hold })
+        Captured.new(token:, requests: captured.transform_values(&:first),
+                     components: captured.transform_values(&:last).compact, attempt:,
                      key_generation: @step_key_generation || 0, progress:)
       end
 
@@ -153,11 +159,15 @@ module Smith
         ids
       end
 
+      # A request's stamp, kept beside its digest by its id, is the version
+      # its result answers; a run without named prompts keeps none.
       def pending_batch_record(transition, captured, ids)
         record = { "transition" => transition.name.to_s, "attempt" => captured.attempt,
                    "key_generation" => captured.key_generation,
                    "requests" => ids.transform_values { Batch.digest(_1) } }
         record["progress"] = captured.progress if captured.progress
+        stamps = captured.components.transform_keys { Batch.custom_id(captured.token, _1) }
+        record["components"] = stamps unless stamps.empty?
         record.freeze
       end
     end

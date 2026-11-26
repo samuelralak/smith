@@ -3,12 +3,12 @@
   "smith": {
     "version": "0.16.0",
     "source": "index",
-    "built_on": "b3481900a1c2858160606962bc652b4452851955",
+    "built_on": "4f2a254d4c9f2f0183b6018b84c3d448abb7bdc8",
     "parts": {
-      "lib": "01762bfdd99772ee29aa78994bca8f02b1d524d1",
+      "lib": "3c543323950a4138b2dda0cd9c73a9984fc8add9",
       "smith-agents.gemspec": "c53afa043a29d0108246de68b76d808a268e1ec6",
-      "script/core_invisibility_golden": "fdb1a74b66a109c5c15fa6d37f172e98e8d6eecb",
-      "script/golden": "aa89720d22b18d707c3ce65f3431fd22d91cf2ad",
+      "script/core_invisibility_golden": "fa5dfc677d892ac135c0d144ed7ce05162b55ce9",
+      "script/golden": "0b6182acefe20f12a6ad7d0addea7a533dc0cfdb",
       "spec/support/sse_server.rb": "4941e3ea43940f40dae927586e75bb999856d198"
     }
   },
@@ -1242,6 +1242,7 @@
           "render_prompt",
           "resolve_fallback_models",
           "schema",
+          "smith_prompt",
           "sync_instructions!",
           "temperature",
           "thinking",

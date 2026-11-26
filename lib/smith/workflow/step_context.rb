@@ -14,7 +14,9 @@ module Smith
           setup_step_context
           install_step_attribution(transition)
           install_step_idempotency_scope(transition)
-          Thread.handle_interrupt(Object => :immediate, &block)
+          # An agent called from Ruby inside the step sends what the run
+          # sends for it (Smith::Prompts).
+          Prompts.__send__(:running, @smith_prompt_pins) { Thread.handle_interrupt(Object => :immediate, &block) }
         rescue StandardError => e
           Interruptions.pass!(e)
           @outcome = nil
@@ -58,7 +60,7 @@ module Smith
         ThreadContextSnapshot.new.around do
           start_active_clock!
           setup_step_context
-          Thread.handle_interrupt(Object => :immediate, &block)
+          Prompts.__send__(:running, @smith_prompt_pins) { Thread.handle_interrupt(Object => :immediate, &block) }
         ensure
           teardown_step_context
           stop_active_clock!

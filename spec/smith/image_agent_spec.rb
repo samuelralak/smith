@@ -101,6 +101,48 @@ RSpec.describe "Smith image agents" do
     expect(Smith.artifact_backend.fetch(part[:artifact].split(":", 2).last)).to eq(drawn)
   end
 
+  it "paints from a named prompt as the run sends it, a trial's candidate here, and stamps its version" do
+    image_agent("SpecPromptedPaintAgent") do
+      inputs :ink
+      instructions Smith::Prompt.new("paint.style", "Draw it in {{ink}} ballpoint.")
+    end
+    server.reply(json: painted)
+    saved = Smith.config.trace_adapter
+    Smith.config.trace_adapter = traces = Smith::Trace::Memory.new
+    candidate = "Sketch it in {{ink}} ink."
+    workflow = Smith::Prompts.with_candidate("paint.style" => candidate) do
+      drawing("SpecPromptedPaintWorkflow").new(context: { ink: "red" }).tap(&:run!)
+    end
+    stamp = [{ id: "paint.style", version: "sha256:#{Digest::SHA256.hexdigest(candidate)}" }]
+
+    expect(server.requests.sole.body[/name="prompt"\r\n\r\n(.*?)\r\n--/m, 1]).to start_with("Sketch it in red ink.")
+    expect(workflow.usage_entries.sole.components).to eq(stamp)
+    expect(traces.traces.select { _1[:type] == :provider_call }.map { _1[:data][:components] }).to eq([stamp])
+  ensure
+    Smith.config.trace_adapter = saved
+  end
+
+  it "stamps a paint it could not keep with its prompt's version, and one whose chat failed to build with none" do
+    text = "Draw it in {{ink}} ballpoint."
+    image_agent("SpecPromptedUnkeptAgent") do
+      inputs :ink
+      instructions Smith::Prompt.new("paint.style", text)
+    end
+    server.reply(json: painted.merge("data" => [{ "url" => nil }]))
+    saved = Smith.config.trace_adapter
+    Smith.config.trace_adapter = traces = Smith::Trace::Memory.new
+    unkept = drawing("SpecPromptedUnkeptWorkflow").new(context: { ink: "red" }).run!
+    missing = drawing("SpecPromptedMissingWorkflow").new(context: {}).run!
+    stamp = [{ id: "paint.style", version: "sha256:#{Digest::SHA256.hexdigest(text)}" }]
+
+    expect(unkept.usage_entries.sole.to_h).to include(attempt_kind: :partial_attempt, components: stamp)
+    expect(failure(missing)).to be_a(Smith::TemplateValueMissing)
+    expect(traces.traces.select { _1[:type] == :provider_call }.map { _1[:data][:components] }).to eq([stamp, nil])
+    expect(server.requests.size).to eq(1)
+  ensure
+    Smith.config.trace_adapter = saved
+  end
+
   it "counts and prices the image parts of its input and output apart" do
     image_agent("SpecPricedAgent")
     server.reply(json: painted)

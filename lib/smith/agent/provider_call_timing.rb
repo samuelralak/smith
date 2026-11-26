@@ -49,8 +49,9 @@ module Smith
       # input_tokens and output_tokens total the attempt's usage entries, so
       # a host can record the whole attempt when it ends. request_changed
       # marks a batch result that answered the request sent, not the one the
-      # call renders now.
-      def record_provider_call_trace(attempt, aborted: false)
+      # call renders now. components names the named prompt versions the
+      # request carried (Smith::Prompts). One literal of the attempt's fields.
+      def record_provider_call_trace(attempt, aborted: false) # rubocop:disable Metrics/AbcSize
         Smith::Trace.record(
           type: :provider_call,
           data: {
@@ -62,6 +63,7 @@ module Smith
             outcome: provider_call_outcome(attempt, aborted),
             **provider_call_error_classes(attempt.error),
             agent_name: attempt.agent_name,
+            components: attempt.components,
             request_changed: attempt.request_changed,
             memo: attempt.memo,
             **provider_call_usage(attempt.usage)

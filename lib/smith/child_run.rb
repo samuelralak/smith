@@ -12,8 +12,10 @@ module Smith
   # the untrusted keys it inherits from its parent (the parent's untrusted
   # keys that `input:` passed under the same names), and the artifact
   # namespaces it may read (its parent's and the parent's ancestors', the
-  # nearest first), so a document a parent stored reaches its children.
-  ChildRun = Data.define(:ref, :key, :workflow, :input, :untrusted_keys, :artifact_namespaces) do
+  # nearest first), so a document a parent stored reaches its children, and
+  # its parent's prompt pins (each component's version and each version's
+  # text, Smith::Prompts), so it sends what its parent pinned.
+  ChildRun = Data.define(:ref, :key, :workflow, :input, :untrusted_keys, :artifact_namespaces, :prompt_pins) do
     # The key of the step's `ref`th child, from the step's token. A step in
     # an in-process nested workflow or a fan-out item shares the run's
     # tokens with the steps of its number elsewhere in the run, so its
@@ -25,16 +27,16 @@ module Smith
       Digest::SHA256.hexdigest(JSON.generate(["smith.child_run.v1", await_token, place, ref]))
     end
 
-    def initialize(artifact_namespaces: [], **)
+    def initialize(artifact_namespaces: [], prompt_pins: {}, **)
       super
     end
 
-    # The child, built with what it inherits in force; both persist with
+    # The child, built with what it inherits in force; each persists with
     # it, so a restored child keeps them.
     def build
       Workflow::StepIO.with_inherited_untrusted_keys(untrusted_keys) do
         Workflow::ArtifactIntegration.with_inherited_artifact_namespaces(artifact_namespaces) do
-          workflow.new(context: input)
+          Prompts.__send__(:inheriting, prompt_pins) { workflow.new(context: input) }
         end
       end
     end

@@ -112,7 +112,7 @@ module Smith
       # A follow-up whose outcome is uncertain says so, never the failure it
       # was making up for, so nothing asks for it again.
       def fail_follow_up(plan, attempt, pending)
-        account_failed_attempt(attempt.error, attempt.model_reference, plan.agent_class, attempt_id: attempt.attempt_id)
+        account_failed_attempt(attempt, plan.agent_class)
         raise attempt.error if Smith::Errors.retry_forbidden?(attempt.error)
 
         raise pending, cause: attempt.error

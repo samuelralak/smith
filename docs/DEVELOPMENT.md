@@ -92,6 +92,15 @@ an avoidable asymptotic regression as a release blocker.
   most 100 of them) and fills it in in `O(L + V)` for `V` bytes of values,
   a String not in UTF-8 converted in `O(V)`. The strict JSON reader checks
   each number of a text against canonical JSON's rule in `O(1)`.
+- Named prompts (`Smith::Prompts`): a run's start walks the transitions of
+  its class and its nested classes once, `O(T)`, asking the prompt registry
+  at most once a component it pins; a restore reads its pinned texts back
+  and digests each in `O(L)` for `L` bytes, at most 1,000 components; a
+  pinned read is `O(1)` under the run's pins lock, and filling a text in is
+  `Smith::Template`'s `O(L + V)`. An attempt's version stamp is worked out
+  once, `O(1)`, and read back in `O(C)` for `C` components. With no agent
+  declaring a named prompt, a run start allocates its empty pins and walks
+  nothing, and a call reads a nil.
 - Retry delay calculation is `O(1)` time and space per attempt. A policy with
   `A` attempts performs at most `A` guarded operations and never materializes an
   exponential schedule.

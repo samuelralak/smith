@@ -22,8 +22,9 @@ module Smith
       private_constant :HELD
 
       # A capture notes its request's hold (RequestHolds) when its step has
-      # a host's budget ledger (`holding`).
-      Exchange = Struct.new(:provider, :result, :digest, :changed, :on_change, :holding, :hold)
+      # a host's budget ledger (`holding`), and the named prompt versions its
+      # attempt was built to send (`components`, Smith::Prompts).
+      Exchange = Struct.new(:provider, :result, :digest, :changed, :on_change, :holding, :hold, :components)
       # What a provider's response parser reads.
       Response = Struct.new(:body)
 

@@ -63,7 +63,8 @@ module Smith
         place = IdempotencyKey.__send__(:current_scope!).path[0...-1]
         ChildRun.new(ref:, key: ChildRun.key_for(token, ref, place), workflow: config.fetch(:workflow), input:,
                      untrusted_keys: (untrusted_context_keys & input.keys).freeze,
-                     artifact_namespaces: child_artifact_namespaces)
+                     artifact_namespaces: child_artifact_namespaces,
+                     prompt_pins: Prompts.__send__(:handed_down, @smith_prompt_pins))
       end
 
       # The inputs of one step's children together are bounded, as one

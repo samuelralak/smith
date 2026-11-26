@@ -15,10 +15,9 @@ module Smith
         end
 
         def capture(transition, workflow_class:)
-          capture_binding(transition.agent_name, workflow_class:, transition:, role: :agent)
-          capture_fanout(transition, workflow_class:)
-          capture_optimization(transition, workflow_class:)
-          capture_orchestration(transition, workflow_class:)
+          Transition.agent_references(transition).each do |role, name|
+            capture_binding(name, workflow_class:, transition:, role:)
+          end
         end
 
         def fetch!(name, workflow_class:, transition_name:, role:)
@@ -52,26 +51,6 @@ module Smith
         end
 
         private
-
-        def capture_fanout(transition, workflow_class:)
-          transition.fanout_config&.fetch(:branches, nil)&.each_value do |agent|
-            capture_binding(agent, workflow_class:, transition:, role: :fanout_agent)
-          end
-        end
-
-        def capture_optimization(transition, workflow_class:)
-          return unless (config = transition.optimization_config)
-
-          capture_binding(config.fetch(:generator), workflow_class:, transition:, role: :generator)
-          capture_binding(config.fetch(:evaluator), workflow_class:, transition:, role: :evaluator)
-        end
-
-        def capture_orchestration(transition, workflow_class:)
-          return unless (config = transition.orchestrator_config)
-
-          capture_binding(config.fetch(:orchestrator), workflow_class:, transition:, role: :orchestrator)
-          capture_binding(config.fetch(:worker), workflow_class:, transition:, role: :worker)
-        end
 
         def capture_binding(name, workflow_class:, transition:, role:)
           return unless name

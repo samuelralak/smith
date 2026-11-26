@@ -28,7 +28,7 @@ module Smith
       # are held on the step's budget ledger, if it has one, keyed by the
       # attempt's `attempt_id` (`facts`).
       def complete_chat(chat, model_reference, collected, facts = {})
-        return capture_batch_call(chat, model_reference) if @batch_capturing
+        return capture_batch_call(chat, model_reference, facts[:components]) if @batch_capturing
 
         entry = take_batch_result
         delivered = deliver_batch_result(chat, entry) if entry
@@ -113,7 +113,8 @@ module Smith
       end
 
       # The batch result as the chat's reply, and whether the request the
-      # call rendered is other than the one sent (a fact of its attempt). A
+      # call rendered is other than the one sent (a fact of its attempt), its
+      # attempt stamped with the versions the request sent carried. A
       # result its call will not use (`on_request_change` :resend or :fail)
       # is set aside, to be charged; :resend returns nil, and the call goes
       # over the wire.
@@ -121,7 +122,9 @@ module Smith
         delivery = @batch_delivery
         response, changed = Providers::BatchExchange.deliver(chat_provider(chat), entry.result, entry.digest,
                                                              on_change: delivery.on_change) { chat.complete }
-        [response, nil, :batch, { request_changed: changed || nil }]
+        facts = { request_changed: changed || nil }
+        facts[:components] = entry.components if entry.components
+        [response, nil, :batch, facts]
       rescue BatchRequestChanged
         delivery.set_aside(Attribution.current&.branch_key, entry)
         raise unless delivery.on_change == :resend
@@ -129,15 +132,17 @@ module Smith
 
       # A batch step's call: the provider must have a batch interface (only
       # Anthropic's, so far) and the agent no tools (a batch request is one
-      # turn). The request is thrown out of the call before it is sent.
-      def capture_batch_call(chat, model_reference)
+      # turn). The request is thrown out of the call before it is sent, the
+      # attempt's version stamp kept with it.
+      def capture_batch_call(chat, model_reference, components)
         provider = chat_provider(chat)
         unless provider.respond_to?(:slug) && provider.slug.to_s == "anthropic"
           raise BatchModeUnavailable, "#{model_reference.provider || "this provider"} has no batch interface in Smith"
         end
         raise BatchModeUnavailable, "a batch request is one turn: its agent cannot have tools" if chat_tools?(chat)
 
-        @batch_capture = Providers::BatchExchange::Exchange.new(provider:, holding: !run_budget_ledger.nil?)
+        @batch_capture = Providers::BatchExchange::Exchange.new(provider:, holding: !run_budget_ledger.nil?,
+                                                                components:)
         Providers::BatchExchange.within(@batch_capture) { chat.complete }
         raise BatchModeUnavailable, "the call did not reach its provider's request"
       end

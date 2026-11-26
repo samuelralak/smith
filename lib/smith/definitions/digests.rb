@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-require "digest"
 require_relative "../canonical_json"
+require_relative "../content_identity"
 
 module Smith
   module Definitions
@@ -46,7 +46,7 @@ module Smith
       end
 
       # A prompt component's version: its text's UTF-8 bytes.
-      def text(text) = "sha256:#{Digest::SHA256.hexdigest(text)}".freeze
+      def text(text) = ContentIdentity.digest(text)
 
       def framed(frame, value) = text("#{frame}\n#{CanonicalJSON.generate(value)}")
     end

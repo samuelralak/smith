@@ -22,11 +22,14 @@ module Smith
               end
         proc do |signal|
           Attribution.carrying(ambient_attribution) do
-            Tool::ScopedContext.around(tool_context) do
-              next run.call(*arguments, signal) unless authorized
+            # The run's prompt pins, for an agent its tools call from Ruby.
+            Prompts.__send__(:running, @smith_prompt_pins) do
+              Tool::ScopedContext.around(tool_context) do
+                next run.call(*arguments, signal) unless authorized
 
-              PreparedBranchExecution.instance_method(:within_prepared_branch_execution)
-                                     .bind_call(self) { run.call(*arguments, signal) }
+                PreparedBranchExecution.instance_method(:within_prepared_branch_execution)
+                                       .bind_call(self) { run.call(*arguments, signal) }
+              end
             end
           end
         end

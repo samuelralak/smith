@@ -21,7 +21,7 @@ module Smith
           next unless entry.result["type"] == "succeeded"
 
           Attribution.with(branch_key:) do
-            charge_batch_result(batch_agent_class(transition, branch_key, delivered), entry.result.fetch("message"))
+            charge_batch_result(batch_agent_class(transition, branch_key, delivered), entry)
           end
         end
       end
@@ -36,12 +36,16 @@ module Smith
         resolve_fanout_agent_class(transition, transition.fanout_config.fetch(:branches).fetch(branch_key))
       end
 
-      def charge_batch_result(agent_class, message)
+      # A result no call took, charged under the version stamp of the
+      # request it answers.
+      def charge_batch_result(agent_class, entry)
+        message = entry.result.fetch("message")
         usage = batch_reply_usage(message)
         return unless usage
 
         model = Agent::ModelReference.new(model_id: batch_model_id(agent_class, message), provider: "anthropic")
-        record_billed_usages(agent_class, [usage], :failed_attempt, model, attempt_id: nil)
+        record_billed_usages(agent_class, [usage], :failed_attempt, model,
+                             attempt_id: nil, components: entry.components)
         settle_spent_batch_charges
       end
 

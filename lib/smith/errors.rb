@@ -243,6 +243,13 @@ module Smith
     end
   end
 
+  # A named prompt, or a text for one, that Smith refuses (Smith::Prompt,
+  # Smith::Prompts): a component id outside the rule, text that is not a
+  # template, a text without exactly its component's fill-in fields, two
+  # agents declaring one component with two texts, or prompt components a
+  # class gives that are not {id, version} pairs.
+  class PromptInvalid < Error; end
+
   # Credentials refuse to be serialized or printed with their values.
   class SecretSerializationError < Error
     def initialize(message = "credentials are never serialized") = super

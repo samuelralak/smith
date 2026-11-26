@@ -1087,13 +1087,14 @@ results. Smith never queues, polls or waits on a child.
 ```ruby
 class QueueLauncher
   # children: Smith::ChildRun (ref, key, workflow, input, untrusted_keys,
-  # artifact_namespaces, #build)
+  # artifact_namespaces, prompt_pins, #build)
   def launch(children:, parent_key:, await_token:)
     children.each do |child|
       ChildRunJob.perform_later(key: child.key, parent_key:, await_token:, ref: child.ref,
                                 workflow: child.workflow.name, input: child.input,
                                 untrusted_keys: child.untrusted_keys,
-                                artifact_namespaces: child.artifact_namespaces)
+                                artifact_namespaces: child.artifact_namespaces,
+                                prompt_pins: child.prompt_pins)
     end
   end
 end
@@ -1119,7 +1120,12 @@ Smith.config.run_launcher = QueueLauncher.new
   Symbols) and calls `#build`, which checks the untrusted key names it gets
   back as Strings and the artifact namespaces the child may read (its
   parent's and the parent's nearest ancestors', at most 16; a job that omits
-  them gives the child none, and its reads of the parent's documents fail).
+  them gives the child none, and its reads of the parent's documents fail),
+  and the parent's prompt pins (`{"versions" => {component_id => version},
+  "texts" => {version => text}}`, docs/AGENTS.md "Named prompts": every
+  pinned text, so a job's payload grows by them, outside the bound on its
+  input; a job that omits them gives the child none, and the child pins its
+  named prompts when it starts).
 - A child gets only the context `input:` returns (JSON-shaped, bounded at 1 MiB
   each and 16 MiB for a step's children together) and no session. A key the
   parent treats as untrusted that `input:` passes under the same name stays

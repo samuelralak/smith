@@ -66,6 +66,7 @@ module CoreInvisibility
 
     def call
       Smith::AttemptObservation.install(@observer) if @observer
+      CoreInvisibility.prompted! if @mode == "prompted"
       surface = HostSurface.call
       selected = CoreInvisibility.scenarios.select { @mode != "concurrent" || _1.concurrent }
       scenarios = selected.to_h { [_1.name.to_s, run(_1)] }
@@ -171,6 +172,7 @@ module CoreInvisibility
       doc = { "format" => FORMAT, "smith" => Environment.smith, "environment" => Environment.versions,
               "process" => Environment.process, "host_surface" => surface, "scenarios" => scenarios }
       doc["observations"] = @observations if @observer
+      doc["prompts_declared"] = Smith::Prompts.__send__(:declared?) if @mode == "prompted"
       doc
     end
   end

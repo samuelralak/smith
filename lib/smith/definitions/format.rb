@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../canonical_json"
+require_relative "../content_identity"
 require_relative "../error"
 
 module Smith
@@ -42,7 +43,7 @@ module Smith
       MAX_INTEGER = CanonicalJSON::MAX_SAFE_INTEGER
 
       KIND_RULE = "is not a kind this Smith reads; it reads agent and judge"
-      ID = /\A[a-z0-9][a-z0-9._-]{0,127}\z/
+      ID = ContentIdentity::ID
       ID_RULE = 'is 1 to 128 lowercase letters, digits, ".", "_" or "-", starting with a letter or digit'
       FIELD_NAME = /\A[A-Za-z_][A-Za-z0-9_]{0,63}\z/
       FIELD_RULE = 'is a fill-in field name: a letter or "_", then up to 63 letters, digits or "_"'

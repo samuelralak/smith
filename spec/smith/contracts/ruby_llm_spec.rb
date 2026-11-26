@@ -269,6 +269,23 @@ RSpec.describe "RubyLLM contract: the public touch points Smith uses" do
       RubyLLM.config.log_stream_debug = stream
     end
 
+    # The prompt seam (slice 4): a named prompt is an instructions block,
+    # filled in from the inputs in the fiber building the chat, whose
+    # fiber-local state holds the version Smith sends.
+    it "runs an instructions block as it builds a chat, in its fiber, inputs as methods, copied to subclasses" do
+      seen = []
+      agent = Class.new(RubyLLM::Agent) do
+        model "claude-sonnet-5-5", provider: :anthropic, assume_model_exists: true
+        inputs :person
+        instructions { (seen << [Fiber.current, person]) && "For #{person}." }
+      end
+      chat = agent.chat(person: "Ada")
+      Class.new(agent).chat(person: "Bo")
+
+      expect(seen).to eq([[Fiber.current, "Ada"], [Fiber.current, "Bo"]])
+      expect(chat.messages.map { [_1.role, _1.content] }).to eq([[:system, "For Ada."]])
+    end
+
     it "reads an agent class's own context and inputs, which would replace a run's context" do
       own = RubyLLM.context
       agent = Class.new(RubyLLM::Agent) do

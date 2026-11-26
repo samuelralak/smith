@@ -5,6 +5,19 @@ require_relative "../tool_capture_failed"
 module Smith
   class Workflow
     class Transition # rubocop:disable Metrics/ClassLength -- a split adds a mixin to what host transition blocks run on
+      # Every agent a step names, [role, name] in the order it runs them:
+      # its own, each fan-out branch's, an optimizer's generator and
+      # evaluator, an orchestrator and its worker. The one list a step's
+      # execution bindings and its named prompts' pins are read from; a
+      # class method, so a host's transition block gains no name.
+      def self.agent_references(transition)
+        branches = transition.fanout? ? transition.fanout_config.fetch(:branches).values : []
+        configs = { generator: transition.optimization_config, evaluator: transition.optimization_config,
+                    orchestrator: transition.orchestrator_config, worker: transition.orchestrator_config }
+        [[:agent, transition.agent_name], *branches.map { [:fanout_agent, _1] },
+         *configs.filter_map { |role, config| [role, config.fetch(role)] if config }].select(&:last)
+      end
+
       attr_reader :name, :from, :to, :agent_name, :agent_opts, :success_transition, :failure_transition,
                   :router_config, :workflow_class, :optimization_config, :orchestrator_config,
                   :fanout_config, :retry_config, :deterministic_block, :deterministic_kind,

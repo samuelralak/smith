@@ -146,7 +146,7 @@ module Smith
         failure = { kind: :credentials_missing, error_class: "Smith::ProviderCredentialsMissing",
                     message: FIXED_MESSAGES.fetch(:credentials_missing) }.freeze
         Attempt.new(trial:, agent: (agent_class.register_as || agent_class.name)&.to_s,
-                    components: components(agent_class), **facts, outcome: :skipped, failure:, mode: :sync,
+                    components: nil, **facts, outcome: :skipped, failure:, mode: :sync,
                     memo: false, duration_ms: nil, tokens: nil, stop_reason: nil, messages: [].freeze, sent_count: 0,
                     tool_call_names: [].freeze, position:)
       end
@@ -158,7 +158,7 @@ module Smith
       end
 
       def observation(trial, attempt, agent_class, messages, sent)
-        Attempt.new(trial:, agent: agent_name(attempt, agent_class), components: components(agent_class),
+        Attempt.new(trial:, agent: agent_name(attempt, agent_class), components: attempt.components,
                     **attempt_facts(attempt), messages:, sent_count: sent,
                     tool_call_names: tool_call_names(messages, sent), position:)
       end
@@ -187,12 +187,6 @@ module Smith
       end
 
       def agent_name(attempt, agent_class) = (attempt.agent_name || agent_class.name)&.to_s
-
-      def components(agent_class)
-        return unless agent_class.respond_to?(:smith_prompt_components)
-
-        agent_class.smith_prompt_components&.map { |component| component.to_h.freeze }&.freeze
-      end
 
       def failure(error)
         return if error.nil?

@@ -60,6 +60,7 @@ module Smith
             validate_usage_identity!(entry)
             validate_usage_attribution!(entry)
             validate_usage_details!(entry)
+            validate_usage_components!(entry)
             validate_usage_amount!(entry.fetch("input_tokens"), "input_tokens")
             validate_usage_amount!(entry.fetch("output_tokens"), "output_tokens")
             validate_cost!(entry.fetch("cost"))
@@ -124,6 +125,14 @@ module Smith
           return if !entry.key?("mode") || USAGE_MODES.include?(entry.fetch("mode"))
 
           raise ArgumentError, "composite usage entry mode is invalid"
+        end
+
+        # The versions an attempt was built to send, a stamp as Smith
+        # records one (Smith::Prompts::Stamp), which a restore reads back.
+        def validate_usage_components!(entry)
+          return if !entry.key?("components") || Prompts::Stamp.read(entry.fetch("components"))
+
+          raise ArgumentError, "composite usage entry components is invalid"
         end
 
         def validate_uuid!(value, label)

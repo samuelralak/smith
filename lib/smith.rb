@@ -242,6 +242,13 @@ Smith.setting :require_run_credentials, default: false,
 Smith.setting :run_credentials_instrumenter, default: :off,
                                              constructor: Smith::SettingConstructors.run_credentials_instrumenter
 
+# The prompt registry a run's named prompts resolve their active versions
+# from (Smith::Prompts): nil, the default, sends each agent's own text, the
+# files in the repo.
+Smith.setting :prompt_registry, default: nil, constructor: Smith::SettingConstructors.adapter(
+  :prompt_registry, { active: "active(component_id:, scope:)" }
+)
+
 # Leaf modules (no internal dependencies)
 require_relative "smith/types"
 require_relative "smith/errors"
@@ -257,6 +264,7 @@ require_relative "smith/exponential_backoff"
 require_relative "smith/interruptions"
 require_relative "smith/provider_errors"
 require_relative "smith/billing_refusals"
+require_relative "smith/prompts"
 
 # Event system (depends on Types)
 require_relative "smith/event"

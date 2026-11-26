@@ -5,11 +5,11 @@ module Smith
     module UsageEntryRecording
       private
 
-      def record_usage(agent_class, agent_result, attempt_kind, model_reference, attempt_id: nil)
+      def record_usage(agent_class, agent_result, attempt_kind, model_reference, attempt_id: nil, components: nil)
         return unless agent_result.usage_known?
 
         model_reference = coerce_model_reference(model_reference)
-        entry = build_usage_entry(agent_class, agent_result, attempt_kind, model_reference, attempt_id:)
+        entry = build_usage_entry(agent_class, agent_result, attempt_kind, model_reference, attempt_id:, components:)
         accumulate_usage(agent_result, entry)
       end
 
@@ -19,8 +19,9 @@ module Smith
       # transition and branch_key are recorded as Symbols even when a host
       # seeded Strings through Attribution.with, because from_h symbolizes
       # them on restore: recording the same way keeps a restored entry equal
-      # to the recorded one.
-      def build_usage_entry(agent_class, agent_result, attempt_kind, model_reference, attempt_id: nil)
+      # to the recorded one. `components` is the attempt's version stamp
+      # (Smith::Prompts), handed over with its id.
+      def build_usage_entry(agent_class, agent_result, attempt_kind, model_reference, attempt_id: nil, components: nil)
         Workflow::UsageEntry.new(
           usage_id: SecureRandom.uuid,
           agent_name: agent_class.register_as,
@@ -32,6 +33,7 @@ module Smith
           attempt_kind: attempt_kind,
           recorded_at: Time.now.utc.iso8601(6),
           attempt_id: attempt_id,
+          components:,
           **ambient_attribution_fields,
           **Workflow::AgentResult::USAGE_DETAIL_MEMBERS.to_h { |member| [member, agent_result.public_send(member)] },
           mode: agent_result.mode

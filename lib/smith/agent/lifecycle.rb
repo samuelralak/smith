@@ -32,8 +32,7 @@ module Smith
         set_aside = []
         attempt = complete_with_provider(agent_class, prepared_input, shape: plan.shape, set_aside:)
         loop do
-          result = account_attempt(agent_class, attempt.completion, attempt.model_reference,
-                                   attempt_id: attempt.attempt_id)
+          result = account_attempt(agent_class, attempt)
           follow_up = output_follow_up(plan, attempt, result)
           return accepted_output(agent_class, result, set_aside) unless follow_up
 

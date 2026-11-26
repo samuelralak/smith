@@ -46,6 +46,9 @@ module Smith
     # The run's credentials (Smith::RunCredentials), when it has them.
     def run_credentials = @workflow.instance_variable_get(:@smith_run_credentials)
 
+    # The run's prompt pins (Smith::Prompts), when it has them.
+    def prompt_pins = @workflow.instance_variable_get(:@smith_prompt_pins)
+
     def check_image_agent!
       refused = image_refusals.select { |_, given| given }.keys
       return if refused.empty?
@@ -111,7 +114,7 @@ module Smith
     def failed_paint(error, model_reference, timer, sent, image)
       usages, error = PaintedAnswer.unkept(error)
       workflow(:record_billed_usages, @agent_class, usages, :partial_attempt, model_reference,
-               attempt_id: @facts[:attempt_id])
+               attempt_id: @facts[:attempt_id], components: @facts[:components])
       error = outcome_uncertain(error) if Providers::RequestOutcome.uncertain?(error)
       attempt = workflow(:failed_provider_attempt, error, model_reference, timer, @facts, usages,
                          agent_class: @agent_class, request: sent, image:)
@@ -121,15 +124,23 @@ module Smith
       attempt
     end
 
+    # The paint's instructions are its named prompt as the run sends it
+    # (Smith::Prompts), whose version the attempt carries once it is built.
     def painting_chat(prepared_input, model_reference)
-      chat = @agent_class.chat(**model_reference.chat_options, **(run_credentials&.chat_options || {}),
-                               **workflow(:bridge_workflow_inputs, @agent_class))
+      chat = Prompts.__send__(:sending, prompt_pins, @agent_class) do |components|
+        agent_chat(model_reference).tap { @facts[:components] = components if components }
+      end
       sendable = chat.respond_to?(:with_context) && chat.respond_to?(:with_model)
       chat = workflow(:sent_once, chat, @agent_class) if sendable
       provider = workflow(:observed_model_reference, chat, fallback: model_reference).provider
       workflow(:add_prepared_input, chat, prepared_input, provider,
                Agent::ProviderRequest::Shape.new(output_schema: nil, output_limit: nil, prompt_cache: :none))
       chat
+    end
+
+    def agent_chat(model_reference)
+      @agent_class.chat(**model_reference.chat_options, **(run_credentials&.chat_options || {}),
+                        **workflow(:bridge_workflow_inputs, @agent_class))
     end
 
     # Yields the provider's image before it is kept, for the attempt's

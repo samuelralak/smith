@@ -10,7 +10,7 @@ module Smith
       # catalogs bill, so an invocation's cost is the sum of these, never the
       # aggregate token totals priced as one call (which would resolve the
       # wrong tier for a multi-response tool loop).
-      def record_response_usages(agent_class, usages, attempt_kind, model_reference, attempt_id: nil)
+      def record_response_usages(agent_class, usages, attempt_kind, model_reference, attempt_id: nil, components: nil)
         model_reference = coerce_model_reference(model_reference)
         usages.map do |usage|
           result = Workflow::AgentResult.new(
@@ -23,15 +23,16 @@ module Smith
             **Workflow::AgentResult.usage_details(usage)
           )
           compute_agent_cost(result)
-          record_usage(agent_class, result, attempt_kind, model_reference, attempt_id:)
+          record_usage(agent_class, result, attempt_kind, model_reference, attempt_id:, components:)
           result
         end
       end
 
       # Returns [invocation_cost, fully_priced, per_response_results].
-      def record_completion_usage(agent_class, completion, attempt_kind, model_reference, attempt_id: nil)
+      def record_completion_usage(agent_class, completion, attempt_kind, model_reference, attempt_id: nil,
+                                  components: nil)
         results = record_response_usages(agent_class, completion.provider_usages, attempt_kind, model_reference,
-                                         attempt_id:)
+                                         attempt_id:, components:)
         [*summarize_invocation_costs(results.map(&:cost), completion), results]
       end
 

@@ -16,27 +16,30 @@ module Smith
       # A failed attempt's own reported usage, cache counts included, is
       # recorded, priced and settled into the budget like any billed
       # response, so its usage entry agrees with its :provider_call trace.
-      def account_failed_attempt(error, model_reference, agent_class, attempt_id: nil)
-        usage = ProviderUsage.from_message(error)
+      def account_failed_attempt(attempt, agent_class)
+        usage = ProviderUsage.from_message(attempt.error)
         return unless usage
 
-        record_billed_usages(agent_class, [usage], :failed_attempt, model_reference, attempt_id:)
+        record_billed_usages(agent_class, [usage], :failed_attempt, attempt.model_reference,
+                             attempt_id: attempt.attempt_id, components: attempt.components)
       end
 
       # The completed rounds of a tool loop whose attempt then failed were
       # billed: they are recorded and settled into the budget like a failed
       # attempt's usage. Returns the provider usages recorded, so the
       # attempt's trace carries the same totals its usage entries hold.
-      def account_completed_prefix(agent_class, model_reference, messages, attempt_id: nil, stream: nil)
+      def account_completed_prefix(agent_class, model_reference, messages, attempt_id: nil, components: nil,
+                                   stream: nil)
         completion = Completion.from_messages(response: nil, messages:, stream:)
-        record_billed_usages(agent_class, completion.provider_usages, :partial_attempt, model_reference, attempt_id:)
+        record_billed_usages(agent_class, completion.provider_usages, :partial_attempt, model_reference,
+                             attempt_id:, components:)
         completion.provider_usages
       end
 
       # Usage that is billed but is not the invocation's result joins the
       # failed billable attempts, which budget settlement reads beside it.
-      def record_billed_usages(agent_class, usages, attempt_kind, model_reference, attempt_id:)
-        results = record_response_usages(agent_class, usages, attempt_kind, model_reference, attempt_id:)
+      def record_billed_usages(agent_class, usages, attempt_kind, model_reference, attempt_id:, components: nil)
+        results = record_response_usages(agent_class, usages, attempt_kind, model_reference, attempt_id:, components:)
         add_failed_agent_results(results)
       end
 
@@ -47,14 +50,16 @@ module Smith
         Thread.current[:smith_failed_agent_results] = [*Array(Thread.current[:smith_failed_agent_results]), *results]
       end
 
-      # Records and settles one completed attempt's usage and returns its
-      # result, whether or not the result becomes the output.
-      def account_attempt(agent_class, completion, model_reference, attempt_id: nil)
-        model_reference = coerce_model_reference(model_reference)
-        agent_result = completion_agent_result(completion, model_reference)
+      # Records and settles one completed attempt's usage, under its id and
+      # version stamp, and returns its result, whether or not the result
+      # becomes the output.
+      def account_attempt(agent_class, attempt)
+        model_reference = coerce_model_reference(attempt.model_reference)
+        agent_result = completion_agent_result(attempt.completion, model_reference)
         Thread.current[:smith_last_agent_result] = agent_result
         emit_token_usage(agent_result)
-        account_completion!(agent_class, completion, model_reference, agent_result, attempt_id)
+        account_completion!(agent_class, attempt.completion, model_reference, agent_result, attempt.attempt_id,
+                            components: attempt.components)
         agent_result
       end
 
@@ -101,9 +106,9 @@ module Smith
       # figure is never presented as the invocation cost; the partial sums
       # of cost and tokens still settle the budget because they are what
       # was verifiably billed.
-      def account_completion!(agent_class, completion, model_reference, agent_result, attempt_id)
+      def account_completion!(agent_class, completion, model_reference, agent_result, attempt_id, components: nil)
         invocation_cost, fully_priced, results = record_completion_usage(
-          agent_class, completion, :completed_attempt, model_reference, attempt_id:
+          agent_class, completion, :completed_attempt, model_reference, attempt_id:, components:
         )
         agent_result.cost = invocation_cost
         agent_result.metered_tokens = results.sum(&:total_tokens) unless completion.usage_complete

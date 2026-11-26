@@ -130,12 +130,13 @@ RSpec.describe Smith::AttemptObservation do
     end
 
     it "names an agent's prompt components when its class gives them" do
-      answering { define_singleton_method(:smith_prompt_components) { [{ id: "triage", version: "v3" }] } }
+      given = [{ id: "triage", version: "sha256:#{"3" * 64}" }]
+      answering { define_singleton_method(:smith_prompt_components) { given } }
       described_class.install(observer)
       server.reply(json: message("Open at 8."))
 
       run_in_trial(asking("SpecSeamComponentsWorkflow", agent: :spec_seam_agent).new(context: {}))
-      expect(observer.seen.sole.components).to eq([{ id: "triage", version: "v3" }])
+      expect(observer.seen.sole.components).to eq(given)
     end
   end
 
