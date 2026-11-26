@@ -14,19 +14,19 @@ module Smith
       # Internal. What Smith's stores check before they keep a record, and the
       # text they keep, so both read back the same way. A record is a JSON
       # object (JSONCheck). The kept text, at most MAX_BYTES, is a line's
-      # compact JSON, or the indented JSON a header, summary or cancel flag
-      # is kept as (the published examples' form). It is read back strictly,
-      # and every field is checked on that read-back, the record as it will
-      # be kept, never on the caller's object: a Hash whose default answers a
+      # compact JSON, or the indented JSON a header, summary or cancel flag is
+      # kept as (the published examples' form). It is read back strictly, and
+      # every field is checked on that read-back, the record as it will be
+      # kept, never on the caller's object: a Hash whose default answers a
       # read its JSON does not hold is refused, so no write leaves a record
       # its store cannot read or list. Only the fields a store reads are
-      # checked: the format, the run id and scope, the id within its kind,
-      # and what a listing shows. The same record is the same canonical JSON
-      # (RFC 8785), so a retry whose text another json version wrote, or
-      # whose keys come in another order, is the record already kept; a
-      # record with no canonical JSON (an integer past 2**53 - 1, or more
-      # than 1,000,000 values) is refused. O(N + sum k log k) in the
-      # record's size and its objects' keys.
+      # checked: the format, the run id and scope, the id within its kind, and
+      # what a listing shows (a tuning run's: TuningRecords). The same record
+      # is the same canonical JSON (RFC 8785), so a retry whose text another
+      # json version wrote, or whose keys come in another order, is the record
+      # already kept; a record with no canonical JSON (an integer past
+      # 2**53 - 1, or more than 1,000,000 values) is refused.
+      # O(N + sum k log k) in the record's size and its objects' keys.
       module Records
         MAX_BYTES = 8 * 1024 * 1024
         EVAL_RUN_ID = Identity::EVAL_RUN_ID
@@ -38,7 +38,7 @@ module Smith
         FORMATS = { header: "smith.evals.record_header", segment: "smith.evals.segment",
                     trial: "smith.evals.trial", summary: "smith.evals.summary" }.freeze
         NAMES = { header: "a header", segment: "a launch line", trial: "a trial line", summary: "a summary",
-                  cancel: "a cancel request" }.freeze
+                  cancel: "a cancel request", tuning_line: "a tuning line" }.freeze
 
         # value: the record as it reads back (frozen); text: what a store
         # keeps; key: its id among its kind (a header's is its eval run id),
@@ -141,7 +141,7 @@ module Smith
           raise ArgumentError, "#{what} is a Hash" unless record.is_a?(Hash)
 
           JSONCheck.check!(record, what)
-          text = %i[trial segment].include?(kind) ? JSON.generate(record) : document_text(record)
+          text = %i[trial segment tuning_line].include?(kind) ? JSON.generate(record) : document_text(record)
           raise ArgumentError, "#{what} is over #{MAX_BYTES} bytes of JSON" if text.bytesize > MAX_BYTES
 
           value = read(text)

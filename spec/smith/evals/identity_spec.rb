@@ -189,4 +189,55 @@ RSpec.describe Smith::Evals::Identity do
     expect { measure.call(manifest.merge("trials" => manifest["trials"].except("infrastructure_errors"))) }
       .to raise_error(ArgumentError, /suite manifest/)
   end
+
+  # Slice 5a's ids, against vectors an independent implementation computed
+  # (Python's hashlib and sorted compact JSON, which is RFC 8785 for these).
+  describe "the tuning ids" do
+    let(:scope) { { "tenant" => "ten_0193" } }
+    let(:run) { described_class.tuning_run_id(key: "smith-gpt41mini-s0", scope:, suite: "hotpot.multihop") }
+    let(:versions) { { "summarize1.predict" => "sha256:#{"a" * 64}", "final_answer.predict" => "sha256:#{"b" * 64}" } }
+
+    it "derives a tuning run id from the scope's digest, the suite name and the key" do
+      expect(run).to eq("tu_63e5ca5dd9a60840b8446fd772311044")
+      expect(run).to eq("tu_#{framed("smith.tuning.run/1", key: "smith-gpt41mini-s0", scope: Smith::Scope.digest(scope),
+                                                           suite: "hotpot.multihop")}")
+      expect(described_class.tuning_run_id(key: "smith-gpt41mini-s0", scope: { tenant: "ten_0193" },
+                                           suite: "hotpot.multihop")).to eq(run)
+      expect(described_class.tuning_run_id(key: "smith-gpt41mini-s0", scope: {}, suite: "hotpot.multihop"))
+        .not_to eq(run)
+      expect(Array.new(3) { described_class.tuning_run_id(key: nil, scope:, suite: "s") }.uniq)
+        .to all(match(/\Atu_[0-9a-f]{32}\z/)).and(have_attributes(size: 3))
+    end
+
+    it "derives a candidate id from the run, the iteration and every component's version, in any key order" do
+      id = described_class.candidate_id(tuning_run_id: run, iteration: 3, versions:)
+
+      expect(id).to eq("cd_fee9037e583c5aa3b12264f9a703be0f")
+      expect(described_class.candidate_id(tuning_run_id: run, iteration: 3, versions: versions.to_a.reverse.to_h))
+        .to eq(id)
+      expect(described_class.candidate_id(tuning_run_id: run, iteration: 4, versions:)).not_to eq(id)
+    end
+
+    it "derives the reflection's trial id from the run and the iteration" do
+      expect(described_class.reflection_trial_id(tuning_run_id: run, iteration: 3))
+        .to eq("tr_18dc3488595727dde9ff699aa0009855")
+    end
+
+    it "refuses an id part that is not of its kind" do
+      expect { described_class.tuning_run_id(key: "", scope:, suite: "s") }.to raise_error(ArgumentError, /key/)
+      expect { described_class.tuning_run_id(key: "k", scope:, suite: "Bad") }.to raise_error(ArgumentError, /suite/)
+      expect { described_class.tuning_run_id(key: "k", scope: { tenant: 1 }, suite: "s") }
+        .to raise_error(Smith::ScopeInvalid)
+      [["er_#{"0" * 32}", 0, versions], [run, -1, versions], [run, 1.0, versions], [run, 0, {}],
+       [run, 0, { "Bad Id" => "sha256:#{"a" * 64}" }], [run, 0, { "a" => "md5:1" }], [run, 0, nil]]
+        .each do |tuning_run_id, iteration, given|
+        expect { described_class.candidate_id(tuning_run_id:, iteration:, versions: given) }
+          .to raise_error(ArgumentError), [tuning_run_id, iteration, given].inspect
+      end
+      expect { described_class.reflection_trial_id(tuning_run_id: "tu_1", iteration: 0) }
+        .to raise_error(ArgumentError, /tuning run id/)
+      expect { described_class.reflection_trial_id(tuning_run_id: run, iteration: -1) }
+        .to raise_error(ArgumentError, /iteration/)
+    end
+  end
 end

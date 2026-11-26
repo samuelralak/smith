@@ -35,6 +35,7 @@ RSpec.describe Smith::Evals::Stores::File do
   let(:full) { RUBY_PLATFORM.include?("darwin") ? :full : :sync }
 
   it_behaves_like "an eval store"
+  it_behaves_like "a tuning store"
 
   def store_with(clock:) = described_class.new(root: File.join(@dir, "clocked"), clock:)
 
@@ -455,6 +456,48 @@ RSpec.describe Smith::Evals::Stores::File do
         end
         FileUtils.rm_rf(root)
       end
+    end
+  end
+
+  # Slice 5a: a tuning run's folder sits beside the scope's eval runs, read
+  # as its records are, its lines cut and swept as a run's are.
+  describe "a tuning run" do
+    let(:tuning_id) { TuningRecords.tuning_run_id }
+    let(:tuning_scope) { TuningRecords.scope }
+    let(:tuning_dir) { File.join(root, "v1", "scopes", Smith::Scope.digest(tuning_scope), "tuning", tuning_id) }
+    let(:tuning_lease) { store.acquire_lease(scope: tuning_scope, tuning_run_id: tuning_id) }
+
+    before { store.create_tuning(scope: tuning_scope, header: TuningRecords.header) }
+
+    def tuning_line(lease,
+                    line)
+      store.append_tuning_line(scope: tuning_scope, tuning_run_id: tuning_id, line:, lease:)
+    end
+
+    it "keeps its records in <scope>/tuning/<tuning_run_id>/, as the record builders wrote them" do
+      lease = tuning_lease
+      TuningRecords.lines.each { tuning_line(lease, _1) }
+      store.write_tuning_summary(scope: tuning_scope, tuning_run_id: tuning_id, summary: TuningRecords.summary, lease:)
+      store.request_cancel(scope: tuning_scope, tuning_run_id: tuning_id, actor: Smith::Evals::Actor.person("u"),
+                           reason: nil)
+      lease.release
+
+      expect(Dir.children(File.dirname(tuning_dir, 2)).sort).to eq(%w[scope.json tuning])
+      expect(Dir.children(tuning_dir).sort).to eq(%w[cancel.json header.json lease lines.jsonl summary.json tmp])
+      %w[header.json lines.jsonl summary.json].each do |name|
+        expect(File.binread(File.join(tuning_dir, name))).to eq(TuningRecords.text(name).b), name
+      end
+      expect(store.list_records(scope: tuning_scope)["records"]).to eq([])
+    end
+
+    it "skips a torn last line, which the next lease holder cuts back to its last line feed" do
+      first = "#{json(TuningRecords.lines.first)}\n".b
+      File.binwrite(File.join(tuning_dir, "lines.jsonl"), first + json(TuningRecords.lines[1]).byteslice(0, 100))
+
+      expect(store.each_tuning_line(scope: tuning_scope, tuning_run_id: tuning_id).map { json(_1) })
+        .to eq([first.chomp])
+      tuning_lease.release
+      expect(File.binread(File.join(tuning_dir, "lines.jsonl"))).to eq(first)
     end
   end
 

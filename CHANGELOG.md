@@ -414,6 +414,37 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   in `smith/testing`, `Smith::Testing.reply`, `Testing::Request`,
   `Testing::Reply` and `Testing::Stub.check_reply!`. None is on
   `Smith::Workflow`, `Agent`, `Context` or `Tool`.
+- Experimental: the tuner's core (slice 5a, its parts that need no runner),
+  loaded only by `require "smith/tuning"`, which loads evals; `require
+  "smith"` loads none of it and adds nothing to the core's classes.
+  `Smith::Tuning::Settings` (objective, components, a given training and
+  validation split, minibatch 3, seed, skip a perfect minibatch, the
+  reflection model, stop rules: five rounds without improvement by default),
+  `Split` (two narrowings of a suite's selection of dev samples only, that
+  share no sample; 10 training and 30 validation samples at least, unless an
+  override is recorded), `Minibatches` (a seeded shuffle, epoch by epoch), `Candidate`
+  (a text per tuned component, a child through `Prompt#with_text`), `Pool`
+  (the GEPA paper's Pareto selection and a rotation per candidate, drawn
+  from `SplitMix64`), `Reflection` (Smith's own prompt, `smith.tuning.reflect`,
+  asking for general rules and forbidding copied answers; a message that
+  wraps everything it did not write as untrusted, takes training samples
+  only, shows a step's completed calls only, and withholds a sample's
+  expected answer from the scorer's feedback, as exact text in any case and
+  spacing, unless the scorer opts in), `Record` (the tuning run's header,
+  lines and summary at format version 0, `docs/evals/schemas/tuning-*.schema.json`,
+  and their reader), `Evaluation` (the loop's seam to the runner, its two
+  calls and their answers, each saying when the cap stops the run), and `Smith::Tuning.record` and `.cancel`. The
+  eval store gains a tuning run's record beside its eval runs
+  (`create_tuning`, `read_tuning_header`, `append_tuning_line`,
+  `each_tuning_line`, `write_tuning_summary`, `read_tuning_summary`, listed
+  as `Smith::Evals::Store::TUNING_METHODS`; `acquire_lease`,
+  `request_cancel` and `cancel_request` take `tuning_run_id:` in place of
+  `eval_run_id:`), kept in the file store under
+  `<scope>/tuning/<tuning_run_id>/` and never listed; a host store without
+  them still keeps eval runs. `Smith::Evals::Identity` gains
+  `tuning_run_id`, `candidate_id` and `reflection_trial_id`, and
+  `Statistics::SplitMix64#to_hex` gives a generator's state, which
+  `from_hex` continues.
 
 ### Changed
 

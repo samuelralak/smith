@@ -12,6 +12,7 @@ RSpec.describe Smith::Evals::Stores::Memory do
   def store_with(clock:) = described_class.new(clock:)
 
   it_behaves_like "an eval store"
+  it_behaves_like "a tuning store"
 
   it "keeps nothing between two stores" do
     store.create_record(scope: EvalRecords.scope, header: EvalRecords.header)

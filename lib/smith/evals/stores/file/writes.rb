@@ -2,6 +2,7 @@
 
 require_relative "../../errors"
 require_relative "../../store/lease"
+require_relative "../../store/tuning_records"
 require_relative "documents"
 require_relative "lines"
 
@@ -47,7 +48,7 @@ module Smith
             file = @paths.opened(::File.join(run, "lease"), ::File::RDWR | ::File::CREAT)
             LEASES[file] = true # at once, so a fork from another thread closes it too
             free = @paths.io(file.path) { file.flock(::File::LOCK_EX | ::File::LOCK_NB) }
-            raise RunBusy, "eval run #{id} is leased by another holder" unless free
+            raise RunBusy, "#{Store::TuningRecords.run_name(id)} #{id} is leased by another holder" unless free
 
             lease = leased(run, scope, id, file)
           ensure
@@ -88,7 +89,8 @@ module Smith
             return false unless held.key?(record.key)
             return true if held[record.key] == record.digest
 
-            raise ArgumentError, "eval run #{id} already holds a different line with this id"
+            raise ArgumentError, "#{Store::TuningRecords.run_name(id)} #{id} already holds a different line " \
+                                 "with this id"
           end
 
           def state(run) = @lock.synchronize { @states[run] ||= State.new(Mutex.new, nil, {}) }
@@ -101,7 +103,7 @@ module Smith
               Documents.sweep(@paths, run)
               state.held = {}
               state.pid = Process.pid
-              state.lease = Store::Lease.new(scope:, eval_run_id: id) { released(state, file) }
+              state.lease = Store::Lease.new(scope:, **Store::TuningRecords.run_key(id)) { released(state, file) }
             end
           end
 
@@ -116,10 +118,11 @@ module Smith
           def write(run, id, lease)
             state = state(run)
             state.mutex.synchronize do
+              run = "#{Store::TuningRecords.run_name(id)} #{id}"
               unless lease.is_a?(Store::Lease) && state.lease.equal?(lease) && !lease.released?
-                raise ArgumentError, "a write to eval run #{id} needs its live lease from this store"
+                raise ArgumentError, "a write to #{run} needs its live lease from this store"
               end
-              raise ArgumentError, "the lease on eval run #{id} belongs to another process" if state.pid != Process.pid
+              raise ArgumentError, "the lease on #{run} belongs to another process" if state.pid != Process.pid
 
               yield state
             end

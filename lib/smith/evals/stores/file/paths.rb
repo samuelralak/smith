@@ -38,7 +38,9 @@ module Smith
 
           def scope_folder(scope) = ::File.join(@root, "v1", "scopes", Smith::Scope.digest(scope))
           def runs_folder(scope) = ::File.join(scope_folder(scope), "runs")
-          def run_folder(scope, id) = ::File.join(runs_folder(scope), id)
+
+          # An eval run's folder is under runs/, a tuning run's under tuning/.
+          def run_folder(scope, id) = ::File.join(scope_folder(scope), id.start_with?("tu_") ? "tuning" : "runs", id)
 
           # The folder, when it and each folder above it up to the root are
           # folders; nil when one is missing.

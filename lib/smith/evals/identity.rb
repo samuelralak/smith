@@ -8,20 +8,21 @@ require_relative "../scope"
 
 module Smith
   module Evals
-    # Experimental; the rules are frozen with slice 1a.2. Every id and
-    # digest evals record (slice-1a design, 8.1 to 8.6), so any language
-    # computes the same ones. Each digest is "sha256:" and 64 lowercase hex
-    # over RFC 8785 canonical JSON, framed by a "name/N\n" prefix (eval run,
-    # trial and group ids, and the sample ids digest, an array) or by a
-    # format field inside the hashed object (versions, the measure, plan and
-    # variant digests). Short ids keep 32 hex digits. Pure; each call is
-    # linear in what it hashes (the sample ids digest O(n log n), as it
-    # sorts).
+    # Experimental; the rules are frozen with slice 1a.2. Every id and digest
+    # evals record (slice-1a design, 8.1 to 8.6; a tuning run's, slice 5a), so
+    # any language computes the same ones. Each digest is "sha256:" and 64
+    # lowercase hex over RFC 8785 canonical JSON, framed by a "name/N\n"
+    # prefix (eval run, trial and group ids, and the sample ids digest, an
+    # array) or by a format field inside the hashed object (versions, the
+    # measure, plan and variant digests). Short ids keep 32 hex digits. Pure;
+    # each call is linear in what it hashes (the sample ids digest O(n log n),
+    # as it sorts).
     module Identity
       NAME = /\A[a-z][a-z0-9_.-]{0,127}\z/
       CONTENT_HASH = ContentIdentity::DIGEST
       EVAL_RUN_ID = /\Aer_[0-9a-f]{32}\z/
       CANDIDATE_ID = /\Acd_[0-9a-f]{32}\z/
+      TUNING_RUN_ID = /\Atu_[0-9a-f]{32}\z/
       SAMPLE_ID = /\A[^\u0000-\u001f\u007f]{1,256}\z/
       SPLITS = %w[dev holdout calibration].freeze
       MAX_KEY_CHARACTERS = 256
@@ -58,6 +59,29 @@ module Smith
           text.is_a?(String) && ((text.encoding == Encoding::UTF_8 && text.valid_encoding?) || text.ascii_only?)
         end
 
+        def tuning_run!(id)
+          return id if id.is_a?(String) && TUNING_RUN_ID.match?(id)
+
+          raise ArgumentError, "a tuning run id is tu_ and 32 lowercase hex digits"
+        end
+
+        def iteration!(iteration)
+          return iteration if iteration.is_a?(Integer) && iteration >= 0
+
+          raise ArgumentError, "an iteration is an Integer of at least 0"
+        end
+
+        # {component id => version}, at least one.
+        def versions!(versions)
+          return versions if versions.is_a?(Hash) && !versions.empty? && versions.all? { |id, v| component?(id, v) }
+
+          raise ArgumentError, "a candidate's versions map component ids to digests"
+        end
+
+        def component?(id, version)
+          id.is_a?(String) && ContentIdentity::ID.match?(id) && version.is_a?(String) && CONTENT_HASH.match?(version)
+        end
+
         def content_hash!(value, what)
           return value if value.is_a?(String) && CONTENT_HASH.match?(value)
 
@@ -66,8 +90,38 @@ module Smith
       end
       private_constant :Checks
 
+      # A tuning run's ids (slice 5a), framed as the eval ids are.
+      module Tuning
+        # "tu_" and 32 hex digits from the scope's digest, the suite name and
+        # the key; random without a key.
+        def tuning_run_id(key:, scope:, suite:)
+          scope = Smith::Scope.digest(scope)
+          name!(suite, "suite")
+          return "tu_#{SecureRandom.hex(16)}" if key.nil?
+
+          "tu_#{framed("smith.tuning.run/1", { "key" => key!(key), "scope" => scope, "suite" => suite })}"
+        end
+
+        # "cd_" and 32 hex digits: the candidate an iteration made, from the
+        # version of every component it sends.
+        def candidate_id(tuning_run_id:, iteration:, versions:)
+          value = { "tuning_run" => tuning_run!(tuning_run_id), "iteration" => iteration!(iteration),
+                    "components" => versions!(versions) }
+          "cd_#{framed("smith.tuning.candidate/1", value)}"
+        end
+
+        # "tr_" and 32 hex digits: an iteration's reflection call, a trial of
+        # the tuning run's own, outside any eval run.
+        def reflection_trial_id(tuning_run_id:, iteration:)
+          value = { "tuning_run" => tuning_run!(tuning_run_id), "iteration" => iteration!(iteration) }
+          "tr_#{framed("smith.tuning.reflection/1", value)}"
+        end
+      end
+      private_constant :Tuning
+
       class << self
         include Checks
+        include Tuning
 
         # "er_" and 32 hex digits from the key, scope and suite name, with the
         # variant digest for a linked run; random without a key.

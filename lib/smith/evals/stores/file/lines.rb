@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../../errors"
-require_relative "../../store/records"
+require_relative "../../store/tuning_records"
 require_relative "documents"
 
 module Smith
@@ -9,19 +9,19 @@ module Smith
     module Stores
       class File
         # Internal. The append-only line files, segments.jsonl and
-        # trials.jsonl (slice-1a design, 9.4). An append is one line and its
-        # line feed, written whole and flushed before it returns; the folder
-        # too when the file is new. A crash can leave only a last line without
-        # its line feed: readers skip it, and the next writer cuts it before
-        # appending. A cut replaces the file with its complete lines (written,
-        # flushed, renamed over it), never truncating in place, so a reader
-        # already reading keeps the old file and never meets a line made of
-        # two. A read takes no lock and yields the lines there when it began,
-        # never one appended during it. O(line) to append, O(file) to read or
-        # cut.
+        # trials.jsonl (slice-1a design, 9.4), and a tuning run's lines.jsonl.
+        # An append is one line and its line feed, written whole and flushed
+        # before it returns; the folder too when the file is new. A crash can
+        # leave only a last line without its line feed: readers skip it, and
+        # the next writer cuts it before appending. A cut replaces the file
+        # with its complete lines (written, flushed, renamed over it), never
+        # truncating in place, so a reader already reading keeps the old file
+        # and never meets a line made of two. A read takes no lock and yields
+        # the lines there when it began, never one appended during it.
+        # O(line) to append, O(file) to read or cut.
         module Lines
           MAX_BYTES = Store::Records::MAX_BYTES
-          FILES = { segment: "segments.jsonl", trial: "trials.jsonl" }.freeze
+          FILES = { segment: "segments.jsonl", trial: "trials.jsonl", tuning_line: "lines.jsonl" }.freeze
           CHUNK = 65_536
 
           module_function
@@ -96,11 +96,14 @@ module Smith
             raise corrupt(paths, path, number, e.message)
           end
 
-          # A trial line's trial id and revision, or a launch line's number.
+          # A trial line's trial id and revision, a tuning line's type and
+          # iteration, or a launch line's number.
           def id_of(value)
-            return value["segment"] unless value["format"] == Store::Records::FORMATS[:trial]
-
-            value.values_at("trial_id", "trial_revision")
+            case value["format"]
+            when Store::Records::FORMATS[:trial] then value.values_at("trial_id", "trial_revision")
+            when Store::TuningRecords::FORMATS[:line] then value.values_at("type", "iteration")
+            else value["segment"]
+            end
           end
 
           # Where the complete lines end when the last line is torn; nil when

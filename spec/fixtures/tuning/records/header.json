@@ -1,0 +1,89 @@
+{
+  "format": "smith.tuning.header",
+  "format_version": 0,
+  "tuning_run_id": "tu_e44c3bb96326c92dea54fc0f4fd902d0",
+  "scope": {
+    "tenant": "ten_0193"
+  },
+  "created_at": "2026-11-26T10:00:00.125Z",
+  "started_by": {
+    "kind": "person",
+    "id": "usr_51a8"
+  },
+  "idempotency_key": "pilot-s0",
+  "suite": {
+    "name": "tuning.demo",
+    "version": "sha256:8dcbc6b9eb489fd7498907424090b52d56a7cbffe086f51b77565b9c89d51e90",
+    "measure_digest": "sha256:1b065093e46a62ad03481740de2df3a2be34ee280158d15b1c9be7d1229c5f55"
+  },
+  "dataset": {
+    "name": "tuning-demo",
+    "version": "sha256:85c71e70337e4b4eae15c26577930b52aae142b370bf15e298941948ea6abcdc"
+  },
+  "subject": {
+    "workflow": "TuningSpecFlow"
+  },
+  "objective": {
+    "scorer": "exact_match",
+    "scorer_version": 2
+  },
+  "components": [
+    {
+      "id": "summarize.predict",
+      "base_version": "sha256:0becb93d5ef6220be66513a0e1d005e78e2dd0240ea8f45db9aa60f4ce7a4230"
+    },
+    {
+      "id": "answer.predict",
+      "base_version": "sha256:edb294ae3c92e8be6fe8183281cdf1ccdce8ceea85a9da4267a9710d65b98d19"
+    }
+  ],
+  "split": {
+    "rule": "given",
+    "train": {
+      "count": 12,
+      "ids_digest": "sha256:5beffcdce73cbc0836cafafc86f354460e784af3dc41617e2235a8a2c4830398"
+    },
+    "validation": {
+      "count": 31,
+      "ids_digest": "sha256:db94cedd544ceb9453c3d2276f6ad19f744b85b34604b4c55602276b960f960a"
+    },
+    "ratio": null,
+    "override": null
+  },
+  "settings": {
+    "minibatch": 3,
+    "seed": 0,
+    "skip_perfect": true,
+    "perfect_score": 1.0,
+    "failure_score": 0,
+    "selection": "pareto/1",
+    "rotation": "round_robin/1",
+    "accept": "strict_mean/1",
+    "merge": false,
+    "stop": {
+      "max_metric_calls": 1100,
+      "max_cost_nanos": null,
+      "max_candidates": 1000,
+      "rounds_without_improvement": null,
+      "deadline": null
+    },
+    "reflection": {
+      "model": "gpt-4.1-mini-2025-04-14",
+      "provider": "openai",
+      "settings": {
+        "temperature": 1.0,
+        "max_output_tokens": 16384,
+        "thinking": null
+      },
+      "prompt": {
+        "id": "smith.tuning.reflect",
+        "version": "sha256:a62594a277f9073f76abbfd6f3439dede7a09d10207c64c5d6e3f3e268885fdd"
+      }
+    }
+  },
+  "tuning_digest": "sha256:42ebe95638fc67664ed41a492f451b5355b08861cd9789aece386038b1a039aa",
+  "environment": {
+    "smith_version": "0.16.0",
+    "host_code_version": null
+  }
+}

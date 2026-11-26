@@ -10,12 +10,14 @@ module Smith
       # operating system when its process dies. A host's store may hand out
       # any object that answers `release`.
       class Lease
-        attr_reader :scope, :eval_run_id
+        attr_reader :scope, :eval_run_id, :tuning_run_id
 
-        # The block runs once, on the first release.
-        def initialize(scope:, eval_run_id:, &on_release)
+        # The run's id by its kind (Records.run_key): an eval run's, or a
+        # tuning run's (slice 5a). The block runs once, on the first release.
+        def initialize(scope:, eval_run_id: nil, tuning_run_id: nil, &on_release)
           @scope = scope
           @eval_run_id = eval_run_id
+          @tuning_run_id = tuning_run_id
           @on_release = on_release
           @lock = Mutex.new
           @released = false

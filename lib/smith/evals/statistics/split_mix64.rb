@@ -37,6 +37,10 @@ module Smith
           @state = seed
         end
 
+        # The state as 16 hex digits: `from_hex` of it draws on where this
+        # one is, so a saved run continues its stream (slice 5a).
+        def to_hex = format("%016x", @state)
+
         # The next 64-bit value, as an Integer.
         def next_u64
           @state = (@state + GAMMA) & MASK

@@ -2,6 +2,7 @@
 
 require_relative "../../errors"
 require_relative "../../store/records"
+require_relative "../../store/tuning_records"
 require_relative "../../store/listing"
 require_relative "documents"
 require_relative "lines"
@@ -10,9 +11,9 @@ module Smith
   module Evals
     module Stores
       class File
-        # Internal. Finding and reading a scope's runs: the folders, the
-        # header that makes a folder a record, its documents and lines, and
-        # the listing's entries.
+        # Internal. Finding and reading a scope's runs, eval runs and tuning
+        # runs: the folders, the header that makes a folder a record, its
+        # documents and lines, and the listing's entries (eval runs only).
         class Runs
           def initialize(paths)
             @paths = paths
@@ -26,7 +27,7 @@ module Smith
             run = folder(scope, id)
             return run if run && @paths.file?(::File.join(run, "header.json"))
 
-            raise ArgumentError, "no eval run #{id} in this scope"
+            raise ArgumentError, "no #{Store::TuningRecords.run_name(id)} #{id} in this scope"
           end
 
           # Makes the run's folders. scope.json is written with the scope's

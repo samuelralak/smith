@@ -26,6 +26,11 @@
       ],
       "pattern": "^cd_[0-9a-f]{32}$"
     },
+    "tuning_run_id": {
+      "description": "A tuning run (slice 5a). 'tu_' and the first 32 hex digits of SHA-256 over 'smith.tuning.run/1\\n' and the canonical JSON of the idempotency key, the scope's digest and the suite name; random without a key.",
+      "type": "string",
+      "pattern": "^tu_[0-9a-f]{32}$"
+    },
     "group_id": {
       "description": "A group of linked eval runs (a model comparison). 'eg_' and 32 lowercase hex digits, derived from the scope, suite name and idempotency key.",
       "type": "string",
@@ -469,6 +474,31 @@
         },
         "version": {
           "$ref": "#/$defs/content_hash"
+        }
+      }
+    },
+    "candidate": {
+      "description": "The tuning candidate an eval run tests (slice 5a): its id, its tuning run, and the version of each component it sends, in rotation order. The texts are in the tuning record.",
+      "type": "object",
+      "required": [
+        "candidate_id",
+        "tuning_run_id",
+        "components"
+      ],
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "pattern": "^cd_[0-9a-f]{32}$"
+        },
+        "tuning_run_id": {
+          "$ref": "#/$defs/tuning_run_id"
+        },
+        "components": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/component_version"
+          }
         }
       }
     }

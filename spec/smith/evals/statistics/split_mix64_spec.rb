@@ -38,4 +38,18 @@ RSpec.describe Smith::Evals::Statistics::SplitMix64 do
     [-1, 2**64, 1.5, "1"].each { |seed| expect { described_class.new(seed) }.to raise_error(ArgumentError) }
     [0, (2**64) + 1, 2.0].each { |bound| expect { generator.below(bound) }.to raise_error(ArgumentError) }
   end
+
+  # A tuning run saves its generator after every iteration (slice 5a): the
+  # state read back continues the same stream, where a reseed would repeat it.
+  it "gives its state as 16 hex digits, from which a generator draws on where it left off" do
+    generator = described_class.new(42)
+    3.times { generator.below(37) }
+    saved = generator.to_hex
+    restored = described_class.from_hex(saved)
+
+    expect(saved).to match(/\A[0-9a-f]{16}\z/)
+    expect(Array.new(5) { restored.below(37) }).to eq(Array.new(5) { generator.below(37) })
+    expect(described_class.new(0).to_hex).to eq("0000000000000000")
+    expect(described_class.from_hex(saved).to_hex).to eq(saved)
+  end
 end

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../store"
+require_relative "file/tuning"
 
 module Smith
   module Evals
@@ -12,6 +13,11 @@ module Smith
       #   <root>/v1/scopes/<scope digest>/runs/<eval_run_id>/
       #     header.json, segments.jsonl, trials.jsonl, summary.json, cancel.json
       #     lease (a runner's flock for its life), tmp/
+      #   <root>/v1/scopes/<scope digest>/tuning/<tuning_run_id>/  (slice 5a)
+      #     header.json, lines.jsonl, summary.json, cancel.json, lease, tmp/
+      #
+      # A tuning run's folder is kept by the same rules as an eval run's,
+      # and is never listed (Tuning).
       #
       # A run's folder reads as the published example records do. Headers
       # and cancel flags are created whole and never clobbered, a summary is
@@ -32,6 +38,12 @@ module Smith
       # the runner and once for the first append's ids; a hosted product
       # uses a database store (slice 3a).
       class File
+        include Tuning
+
+        # The line file each append writes.
+        APPENDS = { append_segment: :segment, append_trial: :trial, append_tuning_line: :tuning_line }.freeze
+        private_constant :APPENDS
+
         attr_reader :root
 
         # root: the store's folder (a path); clock: returns the Time a cancel
@@ -50,18 +62,14 @@ module Smith
 
         def create_record(scope:, header:)
           scope = Store::Records.scope!(scope)
-          record = Store::Records.header!(header, scope)
-          guarded(:create_record) do
-            run = @runs.made!(scope, record.key)
-            Documents.sweep(@paths, run)
-            Documents.create(@paths, run, ::File.join(run, "header.json"), record.text)
-          end
+          create(:create_record, scope, Store::Records.header!(header, scope))
         end
 
-        def read_header(scope:, eval_run_id:) = document(:read_header, scope, eval_run_id, "header.json")
+        def read_header(scope:, eval_run_id:) = document(:read_header, *ids!(scope, eval_run_id), "header.json")
 
-        def acquire_lease(scope:, eval_run_id:)
-          scope, id = ids!(scope, eval_run_id)
+        def acquire_lease(scope:, eval_run_id: nil, tuning_run_id: nil)
+          scope = Store::Records.scope!(scope)
+          id = Store::TuningRecords.run_id!(eval_run_id, tuning_run_id)
           guarded(:acquire_lease) { @writes.lease(@runs.recorded!(scope, id), scope, id) }
         end
 
@@ -77,16 +85,16 @@ module Smith
           append(:append_trial, scope, id, lease, record)
         end
 
-        def each_segment(scope:, eval_run_id:, &) = each_line(:each_segment, :segment, scope, eval_run_id, &)
-        def each_trial(scope:, eval_run_id:, &) = each_line(:each_trial, :trial, scope, eval_run_id, &)
+        def each_segment(scope:, eval_run_id:, &) = each_line(:each_segment, :segment, *ids!(scope, eval_run_id), &)
+        def each_trial(scope:, eval_run_id:, &) = each_line(:each_trial, :trial, *ids!(scope, eval_run_id), &)
 
         def write_summary(scope:, eval_run_id:, summary:, lease:)
           scope, id = ids!(scope, eval_run_id)
           record = Store::Records.summary!(summary, scope, id)
-          guarded(:write_summary) { @writes.summarize(@runs.recorded!(scope, id), id, lease, record) }
+          summarize(:write_summary, scope, id, lease, record)
         end
 
-        def read_summary(scope:, eval_run_id:) = document(:read_summary, scope, eval_run_id, "summary.json")
+        def read_summary(scope:, eval_run_id:) = document(:read_summary, *ids!(scope, eval_run_id), "summary.json")
 
         def list_records(scope:, limit: Store::Listing::DEFAULT_LIMIT, after: nil)
           scope = Store::Records.scope!(scope)
@@ -98,8 +106,9 @@ module Smith
           end
         end
 
-        def request_cancel(scope:, eval_run_id:, actor:, reason:)
-          scope, id = ids!(scope, eval_run_id)
+        def request_cancel(scope:, actor:, reason:, eval_run_id: nil, tuning_run_id: nil)
+          scope = Store::Records.scope!(scope)
+          id = Store::TuningRecords.run_id!(eval_run_id, tuning_run_id)
           record = Store::Records.cancel!(actor, reason, @clock.call)
           guarded(:request_cancel) do
             run = @runs.recorded!(scope, id)
@@ -108,11 +117,26 @@ module Smith
           end
         end
 
-        def cancel_request(scope:, eval_run_id:) = document(:cancel_request, scope, eval_run_id, "cancel.json")
+        def cancel_request(scope:, eval_run_id: nil, tuning_run_id: nil)
+          id = Store::TuningRecords.run_id!(eval_run_id, tuning_run_id)
+          document(:cancel_request, Store::Records.scope!(scope), id, "cancel.json")
+        end
 
         private
 
         def ids!(scope, eval_run_id) = [Store::Records.scope!(scope), Store::Records.eval_run_id!(eval_run_id)]
+
+        def create(operation, scope, record)
+          guarded(operation) do
+            run = @runs.made!(scope, record.key)
+            Documents.sweep(@paths, run)
+            Documents.create(@paths, run, ::File.join(run, "header.json"), record.text)
+          end
+        end
+
+        def summarize(operation, scope, id, lease, record)
+          guarded(operation) { @writes.summarize(@runs.recorded!(scope, id), id, lease, record) }
+        end
 
         # Fills in the operation of a StoreError raised below and, unless the
         # block yields to a caller's own code, turns any other I/O failure
@@ -130,18 +154,14 @@ module Smith
         end
 
         def append(operation, scope, id, lease, record)
-          name = Lines::FILES.fetch(operation == :append_trial ? :trial : :segment)
+          name = Lines::FILES.fetch(APPENDS.fetch(operation))
           guarded(operation) { @writes.append(@runs.recorded!(scope, id), id, lease, name, record) }
         end
 
-        def document(operation, scope, eval_run_id, name)
-          scope, id = ids!(scope, eval_run_id)
-          guarded(operation) { @runs.document(scope, id, name) }
-        end
+        def document(operation, scope, id, name) = guarded(operation) { @runs.document(scope, id, name) }
 
-        def each_line(operation, kind, scope, eval_run_id, &block)
-          scope, id = ids!(scope, eval_run_id)
-          return enum_for(operation, scope:, eval_run_id:) unless block
+        def each_line(operation, kind, scope, id, &block)
+          return enum_for(operation, scope:, **Store::TuningRecords.run_key(id)) unless block
 
           guarded(operation, io: false) { @runs.lines(scope, id, Lines::FILES[kind], &block) }
           nil

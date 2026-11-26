@@ -1,0 +1,418 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:smith:evals:1:tuning-header",
+  "title": "Smith tuning run header (format version 0, provisional)",
+  "description": "header.json of a tuning run (slice 5a), written once when it starts: what is tuned, against which suite, objective and split, with which settings. The texts are in its lines; a candidate stores only the text it changed. tuning_digest is what a restart must match.",
+  "type": "object",
+  "required": [
+    "format",
+    "format_version",
+    "tuning_run_id",
+    "scope",
+    "created_at",
+    "started_by",
+    "idempotency_key",
+    "suite",
+    "dataset",
+    "subject",
+    "objective",
+    "components",
+    "split",
+    "settings",
+    "tuning_digest",
+    "environment"
+  ],
+  "properties": {
+    "format": {
+      "const": "smith.tuning.header"
+    },
+    "format_version": {
+      "description": "Version 0: provisional, for the pilot cut of slice 5a; frozen as 1 when slice 5a ends.",
+      "const": 0
+    },
+    "tuning_run_id": {
+      "$ref": "urn:smith:evals:1:common#/$defs/tuning_run_id"
+    },
+    "scope": {
+      "$ref": "urn:smith:evals:1:common#/$defs/scope"
+    },
+    "created_at": {
+      "$ref": "urn:smith:evals:1:common#/$defs/timestamp"
+    },
+    "started_by": {
+      "$ref": "urn:smith:evals:1:common#/$defs/nullable_actor"
+    },
+    "idempotency_key": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "suite": {
+      "type": "object",
+      "required": [
+        "name",
+        "version",
+        "measure_digest"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "urn:smith:evals:1:common#/$defs/name"
+        },
+        "version": {
+          "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+        },
+        "measure_digest": {
+          "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+        }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "urn:smith:evals:1:common#/$defs/name"
+        },
+        "version": {
+          "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+        }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "required": [
+        "workflow"
+      ],
+      "properties": {
+        "workflow": {
+          "description": "The subject's workflow class name.",
+          "type": "string",
+          "maxLength": 512
+        }
+      }
+    },
+    "objective": {
+      "description": "The scorer the search maximizes.",
+      "type": "object",
+      "required": [
+        "scorer",
+        "scorer_version"
+      ],
+      "properties": {
+        "scorer": {
+          "$ref": "urn:smith:evals:1:common#/$defs/scorer_name"
+        },
+        "scorer_version": {
+          "type": [
+            "integer",
+            "string"
+          ]
+        }
+      }
+    },
+    "components": {
+      "description": "The tuned components, in rotation order, each with the version the seed sends.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "base_version"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "base_version": {
+            "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+          }
+        }
+      }
+    },
+    "split": {
+      "type": "object",
+      "required": [
+        "rule",
+        "train",
+        "validation",
+        "ratio",
+        "override"
+      ],
+      "properties": {
+        "rule": {
+          "description": "given: two narrowings of the suite's selection; carved: dev carved by cluster (later).",
+          "enum": [
+            "given",
+            "carved"
+          ]
+        },
+        "train": {
+          "$ref": "#/$defs/part"
+        },
+        "validation": {
+          "$ref": "#/$defs/part"
+        },
+        "ratio": {
+          "description": "train to validation, for a carved split; null when given.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "override": {
+          "description": "Who allowed parts under the minimum sizes (10 training, 30 validation), and why.",
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "actor",
+                "reason",
+                "at"
+              ],
+              "properties": {
+                "actor": {
+                  "$ref": "urn:smith:evals:1:common#/$defs/actor"
+                },
+                "reason": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1024
+                },
+                "at": {
+                  "$ref": "urn:smith:evals:1:common#/$defs/timestamp"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "required": [
+        "minibatch",
+        "seed",
+        "skip_perfect",
+        "perfect_score",
+        "failure_score",
+        "selection",
+        "rotation",
+        "accept",
+        "merge",
+        "stop",
+        "reflection"
+      ],
+      "properties": {
+        "minibatch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "skip_perfect": {
+          "description": "An iteration whose parent scores perfect_score on every minibatch sample ends with no reflection.",
+          "type": "boolean"
+        },
+        "perfect_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "failure_score": {
+          "description": "What a failed or errored trial scores.",
+          "type": "number"
+        },
+        "selection": {
+          "description": "pareto/1: the paper's Algorithm 2, dominated meaning a strict subset of another's winning samples.",
+          "type": "string"
+        },
+        "rotation": {
+          "description": "round_robin/1: a pointer per candidate into the component order.",
+          "type": "string"
+        },
+        "accept": {
+          "description": "strict_mean/1: a child is kept only when its minibatch mean is strictly above its parent's.",
+          "type": "string"
+        },
+        "merge": {
+          "type": "boolean"
+        },
+        "stop": {
+          "type": "object",
+          "required": [
+            "max_metric_calls",
+            "max_cost_nanos",
+            "max_candidates",
+            "rounds_without_improvement",
+            "deadline"
+          ],
+          "properties": {
+            "max_metric_calls": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            },
+            "max_cost_nanos": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "max_candidates": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "rounds_without_improvement": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            },
+            "deadline": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "urn:smith:evals:1:common#/$defs/timestamp"
+                }
+              ]
+            }
+          }
+        },
+        "reflection": {
+          "type": "object",
+          "required": [
+            "model",
+            "provider",
+            "settings",
+            "prompt"
+          ],
+          "properties": {
+            "model": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "provider": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "settings": {
+              "type": "object",
+              "required": [
+                "temperature",
+                "max_output_tokens",
+                "thinking"
+              ],
+              "properties": {
+                "temperature": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 0
+                },
+                "max_output_tokens": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 1
+                },
+                "thinking": {
+                  "description": "As a step record writes what a call was sent with; null when not sent.",
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "object",
+                      "minProperties": 1,
+                      "properties": {
+                        "effort": {
+                          "type": "string",
+                          "maxLength": 64
+                        },
+                        "budget": {
+                          "type": "integer",
+                          "minimum": 1
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "prompt": {
+              "description": "The reflection's named prompt.",
+              "$ref": "urn:smith:evals:1:common#/$defs/component_version"
+            }
+          }
+        }
+      }
+    },
+    "tuning_digest": {
+      "description": "SHA-256 over the canonical JSON of this header without its ids (tuning_run_id, idempotency_key, scope), times (created_at, the override's at), actors (started_by, the override's actor) and tuning_digest itself, with a format field.",
+      "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+    },
+    "environment": {
+      "type": "object",
+      "required": [
+        "smith_version",
+        "host_code_version"
+      ],
+      "properties": {
+        "smith_version": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "host_code_version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        }
+      }
+    }
+  },
+  "$defs": {
+    "part": {
+      "type": "object",
+      "required": [
+        "count",
+        "ids_digest"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ids_digest": {
+          "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+        }
+      }
+    }
+  }
+}

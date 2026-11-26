@@ -3,6 +3,7 @@
 require_relative "errors"
 require_relative "store/lease"
 require_relative "store/records"
+require_relative "store/tuning_records"
 require_relative "store/listing"
 
 module Smith
@@ -26,6 +27,21 @@ module Smith
     #   list_records(scope:, limit: 50, after: nil)            # => {"records", "next" (cursor or nil), "unreadable"}
     #   request_cancel(scope:, eval_run_id:, actor:, reason:)  # => :requested, or :exists (the first one stands)
     #   cancel_request(scope:, eval_run_id:)                   # => nil or {"actor", "reason", "at"}
+    #
+    # A tuning run's record (slice 5a) is kept beside them, by the same
+    # rules, under the same scope: a header written once, lines appended
+    # (a line is known by its type and iteration), a summary replaced by
+    # revision. acquire_lease, request_cancel and cancel_request take
+    # `tuning_run_id:` in place of `eval_run_id:` (one of the two), and a
+    # lease writes only the run it names. A store without these methods
+    # still keeps eval runs.
+    #
+    #   create_tuning(scope:, header:)                                  # => :created, or :exists
+    #   read_tuning_header(scope:, tuning_run_id:)                      # => Hash or nil
+    #   append_tuning_line(scope:, tuning_run_id:, line:, lease:)       # => :appended, or :exists (the same line)
+    #   each_tuning_line(scope:, tuning_run_id:)                        # => Enumerator, as each_trial
+    #   write_tuning_summary(scope:, tuning_run_id:, summary:, lease:)  # => :written, or :exists
+    #   read_tuning_summary(scope:, tuning_run_id:)                     # => Hash or nil
     #
     # The contract every store keeps, a host's own (a database, say) as
     # Smith::Evals::Stores::Memory and Smith::Evals::Stores::File do; the
@@ -57,9 +73,20 @@ module Smith
     module Store
       METHODS = %i[create_record read_header acquire_lease append_segment append_trial each_segment each_trial
                    write_summary read_summary list_records request_cancel cancel_request].freeze
+      TUNING_METHODS = %i[create_tuning read_tuning_header append_tuning_line each_tuning_line write_tuning_summary
+                          read_tuning_summary].freeze
 
       # Whether an object answers every method of the interface.
       def self.store?(object) = METHODS.all? { object.respond_to?(_1) }
+
+      # Whether it also keeps tuning runs: the six methods, and a lease and
+      # cancel flag a tuning run id names.
+      def self.tuning?(object)
+        store?(object) && TUNING_METHODS.all? { object.respond_to?(_1) } &&
+          %i[acquire_lease request_cancel cancel_request].all? do |name|
+            object.method(name).parameters.any? { |kind, key| key == :tuning_run_id || kind == :keyrest }
+          end
+      end
     end
   end
 end

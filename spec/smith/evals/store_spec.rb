@@ -31,6 +31,30 @@ RSpec.describe Smith::Evals::Store do
     expect(described_class.store?(whole)).to be(true)
   end
 
+  # Slice 5a: the tuning methods sit beside the twelve, so a host store
+  # without them still keeps eval runs.
+  it "names the six tuning methods apart, which both stores answer with keywords only" do
+    expect(described_class::TUNING_METHODS).to eq(
+      %i[create_tuning read_tuning_header append_tuning_line each_tuning_line write_tuning_summary read_tuning_summary]
+    )
+    [Smith::Evals::Stores::Memory.new, Smith::Evals::Stores::File.new(root: "unused")].each do |store|
+      expect(described_class.tuning?(store)).to be(true)
+      kinds = described_class::TUNING_METHODS.flat_map { store.method(_1).parameters.map(&:first) }
+      expect(kinds.uniq - %i[keyreq key block]).to eq([])
+    end
+    methods = described_class::METHODS
+    eval_only = Class.new { methods.each { |name| define_method(name) { |**| nil } } }.new
+    expect([described_class.store?(eval_only), described_class.tuning?(eval_only)]).to eq([true, false])
+    named = described_class::TUNING_METHODS + methods - %i[acquire_lease request_cancel cancel_request]
+    old_keywords = Class.new do
+      named.each { |name| define_method(name) { |**| nil } }
+      define_method(:acquire_lease) { |scope:, eval_run_id:| nil }
+      define_method(:request_cancel) { |scope:, eval_run_id:, actor:, reason:| nil }
+      define_method(:cancel_request) { |scope:, eval_run_id:| nil }
+    end.new
+    expect(described_class.tuning?(old_keywords)).to be(false)
+  end
+
   it "defaults the configured store to a file store under tmp/smith-evals, created on its first write" do
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) do
@@ -78,6 +102,12 @@ RSpec.describe Smith::Evals::Store do
       4.times.map { Thread.new { lease.release } }.each(&:join)
       expect([lease.released?, calls, lease.eval_run_id, lease.scope])
         .to eq([true, [:released], EvalRecords.run_id(1), { "tenant" => "t" }])
+    end
+
+    it "names a tuning run's lease by its tuning run id" do
+      lease = described_class.new(scope: {}, tuning_run_id: TuningRecords.run_id(1))
+
+      expect([lease.tuning_run_id, lease.eval_run_id]).to eq([TuningRecords.run_id(1), nil])
     end
   end
 end

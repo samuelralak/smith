@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:smith:evals:1:tuning-summary",
+  "title": "Smith tuning run summary (format version 0, provisional)",
+  "description": "summary.json of a tuning run, replaced whole by a higher summary_revision.",
+  "type": "object",
+  "required": [
+    "format",
+    "format_version",
+    "tuning_run_id",
+    "scope",
+    "summary_revision",
+    "status",
+    "ended",
+    "stop",
+    "iterations",
+    "candidates",
+    "metric_calls_used",
+    "validation_passes",
+    "usage",
+    "seed",
+    "best",
+    "warnings",
+    "proposal"
+  ],
+  "properties": {
+    "format": {
+      "const": "smith.tuning.summary"
+    },
+    "format_version": {
+      "description": "Version 0: provisional, for the pilot cut of slice 5a; frozen as 1 when slice 5a ends.",
+      "const": 0
+    },
+    "tuning_run_id": {
+      "$ref": "urn:smith:evals:1:common#/$defs/tuning_run_id"
+    },
+    "scope": {
+      "$ref": "urn:smith:evals:1:common#/$defs/scope"
+    },
+    "summary_revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "status": {
+      "enum": [
+        "running",
+        "finished",
+        "stopped",
+        "cancelled",
+        "failed"
+      ]
+    },
+    "ended": {
+      "description": "null while running.",
+      "enum": [
+        null,
+        "proposal",
+        "nothing_better",
+        "stopped_at_limit",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "stop": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "code",
+            "detail"
+          ],
+          "properties": {
+            "code": {
+              "description": "metric_calls, cost, candidates, deadline, no_improvement, cap_reached, cancelled, scorer_failed, candidate_not_sent. Open vocabulary.",
+              "$ref": "urn:smith:evals:1:common#/$defs/code"
+            },
+            "detail": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 1024
+            }
+          }
+        }
+      ]
+    },
+    "iterations": {
+      "$ref": "urn:smith:evals:1:common#/$defs/count"
+    },
+    "candidates": {
+      "$ref": "urn:smith:evals:1:common#/$defs/count"
+    },
+    "metric_calls_used": {
+      "$ref": "urn:smith:evals:1:common#/$defs/count"
+    },
+    "validation_passes": {
+      "$ref": "urn:smith:evals:1:common#/$defs/count"
+    },
+    "usage": {
+      "type": "object",
+      "required": [
+        "cost_nanos",
+        "cost_complete",
+        "provider_calls",
+        "reflection_calls"
+      ],
+      "properties": {
+        "cost_nanos": {
+          "$ref": "urn:smith:evals:1:common#/$defs/cost_nanos"
+        },
+        "cost_complete": {
+          "type": "boolean"
+        },
+        "provider_calls": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        },
+        "reflection_calls": {
+          "$ref": "urn:smith:evals:1:common#/$defs/count"
+        }
+      }
+    },
+    "seed": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "candidate_id",
+            "index",
+            "mean"
+          ],
+          "properties": {
+            "candidate_id": {
+              "type": "string",
+              "pattern": "^cd_[0-9a-f]{32}$"
+            },
+            "index": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "mean": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        }
+      ]
+    },
+    "best": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "candidate_id",
+            "index",
+            "mean"
+          ],
+          "properties": {
+            "candidate_id": {
+              "type": "string",
+              "pattern": "^cd_[0-9a-f]{32}$"
+            },
+            "index": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "mean": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        }
+      ]
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:smith:evals:1:common#/$defs/code"
+      }
+    },
+    "proposal": {
+      "description": "The proposal (later in slice 5a); null until then.",
+      "type": [
+        "object",
+        "null"
+      ]
+    }
+  }
+}
