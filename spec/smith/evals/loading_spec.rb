@@ -3,10 +3,11 @@
 require "json"
 require "open3"
 
-# Evals load on their own require, after Smith itself; nothing this slice
-# adds loads on `require "smith"`, and in slice 1a.2 nothing is installed
-# into the core's attempt seam (the recorder is slice 1a.4's). Each check
-# runs in a child process, so nothing this suite loaded can hide a gap.
+# Evals load on their own require, after Smith itself; nothing they add
+# loads on `require "smith"`, and loading them installs their recorder
+# (Smith::Evals::Recording, slice 1a.4) into the core's attempt seam, and
+# nothing else. Each check runs in a child process, so nothing this suite
+# loaded can hide a gap.
 RSpec.describe "Loading evals" do
   lib = File.expand_path("../../../lib", __dir__)
 
@@ -17,20 +18,22 @@ RSpec.describe "Loading evals" do
     JSON.parse(stdout)
   end
 
-  it "defines datasets, scorers and suites from require \"smith/evals\", and installs no observer" do
+  it "defines datasets, scorers, suites and a trial's pieces from require \"smith/evals\", and installs Recording" do
     facts = child(lib, <<~RUBY)
       require "json"
       require "smith/evals"
       names = %i[Error SuiteInvalid DatasetInvalid DatasetChanged SplitNotAllowed SubjectNotReady DriverUnsupported
                  ResumeMismatch RunBusy RecordCorrupt StoreError Configuration Identity Actor Sample SplitRule
                  DatasetManifest Dataset FileDataset Score Scorer Reducers Subject Suite SuiteManifest Statistics
-                 Store Stores]
+                 Store Stores ScopeConflict TrialSpec TrialContext SubjectResult Trial Outcomes Recorder Recording
+                 Driver Drivers]
       print JSON.generate(
         "defined" => names.select { |name| Smith::Evals.const_defined?(name, false) },
         "experimental" => Smith::Evals::EXPERIMENTAL,
         "config" => Smith::Evals.config.class.name,
         "stores" => Smith::Evals::Stores.constants.sort.map(&:to_s),
-        "observer" => Smith::AttemptObservation.observer
+        "observer" => Smith::AttemptObservation.observer&.name,
+        "drivers" => Smith::Evals::Drivers.constants.sort.map(&:to_s)
       )
     RUBY
 
@@ -38,9 +41,10 @@ RSpec.describe "Loading evals" do
       "defined" => %w[Error SuiteInvalid DatasetInvalid DatasetChanged SplitNotAllowed SubjectNotReady
                       DriverUnsupported ResumeMismatch RunBusy RecordCorrupt StoreError Configuration Identity Actor
                       Sample SplitRule DatasetManifest Dataset FileDataset Score Scorer Reducers Subject Suite
-                      SuiteManifest Statistics Store Stores],
+                      SuiteManifest Statistics Store Stores ScopeConflict TrialSpec TrialContext SubjectResult Trial
+                      Outcomes Recorder Recording Driver Drivers],
       "experimental" => true, "config" => "Smith::Evals::Configuration", "stores" => %w[File Memory],
-      "observer" => nil
+      "observer" => "Smith::Evals::Recording", "drivers" => %w[InProcess]
     )
   end
 

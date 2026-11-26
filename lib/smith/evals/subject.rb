@@ -30,6 +30,10 @@ module Smith
         freeze
       end
 
+      # The workflow class a trial runs: the declared one, or for a model
+      # comparison's variant (slice 1b) the one the `variants:` hook builds.
+      def workflow_for(variant) = variant.nil? ? workflow : variants.call(variant)
+
       # "/subject/...: problem" lines.
       def problems
         @unknown.map { "/subject: unknown setting #{_1}" } +

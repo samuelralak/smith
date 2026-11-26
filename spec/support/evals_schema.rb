@@ -18,9 +18,12 @@ module EvalsSchema
 
   class << self
     # The error messages for one document against the named schema
-    # ("sample", "dataset-manifest", "suite-manifest", ...).
-    def errors(document, schema:, strict:)
-      validator(schema, strict:).validate(document).map { |error| error.fetch("error") }
+    # ("sample", "dataset-manifest", "suite-manifest", ...), or against one
+    # of its parts (`pointer`, "#/$defs/step").
+    def errors(document, schema:, strict:, pointer: nil)
+      validator = validator(schema, strict:)
+      validator = validator.ref(pointer) if pointer
+      validator.validate(document).map { |error| error.fetch("error") }
     end
 
     def documents

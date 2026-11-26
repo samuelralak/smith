@@ -53,9 +53,8 @@ RSpec.describe "Smith::Prompts" do
 
   around do |example|
     saved = %i[prompt_registry trace_adapter run_launcher].to_h { [_1, Smith.config.public_send(_1)] }
-    example.run
+    AttemptObserverSlot.emptied { example.run }
   ensure
-    Smith::AttemptObservation.uninstall(observer)
     saved.each { |key, value| Smith.config.public_send(:"#{key}=", value) }
   end
 

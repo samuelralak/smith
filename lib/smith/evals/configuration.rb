@@ -84,13 +84,32 @@ module Smith
 
       # Bounds given in part keep the defaults for the rest.
       def recording=(value)
+        @recording = self.class.recording(value, from: @recording)
+      end
+
+      # `value`'s recording settings over `from`'s, each checked (a recorder
+      # takes them this way too).
+      def self.recording(value, from: RECORDING_DEFAULTS)
         raise ArgumentError, "recording is a Hash of settings" unless value.is_a?(Hash)
 
-        @recording = value.each_with_object(@recording.dup) do |(key, setting), bounds|
+        value.each_with_object(from.dup) do |(key, setting), bounds|
           name = key.to_sym
           bounds[name] = recording_setting(name, setting)
         end.freeze
       end
+
+      def self.recording_setting(name, setting)
+        if name == :content
+          raise ArgumentError, "recording content is true or false" unless [true, false].include?(setting)
+
+          return setting
+        end
+        ceiling = RECORDING_CEILINGS.fetch(name) { raise ArgumentError, "unknown recording setting #{name}" }
+        return setting if setting.is_a?(Integer) && setting.between?(1, ceiling)
+
+        raise ArgumentError, "recording #{name} is an Integer from 1 to #{ceiling}"
+      end
+      private_class_method :recording_setting
 
       # A frozen copy for one run.
       def frozen_copy
@@ -103,18 +122,6 @@ module Smith
         Stores::File.new(root: DEFAULT_STORE_ROOT)
       rescue Errno::ENOENT
         nil
-      end
-
-      def recording_setting(name, setting)
-        if name == :content
-          raise ArgumentError, "recording content is true or false" unless [true, false].include?(setting)
-
-          return setting
-        end
-        ceiling = RECORDING_CEILINGS.fetch(name) { raise ArgumentError, "unknown recording setting #{name}" }
-        return setting if setting.is_a?(Integer) && setting.between?(1, ceiling)
-
-        raise ArgumentError, "recording #{name} is an Integer from 1 to #{ceiling}"
       end
 
       def text?(value)

@@ -322,7 +322,7 @@
           "$ref": "urn:smith:evals:1:common#/$defs/count"
         },
         "gaps": {
-          "description": "Known gaps: child_runs_not_followed, output_cut, state_cut, content_off. Open vocabulary.",
+          "description": "Known gaps: child_runs_not_followed (a child-run step, a map, call or spawn, had its children run apart from the trial, so their steps and cost are not in this record; the subject's child_runs counts such steps, not children), output_cut, state_cut, content_off. Open vocabulary.",
           "type": "array",
           "items": {
             "$ref": "urn:smith:evals:1:common#/$defs/code"
@@ -345,8 +345,10 @@
         "failure",
         "model",
         "provider",
+        "settings",
         "mode",
         "memo",
+        "offset_ms",
         "duration_ms",
         "tokens",
         "cost_nanos",
@@ -484,6 +486,52 @@
             "null"
           ]
         },
+        "settings": {
+          "description": "What the request was sent with: temperature, the output limit and thinking, each null where unknown (the provider's own default) or not sent.",
+          "type": "object",
+          "required": [
+            "temperature",
+            "max_output_tokens",
+            "thinking"
+          ],
+          "properties": {
+            "temperature": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "max_output_tokens": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            },
+            "thinking": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "object",
+                  "minProperties": 1,
+                  "properties": {
+                    "effort": {
+                      "type": "string",
+                      "maxLength": 64
+                    },
+                    "budget": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
         "mode": {
           "enum": [
             "sync",
@@ -494,6 +542,14 @@
         "memo": {
           "description": "True when a response memo answered and nothing was sent.",
           "type": "boolean"
+        },
+        "offset_ms": {
+          "description": "When the step's provider call started, in milliseconds from the start of its trial attempt, on a monotonic clock; null when no call started (as duration_ms).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
         },
         "duration_ms": {
           "type": [
@@ -619,7 +675,11 @@
                 "type": "string"
               },
               "bytes": {
-                "type": "integer",
+                "description": "Null when its size is not known without reading it.",
+                "type": [
+                  "integer",
+                  "null"
+                ],
                 "minimum": 0
               }
             }
@@ -658,6 +718,32 @@
         },
         "cached": {
           "type": "boolean"
+        },
+        "image": {
+          "description": "An image agent's answer: a reference to the image, never its bytes.",
+          "type": "object",
+          "required": [
+            "mime_type",
+            "bytes",
+            "sha256"
+          ],
+          "properties": {
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        "settings": {
+          "description": "An image agent's request settings as sent (size, quality, background, output format).",
+          "type": "object"
         },
         "cut": {
           "description": "True when text, a tool result or arguments were cut to the recording bounds.",

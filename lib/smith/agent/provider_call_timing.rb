@@ -25,6 +25,10 @@ module Smith
           @stopped_at = nil
         end
 
+        # In seconds, on the monotonic clock: where an observation places
+        # its attempt on a trial's time line.
+        attr_reader :started_at
+
         # Idempotent: the first stop wins, so a rescue-path stop after a
         # success-path stop cannot stretch the measurement.
         def stop
@@ -133,7 +137,8 @@ module Smith
         )
         record_provider_call_trace(attempt)
         if AttemptObservation.observer
-          AttemptObservation.observe(attempt, agent_class, chat:, sent_count:, request:, image:)
+          usages = completion.provider_usages
+          AttemptObservation.observe(attempt, agent_class, chat:, sent_count:, request:, image:, timer:, usages:)
         end
         attempt
       end
@@ -157,7 +162,7 @@ module Smith
         )
         record_provider_call_trace(attempt, aborted:)
         if AttemptObservation.observer
-          AttemptObservation.observe(attempt, agent_class, chat:, sent_count:, request:, image:)
+          AttemptObservation.observe(attempt, agent_class, chat:, sent_count:, request:, image:, timer:, usages:)
         end
         attempt
       end

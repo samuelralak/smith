@@ -27,12 +27,7 @@ RSpec.describe Smith::AttemptObservation do
   let(:observer) { observer_class.new }
   let(:reference) { Smith::Agent::ModelReference.new(model_id: "claude-sonnet-5-5", provider: :anthropic) }
 
-  around do |example|
-    example.run
-  ensure
-    installed = described_class.observer
-    described_class.uninstall(installed) if installed
-  end
+  around { |example| AttemptObserverSlot.emptied { example.run } }
 
   def answering(name = "SpecSeamAgent", &)
     agent(name, register: :spec_seam_agent) do
@@ -42,6 +37,21 @@ RSpec.describe Smith::AttemptObservation do
   end
 
   def run_in_trial(workflow, trial: "trial-1") = Smith::Attribution.with(trial:) { workflow.run! }
+
+  def openai_message(text)
+    { "id" => "chatcmpl-1", "object" => "chat.completion", "model" => "gpt-5",
+      "choices" => [{ "index" => 0, "finish_reason" => "stop",
+                      "message" => { "role" => "assistant", "content" => text } }],
+      "usage" => { "prompt_tokens" => 10, "completion_tokens" => 2, "total_tokens" => 12 } }
+  end
+
+  # Installing an observer once has RubyLLM's requests read (Sending), so
+  # from then on each request reads the slot too, as it does in a process
+  # that loaded smith/evals; an app that never installs one has no hook.
+  def requests_read
+    described_class.install(observer)
+    described_class.uninstall(observer)
+  end
 
   describe "the slot" do
     it "is empty unless an observer is installed, holds one observer per process, and refuses a non-observer" do
@@ -60,15 +70,33 @@ RSpec.describe Smith::AttemptObservation do
   end
 
   describe "an app that installs nothing" do
-    it "has each provider attempt read the empty slot and call nothing" do
+    it "sends RubyLLM's requests as ever: they are read only once an observer is installed" do
+      script = <<~RUBY
+        require "smith"
+        hooks = -> { RubyLLM::Connection.ancestors.take_while { _1 != RubyLLM::Connection }.map(&:name) }
+        before = hooks.call
+        observer = Object.new.tap { _1.define_singleton_method(:attempt_finished) { |_attempt| nil } }
+        2.times { Smith::AttemptObservation.install(observer) }
+        p [before, hooks.call]
+      RUBY
+      stdout, stderr, status = Open3.capture3(RbConfig.ruby, "-I", File.expand_path("../../lib", __dir__),
+                                              "-e", script)
+
+      expect([status.success?, stderr]).to eq([true, ""])
+      expect(stdout.chomp).to eq('[[], ["Smith::AttemptObservation::Sending"]]')
+    end
+
+    it "has each provider attempt, and each request once requests are read, read the empty slot and call nothing" do
       answering
+      requests_read
       server.reply(json: message("Open at 8."))
       allow(described_class).to receive(:observer).and_call_original
       expect(described_class).not_to receive(:observe)
+      expect(described_class).not_to receive(:sending)
 
       expect(run_in_trial(asking("SpecSeamUnusedWorkflow", agent: :spec_seam_agent).new(context: {})).output)
         .to eq("Open at 8.")
-      expect(described_class).to have_received(:observer).once
+      expect(described_class).to have_received(:observer).twice
     end
   end
 
@@ -92,16 +120,20 @@ RSpec.describe Smith::AttemptObservation do
         .to eq("Open at 8.")
       seen = observer.seen.sole
       expect(seen).to be_frozen
-      expect(seen.to_h.except(:duration_ms, :messages)).to eq(
+      expect(seen.to_h.except(:duration_ms, :messages, :started)).to eq(
         trial: "trial-7", agent: "spec_seam_agent", components: nil,
         attempt_id: workflow.usage_entries.sole.attempt_id, attempt_index: 0, outcome: :completed, failure: nil,
         model: "claude-sonnet-5-5", provider: :anthropic, mode: :sync, memo: false,
-        tokens: { input: 30, output: 5, cache_read: nil, cache_write: nil, thinking: nil }, stop_reason: "end_turn",
-        sent_count: 2, tool_call_names: [],
+        tokens: { input: 30, output: 5, cache_read: nil, cache_write: nil, thinking: nil, image_input: nil,
+                  image_output: nil },
+        responses: [{ tokens: { input: 30, output: 5, cache_read: nil, cache_write: nil, thinking: nil,
+                                image_input: nil, image_output: nil }, mode: :sync }],
+        stop_reason: "end_turn", sent_count: 2, tool_call_names: [],
         position: { execution_key: "run-7", workflow: "SpecSeamTrialWorkflow", transition: :ask, branch_key: nil,
-                    round: nil }
+                    round: nil },
+        settings: { temperature: nil, max_output_tokens: 500, thinking: nil }
       )
-      expect(seen.duration_ms).to be_a(Integer)
+      expect([seen.duration_ms, seen.started]).to match([a_kind_of(Integer), a_kind_of(Float)])
       expect(seen.messages).to eq([{ "role" => "system", "text" => "Answer briefly." },
                                    { "role" => "user", "text" => "classify this posting" },
                                    { "role" => "assistant", "text" => "Open at 8." }])
@@ -140,6 +172,303 @@ RSpec.describe Smith::AttemptObservation do
     end
   end
 
+  # A step record's offset is computed from its attempt's start, on the
+  # monotonic clock its duration is measured on; its settings are those
+  # the request was sent with (slice 1a.4).
+  describe "when an attempt started, and what it was sent with" do
+    def clock = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+    it "starts where its timed provider call starts, so the start and the duration end before the attempt does" do
+      answering { temperature 0.3 }
+      described_class.install(observer)
+      server.reply(json: message("Open at 8.", tokens: [30, 5]), after: 0.05)
+      workflow = asking("SpecSeamStartWorkflow", agent: :spec_seam_agent).new(context: {})
+
+      before = clock
+      run_in_trial(workflow)
+      after = clock
+      seen = observer.seen.sole
+      expect(seen.started).to be_a(Float)
+      expect(seen.started).to be_between(before, after)
+      expect(seen.started + (seen.duration_ms / 1000.0)).to be <= after + 0.001
+      expect(seen.duration_ms).to be >= 50
+    end
+
+    it "records the temperature, output limit and thinking the request was sent with, null where unknown" do
+      answering do
+        model "claude-sonnet-4-5", provider: :anthropic, assume_model_exists: false
+        temperature 0.3
+        thinking budget: 2048
+      end
+      described_class.install(observer)
+      server.reply(json: message("Open at 8."))
+
+      run_in_trial(asking("SpecSeamSettingsWorkflow", agent: :spec_seam_agent).new(context: {}))
+      expect(server.requests.sole.body.slice("temperature", "max_tokens", "thinking"))
+        .to eq("temperature" => 0.3, "max_tokens" => 500,
+               "thinking" => { "type" => "enabled", "budget_tokens" => 2048 })
+      expect(observer.seen.sole.settings).to eq(temperature: 0.3, max_output_tokens: 500, thinking: { budget: 2048 })
+      expect(observer.seen.sole.settings).to be_frozen
+      kept_on_providers = ObjectSpace.each_object(RubyLLM::Provider).flat_map(&:instance_variables).grep(/smith/i)
+      expect(kept_on_providers).to eq([])
+    end
+
+    # The hook hands every request over, whatever it holds: one the seam
+    # cannot read is read as none, and nothing it does reaches the request.
+    it "reads a request it cannot read as none, and never raises into it" do
+      described_class.install(observer)
+      chat = RubyLLM.chat(model: "claude-sonnet-5-5", provider: :anthropic, assume_model_exists: true)
+      attempt = Smith::Agent::ProviderAttempt.failure(error: Smith::AgentError.new("no reply"),
+                                                      model_reference: reference, attempt_id: "a-1", attempt_index: 0)
+      Smith::Attribution.with(trial: "trial-1") do
+        expect { described_class.sending(chat.instance_variable_get(:@provider).connection, "no payload") }
+          .not_to raise_error
+        expect { described_class.sending(Object.new, { temperature: 0.2 }) }.not_to raise_error
+        described_class.observe(attempt, Class.new, chat:)
+      end
+
+      expect(observer.seen.sole.settings).to eq(temperature: nil, max_output_tokens: nil, thinking: nil)
+    end
+
+    # What the agent declares is not what was sent: RubyLLM's renderers drop
+    # what a provider does not take, and params go in beside them.
+    it "reads each setting from the request as it went, params included, whatever the agent declares" do
+      described_class.install(observer)
+      rows = [
+        ["gpt-5", :openai, -> { thinking budget: 4096 }, { temperature: nil, max_output_tokens: 500, thinking: nil }],
+        ["gpt-5", :openai, -> { thinking effort: :low, budget: 4096 },
+         { temperature: nil, max_output_tokens: 500, thinking: { effort: "low" } }],
+        ["claude-sonnet-4-5", :anthropic, -> { thinking effort: :low, budget: 2048 },
+         { temperature: nil, max_output_tokens: 500, thinking: { budget: 2048 } }],
+        ["claude-sonnet-4-5", :anthropic, -> { thinking effort: :none },
+         { temperature: nil, max_output_tokens: 500, thinking: nil }],
+        ["gpt-4o-search-preview", :openai, -> { temperature 0.2 },
+         { temperature: nil, max_output_tokens: 500, thinking: nil }],
+        ["gpt-4o", :openai, -> { params max_tokens: 300, temperature: 0.1 },
+         { temperature: 0.1, max_output_tokens: 300, thinking: nil }],
+        ["gpt-5", :openai, -> { params max_tokens: 500, reasoning_effort: "high" },
+         { temperature: nil, max_output_tokens: 500, thinking: { effort: "high" } }]
+      ]
+
+      sent = rows.each_with_index.map do |(model, provider, declared, _settings), at|
+        answering("SpecSeamSent#{at}Agent") do
+          model model, provider:, assume_model_exists: false
+          class_exec(&declared)
+        end
+        server.reply(json: provider == :openai ? openai_message("Open at 8.") : message("Open at 8."))
+        run_in_trial(asking("SpecSeamSent#{at}Workflow", agent: :spec_seam_agent).new(context: {}))
+        server.requests.last.body.slice("temperature", "max_tokens", "max_completion_tokens", "thinking",
+                                        "reasoning_effort")
+      end
+      expect(observer.seen.map(&:settings)).to eq(rows.map(&:last))
+      expect(sent).to eq([{ "max_completion_tokens" => 500 },
+                          { "max_completion_tokens" => 500, "reasoning_effort" => "low" },
+                          { "max_tokens" => 500, "thinking" => { "type" => "enabled", "budget_tokens" => 2048 } },
+                          { "max_tokens" => 500 }, { "max_tokens" => 500 },
+                          { "max_tokens" => 300, "temperature" => 0.1 },
+                          { "max_completion_tokens" => 500, "reasoning_effort" => "high" }])
+    end
+
+    # A key params give as a String beside RubyLLM's Symbol is in the
+    # payload twice: json 2 writes both, and a provider reads the last (the
+    # params'), which the step records; json 3 refuses to write the request,
+    # so it never leaves and the step records none.
+    it "reads a params key given as a String beside RubyLLM's Symbol as the one JSON writes last, if it left" do
+      answering do
+        model "gpt-4o", provider: :openai, assume_model_exists: false
+        temperature 0.7
+        params "temperature" => 0.3, max_tokens: 300
+      end
+      described_class.install(observer)
+      server.reply(json: openai_message("Open at 8."))
+
+      run_in_trial(asking("SpecSeamStringKeyWorkflow", agent: :spec_seam_agent).new(context: {}))
+      seen = observer.seen.sole
+      sent = server.requests.map { _1.body["temperature"] }
+      left = { temperature: 0.3, max_output_tokens: 300, thinking: nil }
+      unwritten = { temperature: nil, max_output_tokens: nil, thinking: nil }
+      expect([[[0.3], nil, left], [[], "JSON::GeneratorError", unwritten]])
+        .to include([sent, seen.failure&.dig(:error_class), seen.settings])
+    end
+
+    # Each provider carries them under its own names; a provider built on
+    # one of these (Vertex AI on Gemini, DeepSeek on OpenAI) reads as it. A
+    # thinking its model takes none of is left out of the request, and given
+    # in params it is sent as given.
+    it "reads Gemini's, OpenRouter's, Bedrock's and DeepSeek's requests under their own names" do
+      keys = %i[gemini_api_key gemini_api_base openrouter_api_key openrouter_api_base bedrock_api_key
+                bedrock_secret_key bedrock_region bedrock_api_base deepseek_api_key deepseek_api_base]
+      saved = keys.to_h { [_1, RubyLLM.config.public_send(_1)] }
+      RubyLLM.configure do |config|
+        config.gemini_api_key = config.openrouter_api_key = config.bedrock_api_key = "test"
+        config.deepseek_api_key = config.bedrock_secret_key = "test"
+        config.bedrock_region = "us-east-1"
+        config.gemini_api_base = config.bedrock_api_base = config.deepseek_api_base = server.url
+        config.openrouter_api_base = "#{server.url}/v1"
+      end
+      described_class.install(observer)
+      rows = {
+        ["gemini-2.5-flash", :gemini] => [{ generationConfig: { maxOutputTokens: 300 } }, { budget: 1024 }],
+        ["openai/gpt-4o", :openrouter] => [{ max_tokens: 200, reasoning: { effort: "low", max_tokens: 512 } },
+                                           { effort: :high }],
+        ["anthropic.claude-sonnet-4-5", :bedrock] =>
+          [{ inferenceConfig: { maxTokens: 400 },
+             additionalModelRequestFields: { reasoning_config: { type: "enabled", budget_tokens: 1024 } } },
+           { budget: 2048 }],
+        ["deepseek-chat", :deepseek] => [{ max_tokens: 250, reasoning_effort: "low" }, { effort: :high }],
+        ["amazon.nova-premier-v1:0", :bedrock] =>
+          [{ inferenceConfig: { maxTokens: 350 },
+             additionalModelRequestFields: { reasoning_config: { type: "enabled", reasoning_effort: "medium" } } },
+           { budget: 2048 }]
+      }
+      replies = [
+        { "candidates" => [{ "content" => { "role" => "model", "parts" => [{ "text" => "Open at 8." }] },
+                             "finishReason" => "STOP" }],
+          "usageMetadata" => { "promptTokenCount" => 10, "candidatesTokenCount" => 2 } },
+        openai_message("Open at 8."),
+        { "output" => { "message" => { "role" => "assistant", "content" => [{ "text" => "Open at 8." }] } },
+          "stopReason" => "end_turn", "usage" => { "inputTokens" => 10, "outputTokens" => 2 } }
+      ]
+      replies += [openai_message("Open at 8."), replies.last]
+
+      rows.each_with_index do |((model, provider), (params, thinking)), at|
+        Smith::Agent::Registry.delete(:spec_seam_agent)
+        with_stubbed_class("SpecSeamNamed#{at}Agent", agent_class) do
+          register_as :spec_seam_agent
+          model model, provider:, assume_model_exists: true
+          temperature 0.25
+          thinking(**thinking)
+          params(**params)
+        end
+        server.reply(json: replies[at])
+        run_in_trial(asking("SpecSeamNamed#{at}Workflow", agent: :spec_seam_agent).new(context: {}))
+      end
+      expect(observer.seen.map(&:settings)).to eq(
+        [{ temperature: 0.25, max_output_tokens: 300, thinking: { budget: 1024 } },
+         { temperature: 0.25, max_output_tokens: 200, thinking: { effort: "low", budget: 512 } },
+         { temperature: 0.25, max_output_tokens: 400, thinking: { budget: 1024 } },
+         { temperature: 0.25, max_output_tokens: 250, thinking: { effort: "low" } },
+         { temperature: 0.25, max_output_tokens: 350, thinking: { effort: "medium" } }]
+      )
+      gemini, openrouter, bedrock, deepseek, embedded = server.requests.map(&:body)
+      expect([deepseek.values_at("temperature", "max_tokens", "reasoning_effort"),
+              embedded.dig("additionalModelRequestFields", "reasoning_config", "reasoning_effort")])
+        .to eq([[0.25, 250, "low"], "medium"])
+      expect([gemini.dig("generationConfig", "thinkingConfig", "thinkingBudget"), openrouter["reasoning"],
+              openrouter["temperature"], bedrock.dig("additionalModelRequestFields", "reasoning_config"),
+              bedrock["inferenceConfig"]])
+        .to eq([1024, { "effort" => "low", "max_tokens" => 512 }, 0.25,
+                { "type" => "enabled", "budget_tokens" => 1024 }, { "temperature" => 0.25, "maxTokens" => 400 }])
+    ensure
+      saved&.each { |key, value| RubyLLM.config.public_send(:"#{key}=", value) }
+    end
+
+    # A request JSON cannot write (a NaN in its params) fails where it
+    # leaves, before anything is sent: it carried nothing to a provider.
+    it "has none for a request JSON could not write, which never left" do
+      answering { params max_tokens: 300, top_p: Float::NAN }
+      described_class.install(observer)
+
+      run_in_trial(asking("SpecSeamUnwrittenWorkflow", agent: :spec_seam_agent).new(context: {}))
+      expect([server.requests, observer.seen.sole.failure[:error_class], observer.seen.sole.settings])
+        .to eq([[], "JSON::GeneratorError", { temperature: nil, max_output_tokens: nil, thinking: nil }])
+    end
+
+    # A batch step's request goes through the host's batch queue, and its
+    # result answers the request its call renders again when delivered.
+    it "reads a batch step's settings from the request its delivered result answers" do
+      Smith.config.batch_queue = queue = batch_queue
+      answering do
+        model "claude-sonnet-4-5", provider: :anthropic, assume_model_exists: false
+        temperature 0.2
+      end
+      described_class.install(observer)
+      workflow = asking("SpecSeamBatchWorkflow", agent: :spec_seam_agent, mode: :batch).new(context: {})
+
+      Smith::Attribution.with(trial: "trial-1") do
+        workflow.run!
+        workflow.resume!(event: :batch_result, token: workflow.awaiting.token,
+                         payload: { queue.items.last[:custom_id] => { "type" => "succeeded",
+                                                                      "message" => message("Open at 8.") } })
+      end
+      expect(queue.items.last[:request]["params"].slice("temperature", "max_tokens"))
+        .to eq("temperature" => 0.2, "max_tokens" => 500)
+      expect([server.requests, observer.seen.map { [_1.mode, _1.settings] }])
+        .to eq([[], [[:batch, { temperature: 0.2, max_output_tokens: 500, thinking: nil }]]])
+    end
+
+    it "has none for a request that was never sent, as one its renderer refused before the wire" do
+      answering do
+        model "claude-sonnet-4-6", provider: :anthropic, assume_model_exists: true
+        temperature 0.3
+        thinking budget: 2048
+      end
+      described_class.install(observer)
+
+      run_in_trial(asking("SpecSeamUnsentWorkflow", agent: :spec_seam_agent).new(context: {}))
+      expect([server.requests, observer.seen.sole.outcome, observer.seen.sole.settings])
+        .to eq([[], :aborted, { temperature: nil, max_output_tokens: nil, thinking: nil }])
+    end
+
+    # The budget ledger prices each response alone (a tiered price picks
+    # its tier per response), so the seam hands each one over, on the
+    # success and the failure path.
+    it "hands over each response's tokens and mode, completed or failed part way" do
+      stub_const("SpecSeamLookup", Class.new(Smith::Tool) do
+        param :query, type: :string, required: true
+        define_method(:perform) { |query:| "#{query} opens at 8" }
+      end)
+      answering { tools SpecSeamLookup }
+      described_class.install(observer)
+      server.reply(json: message(nil, tokens: [150, 10], content: tool_use("spec_seam_lookup"), stop: "tool_use"))
+            .reply(json: message("At 8.", tokens: [160, 5]))
+            .reply(json: message(nil, tokens: [150, 10], content: tool_use("spec_seam_lookup"), stop: "tool_use"))
+            .reply(json: { type: "error", error: { type: "overloaded_error", message: "busy" } },
+                   status: "529 Overloaded")
+      workflow = asking("SpecSeamRoundsWorkflow", agent: :spec_seam_agent).new(context: {})
+      run_in_trial(workflow)
+      failing = asking("SpecSeamRoundsFailWorkflow", agent: :spec_seam_agent).new(context: {})
+      run_in_trial(failing)
+
+      counts = observer.seen.map { |seen| seen.responses.map { [*_1[:tokens].values_at(:input, :output), _1[:mode]] } }
+      expect(counts).to eq([[[150, 10, :sync], [160, 5, :sync]], [[150, 10, :sync]]])
+      expect(observer.seen.map { _1.tokens.values_at(:input, :output) }).to eq([[310, 15], [150, 10]])
+      expect([*observer.seen.map(&:responses), *observer.seen.flat_map(&:responses)]).to all(be_frozen)
+      by_attempt = [*workflow.usage_entries, *failing.usage_entries].group_by(&:attempt_id)
+      expect(observer.seen.map { by_attempt.fetch(_1.attempt_id).map(&:input_tokens) }).to eq([[150, 160], [150]])
+    end
+
+    # Claude 5 takes no temperature and thinks adaptively: Smith drops the
+    # one and sends the other as an effort (Models::Normalizer).
+    it "leaves out what Smith does not send, and gives thinking in the form Smith sends it" do
+      answering do
+        temperature 0.3
+        thinking budget: 2048
+      end
+      described_class.install(observer)
+      server.reply(json: message("Open at 8."))
+
+      run_in_trial(asking("SpecSeamAdaptiveWorkflow", agent: :spec_seam_agent).new(context: {}))
+      body = server.requests.sole.body
+      expect([body.key?("temperature"), body["output_config"], body["max_tokens"]])
+        .to eq([false, { "effort" => "high" }, 500])
+      expect(observer.seen.sole.settings).to eq(temperature: nil, max_output_tokens: 500, thinking: { effort: "high" })
+    end
+
+    it "has no start or settings for an attempt that failed before its call, and none for a skipped candidate" do
+      described_class.install(observer)
+      attempt = Smith::Agent::ProviderAttempt.failure(error: Smith::AgentError.new("no model"),
+                                                      model_reference: reference, attempt_id: "a-1", attempt_index: 0)
+      Smith::Attribution.with(trial: "trial-1") do
+        described_class.observe(attempt, answering)
+        described_class.skipped(answering, reference, 1, attempt_id: "a-2", provider: :anthropic)
+      end
+
+      expect(observer.seen.map { [_1.started, _1.responses, _1.settings] })
+        .to eq([[nil, [], { temperature: nil, max_output_tokens: nil, thinking: nil }]] * 2)
+    end
+  end
+
   describe "how an attempt ended" do
     def observed(error)
       described_class.install(observer)
@@ -174,13 +503,30 @@ RSpec.describe Smith::AttemptObservation do
 
     it "writes Smith's fixed words for a refused key, account or model, and a bounded message otherwise" do
       expect(observed(RubyLLM::UnauthorizedError.new(nil, "key sk-live-1 refused")).failure[:message])
-        .to eq("The provider refused the API key.")
+        .to eq("the provider refused the key (HTTP 401)")
       expect(observed(RubyLLM::PaymentRequiredError.new(nil, "card 4242 declined")).failure[:message])
-        .to eq("The provider account is out of credit.")
+        .to eq("the provider reports no credit")
       expect(observed(RubyLLM::ForbiddenError.new(nil, "org org-9 denied")).failure[:message])
-        .to eq("The provider refused access to this model.")
+        .to eq("the key has no permission for this model (HTTP 403)")
       long = observed(RubyLLM::BadRequestError.new(nil, "x" * 5000)).failure[:message]
       expect([long.bytesize <= 1024, long.start_with?("xxx")]).to eq([true, true])
+    end
+
+    # A billing refusal comes as a 402, or as a 400, 429 or 500 that
+    # Smith::BillingRefusals reads as one: its words name no status.
+    it "writes the same words for an account out of credit whatever status its refusal came with" do
+      answering do
+        model "gpt-5", provider: :openai, assume_model_exists: true
+      end
+      described_class.install(observer)
+      quota = "You exceeded your current quota, please check your plan and billing details."
+      server.reply(json: { error: { message: quota, type: "insufficient_quota", code: "insufficient_quota" } },
+                   status: "429 Too Many Requests")
+
+      run_in_trial(asking("SpecSeamQuotaWorkflow", agent: :spec_seam_agent).new(context: {}))
+      expect(observer.seen.sole.failure)
+        .to eq(kind: :out_of_credit, error_class: "RubyLLM::PaymentRequiredError",
+               message: "the provider reports no credit")
     end
 
     it "keeps a provider's body out of the record when it refuses the key over the wire" do
@@ -192,7 +538,7 @@ RSpec.describe Smith::AttemptObservation do
       run_in_trial(asking("SpecSeamRefusedWorkflow", agent: :spec_seam_agent).new(context: {}))
       expect(observer.seen.sole.failure)
         .to eq(kind: :key_refused, error_class: "RubyLLM::UnauthorizedError",
-               message: "The provider refused the API key.")
+               message: "the provider refused the key (HTTP 401)")
       expect(observer.seen.sole.messages.map { _1["role"] }).to eq(%w[system user])
     end
   end
@@ -261,19 +607,21 @@ RSpec.describe Smith::AttemptObservation do
       end
     end
 
-    it "reads the empty slot once and calls nothing when no observer is installed" do
+    it "reads the empty slot once, and once for its request, and calls nothing when no observer is installed" do
       painting
+      requests_read
       server.reply(json: painted)
       allow(described_class).to receive(:observer).and_call_original
       expect(described_class).not_to receive(:observe)
 
       expect(run_in_trial(asking("SpecSeamPaintUnusedWorkflow", agent: :spec_seam_agent).new(context: {})).state)
         .to eq(:done)
-      expect(described_class).to have_received(:observer).once
+      expect(described_class).to have_received(:observer).twice
     end
 
     it "reads the empty slot once on a failed attempt too, and calls nothing, on its way to the fallback" do
       painting { fallback_models "openai/gpt-image-other" }
+      requests_read
       server.reply(json: { "error" => { "message" => "Slow down" } }, status: "429 Too Many Requests")
       server.reply(json: painted)
       allow(described_class).to receive(:observer).and_call_original
@@ -282,7 +630,7 @@ RSpec.describe Smith::AttemptObservation do
       workflow = asking("SpecSeamPaintFallbackUnusedWorkflow", agent: :spec_seam_agent).new(context: {})
       expect(run_in_trial(workflow).state).to eq(:done)
       expect(provider_calls.map { _1[:outcome] }).to eq(%i[failure success])
-      expect(described_class).to have_received(:observer).twice
+      expect(described_class).to have_received(:observer).exactly(4).times
     end
 
     # The paint's image reaches the record through a local of its attempt,
@@ -317,6 +665,21 @@ RSpec.describe Smith::AttemptObservation do
       expect(result.state).to eq(:done)
       expect(observer.seen.map(&:attempt_id)).to eq(provider_calls.map { _1[:attempt_id] })
       expect(observer.seen.map(&:outcome)).to eq(%i[completed])
+    end
+
+    # Image tokens are priced at their own rates, so the seam hands them on.
+    it "hands over an image's image token counts, in its tokens and its one response" do
+      painting
+      described_class.install(observer)
+      server.reply(json: painted.merge("usage" => { "input_tokens" => 40, "output_tokens" => 823,
+                                                    "input_tokens_details" => { "image_tokens" => 30 } }))
+
+      run_in_trial(asking("SpecSeamPaintTokensWorkflow", agent: :spec_seam_agent).new(context: {}))
+      seen = observer.seen.sole
+      expect(seen.tokens.slice(:input, :output, :image_input, :image_output))
+        .to eq(input: 40, output: 823, image_input: 30, image_output: 823)
+      expect(seen.responses).to eq([{ tokens: seen.tokens, mode: :sync }])
+      expect(seen.settings).to eq(temperature: nil, max_output_tokens: nil, thinking: nil)
     end
 
     it "holds the request's text and settings and a reference to what came back, never the image's bytes" do

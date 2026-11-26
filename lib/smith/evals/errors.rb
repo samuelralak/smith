@@ -48,6 +48,12 @@ module Smith
     # A driver whose form this runner cannot drive.
     class DriverUnsupported < Error; end
 
+    # A suite's input mapping set a key the subject trusts as a scope key
+    # (its provider_credentials or budget_ledger keys) to another value than
+    # the eval run's scope: a suite bug that would hit every trial, so the
+    # run stops (slice-1a design, 5.2 and 6.2).
+    class ScopeConflict < Error; end
+
     # A start with a known id or key whose plan digest differs from the
     # record's. `fields` names what differs.
     class ResumeMismatch < Error

@@ -350,6 +350,70 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   in the process, a refusing registry set) equals the golden. `require
   "smith"` loads `smith/prompts` alone; `Smith::Prompt` and the template
   load when first named, the pins when a run first starts.
+- Experimental: running one eval trial. `require "smith/evals"` now
+  installs `Smith::Evals::Recording` into the attempt seam, which also
+  prepends one hook on `RubyLLM::Connection#post`, where each request
+  leaves with its payload (an app that installs no observer has neither):
+  the one exception to reading RubyLLM through its public interface,
+  pinned to RubyLLM 1.16 by a contract spec and replaced at the 2.x move
+  by RubyLLM's public request seam (`chat.render`, or a `before_request`
+  callback). It passes each request on untouched and reads it only once
+  it has left; outside a trial the seam calls nothing. `Smith::Evals.under(context)`
+  runs a block in a trial's scope (a `TrialContext`), keeping the
+  attribution a host gave around it, and every agent attempt in it, on its
+  thread and the threads Smith starts for its steps (not threads or fibers
+  attribution does not reach), reaches the `Smith::Evals::Recorder`
+  attached for that trial (`Recording.attach(recorder) { ... }`),
+  whatever Smith's trace content says. A recorder keeps one step record
+  per provider attempt (the trial schema's step, with `offset_ms`, when its
+  call started from the start of the trial attempt on a monotonic clock,
+  and `settings`, the temperature, output limit and thinking its last
+  request carried, read from the request as sent, params included, null
+  where it carried none and when nothing left, as for a stub's answer or a
+  request JSON could not write),
+  its messages copied and bounded (cut texts and tool results marked, a
+  step's middle messages elided, later steps' messages dropped past the
+  trial's bytes, the first and last steps kept past `max_steps`, a dropped
+  step's bytes freed for the steps kept after it), each priced per provider
+  response with `Smith::Pricing.compute_cost`, as the budget ledger prices,
+  so a tiered price picks its tier per response, in integer nanos, and
+  Smith's fixed text for a refused key, credit or model access. Its
+  `usage.provider_calls` counts the attempts that sent a request.
+  `TrialSpec` (the trial id, the same across a relaunch, and a seed),
+  `SubjectResult` (how the subject ended, its kept state and its child
+  runs not followed, kept when the run raises after them) and
+  `Smith::Evals::Drivers::InProcess` (the subject built from the sample's
+  input mapping with the eval scope's values for the keys its class
+  trusts, a conflicting mapping refused with `ScopeConflict`, driven a step
+  at a time, a durable retry's wait ended at once, `until:` and waits) are
+  frozen. `Smith::Evals::Outcomes` classifies a trial (answered, unscored,
+  subject failed, limit hit or error, with its reason, whether it is
+  retried and whether it stops the run) from every way design 6.2 and 6.3
+  list, including Smith 0.16.0's `RequestOutcomeUncertain` (an error, not
+  retried). `Smith::Evals::Trial` is what a scorer reads. In
+  `smith/testing`, `stub_agent(outputs:)` takes a callable answering each
+  `Smith::Testing::Request` (its agent, number, round, messages, tools,
+  schema), and `Smith::Testing.reply(output, usage:, stop_reason:)` gives
+  one request its own usage and stop reason.
+  `AttemptObservation::FIXED_MESSAGES` is public, the one place Smith's
+  words for a missing or refused key, credit or model access are written
+  ("no key for this provider", "the provider refused the key (HTTP
+  401)", "the provider reports no credit", "the key has no permission
+  for this model (HTTP 403)"), which an observer and an eval record get
+  in place of the provider's; the credit words name no status, since a
+  billing refusal can come as a 400, 429 or 500. New public names, all
+  experimental: in the core, `AttemptObservation::FIXED_MESSAGES`,
+  `AttemptObservation.sending` (a request's payload handed to the seam),
+  `AttemptObservation::Attempt#started`, `#responses` (each provider
+  response's tokens and mode) and `#settings`, `observe`'s `timer:` and
+  `usages:`, `Agent::ProviderCallTiming::Timer#started_at` and
+  `Providers::BatchExchange.answer`; in `smith/evals`, `Smith::Evals.under`,
+  `TrialSpec`, `TrialContext`, `SubjectResult`, `Trial`, `Driver`,
+  `Drivers::InProcess`, `Recording`, `Recorder`, `Outcomes`,
+  `ScopeConflict`, `Subject#workflow_for` and `Configuration.recording`;
+  in `smith/testing`, `Smith::Testing.reply`, `Testing::Request`,
+  `Testing::Reply` and `Testing::Stub.check_reply!`. None is on
+  `Smith::Workflow`, `Agent`, `Context` or `Tool`.
 
 ### Changed
 

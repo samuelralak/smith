@@ -53,6 +53,18 @@ module Smith
         exchange if exchange&.provider.equal?(provider)
       end
 
+      # The result's message for the call's request (`payload`, to leave
+      # through `connection`), once the exchange notes whether it changed.
+      # That request went through the host's batch queue, not the wire, so
+      # the eval seam reads what it carried here (AttemptObservation.sending).
+      def answer(connection, exchange, payload, headers)
+        exchange.changed = Smith::Batch.changed?(exchange.digest, payload, headers)
+        raise Smith::BatchRequestChanged if exchange.changed && exchange.on_change != :keep
+
+        AttemptObservation.sending(connection, payload) if AttemptObservation.observer
+        Smith::Batch.message!(exchange.result).to_h
+      end
+
       # Prepended on RubyLLM::Provider.
       module Hook
         private
@@ -65,10 +77,8 @@ module Smith
             throw(CAPTURED, Smith::Batch.request(provider: slug, params: payload, headers: additional_headers))
           end
 
-          exchange.changed = Smith::Batch.changed?(exchange.digest, payload, additional_headers)
-          raise Smith::BatchRequestChanged if exchange.changed && exchange.on_change != :keep
-
-          parse_completion_response(Response.new(Smith::Batch.message!(exchange.result).to_h))
+          message = BatchExchange.answer(connection, exchange, payload, additional_headers)
+          parse_completion_response(Response.new(message))
         end
       end
     end

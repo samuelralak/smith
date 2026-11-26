@@ -81,6 +81,28 @@ module CoreInvisibility
     end
   end
 
+  # A scenario's trial in the modes that run each under one (Runner::TRIALS):
+  # its id and context from the scenario's name, and the real recorder
+  # (smith/evals, loaded by then) that keeps its step records.
+  module Recorded
+    EVAL_RUN = "er_#{"0" * 32}".freeze
+
+    module_function
+
+    def recorder(scenario)
+      id = Smith::Evals::Identity.trial_id(eval_run_id: EVAL_RUN, sample_id: scenario.name.to_s, index: 0)
+      Smith::Evals::Recorder.new(id)
+    end
+
+    # Runs the block under the recorder's trial, the recorder attached.
+    def within(recorder, &)
+      context = Smith::Evals::TrialContext.new(trial_id: recorder.trial_id, eval_run_id: EVAL_RUN,
+                                               scope: Smith::Scope.build({}), sample_id: "scenario", trial_index: 0,
+                                               candidate_id: nil)
+      Smith::Evals::Recording.attach(recorder) { Smith::Evals.under(context, &) }
+    end
+  end
+
   # Facts about the process the document came from; none is compared.
   module Environment
     module_function

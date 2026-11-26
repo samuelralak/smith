@@ -60,12 +60,22 @@ module Smith
     end
 
     # Answers `agent`'s requests (its class, or its registered name) with
-    # `outputs`; returns the Stub.
+    # `outputs`, taken in turn, or with what a callable answers each request
+    # (Smith::Testing::Request: its messages, round, tools...), so trials of
+    # one sample get one answer however they interleave. Returns the Stub.
     def stub_agent(agent, outputs:, usage: {}, stop_reason: "end_turn", stream: nil)
-      outputs = [outputs] unless outputs.is_a?(Array)
+      outputs = [outputs] unless outputs.is_a?(Array) || outputs.respond_to?(:call)
       Stub.check!(outputs, usage, stop_reason, stream)
-      stub = Stub.new(outputs:, usage:, stop_reason:, stream:)
+      name = (agent.is_a?(Module) ? agent.register_as || agent.name : agent).to_s
+      stub = Stub.new(outputs:, usage:, stop_reason:, stream:, name:)
       @stubs_lock.synchronize { @stubs[agent.is_a?(Module) ? agent : agent.to_sym] = stub }
+    end
+
+    # A stubbed output with its own usage (token counts over the stub's) and
+    # stop reason (the stub's when nil): one request's reply cut off, say.
+    def reply(output, usage: {}, stop_reason: nil)
+      Stub.check_reply!(output, usage, stop_reason)
+      Reply.new(output:, usage: usage.dup.freeze, stop_reason:)
     end
 
     # A tool request, as a stub's output: the model asks for `tool` (its

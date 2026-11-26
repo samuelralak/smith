@@ -56,7 +56,9 @@
 #   ruby -Ilib script/core_invisibility_golden --mode plain|observer|trial|concurrent|prompted
 #
 # plain: nothing installed. observer: a test observer installed, no trial.
-# trial: the observer installed and every scenario inside a trial scope.
+# trial: smith/evals loaded, every scenario inside a trial scope
+# (Smith::Evals.under) with the real recorder attached, its step records
+# the document's observations.
 # concurrent: as trial, only the concurrent scenarios, branches in parallel.
 # credentialed: as trial, every workflow declaring provider_credentials that
 # answer with the local server's keys, and none left in RubyLLM's global

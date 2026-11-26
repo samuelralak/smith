@@ -57,16 +57,24 @@ module CoreInvisibility
     TRANSIENT = { duration_ms: [Integer, "ms"], duration: [Float, "s"] }.freeze
     private_constant :TRANSIENT
 
+    # The modes that run every scenario inside a trial, recorded by the
+    # real recorder (slice 1a.4); the observer mode installs a test one.
+    TRIALS = %w[trial concurrent credentialed].freeze
+
     def initialize(mode)
       @mode = mode
-      @observer = Observer.new if %w[observer trial concurrent credentialed].include?(mode)
+      @observer = Observer.new if mode == "observer"
+      @recording = TRIALS.include?(mode)
       @observations = {}
       @server = SseServer.new
     end
 
+    # Evals load (installing their recorder) before the host surface is
+    # read, so a name they added to a host's classes would show.
     def call
       Smith::AttemptObservation.install(@observer) if @observer
       CoreInvisibility.prompted! if @mode == "prompted"
+      require "smith/evals" if @recording
       surface = HostSurface.call
       selected = CoreInvisibility.scenarios.select { @mode != "concurrent" || _1.concurrent }
       scenarios = selected.to_h { [_1.name.to_s, run(_1)] }
@@ -80,8 +88,8 @@ module CoreInvisibility
     def run(scenario)
       prepare
       run = Run.new(@server)
-      trial = %w[trial concurrent credentialed].include?(@mode) ? "trial-#{scenario.name}" : nil
-      within_trial(trial) { drive(scenario, run) }
+      @recorder = Recorded.recorder(scenario) if @recording
+      within_trial { drive(scenario, run) }
       collect(scenario)
     end
 
@@ -94,11 +102,7 @@ module CoreInvisibility
       CoreInvisibility.record.error(e)
     end
 
-    def within_trial(trial, &)
-      return yield unless trial
-
-      Smith::Attribution.with(trial:, &)
-    end
+    def within_trial(&) = @recorder ? Recorded.within(@recorder, &) : yield
 
     def prepare
       Determinism.reset!
@@ -149,8 +153,10 @@ module CoreInvisibility
       @server.clear_replies
     end
 
+    # The test observer's summaries, or the recorder's step records.
     def observe(scenario)
       @observations[scenario.name.to_s] = @observer.drain.map { Observer.summary(_1) } if @observer
+      @observations[scenario.name.to_s] = @recorder.steps if @recorder
     end
 
     # The server's port changes from run to run; it reads PORT.
@@ -171,7 +177,7 @@ module CoreInvisibility
     def document(scenarios, surface)
       doc = { "format" => FORMAT, "smith" => Environment.smith, "environment" => Environment.versions,
               "process" => Environment.process, "host_surface" => surface, "scenarios" => scenarios }
-      doc["observations"] = @observations if @observer
+      doc["observations"] = @observations if @observer || @recording
       doc["prompts_declared"] = Smith::Prompts.__send__(:declared?) if @mode == "prompted"
       doc
     end

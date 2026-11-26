@@ -8,7 +8,11 @@ require "smith/provider_options"
 # 18), each asserted through RubyLLM's public interface only, so a RubyLLM
 # release that changes one fails here, loudly, before a host notices. Started
 # by slice 0 with what the recorder seam and the shared harness use; later
-# slices add theirs.
+# slices add theirs. One exception, listed in section 18: the request hook a
+# step's settings are read through (slice 1a.4) rests on 1.16's internal
+# request path, so its example reads the chat's provider and wraps
+# Connection#post; it is replaced at the 2.x move by RubyLLM's public request
+# seam (`chat.render`, or a `before_request` callback).
 RSpec.describe "RubyLLM contract: the public touch points Smith uses" do
   let(:server) { SseServer.new }
 
@@ -106,6 +110,29 @@ RSpec.describe "RubyLLM contract: the public touch points Smith uses" do
       image = RubyLLM::Image.paint("Draw a cat.", model: "gpt-image-test", provider: :openai, assume_model_exists: true)
       expect([image.class, image.data.unpack1("m")]).to eq([RubyLLM::Image, drawn])
       expect(server.requests.sole.path).to eq("/v1/images/generations")
+    end
+  end
+
+  # Slice 1a.4: a step record's settings are read from each request where
+  # it leaves (AttemptObservation::Sending, prepended on Connection#post):
+  # the listed exception above, pinned to 1.16.
+  describe "where a request leaves for its provider" do
+    it "posts each request's payload, its params merged in, through its provider's Connection#post" do
+      server.reply(json: reply([{ "type" => "text", "text" => "Sent." }]))
+      chat = anthropic_chat.with_temperature(0.2).with_params(max_tokens: 64)
+      provider = chat.instance_variable_get(:@provider)
+      posted = []
+      allow(provider.connection).to receive(:post).and_wrap_original do |post, url, payload, &block|
+        posted << [url, payload.slice(:temperature, :max_tokens)]
+        post.call(url, payload, &block)
+      end
+
+      expect(chat.ask("Hi").content).to eq("Sent.")
+      own = RubyLLM::Connection.instance_method(:post)
+      own = own.super_method until own.owner == RubyLLM::Connection
+      expect(own.parameters).to eq([%i[req url], %i[req payload], %i[block &]])
+      expect(posted).to eq([["v1/messages", { temperature: 0.2, max_tokens: 64 }]])
+      expect([provider.connection.provider.equal?(provider), provider.class.slug]).to eq([true, "anthropic"])
     end
   end
 

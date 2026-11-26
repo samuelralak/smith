@@ -233,6 +233,166 @@ RSpec.describe "Smith::Testing" do
     end
   end
 
+  # A stub that answers by the request rather than by its order (slice-1a
+  # design, section 10), so trials of one sample get one answer however
+  # they interleave.
+  describe "stub_agent answering by request" do
+    def ticket_workflow(name)
+      with_stubbed_class(name, workflow_class) do
+        initial_state :idle
+        state :failed
+        seed_messages { |context| [{ role: :user, content: "Ticket: #{context[:ticket]}" }] }
+        transition :ask, from: :idle, to: :done do
+          execute :spec_ledger_agent, output_to: :answer
+          on_failure :fail
+        end
+      end
+    end
+
+    it "answers each request from a callable given the request: its agent, number, round, model and messages" do
+      shape = schema
+      agent("SpecTestingRequestAgent") do
+        instructions { |_context| "Label the ticket." }
+        output_schema shape
+      end
+      seen = []
+      stub = testing.stub_agent(SpecTestingRequestAgent, outputs: lambda { |request|
+        seen << request
+        { "label" => request.last_user.downcase.include?("refund") ? "billing" : "other" }
+      })
+      klass = ticket_workflow("SpecTestingRequestWorkflow")
+
+      answers = ["Where is my refund?", "The app crashes.", "Refund me twice."].map do |ticket|
+        context_of(klass.new(context: { ticket: }).tap(&:run!))[:answer]
+      end
+      expect(answers).to eq([{ label: "billing" }, { label: "other" }, { label: "billing" }])
+      first = seen.first
+      expect(first).to be_a(Smith::Testing::Request).and(be_frozen)
+      expect(first.to_h.except(:messages, :schema)).to eq(
+        agent: "spec_ledger_agent", number: 1, round: 1, model: "claude-sonnet-5-5", provider: "anthropic",
+        system: "Label the ticket.", last_user: "Ticket: Where is my refund?", tools: []
+      )
+      expect(first.messages).to eq([{ "role" => "system", "text" => "Label the ticket." },
+                                    { "role" => "user", "text" => "Ticket: Where is my refund?" }])
+      expect(first.schema).to include("name" => "v")
+      expect(seen.map(&:number)).to eq([1, 2, 3])
+      expect(stub.calls.map { |messages| messages.map(&:role) }).to eq([%i[system user]] * 3)
+      expect(server.requests).to be_empty
+    end
+
+    it "answers a tool round from its round and the tool's result in its messages" do
+      stub_const("SpecTestingRequestLookup", Class.new(Smith::Tool) do
+        param :query, type: :string, required: true
+        define_method(:perform) { |query:| { found: "#{query} opens at 8" } }
+      end)
+      agent("SpecTestingRoundAgent") { tools SpecTestingRequestLookup }
+      rounds = []
+      testing.stub_agent(SpecTestingRoundAgent, outputs: lambda { |request|
+        rounds << [request.round, request.tools]
+        next testing.tool_call(SpecTestingRequestLookup, query: "clinic") if request.round == 1
+
+        "It says: #{request.messages.last["text"]}"
+      })
+      run = asking("SpecTestingRoundWorkflow").new(context: {})
+      run.run!
+
+      expect(rounds).to eq([[1, ["spec_testing_request_lookup"]], [2, ["spec_testing_request_lookup"]]])
+      expect(context_of(run)[:answer]).to start_with("It says: ").and include("clinic opens at 8")
+    end
+
+    # A chat that goes on from an earlier turn starts each call at round 1:
+    # only the replies after its last user message count.
+    it "counts a request's round from its last user message, past the turns before it" do
+      agent("SpecTestingTurnAgent")
+      rounds = []
+      testing.stub_agent(SpecTestingTurnAgent, outputs: lambda { |request|
+        rounds << request.round
+        "Noted."
+      })
+      klass = with_stubbed_class("SpecTestingTurnWorkflow", workflow_class) do
+        initial_state :idle
+        state :failed
+        seed_messages do |_context|
+          [{ role: :user, content: "Hello." }, { role: :assistant, content: "Hi, how can I help?" },
+           { role: :user, content: "Where is my parcel?" }]
+        end
+        transition(:ask, from: :idle, to: :done) { execute :spec_ledger_agent }
+      end
+      klass.new(context: {}).run!
+
+      expect(rounds).to eq([1])
+    end
+
+    it "takes a per-request stop reason and usage from reply, so one sample alone is cut off" do
+      agent("SpecTestingCutAgent")
+      testing.stub_agent(SpecTestingCutAgent, usage: { input_tokens: 40 }, outputs: lambda { |request|
+        next "Fine." unless request.last_user.include?("long")
+
+        testing.reply("A long answ", stop_reason: "max_tokens", usage: { output_tokens: 99 })
+      })
+      klass = ticket_workflow("SpecTestingCutWorkflow")
+      short = klass.new(context: { ticket: "short" }).run!
+      long = klass.new(context: { ticket: "long" }).run!
+
+      expect([short.state, short.usage_entries.map { [_1.input_tokens, _1.output_tokens, _1.stop_reason] }])
+        .to eq([:done, [[40, 5, "end_turn"]]])
+      expect([long.state, long.last_error.class, long.usage_entries.map { [_1.output_tokens, _1.stop_reason] }])
+        .to eq([:failed, Smith::OutputTruncated, [[99, "max_tokens"]]])
+    end
+
+    it "fails the call a callable answers with something it cannot send, naming the stub" do
+      agent("SpecTestingWrongAgent")
+      testing.stub_agent(SpecTestingWrongAgent, outputs: ->(_request) { 42 })
+      run = asking("SpecTestingWrongWorkflow").new(context: {}).run!
+
+      expect([run.state, run.last_error.class]).to eq([:failed, ArgumentError])
+      expect(run.last_error.message).to eq("the stub for spec_ledger_agent answered an Integer: a stubbed output " \
+                                           "is a String, a Hash, a tool_call (or an Array of them) or a reply")
+      expect { testing.reply(Object.new) }.to raise_error(ArgumentError, /stubbed output/)
+      expect { testing.reply("x", stop_reason: :max_tokens) }.to raise_error(ArgumentError, /stop_reason/)
+      expect { testing.reply("x", usage: { tokens: 1 }) }.to raise_error(ArgumentError, /usage/)
+    end
+
+    it "answers parallel branches from one callable at once, each request numbered once" do
+      agent("SpecTestingBranchAgent")
+      arrived = Queue.new
+      both = Queue.new
+      stub = testing.stub_agent(SpecTestingBranchAgent, outputs: lambda { |request|
+        arrived << request.number
+        both.pop(timeout: 5) || raise("the other branch never asked")
+        "Branch #{request.number}."
+      })
+      Thread.new do
+        2.times { arrived.pop(timeout: 5) }
+        2.times { both << true }
+      end
+      klass = with_stubbed_class("SpecTestingBranchWorkflow", workflow_class) do
+        initial_state :idle
+        state :failed
+        seed_messages { |_context| [{ role: :user, content: "Find one fact." }] }
+        transition :find, from: :idle, to: :done do
+          execute :spec_ledger_agent, parallel: true, count: 2
+          on_failure :fail
+        end
+      end
+      result = klass.new(context: {}).run!
+
+      expect(result.state).to eq(:done)
+      expect(result.output.map { _1[:output] }.sort).to eq(["Branch 1.", "Branch 2."])
+      expect(stub.calls.length).to eq(2)
+    end
+
+    it "takes a reply in a list of outputs too, and refuses a callable it cannot call" do
+      agent("SpecTestingListAgent")
+      testing.stub_agent(SpecTestingListAgent, outputs: [testing.reply("Cut", stop_reason: "max_tokens"), "Whole."])
+      klass = asking("SpecTestingListWorkflow")
+
+      expect(klass.new(context: {}).run!.last_error.class).to eq(Smith::OutputTruncated)
+      expect(klass.new(context: {}).run!.output).to eq("Whole.")
+      expect { testing.stub_agent(SpecTestingListAgent, outputs: [-> {}]) }.to raise_error(ArgumentError)
+    end
+  end
+
   describe "running" do
     before do
       agent("SpecTestingDraftAgent")

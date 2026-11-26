@@ -101,6 +101,18 @@ an avoidable asymptotic regression as a release blocker.
   once, `O(1)`, and read back in `O(C)` for `C` components. With no agent
   declaring a named prompt, a run start allocates its empty pins and walks
   nothing, and a call reads a nil.
+- An eval trial's recorder (`Smith::Evals::Recorder`) builds each step
+  record in `O(B + R)` for the `B` bytes it keeps (each message copied, cut
+  and measured as canonical JSON once) and its `R` provider responses (each
+  priced alone), under one Mutex; a trial's memory is
+  bounded by `max_trial_bytes` plus `max_steps` metadata records (a head
+  and a ring). Routing an attempt to its recorder is one Hash lookup under
+  a Mutex. Classifying a trial's outcome is `O(D + S)` for `D` causes (at
+  most 16) and `S` step records. Without a trial nothing is built: the
+  attempt seam reads its slot and the trial id, and returns. Once an
+  observer is installed each request reads them too, where it leaves
+  (`RubyLLM::Connection#post`), and inside a trial reads its settings off
+  its payload in `O(1)`.
 - Retry delay calculation is `O(1)` time and space per attempt. A policy with
   `A` attempts performs at most `A` guarded operations and never materializes an
   exponential schedule.

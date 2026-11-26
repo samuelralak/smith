@@ -963,18 +963,21 @@ RSpec.describe "Smith core invisibility: an app that does not use the eval seam 
     end
   end
 
-  it "observes each attempt where it ran, with Smith's reading of how it ended" do
+  # The trial modes record through the real recorder (slice 1a.4): its
+  # step records, valid as the trial schema publishes its step and strict.
+  it "records each attempt where it ran, with Smith's reading of how it ended, every step record valid" do
     observations = CoreInvisibilityHarness.run("trial")["observations"]
-    position = ->(name, key) { observations.fetch(name).map { _1["position"][":#{key}"] } }
+    position = ->(name, key) { observations.fetch(name).map { _1["position"][key] } }
+    roles = ->(step) { step["messages"].map { _1["role"] } }
 
     # Smith names fan-out branches; a parallel: true branch has no key.
-    expect(position.call("parallel_branches", "transition")).to eq([":find"] * 3)
-    expect(position.call("fan_out", "branch_key")).to eq(%w[:left :middle :right])
+    expect(position.call("parallel_branches", "transition")).to eq(["find"] * 3)
+    expect(position.call("fan_out", "branch_key")).to eq(%w[left middle right])
     expect(position.call("optimize", "round")).to eq([0, 0, 1, 1])
     expect(position.call("nested_workflow", "workflow")).to eq(%w[GoldenNestedChildWorkflow GoldenNestedWorkflow])
     expect(position.call("inline_call_child", "workflow")).to eq(%w[GoldenCallWorkflow])
     first, second = observations.fetch("fallback_after_overload")
-    expect([first["outcome"], first["failure"][":kind"], first["model"]]).to eq(%w[failed :transient claude-sonnet-5-5])
+    expect([first["outcome"], first["failure"]["kind"], first["model"]]).to eq(%w[failed transient claude-sonnet-5-5])
     expect([second["outcome"], second["model"]]).to eq(%w[completed claude-haiku-5-5])
     expect(observations.fetch("output_repair").map { [_1["outcome"], _1["sent_count"]] })
       .to eq([["completed", 2], ["completed", 4]])
@@ -983,25 +986,34 @@ RSpec.describe "Smith core invisibility: an app that does not use the eval seam 
     expect(observations.fetch("batch").sole["mode"]).to eq("batch")
     expect(observations.fetch("memo_replay").sole["memo"]).to be(true)
     expect(observations.fetch("budget_pause").map { _1["outcome"] }).to eq(%w[aborted completed])
-    expect(observations.fetch("durable_retry").first["failure"][":kind"]).to eq(":transient")
+    expect(observations.fetch("durable_retry").first["failure"]["kind"]).to eq("transient")
     # An image agent's attempts paint, and a throttled one falls back.
     painted = observations.fetch("image_answer")
-    expect(painted.map { [_1["outcome"], _1["model"], _1["roles"]] })
+    expect(painted.map { [_1["outcome"], _1["model"], roles.call(_1)] })
       .to eq([["completed", "gpt-image-test", %w[user assistant]], ["failed", "gpt-image-test", %w[user]],
               ["completed", "gpt-image-other", %w[user assistant]]])
-    expect(painted[1]["failure"][":kind"]).to eq(":transient")
+    expect(painted[1]["failure"]["kind"]).to eq("transient")
     # A fan-out over items: one nested run an item, each in its own branch.
     expect(position.call("nested_items", "workflow")).to eq(%w[GoldenRoomWorkflow] * 3)
     expect(position.call("nested_items", "branch_key")).to eq([0, 1, 2])
     # The failure paths: an image that cannot be kept, a moderation block
     # taken to a refusal fallback, and an output that fails after its repair.
     unkept = observations.fetch("image_unkept").sole
-    expect([unkept["outcome"], unkept["failure"][":kind"], unkept["failure"][":error_class"], unkept["roles"]])
-      .to eq(["aborted", ":aborted", "Smith::OutputInvalid", %w[user]])
-    expect(observations.fetch("image_refusal_fallback").map { [_1["model"], _1["stop_reason"], _1["roles"]] })
+    expect([unkept["outcome"], unkept["failure"]["kind"], unkept["failure"]["error_class"], roles.call(unkept)])
+      .to eq(["aborted", "aborted", "Smith::OutputInvalid", %w[user]])
+    expect(observations.fetch("image_refusal_fallback").map { [_1["model"], _1["stop_reason"], roles.call(_1)] })
       .to eq([["gpt-image-test", "moderation_blocked", %w[user]], ["gpt-image-other", nil, %w[user assistant]]])
     expect(observations.fetch("repair_exhausted").map { [_1["outcome"], _1["sent_count"]] })
       .to eq([["completed", 2], ["completed", 4]])
+    observations.each do |name, steps|
+      expect(steps.map { _1["seq"] }).to eq((1..steps.length).to_a), name
+      steps.each do |step|
+        %i[open strict].each do |mode|
+          errors = EvalsSchema.errors(step, schema: "trial", strict: mode == :strict, pointer: "#/$defs/step")
+          expect(errors).to eq([]), "#{name} #{step["seq"]} (#{mode})"
+        end
+      end
+    end
   end
 
   it "under real concurrency, matches the golden file's parallel and fan-out runs by counts and branch content" do

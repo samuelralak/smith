@@ -260,6 +260,7 @@
           "type": "boolean"
         },
         "provider_calls": {
+          "description": "How many agent attempts sent a request to a provider: one a step record whose call started, a tool loop's rounds counted once; a skipped candidate and a response memo's replay are not.",
           "$ref": "#/$defs/count"
         }
       }

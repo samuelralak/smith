@@ -91,13 +91,14 @@ RSpec.describe "Run credentials, on every path" do
     end
 
     around do |example|
-      Smith::AttemptObservation.install(observer)
-      trace = Smith.config.trace_adapter
-      Smith.config.trace_adapter = Smith::Trace::Memory.new
-      example.run
-    ensure
-      Smith::AttemptObservation.uninstall(observer)
-      Smith.config.trace_adapter = trace
+      AttemptObserverSlot.emptied do
+        Smith::AttemptObservation.install(observer)
+        trace = Smith.config.trace_adapter
+        Smith.config.trace_adapter = Smith::Trace::Memory.new
+        example.run
+      ensure
+        Smith.config.trace_adapter = trace
+      end
     end
 
     it "observes a skipped candidate before the fallback's attempt: one per trace, plus one per skip" do
@@ -113,7 +114,7 @@ RSpec.describe "Run credentials, on every path" do
       expect([skipped.outcome, skipped.model, skipped.provider, skipped.attempt_index, skipped.messages])
         .to eq([:skipped, "claude-sonnet-5-5", :anthropic, 0, []])
       expect(skipped.failure).to eq(kind: :credentials_missing, error_class: "Smith::ProviderCredentialsMissing",
-                                    message: "The run's credentials have no key for this provider.")
+                                    message: "no key for this provider")
       expect(skipped.attempt_id).to match(/\A\h{8}-\h{4}-4\h{3}-\h{4}-\h{12}\z/)
       expect([completed.outcome, completed.model, completed.attempt_id]).to eq([:completed, "gpt-5",
                                                                                 traces.sole[:data][:attempt_id]])
