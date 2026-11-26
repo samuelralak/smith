@@ -760,10 +760,12 @@ RSpec.describe Smith::Evals::Stores::File do
     it "frees a lease when its holder dies, kill -9 included, while a child it forked lives on" do
       created!
       # The forked child says "hooked" from its block, which runs after the
-      # fork hook, so the holder is killed only once the child closed its copy.
+      # fork hook, so the holder is killed only once the child closed its copy;
+      # it then waits on its input, which this process holds open, so it lives
+      # until the cleanup kills it.
       script = <<~RUBY
         STORE.acquire_lease(scope: SCOPE, eval_run_id: RUN)
-        forked = fork { puts "hooked" || $stdin.read }
+        forked = fork { puts "hooked"; $stdin.read }
         puts forked
         $stdin.read
       RUBY
@@ -775,6 +777,7 @@ RSpec.describe Smith::Evals::Stores::File do
         killed(waiter)
 
         leased.release
+        expect(Process.kill(0, forked)).to eq(1)
       ensure
         Process.kill("KILL", forked) if forked
         input.close
