@@ -41,7 +41,8 @@ RSpec.describe "Loading the tuner" do
     RUBY
 
     expect(facts).to eq(
-      "names" => %w[Candidate EXPERIMENTAL Evaluation Minibatches Pool Record Reflection Settings Split SplitRefused],
+      "names" => %w[Candidate EXPERIMENTAL Evaluation Loop Minibatches Pool Record Reflection Settings Split
+                    SplitRefused],
       "experimental" => true, "core_unchanged" => true, "observer_unchanged" => true
     )
   end

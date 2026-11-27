@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../json_value"
 require_relative "../version"
 require_relative "statistics"
 require_relative "store/clock"
@@ -68,9 +69,10 @@ module Smith
         # The header a start writes (contracts' record-header.schema.json).
         def header(plan, eval_run_id:, idempotency_key:, started_by:, created_at:, config:)
           { "format" => HEADER, "format_version" => 1, "eval_run_id" => eval_run_id, "scope" => plan.scope.to_h,
-            "kind" => "eval", "created_at" => Store::Clock.timestamp(created_at), "started_by" => started_by&.to_h,
+            "kind" => plan.kind, "created_at" => Store::Clock.timestamp(created_at), "started_by" => started_by&.to_h,
             "idempotency_key" => idempotency_key, **measured(plan), "subject" => subject(plan), "group" => nil,
-            "candidate" => nil, "driver" => driver(plan.driver), "recording" => plan.recording.transform_keys(&:to_s),
+            "candidate" => candidate(plan), "driver" => driver(plan),
+            "recording" => plan.recording.transform_keys(&:to_s),
             "statistics" => plan.manifest["statistics"].merge("stats_schema" => Statistics::SCHEMA),
             "environment" => environment(config), "cost_unit" => config.cost_unit,
             "per_sample_visibility" => "open" }
@@ -96,7 +98,7 @@ module Smith
         def measured(plan)
           manifest = plan.manifest
           { "suite" => { "name" => manifest["name"], "version" => manifest["version"],
-                         "measure_digest" => plan.selection.measure_digest, "manifest" => manifest },
+                         "measure_digest" => plan.measure_digest, "manifest" => manifest },
             "dataset" => dataset(plan.selection.dataset), "selection" => selection(plan), "plan" => planned(plan) }
         end
 
@@ -106,8 +108,8 @@ module Smith
         end
 
         def selection(plan)
-          { "split" => plan.split, "narrow" => plan.manifest.dig("selection", "narrow"),
-            "sample_count" => plan.samples.size, "sample_ids_digest" => plan.selection.sample_ids_digest }
+          { "split" => plan.split, "narrow" => plan.narrow, "sample_count" => plan.samples.size,
+            "sample_ids_digest" => plan.sample_ids_digest }
         end
 
         def planned(plan)
@@ -117,16 +119,23 @@ module Smith
         end
 
         # A code workflow: its agents are empty by rule (the observed models
-        # are in summary.models), its definition digest its class's own.
+        # are in summary.models), its definition digest its class's own (a
+        # host driver's program has none).
         def subject(plan)
           declared = plan.manifest["subject"]
+          workflow = plan.subject.workflow
           { "kind" => "workflow", "workflow" => declared["workflow"],
-            "definition_digest" => plan.subject.workflow.definition_digest, "definition" => nil, "input" => nil,
+            "definition_digest" => (workflow.definition_digest if workflow < Smith::Workflow), "definition" => nil,
+            "input" => nil,
             "until" => declared["until"], "keep" => declared["keep"], "version" => declared["version"],
             "agents" => [], "variant" => nil }
         end
 
-        def driver(driver)
+        # A tuning candidate's reference, its texts in the tuning record.
+        def candidate(plan) = plan.candidate && JSONValue.normalized(plan.candidate.reference)
+
+        def driver(plan)
+          driver = plan.driver
           { "name" => driver.class.name || driver.class.to_s, "form" => "in_process",
             "max_concurrency" => driver.max_concurrency, "isolation" => driver.isolation.to_s }
         end

@@ -65,12 +65,13 @@ module Smith
       private_constant :Example
       # A reflection's answer.
       Reply = Data.define(:idea, :instruction)
-      # The seam's answer to one reflection call: its trial id, its step
-      # record (the trial schema's step, nil when no call started), the
+      # The seam's answer to one reflection call: its trial id, the step
+      # record of each attempt in order (the trial schema's step; none when
+      # no call started), what they spent (the trial schema's usage), the
       # reply's output (nil on failure), the failure ({kind, error_class,
       # message} or nil) and why the tuning run must stop (nil, or
       # :cap_reached or :cancelled when the cap or a cancel refused it).
-      Call = Data.define(:trial_id, :step, :output, :failure, :stop)
+      Call = Data.define(:trial_id, :steps, :usage, :output, :failure, :stop)
 
       module_function
 

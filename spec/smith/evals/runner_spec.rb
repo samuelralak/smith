@@ -199,6 +199,15 @@ RSpec.describe Smith::Evals::Runner do
       expect(EvalsSchema.errors(summary, schema: "summary", strict: true)).to eq([])
     end
 
+    it "is final: called again, a cancelled run runs nothing" do
+      klass = suite(concurrency: 2)
+      run_suite(klass)
+      ran = started.size
+      again = run_suite(klass)
+
+      expect([again.status, again.summary["summary_revision"], started.size]).to eq([:cancelled, 1, ran])
+    end
+
     context "when the cancel comes while the last trial runs" do
       let(:hook) do
         lambda do |trial|
@@ -232,6 +241,105 @@ RSpec.describe Smith::Evals::Runner do
       expect(summary["causes"]["not_run"]).to eq("definition_error" => 33)
       expect(EvalsSchema.errors(summary, schema: "summary", strict: true)).to eq([])
     end
+
+    # Probe R-D of the review: a definition error is the subject's, and
+    # every trial would meet it, so the run is final; called again it runs
+    # nothing (a run a provider, the store or the ledger stopped goes on).
+    it "is returned as it is when called again, running nothing" do
+      klass = suite
+      first = run_suite(klass)
+      again = run_suite(klass)
+
+      expect([again.status, again.summary["summary_revision"]]).to eq([:failed, 1])
+      expect(stored(again, :each_trial).count).to eq(stored(first, :each_trial).count)
+      expect(started.count(trial_id("s-04", 0))).to eq(0)
+    end
+  end
+
+  # A trial the host's budget ledger refused, or that met an error that
+  # stops every trial, did not run: the run starts no more trials, keeps a
+  # line for it only when a request of it left, and called again once the
+  # cause is gone, runs every trial without a final line, each once.
+  describe "a run the budget ledger or a run-stopping error stopped" do
+    let(:admit) { 3 }
+    let(:ledger) { TuningRunSuite::Ledger.new(admit) }
+
+    def ledgered(name, calls:)
+      held = ledger
+      with_stubbed_class(name, Smith::Workflow) do
+        budget_ledger { |_scope| held }
+        initial_state :new
+        %i[triaged checked failed].each { state _1 }
+        seed_messages { |context| [{ role: :user, content: context[:ticket] }] }
+        transition(:classify, from: :new, to: :triaged) do
+          execute :spec_eval_classifier, output_to: :triage
+          on_failure :fail
+        end
+        next if calls == 1
+
+        transition(:check, from: :triaged, to: :checked) do
+          execute :spec_eval_classifier, output_to: :checked
+          on_failure :fail
+        end
+      end
+    end
+
+    def lines(run) = stored(run, :each_trial).to_a
+
+    it "stops at the first refusal, incomplete, and finishes when called again, running no trial twice" do
+      klass = suite(workflow: ledgered("SpecEvalLedgered", calls: 1), trials: 1)
+      stopped = run_suite(klass)
+      stopped_lines = lines(stopped)
+      ledger.instance_variable_set(:@admit, nil)
+      finished = run_suite(klass)
+
+      expect(stopped.status).to eq(:incomplete)
+      expect(stopped.summary["stop"]["reason"].values_at("code", "by")).to eq(%w[ledger_refused infrastructure])
+      expect(stopped.summary["stop"]["trial_id"]).to eq(trial_id("s-04", 0))
+      expect(stopped_lines.map { _1["sample_id"] }).to eq(%w[s-01 s-02 s-03])
+      expect(stopped.summary["outcomes"]["not_run"]).to eq(9)
+      expect([finished.status, finished.summary["summary_revision"]]).to eq([:succeeded, 2])
+      expect(lines(finished).first(3)).to eq(stopped_lines)
+      expect(lines(finished).map { _1["trial_id"] }.tally.values.uniq).to eq([1])
+      expect(stored(finished, :each_segment).count).to eq(2)
+    end
+
+    it "keeps a line for a refused trial a request of which left, and writes it again above that revision" do
+      klass = suite(workflow: ledgered("SpecEvalLedgeredTwice", calls: 2), trials: 1)
+      ledger.instance_variable_set(:@admit, 5)
+      stopped = run_suite(klass)
+      refused = lines(stopped).last
+      ledger.instance_variable_set(:@admit, nil)
+      finished = run_suite(klass)
+      again = lines(finished).select { _1["trial_id"] == refused["trial_id"] }
+
+      expect(refused.values_at("sample_id", "outcome", "trial_revision")).to eq(["s-03", "not_run", 1])
+      expect(refused["usage"].values_at("provider_calls", "cost_complete")).to eq([1, true])
+      expect(refused["scores"]).to eq({})
+      expect(again.map { _1.values_at("outcome", "trial_revision") }).to eq([["not_run", 1], ["scored", 2]])
+      expect(finished.record.each_trial.map { _1["outcome"] }).not_to include("not_run")
+      expect(finished.summary["usage"]["provider_calls"]).to eq(lines(finished).sum { _1["usage"]["provider_calls"] })
+      expect(lines(finished).map { schema_errors(_1, "trial") }.uniq).to eq([[]])
+    end
+
+    it "finishes a run a missing key stopped once the key is found, the trials that ran not run again" do
+      broken = [true]
+      stub_const("SpecEvalBroken", broken)
+      klass = suite(trials: 1)
+      allow(self).to receive(:hook).and_return(lambda do |trial|
+        next unless SpecEvalBroken.first && trial == trial_id("s-06", 0)
+
+        raise Smith::ProviderCredentialsMissing.new("no key", provider: :anthropic)
+      end)
+      stopped = run_suite(klass)
+      broken[0] = false
+      finished = run_suite(klass)
+
+      expect(stopped.status).to eq(:failed)
+      expect([finished.status, finished.summary["summary_revision"]]).to eq([:succeeded, 2])
+      expect(started.tally.select { |_trial, count| count > 1 }.keys).to eq([trial_id("s-06", 0)])
+      expect(lines(finished).size).to eq(12)
+    end
   end
 
   context "when no key is found for the provider" do
@@ -241,14 +349,17 @@ RSpec.describe Smith::Evals::Runner do
       end
     end
 
-    it "writes Smith's fixed text, not the error's, and stops the run" do
+    # The trial did not run and sent nothing, so it has no line: the
+    # summary's stop names it, and called again once a key is found, the
+    # run goes on.
+    it "stops the run on its first trial, writing nothing of the error's own words" do
       run = run_suite(suite)
-      line = stored(run, :each_trial).first
 
       expect(run.status).to eq(:failed)
-      expect(line["error"]["message"]).to eq(Smith::AttemptObservation::FIXED_MESSAGES[:credentials_missing])
-      expect(line["attempts"].sole["error"]["message"]).to eq(line["error"]["message"])
-      expect(JSON.generate(line)).not_to include("sk-live")
+      expect(run.summary["stop"]["reason"].values_at("code", "by")).to eq(%w[credentials_missing infrastructure])
+      expect(run.summary["stop"]["trial_id"]).to eq(trial_id("s-01", 0))
+      expect(stored(run, :each_trial).to_a).to eq([])
+      expect(JSON.generate(run.summary)).not_to include("sk-live")
     end
   end
 
@@ -288,6 +399,8 @@ RSpec.describe Smith::Evals::Runner do
     expect(run.summary["stop"]["reason"]).to include("code" => "scope_conflict", "by" => "eval_run")
     expect(stored(run, :each_trial).count).to eq(1)
     expect(Smith::Testing.stub_for(SpecEvalClassifier).calls).to eq([])
+    expect(run_suite(suite(workflow: klass, input: ->(s) { { ticket: s.input[:text], tenant: "ten_2" } }))
+             .summary["summary_revision"]).to eq(1)
   end
 
   it "ends failed with store_error when the store fails mid-run, the summary still written" do
@@ -403,6 +516,31 @@ RSpec.describe Smith::Evals::Runner do
     def run_id = Smith::Evals::Identity.eval_run_id(key: eval_key, scope: eval_scope, suite: "spec.e2e_triage")
   end
 
+  # The header names the subject's definition: a workflow's by its class's
+  # digest, a host driver's program (no workflow) by null.
+  describe "the header's definition_digest" do
+    let(:digest) { Digest::SHA256.hexdigest("spec-eval-triage-definition") }
+
+    it "holds a workflow subject's digest, and null for a host driver's non-workflow subject" do
+      digest = self.digest
+      triage = with_stubbed_class("SpecEvalDigested", SpecEvalTriage) { definition_digest digest }
+      program = with_stubbed_class("SpecEvalHostProgram", Class.new)
+      hosted = Class.new(Smith::Evals::Driver) do
+        def run(_trial, _context)
+          Smith::Evals::SubjectResult.new(ended: :terminal, final_state: "done", failed: false, output: nil,
+                                          state: { triage: { category: "other" } }, error: nil, waiting: nil,
+                                          usage_entries: [], child_runs: 0, duration_ms: 1)
+        end
+      end
+
+      own = run_suite(suite(workflow: triage, trials: 1))
+      host = run_suite(suite("SpecEvalHostSuite", workflow: program, trials: 1, suite_name: "spec.host_header"),
+                       driver: hosted.new)
+
+      expect([own, host].map { _1.record.header.dig("subject", "definition_digest") }).to eq([digest, nil])
+    end
+  end
+
   describe "a start" do
     def nothing_written = eval_store.list_records(scope: eval_scope)["records"]
 
@@ -410,6 +548,15 @@ RSpec.describe Smith::Evals::Runner do
       across = Class.new(Smith::Evals::Driver) { def self.form = :across_processes }
 
       expect { run_suite(suite, driver: across.new) }.to raise_error(Smith::Evals::DriverUnsupported)
+      expect(nothing_written).to eq([])
+    end
+
+    # A host driver runs any subject; Smith's own runs a workflow.
+    it "is refused before anything is written for a subject Smith's driver cannot run" do
+      program = with_stubbed_class("SpecEvalProgram", Class.new)
+
+      expect { run_suite(suite(workflow: program)) }
+        .to raise_error(Smith::Evals::SubjectNotReady, /SpecEvalProgram is no Smith::Workflow/)
       expect(nothing_written).to eq([])
     end
 

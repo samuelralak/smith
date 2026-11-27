@@ -596,6 +596,26 @@ RSpec.describe Smith::Evals::Recorder do
       expect(recorder.steps.map { _1["cost_nanos"] }).to eq([4, 2])
     end
 
+    # A host's budget ledger refuses a request before it leaves, though its
+    # attempt was timed: nothing was sent, so it cost a known 0 and called
+    # no provider. A tool loop refused at a later round sent its earlier
+    # rounds, which are priced and counted.
+    it "costs a request the budget ledger refused a known 0, and counts it as no provider call" do
+      agent("SpecRecRefusedAgent")
+      refusing = ledger_class.new(admit: false)
+      recorder = recorded { asking("SpecRecRefusedWorkflow") { refusing }.new(context: {}).run! }
+      refused = recorder.steps.sole
+      paused = described_class.new(trial_spec.trial_id)
+      paused.record(observed(1, outcome: :aborted, failure: refused["failure"].transform_keys(&:to_sym)))
+
+      expect(refused.values_at("outcome", "cost_nanos", "cost_known")).to eq(["aborted", 0, true])
+      expect(refused.dig("failure", "error_class")).to eq("Smith::BudgetUnavailable")
+      expect(recorder.usage.values_at("cost_nanos", "cost_complete", "provider_calls")).to eq([0, true, 0])
+      expect(server.requests).to be_empty
+      expect(paused.usage.values_at("cost_nanos", "cost_complete", "provider_calls")).to eq([600_000, true, 1])
+      expect_valid_steps(recorder.steps)
+    end
+
     it "costs nothing for a step that sent nothing or failed unbilled, and an unknown cost otherwise" do
       untokened = { tokens: nil }
       recorder = described_class.new(trial_spec.trial_id)

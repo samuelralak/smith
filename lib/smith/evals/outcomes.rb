@@ -36,10 +36,15 @@ module Smith
         end
 
         # What a driver's own `run` raised: a scope conflict stops the run;
-        # anything else is retried.
+        # what stops every trial from outside the subject (a host driver's
+        # BudgetUnavailable, HostUnavailable or a key error) reads as the
+        # table reads it, not_run; anything else is retried.
         def driver_failed(error)
           return outcome(:error, "scope_conflict", "eval_run", detail(error.message), stops: true) if
             error.is_a?(ScopeConflict)
+
+          reading = by_error(error, [], [])
+          return reading if reading.outcome == :not_run
 
           outcome(:error, "driver_error", "infrastructure", "the driver raised #{class_name(error)}", retryable: true)
         end

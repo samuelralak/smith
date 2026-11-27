@@ -160,10 +160,10 @@ RSpec.describe Smith::Evals::Outcomes do
                                               source_error_class: "RubyLLM::Error")
       }
       expected = {
-        Smith::ProviderCredentialsMissing.new => [:error, "credentials_missing", "infrastructure", false, true],
-        Smith::ProviderCredentialsError.new => [:error, "credentials_lookup_failed", "infrastructure", false, true],
-        refused.call(:key_refused) => [:error, "key_refused", "infrastructure", false, true],
-        refused.call(:permission) => [:error, "provider_permission", "infrastructure", false, true],
+        Smith::ProviderCredentialsMissing.new => [:not_run, "credentials_missing", "infrastructure", false, true],
+        Smith::ProviderCredentialsError.new => [:not_run, "credentials_lookup_failed", "infrastructure", false, true],
+        refused.call(:key_refused) => [:not_run, "key_refused", "infrastructure", false, true],
+        refused.call(:permission) => [:not_run, "provider_permission", "infrastructure", false, true],
         Smith::ScrubbedError.new(original_class: "IOError") => [:error, "scrubbed_error", "infrastructure", false,
                                                                 false]
       }
@@ -211,7 +211,7 @@ RSpec.describe Smith::Evals::Outcomes do
         Smith::DeadlineExceeded.new("x") => [:limit_hit, "deadline", "subject", false, false],
         Smith::RequestOutcomeUncertain.new("x") =>
           [:error, "request_outcome_uncertain", "infrastructure", false, false],
-        Smith::BudgetUnavailable.new => [:limit_hit, "ledger_refused", "subject", false, false],
+        Smith::BudgetUnavailable.new => [:not_run, "ledger_refused", "infrastructure", false, true],
         Smith::BudgetExceeded.new("x") => [:limit_hit, "budget", "subject", false, false],
         Smith::GuardrailFailed.new("x") => [:subject_failed, "guardrail_failed", "subject", false, false],
         Smith::OutputTruncated.new(agent_name: :a, model_used: "m") =>
@@ -250,8 +250,8 @@ RSpec.describe Smith::Evals::Outcomes do
         Smith::ToolPolicyDenied.new("x") => [:subject_failed, "tool_denied", "subject", false, false],
         Smith::ToolDispatchRejected.new("x") => [:subject_failed, "tool_denied", "subject", false, false],
         Smith::AgentRegistryError.new("x") => [:error, "definition_error", "subject", false, true],
-        Smith::PricingConfigurationError.new("x") => [:error, "configuration_error", "infrastructure", false, true],
-        Smith::Testing::UnstubbedCall.new("x") => [:error, "configuration_error", "infrastructure", false, true],
+        Smith::PricingConfigurationError.new("x") => [:not_run, "configuration_error", "infrastructure", false, true],
+        Smith::Testing::UnstubbedCall.new("x") => [:not_run, "configuration_error", "infrastructure", false, true],
         Smith::SerializationError.new("x") => [:error, "persistence", "infrastructure", true, false],
         Smith::PersistenceIOError.new(operation: :store, cause: boom) =>
           [:error, "persistence", "infrastructure", true, false],
@@ -298,10 +298,10 @@ RSpec.describe Smith::Evals::Outcomes do
 
     it "stops the run on a refused key, account, model access or missing model; fails the sample on a bad request" do
       expected = {
-        "401 Unauthorized" => [:error, "key_refused", "infrastructure", false, true],
-        "402 Payment Required" => [:error, "out_of_credit", "infrastructure", false, true],
-        "403 Forbidden" => [:error, "provider_permission", "infrastructure", false, true],
-        "404 Not Found" => [:error, "model_unavailable", "infrastructure", false, true],
+        "401 Unauthorized" => [:not_run, "key_refused", "infrastructure", false, true],
+        "402 Payment Required" => [:not_run, "out_of_credit", "infrastructure", false, true],
+        "403 Forbidden" => [:not_run, "provider_permission", "infrastructure", false, true],
+        "404 Not Found" => [:not_run, "model_unavailable", "infrastructure", false, true],
         "400 Bad Request" => [:subject_failed, "provider_rejected_request", "subject", false, false]
       }
       expected.each do |status, reading|
@@ -323,7 +323,7 @@ RSpec.describe Smith::Evals::Outcomes do
       steps = [step.call("claude-a", "key_refused"), step.call("claude-b", "rejected")]
 
       expect(reading(described_class.classify(result, steps:)))
-        .to eq([:error, "key_refused", "infrastructure", false, true])
+        .to eq([:not_run, "key_refused", "infrastructure", false, true])
       expect(reading(described_class.classify(result, steps: steps.reverse.map { _1.merge("provider" => "openai") })))
         .to eq([:subject_failed, "provider_rejected_request", "subject", false, false])
     end
@@ -346,14 +346,14 @@ RSpec.describe Smith::Evals::Outcomes do
 
     it "takes a call no stub answers, under :refuse, as the suite's configuration error" do
       testing.unstubbed = :refuse
-      expect(reading(asked)).to eq([:error, "configuration_error", "infrastructure", false, true])
+      expect(reading(asked)).to eq([:not_run, "configuration_error", "infrastructure", false, true])
     ensure
       testing.unstubbed = :send
     end
 
-    it "takes a ledger's refusal and a cut-off reply from the real run as the subject's limit and failure" do
+    it "takes a ledger's refusal from the real run as a trial that did not run, and a cut-off reply as a failure" do
       refusing = asking("SpecOutcomeLedger") { ledger_class.new(admit: false) }
-      expect(reading(driven(refusing))).to eq([:limit_hit, "ledger_refused", "subject", false, false])
+      expect(reading(driven(refusing))).to eq([:not_run, "ledger_refused", "infrastructure", false, true])
       testing.stub_agent(:spec_ledger_agent, outputs: "Cut", stop_reason: "max_tokens")
       expect(reading(asked)).to eq([:subject_failed, "output_truncated", "subject", false, false])
       testing.stub_agent(:spec_ledger_agent, outputs: "")

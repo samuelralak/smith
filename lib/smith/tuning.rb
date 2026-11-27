@@ -3,12 +3,15 @@
 require_relative "evals"
 require_relative "tuning/reflection"
 require_relative "tuning/settings"
+require_relative "tuning/reflection/runner"
 require_relative "tuning/split"
 require_relative "tuning/minibatches"
 require_relative "tuning/candidate"
 require_relative "tuning/pool"
 require_relative "tuning/evaluation"
+require_relative "tuning/evaluation/in_process"
 require_relative "tuning/record"
+require_relative "tuning/loop"
 
 module Smith
   # Experimental. The tuner (plan section 5, slice 5a): GEPA, written from
@@ -17,6 +20,9 @@ module Smith
   # by `require "smith/tuning"`, which loads Smith::Evals; `require
   # "smith"` loads none of it, and no file of it names the provider gem.
   #
+  #   run = Smith::Tuning.run(Suite, objective: :exact_match, split: {...}, reflection: {...},
+  #                           stop: { max_metric_calls: 1_100 }, scope:, idempotency_key: "s0", started_by:)
+  #   run.status; run.ended; run.candidates; run.best; run.metric_calls_used
   #   Smith::Tuning.record("tu_...", scope: { tenant: "ten_0193" })  # => Smith::Tuning::Record, or nil
   #   Smith::Tuning.cancel("tu_...", scope:, actor:, reason: "wrong split") # => :requested, or :exists
   #
@@ -26,6 +32,20 @@ module Smith
     EXPERIMENTAL = true
 
     class << self
+      # Runs a tuning run in this process to its end and returns its
+      # Record. `settings` are Settings'; the same idempotency key resumes
+      # the run (Loop.open).
+      def run(suite, scope: nil, idempotency_key: nil, started_by: nil, store: nil, **settings)
+        store, scope = where(store, scope)
+        loop = Loop.open(suite, settings: Settings.new(**settings), scope:, store:, idempotency_key:, started_by:)
+        begin
+          loop.iterate! until loop.done?
+          loop.finish!
+        ensure
+          loop.close
+        end
+      end
+
       # The run's record as its store holds it, or nil.
       def record(tuning_run_id, scope: nil, store: nil)
         store, scope = where(store, scope)

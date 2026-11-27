@@ -13,7 +13,7 @@ module Smith
     #   Settings.new(objective: :exact_match,
     #                split: { train: { tags_any: ["train"] }, validation: { tags_any: ["val"] } },
     #                reflection: { model: "gpt-4.1-mini-2025-04-14", provider: :openai, temperature: 1.0,
-    #                              max_output_tokens: 16_384, budget_ledger: ledger },
+    #                              max_output_tokens: 16_384, attempts: 6, budget_ledger: ledger },
     #                stop: { max_metric_calls: 1_100, rounds_without_improvement: nil })
     #
     # components: the component ids tuned, in rotation order; nil for
@@ -26,11 +26,15 @@ module Smith
     # rule, which the pilot turns off) and deadline (a Time), so every run
     # ends; max_candidates is always set. The deadline is an absolute time
     # and a setting, so in the tuning digest: a resume passes the header's,
-    # never one worked out afresh from the clock.
+    # never one worked out afresh from the clock. reflection: its model and
+    # provider, the temperature, output limit and thinking it is sent with
+    # (each only when set), and `attempts` (1 by default: a transient or
+    # transport failure of the provider is tried again until they are
+    # spent, after the eval runner's backoff).
     class Settings
       # The reflection model and what its call is sent with, checked when
       # built from the `reflection:` setting; `recorded` is the header's.
-      ReflectionModel = Data.define(:model, :provider, :temperature, :max_output_tokens, :thinking,
+      ReflectionModel = Data.define(:model, :provider, :temperature, :max_output_tokens, :thinking, :attempts,
                                     :budget_ledger) do
         def self.build(value)
           unless value.is_a?(Hash) && (value.keys - members).empty?
@@ -47,6 +51,7 @@ module Smith
           when :temperature then temperature!(value)
           when :max_output_tokens then tokens!(value)
           when :thinking then thinking!(value)
+          when :attempts then value.nil? ? 1 : attempts!(value)
           else value
           end
         end
@@ -89,12 +94,19 @@ module Smith
         end
 
         def self.effort?(effort) = (effort.is_a?(String) || effort.is_a?(Symbol)) && effort.length.between?(1, 64)
-        private_class_method :checked, :name!, :temperature!, :tokens!, :thinking!, :thinking?, :effort?
+
+        def self.attempts!(value)
+          return value if value.is_a?(Integer) && value.positive?
+
+          raise ArgumentError, "reflection's attempts is nil (one) or an Integer of at least 1"
+        end
+        private_class_method :checked, :name!, :temperature!, :tokens!, :thinking!, :thinking?, :effort?, :attempts!
 
         def recorded
           { "model" => model, "provider" => provider,
             "settings" => { "temperature" => temperature, "max_output_tokens" => max_output_tokens,
                             "thinking" => thinking },
+            "attempts" => attempts,
             "prompt" => { "id" => Reflection::PROMPT.component_id, "version" => Reflection::PROMPT.version } }
         end
       end

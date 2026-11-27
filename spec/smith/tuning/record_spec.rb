@@ -69,13 +69,25 @@ RSpec.describe Smith::Tuning::Record do
                                    "measure_digest" => selection.measure_digest)
       expect(built["dataset"]).to eq("name" => "tuning-demo", "version" => selection.dataset.version)
       expect(built["subject"]).to eq("workflow" => "TuningSpecFlow")
-      expect(built["objective"]).to eq("scorer" => "exact_match", "scorer_version" => 2)
-      expect(built["components"]).to eq(seed.versions.map { |id, version| { "id" => id, "base_version" => version } })
+      expect(built["objective"]).to eq("scorer" => "exact_match", "scorer_version" => 2, "reveals_expected" => false)
+      expect(built["components"]).to eq(seed.prompts.values.map do |prompt|
+        { "id" => prompt.component_id, "base_version" => prompt.version, "base_text" => prompt.text }
+      end)
       expect(built["split"]).to eq(split.to_h)
       expect(built["settings"]).to eq(settings.to_h)
       expect(built["environment"]).to eq("smith_version" => Smith::VERSION, "host_code_version" => "abc123")
       expect(built["tuning_digest"]).to eq(described_class.digest(built))
       valid!(built, "tuning-header")
+    end
+
+    # The owner's ruling on Q4: the scorer's opt-in to feedback naming the
+    # expected answer is recorded, and a run resumes only under the same one.
+    it "records the scorer's opt-in to naming the expected answer, in the digest" do
+      revealing = header(reveals_expected: true)
+
+      expect(revealing.dig("objective", "reveals_expected")).to be(true)
+      expect(revealing["tuning_digest"]).not_to eq(header["tuning_digest"])
+      valid!(revealing, "tuning-header")
     end
 
     # The deadline is an absolute time and a setting: a resume passes the
@@ -153,7 +165,8 @@ RSpec.describe Smith::Tuning::Record do
         iteration(:rejected, child: { candidate: child, index: nil, minibatch: pass(batch, 0.0, number: 3) }),
         iteration(:perfect_minibatch), iteration(:proposal_invalid), iteration(:reflection_failed),
         iteration(:incomplete, minibatch: [batch, pass(batch.first(1), number: 2, complete: false)]),
-        iteration(:incomplete, child: { candidate: child, index: nil, minibatch: pass([], number: 3, complete: false) })
+        iteration(:incomplete, child: { candidate: child, index: nil, minibatch: pass([], number: 3, complete: false) },
+                               stop: { code: :cap_reached, detail: "the budget ledger refused a call" })
       ]
 
       lines.each { valid!(_1, "tuning-line") }
@@ -171,26 +184,33 @@ RSpec.describe Smith::Tuning::Record do
       expect(lines[1]["minibatch"]).to eq("sample_ids" => batch, "eval_run_id" => format("er_%032x", 2),
                                           "scores" => batch.to_h { [_1, 0.0] }, "mean" => 0.0)
       expect(lines.last.dig("child", "minibatch")).to include("scores" => {}, "mean" => nil)
+      expect(lines.map { _1["stop"] })
+        .to eq(([nil] * 7) + [{ "code" => "cap_reached", "detail" => "the budget ledger refused a call" }])
     end
 
     it "writes a reflection's reply, or its failure, valid as published and strict" do
       trial_id = Smith::Evals::Identity.reflection_trial_id(tuning_run_id: run, iteration: 1)
       step = TuningRecords.step(components: [{ "id" => "smith.tuning.reflect",
                                                "version" => Smith::Tuning::Reflection::PROMPT.version }])
+      usage = Smith::Evals::Spend.new.add(provider: "openai", model: "gpt-4.1-mini", provider_calls: 1,
+                                          tokens: step["tokens"], cost_nanos: 1_200, cost_complete: true).usage
       call = lambda do |**parts|
-        Smith::Tuning::Reflection::Call.new(trial_id:, step:, output: nil, failure: nil, stop: nil, **parts)
+        Smith::Tuning::Reflection::Call.new(trial_id:, steps: [step], usage:, output: nil, failure: nil, stop: nil,
+                                            **parts)
       end
       failure = { "kind" => "transport", "error_class" => "Faraday::TimeoutError", "message" => "timed out" }
       output = { idea: "Be brief.", instruction: "Answer briefly." }
       replied = described_class.reflection(tuning_run_id: run, iteration: 1, call: call.call(output:))
       failed = described_class.reflection(tuning_run_id: run, iteration: 2,
-                                          call: call.call(step: nil, failure:, stop: :cap_reached))
+                                          call: call.call(steps: [], usage: Smith::Evals::Spend.new.usage, failure:,
+                                                          stop: :cap_reached))
       garbled = described_class.reflection(tuning_run_id: run, iteration: 3, call: call.call(output: { "idea" => 1 }))
 
       [replied, failed, garbled].each { valid!(_1, "tuning-line") }
       expect(replied.values_at("type", "trial_id", "output", "failure", "stop"))
         .to eq(["reflection", trial_id, { "idea" => "Be brief.", "instruction" => "Answer briefly." }, nil, nil])
-      expect(failed.values_at("step", "output", "failure", "stop")).to eq([nil, nil, failure, "cap_reached"])
+      expect(replied.values_at("steps", "usage")).to eq([[step], usage])
+      expect(failed.values_at("steps", "output", "failure", "stop")).to eq([[], nil, failure, "cap_reached"])
       expect(garbled.values_at("output", "failure")).to eq([nil, described_class::REPLY_INVALID])
     end
   end
@@ -214,7 +234,7 @@ RSpec.describe Smith::Tuning::Record do
   end
 
   describe "reading" do
-    it "rebuilds each candidate that joined the pool from the lines: lineage texts, versions, scores, discovery" do
+    it "rebuilds each candidate that joined the pool from the lines: texts, versions, scores, discovery" do
       one = seed.child("answer.predict", "Answer briefly.", iteration: 1, parent: 0)
       lost = seed.child("summarize.predict", "Never kept.", iteration: 2, parent: 0)
       two = one.child("summarize.predict", "Summarize in three lines.", iteration: 3, parent: 1)
@@ -232,14 +252,33 @@ RSpec.describe Smith::Tuning::Record do
       candidates = record.candidates
       expect(candidates.map(&:index)).to eq([0, 1, 2])
       expect(candidates.map(&:parent)).to eq([nil, 0, 1])
-      expect(candidates.map(&:texts)).to eq([{}, { "answer.predict" => "Answer briefly." },
-                                             { "answer.predict" => "Answer briefly.",
-                                               "summarize.predict" => "Summarize in three lines." }])
+      expect(candidates.map(&:texts)).to eq([seed.texts, one.texts, two.texts])
+      expect(candidates.map(&:reference)).to eq([seed.reference, one.reference, two.reference])
       expect(candidates.map(&:versions)).to eq([seed.versions, one.versions, two.versions])
       expect(candidates.map(&:candidate_id)).to eq([seed, one, two].map(&:candidate_id))
       expect(candidates.map(&:mean)).to eq([0.5, 0.25, 0.5])
       expect(candidates.map(&:metric_calls)).to eq([31, 40, 99])
       expect(candidates.last.scores.size).to eq(31)
+    end
+
+    it "reads how a run ended, its best candidate and its metric calls from its summary" do
+      one = seed.child("answer.predict", "Answer briefly.", iteration: 1, parent: 0)
+      lines = [seed_line, described_class.iteration(tuning_run_id: run, iteration: 1, ended_as: :accepted, totals:,
+                                                    rng:, cursor:, parent: [seed, 0], component: "answer.predict",
+                                                    child: { candidate: one, index: 1, minibatch: nil },
+                                                    validation: pass(TuningRecords.validation_ids, 0.75, number: 2))]
+      summary = described_class.summary(tuning_run_id: run, scope: {}, revision: 1, status: :finished,
+                                        ended: :proposal, stop: { code: :metric_calls, detail: nil }, iterations: 2,
+                                        candidates: 2, metric_calls_used: 70, validation_passes: 2,
+                                        usage: { cost_nanos: 1, cost_complete: true, provider_calls: 70,
+                                                 reflection_calls: 1 },
+                                        seed: [seed, 0, 0.5], best: [one, 1, 0.75])
+      record = described_class.new(header:, lines:, summary:)
+      running = described_class.new(header:, lines:, summary: nil)
+
+      expect([record.status, record.ended, record.best.candidate_id, record.metric_calls_used])
+        .to eq([:finished, :proposal, one.candidate_id, 70])
+      expect([running.status, running.ended, running.best, running.metric_calls_used]).to eq([nil, nil, nil, nil])
     end
   end
 end

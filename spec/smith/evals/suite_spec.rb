@@ -363,7 +363,7 @@ RSpec.describe Smith::Evals::Suite do
       end
       cases = {
         triage_suite { subject workflow: Class.new, input: mapping } =>
-          "/subject/workflow: is a named Smith::Workflow subclass",
+          "/subject/workflow: is a named class (a Smith::Workflow subclass, unless a host driver runs it)",
         triage_suite { subject workflow: TicketTriage, input: "text" } => "/subject/input: responds to call(sample)",
         triage_suite { subject workflow: TicketTriage, input: mapping, version: 0 } =>
           "/subject/version: is an Integer from 1 to 2**53 - 1",
@@ -485,7 +485,7 @@ RSpec.describe Smith::Evals::Suite do
       expect(problems(triage_suite { subject workflow: TicketTriage }))
         .to eq(["/subject/input: responds to call(sample)"])
       expect(problems(triage_suite { subject input: mapping }))
-        .to eq(["/subject/workflow: is a named Smith::Workflow subclass"])
+        .to eq(["/subject/workflow: is a named class (a Smith::Workflow subclass, unless a host driver runs it)"])
       expect(problems(triage_suite { subject workflow: TicketTriage, input: mapping, inputs: 1 }))
         .to eq(["/subject: unknown setting inputs"])
     end

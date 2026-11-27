@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../diagnostic_text"
+require_relative "../json_value"
 
 module Smith
   module Evals
@@ -13,7 +14,10 @@ module Smith
     # {class:, family:, message:, reason:} for a failed subject, the message
     # bounded); its step records; the tool calls in them ({name:,
     # arguments:}, arguments nil with content off); its usage ({tokens:,
-    # cost_nanos:, cost_complete:}); and its duration. Frozen.
+    # cost_nanos:, cost_complete:}); and its duration. Frozen. `from_line`
+    # builds one again from a stored trial line (the tuner reads feedback
+    # from it): its state's keys Symbols, as the context's are, its output
+    # and usage as the line keeps them (the JSON form; every attempt's).
     Trial = Data.define(:id, :index, :sample_id, :outcome, :state, :output, :final_state, :failure, :steps,
                         :tool_calls, :usage, :duration_ms) do
       def self.for(spec, result, outcome, recorder)
@@ -24,8 +28,39 @@ module Smith
             duration_ms: result.duration_ms)
       end
 
-      def self.usage(recorder)
-        usage = recorder.usage
+      def self.from_line(line)
+        outcome = scored_as(line["outcome"])
+        new(id: line["trial_id"], index: line["trial_index"], sample_id: line["sample_id"], outcome:,
+            failure: stored_failure(line, outcome), usage: spent(line["usage"]), duration_ms: line["latency_ms"],
+            **kept(line))
+      end
+
+      # The outcome a scorer was given, from the line's.
+      def self.scored_as(outcome)
+        case outcome
+        when "scored", "unscored" then :answered
+        when "subject_failed", "limit_hit" then outcome.to_sym
+        else raise ArgumentError, "a trial that ended #{outcome} was not scored"
+        end
+      end
+
+      def self.kept(line)
+        steps = line["steps"]
+        { state: JSONValue.symbolized(line["state"] || {}), output: line["output"], steps:,
+          final_state: line.dig("subject", "final_state")&.to_sym, tool_calls: tool_calls(steps) }
+      end
+
+      def self.stored_failure(line, outcome)
+        error = line["error"]
+        return unless error && outcome != :answered
+
+        { class: error["class"], family: error["family"], message: error["message"],
+          reason: line.dig("reason", "code") }.freeze
+      end
+
+      def self.usage(recorder) = spent(recorder.usage)
+
+      def self.spent(usage)
         { tokens: usage["tokens"], cost_nanos: usage["cost_nanos"], cost_complete: usage["cost_complete"] }.freeze
       end
 
@@ -48,7 +83,7 @@ module Smith
         added.flat_map { Array(_1["tool_calls"]) }.map { { name: _1["name"], arguments: _1["arguments"] }.freeze }
       end
 
-      private_class_method :usage, :failure, :tool_calls, :step_calls
+      private_class_method :usage, :spent, :failure, :tool_calls, :step_calls, :scored_as, :kept, :stored_failure
     end
   end
 end

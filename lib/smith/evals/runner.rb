@@ -20,19 +20,26 @@ module Smith
     #    same key, scope and suite give the same id), else random.
     # 2. The header is created if absent. A record that exists must have
     #    been started with the same plan digest, finished or not, or the
-    #    start raises ResumeMismatch naming what differs; one with a summary
-    #    is finished and returned as it is, nothing run.
+    #    start raises ResumeMismatch naming what differs; one that succeeded
+    #    or was cancelled is returned as it is, nothing run, and so is one
+    #    an error of the subject's or the run's own stopped (a definition
+    #    error, a scope conflict: every trial would meet it). One the
+    #    budget ledger, a provider, the configuration or the store stopped
+    #    (incomplete, or failed by infrastructure) goes on, as a killed one
+    #    does: once the cause is fixed, called again, it finishes.
     # 3. The run's lease is taken (RunBusy while another process holds it);
     #    a run another start finished meanwhile is returned as it is, else a
     #    launch line is appended: segment 1 starts it, each later one
     #    resumes it.
     # 4. Each trial with an effective line (other than not_run) is done and
     #    never runs again, so nothing recorded is paid for twice; a trial a
-    #    kill interrupted has no line and runs again.
+    #    kill interrupted has no line and runs again, and one the run
+    #    stopped on (not_run) runs again above its line's revision.
     # 5. The rest run (Launch), recorded with the bounds the header names,
-    #    and the summary is written from the store's lines: succeeded when
-    #    every planned trial has a line, else failed (a run-stopping error,
-    #    or the store failing) or cancelled.
+    #    and the summary is written from the store's lines, at the next
+    #    revision: succeeded when every planned trial has a line, else
+    #    incomplete (the budget ledger refused a trial), failed (a
+    #    run-stopping error, or the store failing) or cancelled.
     #
     # The lease is released whatever happens; an error the runner does not
     # rescue (one that is no StandardError, as a kill stops a process)
@@ -56,11 +63,11 @@ module Smith
                                       config: @config)
         stored = created(header)
         record = Record.new(store: @store, scope: @scope, eval_run_id: id, header: stored)
-        return EvalRun.new(record) if record.summary
+        return EvalRun.new(record) if finished?(record.summary)
 
         lease = @store.acquire_lease(scope: @scope, eval_run_id: id)
         begin
-          launched(record, lease, started_by) unless record.summary
+          launched(record, lease, started_by) unless finished?(record.summary)
         ensure
           lease.release
         end
@@ -68,6 +75,16 @@ module Smith
       end
 
       private
+
+      # A stopped run a later call finishes: one the ledger stopped, or one
+      # that failed by infrastructure (a provider, the configuration, the
+      # store), not by the subject or the run itself.
+      def finished?(summary)
+        return false if summary.nil?
+
+        status = summary["status"]
+        status != "incomplete" && !(status == "failed" && summary.dig("stop", "reason", "by") == "infrastructure")
+      end
 
       def run_id(given, key)
         named = -> { Identity.eval_run_id(key:, scope: @scope, suite: @plan.manifest.fetch("name")) }
@@ -95,11 +112,13 @@ module Smith
       end
 
       def launched(record, lease, started_by)
-        done = done_trials(record)
+        effective = effective_lines(record)
+        done = effective.reject { |_id, line| line["outcome"] == "not_run" }.keys.to_set
         segment = segment!(record, lease, started_by, done.size)
-        launch = Launch.new(@plan, record:, lease:, segment:, store: @store)
+        launch = Launch.new(@plan, record:, lease:, segment:, store: @store,
+                                   revisions: effective.transform_values { _1["trial_revision"] })
         stop = launch.call(done)
-        finish(record, lease, stop, complete: done.size + launch.appended == @plan.planned_trials)
+        finish(record, lease, stop)
       end
 
       # Appends this launch's line; its number.
@@ -111,27 +130,27 @@ module Smith
         number
       end
 
-      # The trial ids whose effective line is final (any outcome but not_run).
-      def done_trials(record)
+      # Each trial's effective line (its highest trial_revision), by id.
+      def effective_lines(record)
         effective = {}
         record.each_line do |line|
           kept = effective[line["trial_id"]]
           effective[line["trial_id"]] = line if kept.nil? || line["trial_revision"] > kept["trial_revision"]
         end
-        effective.reject { |_id, line| line["outcome"] == "not_run" }.keys.to_set
+        effective
       end
 
-      # Succeeded when every planned trial has its line, so with no stop (a
-      # launch reads the cancel flag only before a trial's first attempt);
-      # failed when a run-stopping error or the store stopped it; cancelled
-      # otherwise.
-      def finish(record, lease, stop, complete:)
-        status = if stop && stop.dig("reason", "code") != "cancelled" then "failed"
-                 elsif complete then "succeeded"
-                 else "cancelled"
-                 end
+      # Succeeded with no stop (a launch reads the cancel flag only before a
+      # trial's first attempt, so every planned trial then has its line);
+      # incomplete when the budget ledger refused a trial; failed when a
+      # run-stopping error or the store stopped it; cancelled otherwise.
+      def finish(record, lease, stop)
+        code = stop&.dig("reason", "code")
+        status = { nil => "succeeded", "cancelled" => "cancelled", "ledger_refused" => "incomplete" }
+                 .fetch(code, "failed")
         summary = Summary.build(header: record.header, segments: record.segments, lines: record.each_line,
-                                samples: @plan.samples, status:, stop:, ended_at: Store::Clock.timestamp(Time.now))
+                                samples: @plan.samples, status:, stop:, ended_at: Store::Clock.timestamp(Time.now),
+                                revision: record.summary.to_h.fetch("summary_revision", 0) + 1)
         @store.write_summary(scope: @scope, eval_run_id: record.eval_run_id, summary:, lease:)
       end
     end

@@ -21,7 +21,8 @@
         "type",
         "iteration",
         "trial_id",
-        "step",
+        "steps",
+        "usage",
         "output",
         "failure",
         "stop"
@@ -47,16 +48,16 @@
         "trial_id": {
           "$ref": "urn:smith:evals:1:common#/$defs/trial_id"
         },
-        "step": {
-          "description": "The reflection call's step record, messages whole; null when no call started.",
-          "oneOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "urn:smith:evals:1:trial#/$defs/step"
-            }
-          ]
+        "steps": {
+          "description": "The step record of each attempt of the reflection call, in order, messages whole; empty when no call started.",
+          "type": "array",
+          "items": {
+            "$ref": "urn:smith:evals:1:trial#/$defs/step"
+          }
+        },
+        "usage": {
+          "description": "What the call's attempts spent, as a trial line's usage.",
+          "$ref": "urn:smith:evals:1:common#/$defs/usage"
         },
         "output": {
           "oneOf": [
@@ -141,7 +142,8 @@
         "validation",
         "totals",
         "rng",
-        "cursor"
+        "cursor",
+        "stop"
       ],
       "properties": {
         "format": {
@@ -438,6 +440,33 @@
               "$ref": "urn:smith:evals:1:common#/$defs/count"
             }
           }
+        },
+        "stop": {
+          "description": "What stopped the tuning run in this iteration (a pass the cap or a cancel cut short, a candidate that did not reach the wire, a trial no scorer could score, an error that stops every run), so a restored run stops as the first did; null when nothing did. code is open vocabulary.",
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "code",
+                "detail"
+              ],
+              "properties": {
+                "code": {
+                  "$ref": "urn:smith:evals:1:common#/$defs/code"
+                },
+                "detail": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 1024
+                }
+              }
+            }
+          ]
         }
       }
     }

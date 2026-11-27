@@ -15,11 +15,15 @@ module Smith
         SUBJECT = ->(code) { [:subject_failed, code, "subject", false, false] }
         LIMIT = ->(code) { [:limit_hit, code, "subject", false, false] }
         DEFINITION = [:error, "definition_error", "subject", false, true].freeze
-        STOPPING = ->(code) { INFRASTRUCTURE.call(code, retryable: false, stops: true) }
+        # A trial the run stops on, which did not run: an error that would
+        # stop every trial, or the host's budget ledger refusing it. Called
+        # again, the run runs it.
+        STOPPING = ->(code) { [:not_run, code, "infrastructure", false, true] }
 
         CLASSES = [
           ["Smith::ProviderCredentialsMissing", STOPPING.call("credentials_missing")],
           ["Smith::ProviderCredentialsError", STOPPING.call("credentials_lookup_failed")],
+          ["Smith::Evals::HostUnavailable", STOPPING.call("host_unavailable")],
           ["Smith::ScrubbedError", INFRASTRUCTURE.call("scrubbed_error", retryable: false)]
         ].freeze
         REFUSALS = { key_refused: "key_refused", permission: "provider_permission" }.freeze
@@ -44,7 +48,7 @@ module Smith
           "persisted_failure_invalid" => INFRASTRUCTURE.call("persistence"),
           "tool_guardrail_failed" => SUBJECT.call("tool_guardrail_failed"),
           "deadline_exceeded" => LIMIT.call("deadline"),
-          "budget_exceeded" => [["Smith::BudgetUnavailable", LIMIT.call("ledger_refused")],
+          "budget_exceeded" => [["Smith::BudgetUnavailable", STOPPING.call("ledger_refused")],
                                 [nil, LIMIT.call("budget")]],
           "guardrail_failed" => SUBJECT.call("guardrail_failed"),
           "output_failure" => [["Smith::OutputTruncated", SUBJECT.call("output_truncated")],

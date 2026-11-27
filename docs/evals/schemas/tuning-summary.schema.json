@@ -42,6 +42,7 @@
       "minimum": 1
     },
     "status": {
+      "description": "What says whether the run can go on: stopped (at the cap, or by an error a host can fix) goes on when the run is called again with its key; finished, failed and cancelled are final.",
       "enum": [
         "running",
         "finished",
@@ -51,7 +52,7 @@
       ]
     },
     "ended": {
-      "description": "null while running.",
+      "description": "The outcome word only, null while running: a stopped run that ended failed can still go on (status says so).",
       "enum": [
         null,
         "proposal",

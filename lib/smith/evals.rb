@@ -53,11 +53,16 @@ module Smith
       # run, or returns it when it has finished, if its plan digest matches,
       # else raises ResumeMismatch. `scope` is the tenant (default
       # config.default_scope); `started_by` an Actor; `store` and `driver`
-      # override the configuration's and the suite's. The run reads a frozen
-      # copy of the configuration taken now.
-      def run(suite, scope: nil, idempotency_key: nil, eval_run_id: nil, started_by: nil, store: nil, driver: nil)
+      # override the configuration's and the suite's. `samples` (ids within
+      # the suite's selection), `trials` (a sample's), `candidate` (a tuning
+      # candidate, sent in place of the base texts) and `kind` narrow or
+      # name the run (Plan). The run reads a frozen copy of the
+      # configuration taken now.
+      def run(suite, scope: nil, idempotency_key: nil, eval_run_id: nil, started_by: nil, store: nil, driver: nil,
+              samples: nil, trials: nil, candidate: nil, kind: :eval)
         config = self.config.frozen_copy
-        plan = Plan.new(suite, scope: scope || config.default_scope, driver:, recording: config.recording)
+        plan = Plan.new(suite, scope: scope || config.default_scope, driver:, recording: config.recording,
+                               samples:, trials:, candidate:, kind:)
         Runner.new(plan, store: store || config.store, config:)
               .call(eval_run_id:, idempotency_key:, started_by: started_by && actor(started_by))
       end

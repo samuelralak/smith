@@ -41,7 +41,7 @@
       "$ref": "urn:smith:evals:1:common#/$defs/scope"
     },
     "kind": {
-      "description": "eval in slice 1a. Reserved: try (a one-off recorded run on a typed input, under a session's limit; slice 1d.3) and online (scoring calls an app reports; slice 2b). Later: rescore (slice 2), tuning_validation and tuning_holdout (slice 5a). Open vocabulary.",
+      "description": "eval in slice 1a; tuning_minibatch and tuning_validation, a tuning run's evaluations (slice 5a). Reserved: try (a one-off recorded run on a typed input, under a session's limit; slice 1d.3), online (scoring calls an app reports; slice 2b), rescore and tuning_holdout (slice 2). Open vocabulary.",
       "$ref": "urn:smith:evals:1:common#/$defs/code"
     },
     "created_at": {
@@ -468,10 +468,14 @@
       ]
     },
     "candidate": {
-      "description": "The tuning candidate under test (slice 5a); null before then.",
-      "type": [
-        "object",
-        "null"
+      "description": "The tuning candidate under test (slice 5a): its id, its tuning run and each component's version; null for a run of the base texts.",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "urn:smith:evals:1:common#/$defs/candidate"
+        }
       ]
     },
     "driver": {

@@ -15,11 +15,12 @@ module Smith
     # by one draw below their sum, in index order. Winning samples are
     # bitsets: O(C N) to build, O(C^2 N / 64) to prune, O(C) to draw.
     #
-    # `next_component` is the rotation, per candidate (the paper's
-    # SelectModule takes the candidate): each keeps a pointer into the
-    # component order, moved each time it is picked as parent; a child
-    # starts after the component that made it. `best` is the highest
-    # validation mean, ties to the lowest index.
+    # `component` and `next_component` are the rotation, per candidate (the
+    # paper's SelectModule takes the candidate): each keeps a pointer into
+    # the component order, moved on each time a child of it is asked for
+    # (not after a perfect minibatch, as in DSPy's run); a child starts
+    # after the component that made it. `best` is the highest validation
+    # mean, ties to the lowest index.
     #
     # A restored run rebuilds a pool by adding its candidates again and
     # moving each recorded parent's pointer.
@@ -49,6 +50,7 @@ module Smith
       end
 
       def size = @candidates.size
+      def empty? = @candidates.empty?
       def [](index) = @candidates.fetch(index)
       def candidates = @candidates.dup.freeze
       def scores(index) = @rows.fetch(index)
@@ -76,11 +78,14 @@ module Smith
         end
       end
 
-      # The component a parent's child rewrites; moves its pointer on.
+      # The component a parent's child rewrites next.
+      def component(index) = components[@pointers.fetch(index)]
+
+      # That component; moves the parent's pointer on.
       def next_component(index)
-        component = components[@pointers.fetch(index)]
+        rewritten = component(index)
         @pointers[index] = (@pointers[index] + 1) % components.size
-        component
+        rewritten
       end
 
       def best = (0...size).max_by { [mean(_1), -_1] }

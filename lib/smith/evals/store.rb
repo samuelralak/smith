@@ -84,11 +84,13 @@ module Smith
       def self.store?(object) = METHODS.all? { object.respond_to?(_1) }
 
       # Whether it also keeps tuning runs: the six methods, and a lease and
-      # cancel flag a tuning run id names.
+      # cancel flag a tuning run id names, judged by what each method
+      # accepts: it names `tuning_run_id:`, or takes any keywords (`**`) or
+      # any arguments (`*`, as a delegator's methods do).
       def self.tuning?(object)
         store?(object) && TUNING_METHODS.all? { object.respond_to?(_1) } &&
           %i[acquire_lease request_cancel cancel_request].all? do |name|
-            object.method(name).parameters.any? { |kind, key| key == :tuning_run_id || kind == :keyrest }
+            object.method(name).parameters.any? { |kind, key| key == :tuning_run_id || %i[keyrest rest].include?(kind) }
           end
       end
     end

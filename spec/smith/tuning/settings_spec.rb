@@ -24,6 +24,7 @@ RSpec.describe Smith::Tuning::Settings do
                   "rounds_without_improvement" => nil, "deadline" => nil },
       "reflection" => { "model" => "gpt-4.1-mini-2025-04-14", "provider" => "openai",
                         "settings" => { "temperature" => 1.0, "max_output_tokens" => 16_384, "thinking" => nil },
+                        "attempts" => 1,
                         "prompt" => { "id" => "smith.tuning.reflect",
                                       "version" => Smith::Tuning::Reflection::PROMPT.version } }
     )
@@ -50,6 +51,14 @@ RSpec.describe Smith::Tuning::Settings do
     expect(built.to_h.dig("stop", "deadline")).to eq("2026-11-30T09:00:00.000Z")
     expect(built.to_h.dig("reflection", "settings", "thinking")).to eq("effort" => "low")
     expect(built.to_h.to_s).not_to include("budget_ledger")
+  end
+
+  # The pilot's reflection retries as DSPy's does: 6 attempts, its 5
+  # retries.
+  it "takes the reflection's attempts, recording them" do
+    built = settings(reflection: reflection.merge(attempts: 6)).reflection
+
+    expect([built.attempts, built.recorded["attempts"]]).to eq([6, 6])
   end
 
   it "records a split override with who asked and why" do
@@ -91,7 +100,8 @@ RSpec.describe Smith::Tuning::Settings do
                    { reflection: reflection.merge(thinking: "low") }, { reflection: reflection.merge(seed: 1) },
                    { reflection: reflection.merge(thinking: {}) },
                    { reflection: reflection.merge(thinking: { level: 1 }) },
-                   { reflection: reflection.merge(thinking: { budget: 0 }) }],
+                   { reflection: reflection.merge(thinking: { budget: 0 }) },
+                   { reflection: reflection.merge(attempts: 0) }, { reflection: reflection.merge(attempts: 1.5) }],
       stop: [{ stop: { max_metric_calls: 0 } }, { stop: { max_cost_nanos: -1 } }, { stop: { max_candidates: 0 } },
              { stop: { deadline: "tomorrow" } }, { stop: { rounds_without_improvement: 0 } }, { stop: { other: 1 } },
              { stop: { rounds_without_improvement: nil } }]

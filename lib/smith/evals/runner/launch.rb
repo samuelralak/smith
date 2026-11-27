@@ -13,20 +13,20 @@ module Smith
       # run-stopping outcome or the store failing (an append, or the flag's
       # read) halts the queue, so no trial starts and those running finish
       # and record. A trial that ended in a retried error goes back with a
-      # not-before time: min(30, 2**attempt) seconds, or none with the
-      # driver's `retry_waits: :immediate`. Every line is appended outside
-      # the driver's isolation. `call` gives the stop that halted it, or
-      # nil, once every worker has stopped, even when its caller is
-      # interrupted (a Timeout, a thread killed), so no worker appends after
-      # the runner lets go of the lease.
+      # not-before time (the driver's `backoff`). Every line is appended
+      # outside the driver's isolation. `call` gives the stop that halted
+      # it, or nil, once every worker has stopped, even when its caller is
+      # interrupted (a Timeout, a thread killed), so no worker appends
+      # after the runner lets go of the lease.
       class Launch
-        def initialize(plan, record:, lease:, segment:, store:)
+        # revisions: the stored not_run lines' trial_revision, by trial id.
+        def initialize(plan, record:, lease:, segment:, store:, revisions: {})
           @plan = plan
           @record = record
           @lease = lease
           @segment = segment
           @store = store
-          @trials = TrialRun.new(plan, record)
+          @trials = TrialRun.new(plan, record, revisions:)
           @appended = 0
           @lock = Mutex.new
         end
@@ -59,7 +59,7 @@ module Smith
 
         def waiting(done)
           @plan.trials.each_with_index.filter_map do |(index, sample), position|
-            id = Identity.trial_id(eval_run_id: @record.eval_run_id, sample_id: sample.id, index:)
+            id = @plan.trial_id(eval_run_id: @record.eval_run_id, sample_id: sample.id, index:)
             Queue::Item.new(position:, index:, sample:, tried: nil, not_before: nil) unless done.include?(id)
           end
         end
@@ -96,7 +96,8 @@ module Smith
         def recorded(tried)
           trial_id = tried.spec.trial_id
           outcome = tried.attempts.last.outcome
-          append(@trials.line(tried, @segment), trial_id)
+          line = @trials.line(tried, @segment)
+          append(line, trial_id) if line
           @queue.halt(stop(outcome.reason, trial_id)) if outcome.stops_run
         ensure
           @queue.done
@@ -129,8 +130,7 @@ module Smith
         end
 
         def not_before(attempts)
-          wait = @plan.driver.retry_waits == :immediate ? 0 : [30, 2**attempts].min
-          Process.clock_gettime(Process::CLOCK_MONOTONIC) + wait
+          Process.clock_gettime(Process::CLOCK_MONOTONIC) + @plan.driver.backoff(attempts)
         end
 
         def stop(reason, trial_id)

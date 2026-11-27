@@ -30,7 +30,9 @@ module Smith
       # mapping that sets a trusted scope key to another value raises
       # ScopeConflict before anything runs; what the subject raises is
       # returned, SubjectResult.raised. `around_trial` (a callable taking the
-      # trial and a block) wraps each attempt of a trial.
+      # trial and a block) wraps each attempt of a trial. A trial with a
+      # candidate builds and runs its subject inside
+      # Smith::Prompts.with_candidate, so it sends the candidate's texts.
       class InProcess < Driver
         RETRY_WAITS = %i[immediate sleep].freeze
         private_constant :RETRY_WAITS
@@ -65,7 +67,9 @@ module Smith
           subject = trial.subject
           klass = subject.workflow_for(trial.variant)
           input = scoped(klass, mapped(subject, trial.sample), trial.scope)
-          drive_subject(klass, input, subject, context)
+          return drive_subject(klass, input, subject, context) unless trial.candidate
+
+          Smith::Prompts.with_candidate(trial.candidate.texts) { drive_subject(klass, input, subject, context) }
         end
 
         private

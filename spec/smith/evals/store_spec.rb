@@ -55,6 +55,21 @@ RSpec.describe Smith::Evals::Store do
     expect(described_class.tuning?(old_keywords)).to be(false)
   end
 
+  # The pilot's store wraps a file store in a SimpleDelegator, whose
+  # methods take any arguments: what a method accepts decides, one rule.
+  it "takes a store that forwards the tuning run id, through ** or a delegator" do
+    require "delegate"
+    store = Smith::Evals::Stores::File.new(root: "unused")
+    forwarding = Class.new(SimpleDelegator) do
+      %i[acquire_lease request_cancel cancel_request].each do |name|
+        define_method(name) { |**options| super(**options) }
+      end
+    end
+
+    expect(described_class.tuning?(SimpleDelegator.new(store))).to be(true)
+    expect(described_class.tuning?(forwarding.new(store))).to be(true)
+  end
+
   it "defaults the configured store to a file store under tmp/smith-evals, created on its first write" do
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) do

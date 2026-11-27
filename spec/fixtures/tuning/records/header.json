@@ -25,16 +25,19 @@
   },
   "objective": {
     "scorer": "exact_match",
-    "scorer_version": 2
+    "scorer_version": 2,
+    "reveals_expected": false
   },
   "components": [
     {
       "id": "summarize.predict",
-      "base_version": "sha256:0becb93d5ef6220be66513a0e1d005e78e2dd0240ea8f45db9aa60f4ce7a4230"
+      "base_version": "sha256:0becb93d5ef6220be66513a0e1d005e78e2dd0240ea8f45db9aa60f4ce7a4230",
+      "base_text": "Summarize the passages for the question."
     },
     {
       "id": "answer.predict",
-      "base_version": "sha256:edb294ae3c92e8be6fe8183281cdf1ccdce8ceea85a9da4267a9710d65b98d19"
+      "base_version": "sha256:edb294ae3c92e8be6fe8183281cdf1ccdce8ceea85a9da4267a9710d65b98d19",
+      "base_text": "Answer the question from the summary."
     }
   ],
   "split": {
@@ -75,13 +78,14 @@
         "max_output_tokens": 16384,
         "thinking": null
       },
+      "attempts": 1,
       "prompt": {
         "id": "smith.tuning.reflect",
         "version": "sha256:a62594a277f9073f76abbfd6f3439dede7a09d10207c64c5d6e3f3e268885fdd"
       }
     }
   },
-  "tuning_digest": "sha256:42ebe95638fc67664ed41a492f451b5355b08861cd9789aece386038b1a039aa",
+  "tuning_digest": "sha256:15b53ce423b0ca0a47e693c1fdc13bd959c9ea4b3977f8090970f16728fd6ec9",
   "environment": {
     "smith_version": "0.16.0",
     "host_code_version": null

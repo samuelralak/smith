@@ -40,9 +40,9 @@ module Smith
         def tokens = @record["tokens"]
         def tool_calls = @record["tool_calls"]
 
-        # A request went to a provider: not skipped, not answered from a
-        # memo, and its call started.
-        def provider_call? = @attempt.outcome != :skipped && !@attempt.memo && !@attempt.duration_ms.nil?
+        # A request went to a provider: not answered from a memo, and sent
+        # (Fields.sent_nothing?).
+        def provider_call? = !@attempt.memo && !Fields.sent_nothing?(@attempt)
 
         def elided? = @record["cut"]["elided_messages"].positive? || @record["cut"]["content_dropped"]
 

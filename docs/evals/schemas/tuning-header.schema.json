@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:smith:evals:1:tuning-header",
   "title": "Smith tuning run header (format version 0, provisional)",
-  "description": "header.json of a tuning run (slice 5a), written once when it starts: what is tuned, against which suite, objective and split, with which settings. The texts are in its lines; a candidate stores only the text it changed. tuning_digest is what a restart must match.",
+  "description": "header.json of a tuning run (slice 5a), written once when it starts: what is tuned, against which suite, objective and split, with which settings, and each component's base text. A candidate's line stores only the text it changed. tuning_digest is what a restart must match.",
   "type": "object",
   "required": [
     "format",
@@ -102,7 +102,8 @@
       "type": "object",
       "required": [
         "scorer",
-        "scorer_version"
+        "scorer_version",
+        "reveals_expected"
       ],
       "properties": {
         "scorer": {
@@ -113,18 +114,23 @@
             "integer",
             "string"
           ]
+        },
+        "reveals_expected": {
+          "description": "Whether the scorer opts in to feedback that names a training sample's expected answer; otherwise the tuner withholds it from what the reflection reads.",
+          "type": "boolean"
         }
       }
     },
     "components": {
-      "description": "The tuned components, in rotation order, each with the version the seed sends.",
+      "description": "The tuned components, in rotation order, each with the text and version the seed sends.",
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "object",
         "required": [
           "id",
-          "base_version"
+          "base_version",
+          "base_text"
         ],
         "properties": {
           "id": {
@@ -134,6 +140,10 @@
           },
           "base_version": {
             "$ref": "urn:smith:evals:1:common#/$defs/content_hash"
+          },
+          "base_text": {
+            "description": "The text the seed sends: the subject's named prompt as the run found it.",
+            "type": "string"
           }
         }
       }
@@ -305,6 +315,7 @@
             "model",
             "provider",
             "settings",
+            "attempts",
             "prompt"
           ],
           "properties": {
@@ -363,6 +374,11 @@
                   ]
                 }
               }
+            },
+            "attempts": {
+              "description": "How many times a reflection call is made at most: a transient or transport failure of the provider is tried again, after the eval runner's backoff, until they are spent.",
+              "type": "integer",
+              "minimum": 1
             },
             "prompt": {
               "description": "The reflection's named prompt.",

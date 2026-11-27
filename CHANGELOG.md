@@ -503,6 +503,77 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   describes evals; `script/evals_probe` runs the design's worked example
   in a fresh process and `script/evals_kill_probe` kills a run with
   SIGKILL and resumes it.
+- Experimental: the tuner runs end to end in one process (slice 5a, the
+  pilot cut). `Smith::Tuning.run(suite, objective:, split:, reflection:,
+  stop:, scope:, idempotency_key:, started_by:, store:, ...)` scores the seed
+  on validation, then each iteration draws a parent by the paper's Pareto
+  rule, rotates its components, runs it fresh on the next training
+  minibatch with the scorer's feedback, asks the reflection model for one
+  component's new text (one recorded trial of a one-step workflow, through
+  the in-process driver, its reply written the moment it returns; a
+  transient or transport failure tried again up to `reflection: {
+  attempts: }`, one by default, every attempt's step and spend in its line
+  and the run's totals), runs the
+  child on the same minibatch, keeps it only when its mean is strictly
+  higher and then scores it on validation; a perfect minibatch skips the
+  reflection when `skip_perfect` is on, leaving the parent's rotation where
+  it was. A suite that records no content is refused. Before each iteration
+  it stops on a
+  cancel, the metric-call budget (passed by at most one iteration: 2b +
+  n_val), `max_candidates`, the deadline, the dollar limit with one
+  iteration's reserve, or rounds without improvement when set; a pass or
+  reflection the budget ledger refuses, or an error that stops every run (a
+  refused key, no credit), stops the run with no line for its iteration
+  (`stopped`; `stopped_at_limit` at the cap), the candidate it was scoring
+  not added, and called again it replays that iteration, its eval runs going
+  on from where they stopped. Every evaluation is an eval run keyed
+  by the tuning run, iteration and role, so a killed run resumes from its
+  record with the same call, paying for no recorded trial or stored
+  reflection twice, and proposing the same candidates; a changed setting is
+  `ResumeMismatch`. Two checks stop a run: a step that sent another version
+  of a component the candidate changed (`candidate_not_sent`) and a trial
+  the objective could not score (`scorer_failed`). It returns its
+  `Smith::Tuning::Record` (`status`, `ended`, `candidates` with every text,
+  `best`, the highest validation mean with ties to the lowest index, and
+  `metric_calls_used`). `Smith::Tuning::Loop` is the loop
+  (`open`, `iterate!`, `done?`, `finish!`); `Evaluation::InProcess` and
+  `Reflection::Runner` are Smith's seam. The tuning header gains each
+  component's base text and the scorer's `reveals_expected`, an iteration
+  line its `stop` (format version 0). `Smith::Evals.run` takes `samples:`
+  (ids within the suite's selection, the header's narrowing), `trials:`,
+  `candidate:` (a tuning candidate: its header reference and its texts, sent
+  through `Smith::Prompts.with_candidate`, its id in every trial id and the
+  plan digest) and `kind:` (`tuning_minibatch`, `tuning_validation`); the
+  record header's `candidate` is published in its shape.
+  `Smith::Evals::Scorer#feedback(sample, trial, component:)` (nil by
+  default) and `reveals_expected` (false by default; a block scorer takes
+  `feedback:` and `reveals_expected:`), and `Smith::Evals::Trial.from_line`
+  builds a trial again from its stored line.
+- Experimental: an eval run that the workflow's budget ledger, a provider,
+  the configuration or the store stopped (`incomplete`, or `failed` by
+  infrastructure) goes on when called again with the same key, its summary
+  written at the next revision; one a definition error or a scope conflict
+  stopped stays final. A trial that met such an error or refusal did not
+  run: it is `not_run`, not scored, with a line only when a request of it
+  had left, and runs again above that line's revision; no trial starts after
+  a refusal. A request the ledger refused costs a known 0 and is no provider
+  call. `Smith::Evals::Store.tuning?` takes a store whose lease and cancel
+  methods take any keywords or arguments (a delegator).
+  `Smith::Evals::Driver#record_step(trial, model:, provider:, tokens:,
+  components:, messages:, sent:, outcome:, failure:, started:, duration_ms:,
+  stop_reason:, settings:, agent:)` records a model call a host driver made
+  as a step of the trial's line, priced, bounded and read by the tuner's
+  checks; `Driver#components(subject)` declares the components a tuning run
+  may rewrite and their base texts (by default a workflow subject's named
+  prompts), so a host driver's subject may be any named class; and
+  `Driver#backoff(attempts)` is the one wait before another attempt. A
+  host driver raises `Smith::BudgetUnavailable` or the new
+  `Smith::Evals::HostUnavailable` from `run` for a trial it could not run:
+  `not_run`, the run `incomplete` or `failed`, going on when called again.
+  `Smith::Testing::UnstubbedCall` or `PricingConfigurationError` raised
+  from a host driver's own code now stops the run `failed` instead of being
+  retried. A non-workflow subject on Smith's own in-process driver is
+  refused at first run, before anything is written.
 
 ### Changed
 

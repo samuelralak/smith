@@ -39,10 +39,11 @@ module Smith
 
         # trial: the TrialSpec of the last attempt; attempts: every attempt,
         # in order; result: the last attempt's SubjectResult (nil when the
-        # driver failed); scores: by scorer name, as the line keeps them.
-        def build(trial, segment:, split:, attempts:, result:, scores:, recorder:)
+        # driver failed); scores: by scorer name, as the line keeps them;
+        # revision: above the trial's stored not_run line, when it runs again.
+        def build(trial, segment:, split:, attempts:, result:, scores:, recorder:, revision: 1)
           output, state, gaps = contents(result)
-          { **head(trial, segment, split, attempts),
+          { **head(trial, segment, split, attempts, revision),
             "attempts" => attempts.each_with_index.map { |attempt, index| attempt(attempt, index + 1) },
             "subject" => subject(result), "output" => output, "state" => state, "error" => error(attempts.last),
             "scores" => scores, "usage" => usage(attempts), "counts" => recorder.counts, "steps" => recorder.steps,
@@ -58,11 +59,12 @@ module Smith
         end
 
         # Which trial, and how it ended: the last attempt's outcome.
-        def head(trial, segment, split, attempts)
+        def head(trial, segment, split, attempts, revision)
           outcome = attempts.last.outcome
           { "format" => FORMAT, "format_version" => 1, "eval_run_id" => trial.eval_run_id,
-            "trial_id" => trial.trial_id, "trial_revision" => 1, "segment" => segment, "sample_id" => trial.sample.id,
-            "trial_index" => trial.trial_index, "candidate_id" => nil, "split" => split,
+            "trial_id" => trial.trial_id, "trial_revision" => revision, "segment" => segment,
+            "sample_id" => trial.sample.id, "trial_index" => trial.trial_index, "candidate_id" => trial.candidate_id,
+            "split" => split,
             "outcome" => outcome.outcome.to_s, "reason" => outcome.reason, **times(attempts) }
         end
 

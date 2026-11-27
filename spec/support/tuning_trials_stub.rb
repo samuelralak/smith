@@ -43,10 +43,10 @@ class TuningTrialsStub
     return refused(trial_id) if admitted(1).empty?
 
     output = @reply.call(message)
-    Smith::Tuning::Reflection::Call.new(trial_id:, step: step(message), output:, failure: nil, stop: nil)
+    Smith::Tuning::Reflection::Call.new(trial_id:, **attempted(message), output:, failure: nil, stop: nil)
   rescue StandardError => e
     failure = { "kind" => "aborted", "error_class" => e.class.name, "message" => e.message }
-    Smith::Tuning::Reflection::Call.new(trial_id:, step: step(message), output: nil, failure:, stop: nil)
+    Smith::Tuning::Reflection::Call.new(trial_id:, **attempted(message), output: nil, failure:, stop: nil)
   end
 
   private
@@ -73,14 +73,19 @@ class TuningTrialsStub
 
   def refused(trial_id)
     failure = { "kind" => "cap_reached", "error_class" => "Smith::BudgetExceeded", "message" => "the ledger refused" }
-    Smith::Tuning::Reflection::Call.new(trial_id:, step: nil, output: nil, failure:, stop: :cap_reached)
+    Smith::Tuning::Reflection::Call.new(trial_id:, steps: [], usage: Smith::Evals::Spend.new.usage, output: nil,
+                                        failure:, stop: :cap_reached)
   end
 
-  def step(message)
+  # One attempt's step, and what it spent.
+  def attempted(message)
     prompt = Smith::Tuning::Reflection::PROMPT
-    TuningRecords.step(components: [{ "id" => prompt.component_id, "version" => prompt.version }],
-                       messages: [{ "role" => "system", "text" => prompt.text },
-                                  { "role" => "user", "text" => message }])
+    step = TuningRecords.step(components: [{ "id" => prompt.component_id, "version" => prompt.version }],
+                              messages: [{ "role" => "system", "text" => prompt.text },
+                                         { "role" => "user", "text" => message }])
+    spend = Smith::Evals::Spend.new.add(provider: step["provider"], model: step["model"], provider_calls: 1,
+                                        tokens: step["tokens"], cost_nanos: step["cost_nanos"], cost_complete: true)
+    { steps: [step], usage: spend.usage }
   end
 
   def sample(candidate, sample_id, component)

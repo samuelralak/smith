@@ -21,8 +21,17 @@ module Smith
     # A scorer runs outside trial isolation, on what the trial line keeps
     # (the sample, `trial.state`, `trial.output`, `trial.steps`), so a
     # stored record can be scored again without running anything.
+    #
+    # For the tuner (slice 5a), `feedback(sample, trial, component:)` is
+    # text on how one component did in one training trial, or nil (the
+    # default: the score's explanation stands in, and the tuning run warns
+    # feedback_weak). The tuner keeps the sample's expected answer out of
+    # it unless the scorer declares `reveals_expected true` (the owner's
+    # ruling: training samples only, opt-in). The scorer's version covers
+    # both.
     class Scorer
-      SETTINGS = { scorer_name: nil, version: nil, scale: :binary, on_subject_failure: :fail }.freeze
+      SETTINGS = { scorer_name: nil, version: nil, scale: :binary, on_subject_failure: :fail,
+                   reveals_expected: false }.freeze
 
       class << self
         SETTINGS.each_key do |setting|
@@ -47,6 +56,14 @@ module Smith
       def version = self.class.version
       def scale = self.class.scale
       def on_subject_failure = self.class.on_subject_failure
+      def reveals_expected = self.class.reveals_expected
+
+      # Text for the tuner on how `component` did in one trial, or nil:
+      # feedback(sample, trial, component:).
+      def feedback(_sample, _trial, **) = nil
+
+      # Whether it gives feedback text at all.
+      def feedback? = method(:feedback).owner != Scorer
 
       # Returns the Score for one trial.
       def score(_sample, _trial)
@@ -67,20 +84,25 @@ module Smith
       end
 
       # A scorer from a block, as `scorer :name, version: 1 do ... end` in a
-      # suite makes.
+      # suite makes; `feedback:` is a callable as `feedback` is called.
       class Block < Scorer
-        attr_reader :name, :version, :scale, :on_subject_failure
+        attr_reader :name, :version, :scale, :on_subject_failure, :reveals_expected
 
-        def initialize(name:, version:, scale: :binary, on_subject_failure: :fail, &block)
+        def initialize(name:, version:, scale: :binary, on_subject_failure: :fail, reveals_expected: false,
+                       feedback: nil, &block)
           super()
           @name = name&.to_s
           @version = version
           @scale = scale
           @on_subject_failure = on_subject_failure
+          @reveals_expected = reveals_expected
+          @feedback = feedback
           @block = block
         end
 
         def score(sample, trial) = @block.call(sample, trial)
+        def feedback(sample, trial, component:) = @feedback&.call(sample, trial, component:)
+        def feedback? = !@feedback.nil?
       end
     end
   end

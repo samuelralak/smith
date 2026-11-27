@@ -49,11 +49,13 @@ module Smith
 
       private
 
+      # A named class: a Smith::Workflow subclass for Smith's own driver, a
+      # program of its own for a host driver.
       def workflow_problem
-        name = workflow.name if workflow.is_a?(Class) && workflow < Smith::Workflow
+        name = workflow.name if workflow.is_a?(Class)
         return if name.is_a?(String) && name.length <= MAX_WORKFLOW_NAME
 
-        "/subject/workflow: is a named Smith::Workflow subclass"
+        "/subject/workflow: is a named class (a Smith::Workflow subclass, unless a host driver runs it)"
       end
 
       def input_problem = ("/subject/input: responds to call(sample)" unless input.respond_to?(:call))

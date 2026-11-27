@@ -20,7 +20,9 @@ module Smith
       # the trial keeps. A failure of the driver's own (or a result that is
       # no SubjectResult) is the driver's (driver_error, or scope_conflict).
       # A trial is final unless it ended in a retried error with retries
-      # left.
+      # left. A trial the run stopped on (not_run) keeps a line only when a
+      # request of it left, so its spend is kept; one that runs again is
+      # written above that line's revision.
       class TrialRun
         # The attempts so far, and what the last left: its trial spec,
         # subject result, recorder and scores.
@@ -32,11 +34,13 @@ module Smith
                          "value" => 0, "label" => nil, "explanation" => "the subject failed, which counts as a fail",
                          "metadata" => nil, "reason" => nil }.freeze
 
-        # record: the run's Record.
-        def initialize(plan, record)
+        # record: the run's Record; revisions: the stored not_run lines'
+        # trial_revision, by trial id.
+        def initialize(plan, record, revisions: {})
           @plan = plan
           @eval_run_id = record.eval_run_id
           @recording = Configuration.recording(record.header.fetch("recording"))
+          @revisions = revisions
         end
 
         # The trial after one more attempt.
@@ -54,17 +58,26 @@ module Smith
           outcome.outcome == :error && outcome.retryable && tried.attempts.size <= @plan.error_retries
         end
 
-        # Its trial line.
+        # Its trial line, or nil for a trial that did not run and sent nothing.
         def line(tried, segment)
+          return unless kept?(tried)
+
           Record::TrialLine.build(tried.spec, segment:, split: @plan.split, attempts: tried.attempts,
-                                              result: tried.result, scores: tried.scores, recorder: tried.recorder)
+                                              result: tried.result, scores: tried.scores, recorder: tried.recorder,
+                                              revision: @revisions.fetch(tried.spec.trial_id, 0) + 1)
         end
 
         private
 
+        def kept?(tried)
+          attempts = tried.attempts
+          attempts.last.outcome.outcome != :not_run || attempts.any? { _1.usage["provider_calls"].positive? }
+        end
+
         def spec_for(item)
           TrialSpec.for(eval_run_id: @eval_run_id, scope: @plan.scope, sample: item.sample, trial_index: item.index,
-                        subject: @plan.subject, attempt: (item.tried&.attempts&.size || 0) + 1)
+                        subject: @plan.subject, attempt: (item.tried&.attempts&.size || 0) + 1,
+                        candidate: @plan.candidate)
         end
 
         # The subject's result, and the attempt as it ended, timed.

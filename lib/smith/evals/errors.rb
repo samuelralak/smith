@@ -54,6 +54,13 @@ module Smith
     # run stops (slice-1a design, 5.2 and 6.2).
     class ScopeConflict < Error; end
 
+    # Raised by a host driver from `run` when the trial could not run for a
+    # cause of the host's that stops every trial (a lost worker process, a
+    # service it runs the subject through gone): the trial is not_run and
+    # the run ends failed, going on when called again once the cause is
+    # fixed. A refusal of the host's ledger is Smith::BudgetUnavailable.
+    class HostUnavailable < Error; end
+
     # A start with a known id or key whose plan digest differs from the
     # record's. `fields` names what differs.
     class ResumeMismatch < Error

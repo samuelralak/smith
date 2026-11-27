@@ -104,10 +104,14 @@ module Smith
           settings[:recording]
         end
 
-        # A block scorer (`scorer :name, version: 1 do |sample, trial| ... end`),
-        # or a Scorer class or instance, with the reducers this suite reads it by.
-        def scorer(target, version: nil, scale: nil, reduce: nil, also: nil, on_subject_failure: nil, &block)
-          settings[:scorers] << { target:, block:, version:, scale:, reduce:, also:, on_subject_failure: }
+        # A block scorer (`scorer :name, version: 1 do |sample, trial| ... end`,
+        # with the tuner's `feedback:` and `reveals_expected:` if it gives
+        # them), or a Scorer class or instance, with the reducers this suite
+        # reads it by.
+        def scorer(target, version: nil, scale: nil, reduce: nil, also: nil, on_subject_failure: nil,
+                   feedback: nil, reveals_expected: false, &block)
+          settings[:scorers] << { target:, block:, version:, scale:, reduce:, also:, on_subject_failure:,
+                                  tuner: { feedback:, reveals_expected: } }
         end
 
         # A fixed target, judged on the headline estimate's point (slice 1b);

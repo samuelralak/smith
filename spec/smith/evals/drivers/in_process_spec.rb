@@ -56,6 +56,16 @@ RSpec.describe Smith::Evals::Drivers::InProcess do
   end
 
   describe "the driver interface" do
+    # The one backoff rule: the runner's before a trial's retry, and the
+    # tuner's before a reflection's.
+    it "waits min(30, 2**attempts) seconds before a retry, and none with retry_waits :immediate" do
+      sleeping = described_class.new(retry_waits: :sleep)
+
+      expect([1, 2, 4, 5, 6].map { sleeping.backoff(_1) }).to eq([2, 4, 16, 30, 30])
+      expect(described_class.new(retry_waits: :immediate).backoff(3)).to eq(0)
+      expect(Smith::Evals::Driver.new.backoff(1)).to eq(2)
+    end
+
     it "is in process, runs as many trials at once as it says, and isolates trials only when told how" do
       base = Smith::Evals::Driver.new
       around = ->(trial, &run) { [:isolated, trial, run.call] }

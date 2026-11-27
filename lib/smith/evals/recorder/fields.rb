@@ -14,14 +14,14 @@ module Smith
       # entry is (so a tiered price picks its tier per response, as the
       # provider bills and the budget ledger settles), in integer nanos
       # rounded half to even once; unknown when any response's price is.
-      # With no tokens it is 0 when nothing was sent (a skip, a refusal
-      # before the call) or the provider refused it (not billed), and
-      # unknown when an aborted or answered call reported none. Its settings
-      # keep each value the schema takes, null otherwise. A failure's message
-      # is the seam's: for the four key and account failures Smith's fixed
-      # text (AttemptObservation::FIXED_MESSAGES, the one place it is
-      # written), whatever the provider said. Internal. O(R) for R responses
-      # but the bounded strings.
+      # With no tokens it is 0 when nothing was sent (`sent_nothing?`) or
+      # the provider refused it (not billed), and unknown when an aborted
+      # or answered call reported none. Its settings keep each value the
+      # schema takes, null otherwise. A failure's message is the seam's:
+      # for the four key and account failures Smith's fixed text
+      # (AttemptObservation::FIXED_MESSAGES, the one place it is written),
+      # whatever the provider said. Internal. O(R) for R responses but the
+      # bounded strings.
       module Fields
         TOKENS = Spend::TOKENS.to_h { [_1, _1.to_sym] }.freeze
         PRICED = { input_tokens: :input, output_tokens: :output, cache_read_tokens: :cache_read,
@@ -30,6 +30,7 @@ module Smith
         NANOS = 1_000_000_000
         MAX_NAMES = 1_024
         MAX_EFFORT = 64
+        REFUSED = Smith::BudgetUnavailable.name
 
         module_function
 
@@ -126,9 +127,14 @@ module Smith
           cost.is_a?(Float) ? Rational(cost.to_s) : cost.to_r
         end
 
-        def none_reported(attempt)
-          sent_nothing = attempt.outcome == :skipped || attempt.duration_ms.nil? || attempt.outcome == :failed
-          sent_nothing ? [0, true] : [nil, false]
+        def none_reported(attempt) = sent_nothing?(attempt) || attempt.outcome == :failed ? [0, true] : [nil, false]
+
+        # Nothing went to the provider: a skip, a call that never started,
+        # or a request the budget ledger refused before it left (its
+        # attempt timed all the same), no earlier round of it answered.
+        def sent_nothing?(attempt)
+          attempt.outcome == :skipped || attempt.duration_ms.nil? ||
+            (Array(attempt.responses).empty? && attempt.failure&.dig(:error_class) == REFUSED)
         end
 
         def tool_call_names(attempt)

@@ -90,7 +90,7 @@ module Smith
           name = entry[:target]
           return refused("#{path}/name", "is a Symbol or String") unless name.is_a?(Symbol) || name.is_a?(String)
 
-          Scorer::Block.new(name: entry[:target], version: entry[:version], scale: entry[:scale] || :binary,
+          Scorer::Block.new(name:, version: entry[:version], scale: entry[:scale] || :binary, **entry[:tuner],
                             on_subject_failure: entry[:on_subject_failure] || :fail, &entry[:block])
         end
 
